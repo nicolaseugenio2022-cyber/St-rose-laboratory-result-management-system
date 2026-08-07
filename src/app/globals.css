@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   ST. ROSE DIAGNOSTIC LABORATORY - CENTRALIZED APPLICATION DESIGN TOKENS
+
+   BRANDING PALETTE: St. Rose Medical Blue / Cyan-Blue Family (#0284c7)
+   
+   ARCHITECTURAL RULE:
+   These design tokens govern the Web Application UI (Shell, Dashboard, Forms, Tables).
+   They MUST NOT control Laboratory Report Rendering (Preview, Print, PDF).
+   Laboratory reports inherit strictly from their official Word templates.
+   ========================================================================== */
+
+:root {
+  /* --- PRIMARY BRANDING COLORS (St. Rose Medical Blue / Cyan-Blue) --- */
+  /* Primary brand color for main interactive elements, primary buttons, active navigation, and brand accents */
+  --color-primary: #0284c7; /* Sky 600 - St. Rose Medical Cyan-Blue */
+  /* Hover state for primary interactive elements */
+  --color-primary-hover: #0369a1; /* Sky 700 */
+  /* Contrast foreground text color on primary backgrounds */
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary dark neutral accent color for headers, secondary actions, and dark badges */
+  --color-secondary: #0f172a; /* Slate 900 */
+  --color-secondary-hover: #1e293b;
+  --color-secondary-foreground: #f8fafc;
+
+  /* --- SURFACES & BACKGROUNDS --- */
+  /* Application viewport background color */
+  --color-background: #f8fafc; /* Slate 50 */
+  /* Primary card, panel, and modal surface background */
+  --color-surface: #ffffff;
+  /* Hover surface background for list items, table rows, and interactive panels */
+  --color-surface-hover: #f1f5f9;
+
+  /* --- BORDERS & SEPARATORS --- */
+  /* Standard structural border color for cards, inputs, tables, and dividers */
+  --color-border: #e2e8f0;
+  /* Subtle inner border color */
+  --color-border-subtle: #f1f5f9;
+
+  /* --- TYPOGRAPHY & TEXT --- */
+  /* Primary body text color */
+  --color-text: #0f172a;
+  /* Muted text color for descriptions and metadata */
+  --color-text-muted: #64748b;
+  /* Subdued text color for placeholders and disabled labels */
+  --color-text-subtle: #94a3b8;
+
+  /* --- SEMANTIC UI STATES (STRICTLY SEPARATED FROM BRANDING) --- */
+  /* Success state color (Used strictly for Active account status, System Ready badge, positive operations) */
+  --color-success: #059669; /* Emerald 600 */
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+
+  /* Warning state color (Used strictly for Inactive account status, caution alerts) */
+  --color-warning: #d97706; /* Amber 600 */
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  /* Danger state color (Used strictly for errors, destructive actions) */
+  --color-danger: #dc2626; /* Rose 600 */
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+
+  /* Information state color (Used strictly for info indicators & cyan accents) */
+  --color-info: #0284c7; /* Sky 600 */
+  --color-info-bg: #f0f9ff;
+  --color-info-border: #bae6fd;
+
+  /* Semantic Role Colors */
+  /* Admin Role Badge: Indigo/Violet */
+  --color-role-admin: #4338ca;
+  --color-role-admin-bg: #eef2ff;
+  --color-role-admin-border: #c7d2fe;
+
+  /* User Role Badge: Neutral Slate */
+  --color-role-user: #334155;
+  --color-role-user-bg: #f1f5f9;
+  --color-role-user-border: #e2e8f0;
+
+  /* --- NAVIGATION & SIDEBAR --- */
+  /* Sidebar background color */
+  --color-sidebar: #ffffff;
+  /* Active navigation item background (Soft Medical Blue tint) */
+  --color-sidebar-active: #f0f9ff;
+  /* Active navigation item text/icon color (Deep Medical Blue) */
+  --color-sidebar-active-text: #0369a1;
+  /* Default sidebar item text color */
+  --color-sidebar-text: #475569;
+
+  /* --- CARDS & MODALS --- */
+  /* Card container background */
+  --color-card: #ffffff;
+  /* Card container border */
+  --color-card-border: #e2e8f0;
+
+  /* --- ACCESSIBILITY & FOCUS --- */
+  /* Focus ring outline color */
+  --color-focus-ring: #0284c7;
+}
+
+/* Baseline A4 Print Rules - Independent from Application Theme */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

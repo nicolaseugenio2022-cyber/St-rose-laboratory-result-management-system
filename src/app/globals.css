@@ -14,11 +14,11 @@
    ========================================================================== */
 
 :root {
-  /* --- PRIMARY BRANDING COLORS (St. Rose Medical Blue / Cyan-Blue) --- */
-  /* Primary brand color for main interactive elements, primary buttons, active navigation, and brand accents */
-  --color-primary: #0284c7; /* Sky 600 - St. Rose Medical Cyan-Blue */
-  /* Hover state for primary interactive elements */
-  --color-primary-hover: #0369a1; /* Sky 700 */
+  /* --- PRIMARY BRANDING COLORS (St. Rose Official Logo Palette) --- */
+  /* Primary brand color derived from the official St. Rose logo */
+  --color-primary: #093982; /* St. Rose Deep Navy Blue */
+  /* Hover state for primary interactive elements (secondary blue from logo) */
+  --color-primary-hover: #1d5ea5; /* St. Rose Medium Vibrant Blue */
   /* Contrast foreground text color on primary backgrounds */
   --color-primary-foreground: #ffffff;
 
@@ -65,10 +65,10 @@
   --color-danger-bg: #fef2f2;
   --color-danger-border: #fecaca;
 
-  /* Information state color (Used strictly for info indicators & cyan accents) */
-  --color-info: #0284c7; /* Sky 600 */
-  --color-info-bg: #f0f9ff;
-  --color-info-border: #bae6fd;
+  /* Information state color (Used strictly for info indicators & brand accents) */
+  --color-info: #093982; /* St. Rose Primary Blue */
+  --color-info-bg: #ebf3fa; /* Light blue background tint derived from logo */
+  --color-info-border: #c8dcf0;
 
   /* Semantic Role Colors */
   /* Admin Role Badge: Indigo/Violet */
@@ -84,10 +84,10 @@
   /* --- NAVIGATION & SIDEBAR --- */
   /* Sidebar background color */
   --color-sidebar: #ffffff;
-  /* Active navigation item background (Soft Medical Blue tint) */
-  --color-sidebar-active: #f0f9ff;
-  /* Active navigation item text/icon color (Deep Medical Blue) */
-  --color-sidebar-active-text: #0369a1;
+  /* Active navigation item background (Subtle Light Blue tint derived from logo) */
+  --color-sidebar-active: #ebf3fa;
+  /* Active navigation item text/icon color (St. Rose Primary Blue) */
+  --color-sidebar-active-text: #093982;
   /* Default sidebar item text color */
   --color-sidebar-text: #475569;
 
@@ -99,7 +99,7 @@
 
   /* --- ACCESSIBILITY & FOCUS --- */
   /* Focus ring outline color */
-  --color-focus-ring: #0284c7;
+  --color-focus-ring: #093982;
 }
 
 /* Baseline A4 Print Rules - Independent from Application Theme */

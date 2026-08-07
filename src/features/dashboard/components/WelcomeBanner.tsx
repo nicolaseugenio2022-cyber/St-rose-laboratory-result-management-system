@@ -15,11 +15,11 @@ export function WelcomeBanner() {
             <span className="text-xs text-brand-text-muted">v1.0.0</span>
           </div>
 
-          <h2 className="text-xl font-bold text-brand-text tracking-tight">
+          <h2 className="text-2xl font-bold text-brand-text tracking-tight">
             St. Rose Diagnostic Laboratory
           </h2>
 
-          <p className="text-xs text-brand-text-muted leading-relaxed">
+          <p className="text-xs text-brand-text-muted/90 leading-relaxed">
             Result Management System administrative workspace. Access account management, view operational metrics, and manage user access controls.
           </p>
         </div>

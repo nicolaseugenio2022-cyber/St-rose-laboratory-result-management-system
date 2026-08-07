@@ -90,11 +90,11 @@ export function UserManagementView() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Users className="h-5 w-5 text-brand-primary" />
-            <h2 className="text-xl font-bold text-brand-text">User Management</h2>
+            <h2 className="text-2xl font-bold text-brand-text tracking-tight">User Management</h2>
           </div>
-          <p className="text-xs text-brand-text-muted mt-1">
+          <p className="text-xs text-brand-text-muted/90 mt-1.5 leading-relaxed">
             Manage staff login accounts, assign administrative roles, and toggle account activation status.
           </p>
         </div>
@@ -107,12 +107,12 @@ export function UserManagementView() {
       {/* Filter & Action Toolbar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-brand-surface p-4 rounded-xl border border-brand-border shadow-xs">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-brand-text-subtle" />
+          <Search className="absolute left-3.5 top-3 h-4 w-4 text-brand-text-subtle pointer-events-none" />
           <Input
             placeholder="Search by username..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-10"
           />
         </div>
         <div className="w-full sm:w-48">

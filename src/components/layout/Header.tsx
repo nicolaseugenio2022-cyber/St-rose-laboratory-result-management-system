@@ -33,8 +33,8 @@ export function Header({ onMenuToggle }: HeaderProps) {
           </button>
 
           <div>
-            <h1 className="text-base font-bold text-brand-text leading-tight">{pageTitle}</h1>
-            <p className="text-xs text-brand-text-muted hidden sm:block">{pageDescription}</p>
+            <h1 className="text-lg font-bold text-brand-text leading-tight tracking-tight">{pageTitle}</h1>
+            <p className="text-xs text-brand-text-muted hidden sm:block mt-0.5">{pageDescription}</p>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
-import { Activity, X } from "lucide-react";
+import Image from "next/image";
+import { X } from "lucide-react";
 import { NavigationMenu } from "./NavigationMenu";
 import { cn } from "@/utils/cn";
 
@@ -31,9 +32,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Brand Header */}
         <div className="flex h-16 items-center justify-between px-5 border-b border-brand-border">
           <Link href="/dashboard" className="flex items-center gap-3 group" onClick={onClose}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-primary text-brand-primary-foreground shadow-xs group-hover:bg-brand-primary-hover transition-colors">
-              <Activity className="h-5 w-5" />
-            </div>
+            <Image
+              src="/st-rose-logo.png"
+              alt="St. Rose Diagnostic Laboratory Logo"
+              width={44}
+              height={44}
+              className="h-11 w-auto object-contain shrink-0"
+              priority
+            />
             <div>
               <span className="block font-bold text-brand-text text-sm leading-tight">St. Rose</span>
               <span className="block text-[11px] font-medium text-brand-text-muted">Diagnostic Laboratory</span>

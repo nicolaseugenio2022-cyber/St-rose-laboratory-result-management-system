@@ -2,7 +2,7 @@
 
 import React from "react";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, LogOut } from "lucide-react";
 import { navigationConfig } from "@/config/navigation";
 
 export interface HeaderProps {
@@ -39,10 +39,20 @@ export function Header({ onMenuToggle }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-success-bg px-2.5 py-1 text-xs font-medium text-brand-success border border-brand-success-border">
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-brand-success-bg px-2.5 py-1 text-xs font-medium text-brand-success border border-brand-success-border">
             <span className="h-2 w-2 rounded-full bg-brand-success"></span>
             System Ready
           </span>
+          <button
+            onClick={() => {
+              import("@/features/auth/authActions").then((m) => m.logoutAction());
+            }}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
+            aria-label="Logout"
+          >
+            <LogOut className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline-block">Logout</span>
+          </button>
         </div>
       </div>
     </header>

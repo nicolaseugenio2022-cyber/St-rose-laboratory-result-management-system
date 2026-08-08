@@ -21,6 +21,7 @@ export interface IUserService {
   updateUser(id: string, input: UpdateUserInput): Promise<User>;
   toggleUserStatus(id: string): Promise<User>;
   subscribe(listener: () => void): () => void;
+  authenticate(username: string, password?: string): Promise<User>;
 }
 
 const initialUsers: User[] = [
@@ -150,6 +151,26 @@ class InMemoryUserService implements IUserService {
 
     const newStatus = user.status === "Active" ? "Inactive" : "Active";
     return this.updateUser(id, { status: newStatus });
+  }
+
+  public async authenticate(username: string, password?: string): Promise<User> {
+    const normalizedUsername = username.trim().toLowerCase();
+    const user = this.users.find((u) => u.username.toLowerCase() === normalizedUsername);
+
+    if (!user) {
+      throw new Error("Invalid username or password");
+    }
+
+    // Prototype constraint: hardcoded password for any existing user
+    if (password !== "password") {
+      throw new Error("Invalid username or password");
+    }
+
+    if (user.status !== "Active") {
+      throw new Error("User account is inactive");
+    }
+
+    return { ...user };
   }
 }
 

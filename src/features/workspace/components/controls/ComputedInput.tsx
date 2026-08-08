@@ -71,7 +71,9 @@ export function ComputedInput({
           <span
             className={cn(
               "text-[10px] font-extrabold px-2 py-0.5 rounded-md border text-center min-w-[70px] uppercase tracking-wider",
-              evaluationOutcome === "Normal"
+              evaluationOutcome === "Invalid"
+                ? "bg-rose-100 text-rose-900 border-rose-400 font-extrabold shadow-2xs"
+                : evaluationOutcome === "Normal"
                 ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                 : "bg-rose-100 text-rose-800 border-rose-300"
             )}

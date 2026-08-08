@@ -57,6 +57,7 @@ export function TabularRenderer({
             <tbody className="divide-y divide-slate-200">
               {selectedResults.map((res) => {
                 const isAbnormal = res.evaluationOutcome === "Abnormal";
+                const isInvalid = res.evaluationOutcome === "Invalid";
                 const refRule = res.referenceRuleSnapshot;
                 let refDisplay = "Normal";
                 if (refRule?.minValue !== undefined && refRule?.maxValue !== undefined) {
@@ -70,7 +71,9 @@ export function TabularRenderer({
                     <td className="py-2 px-3 font-semibold text-slate-800 border-r border-slate-200">
                       {res.parameterName}
                     </td>
-                    <td className={`py-2 px-3 font-extrabold text-center border-r border-slate-200 ${isAbnormal ? "text-rose-700 font-black" : "text-slate-900"}`}>
+                    <td className={`py-2 px-3 font-extrabold text-center border-r border-slate-200 ${
+                      isInvalid ? "text-rose-600 font-bold bg-rose-50/40" : isAbnormal ? "text-rose-700 font-black" : "text-slate-900"
+                    }`}>
                       {res.resultValue || "—"}
                     </td>
                     <td className="py-2 px-3 text-slate-600 text-center border-r border-slate-200 font-mono text-[11px]">
@@ -80,7 +83,11 @@ export function TabularRenderer({
                       {refDisplay}
                     </td>
                     <td className="py-2 px-3 text-center font-bold">
-                      {isAbnormal ? (
+                      {isInvalid ? (
+                        <span className="px-1.5 py-0.5 text-[9px] font-black rounded bg-rose-100 text-rose-900 border border-rose-300">
+                          INVALID
+                        </span>
+                      ) : isAbnormal ? (
                         <span className="px-1.5 py-0.5 text-[9px] font-black rounded bg-rose-100 text-rose-800 border border-rose-200">
                           HIGH
                         </span>

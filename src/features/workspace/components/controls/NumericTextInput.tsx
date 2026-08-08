@@ -73,7 +73,9 @@ export function NumericTextInput({
             placeholder="Enter result..."
             className={cn(
               "w-full px-2.5 py-1 text-xs rounded-md border font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
-              outcome === "Abnormal"
+              outcome === "Invalid"
+                ? "bg-rose-50/60 border-rose-500 text-rose-900 font-bold focus:ring-rose-300 focus:border-rose-500"
+                : outcome === "Abnormal"
                 ? "bg-rose-50 border-rose-300 text-rose-900 font-bold focus:ring-rose-200"
                 : outcome === "Normal"
                 ? "bg-emerald-50/60 border-emerald-300 text-emerald-900 font-bold focus:ring-emerald-200"
@@ -87,7 +89,9 @@ export function NumericTextInput({
         <span
           className={cn(
             "text-[10px] font-extrabold px-2 py-0.5 rounded-md border text-center min-w-[70px] uppercase tracking-wider",
-            outcome === "Abnormal"
+            outcome === "Invalid"
+              ? "bg-rose-100 text-rose-900 border-rose-400 font-extrabold shadow-2xs"
+              : outcome === "Abnormal"
               ? "bg-rose-100 text-rose-800 border-rose-300"
               : outcome === "Normal"
               ? "bg-emerald-100 text-emerald-800 border-emerald-300"

@@ -2,6 +2,7 @@ import { PatientReportSessionAggregate } from "../models/patient-report-session-
 import { LaboratoryReportDomain } from "../models/laboratory-report-domain";
 import { AccessionNumberGenerator } from "../services/accession-number-generator";
 import { calculateExpirationDate, getRemainingRetentionDays } from "../../lib/utils";
+import { referenceEvaluationService } from "../../services/reference-evaluation-service";
 
 /**
  * Phase 3 Patient Report Session Verification Script
@@ -12,6 +13,7 @@ export async function verifyPatientReportSessionPhase3(): Promise<{
   signatoryValidationHivPass: boolean;
   deselectedScrubbingPass: boolean;
   retentionMathValid: boolean;
+  validationDecouplingPass: boolean;
 }> {
   // 1. Verify Accession Number Generator
   const accessionNo = AccessionNumberGenerator.generate(1, "2026-08-07");
@@ -142,10 +144,24 @@ export async function verifyPatientReportSessionPhase3(): Promise<{
   const remainingDays = getRemainingRetentionDays(session.expiresAt!);
   const retentionMathValid = session.expiresAt === expectedExpiration.toISOString() && remainingDays >= 29 && remainingDays <= 30;
 
+  // Verify Validation vs Clinical Interpretation Decoupling
+  const rule = { evaluationType: "NumericRange" as const, minValue: 120, maxValue: 160 };
+  const emptyEval = referenceEvaluationService.evaluateResult("", rule); // Expect "NoEvaluation"
+  const invalidEval = referenceEvaluationService.evaluateResult("abc", rule); // Expect "Invalid" (NOT "Abnormal")
+  const normalEval = referenceEvaluationService.evaluateResult("140", rule); // Expect "Normal"
+  const abnormalEval = referenceEvaluationService.evaluateResult("50", rule); // Expect "Abnormal"
+
+  const validationDecouplingPass = 
+    emptyEval === "NoEvaluation" &&
+    invalidEval === "Invalid" &&
+    normalEval === "Normal" &&
+    abnormalEval === "Abnormal";
+
   return {
     accessionNumberFormatValid,
     signatoryValidationHivPass,
     deselectedScrubbingPass,
     retentionMathValid,
+    validationDecouplingPass,
   };
 }

@@ -85,7 +85,9 @@ export function SingleSelectInput({
         <span
           className={cn(
             "text-[10px] font-extrabold px-2 py-0.5 rounded-md border text-center min-w-[70px] uppercase tracking-wider",
-            outcome === "Abnormal"
+            outcome === "Invalid"
+              ? "bg-rose-100 text-rose-900 border-rose-400 font-extrabold shadow-2xs"
+              : outcome === "Abnormal"
               ? "bg-rose-100 text-rose-800 border-rose-300"
               : outcome === "Normal"
               ? "bg-emerald-100 text-emerald-800 border-emerald-300"

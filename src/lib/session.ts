@@ -69,7 +69,16 @@ export async function decrypt(token: string | undefined = ""): Promise<SessionPa
     if (!isValid) return null;
     
     const payloadStr = decodeURIComponent(atob(encodedPayload));
-    const payload = JSON.parse(payloadStr) as SessionPayload;
+    let payload;
+    try {
+      payload = JSON.parse(payloadStr) as SessionPayload;
+    } catch {
+      return null;
+    }
+
+    if (!payload || typeof payload !== 'object' || !payload.userId || !payload.expiresAt) {
+      return null;
+    }
     
     if (new Date(payload.expiresAt).getTime() < Date.now()) {
       return null;

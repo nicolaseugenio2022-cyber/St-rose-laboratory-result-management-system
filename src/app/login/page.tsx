@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useTransition, useState } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -58,7 +59,14 @@ export default function LoginPage() {
     <Card className="w-full max-w-md shadow-lg">
       <CardHeader className="space-y-3 pb-6 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary text-brand-primary-foreground shadow-sm">
-          <Activity className="h-7 w-7" />
+          <Image
+            src="/st-rose-logo.png"
+            alt="St. Rose Diagnostic Laboratory Logo"
+            width={28}
+            height={28}
+            className="h-7 w-7 object-contain"
+            priority
+          />
         </div>
         <div>
           <CardTitle className="text-2xl font-bold tracking-tight text-brand-text">St. Rose</CardTitle>

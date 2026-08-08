@@ -1,6 +1,6 @@
 # Production Deployment Architecture
 
-- **Status**: Confirmed & Approved Architecture Specification
+- **Status**: Architecturally Frozen & Approved Specification
 - **Author**: Master Developer Col / AI Pair Programmer
 - **Date**: 2026-08-08
 - **Context**: St. Rose Laboratory Result Management System Deployment & Infrastructure Specification
@@ -31,6 +31,29 @@ The system enforces a strict 3-tier deployment environment model:
 | **Storage Bucket** | Local Mock / Staging Bucket | Protected (`personnel-signatures`) | Protected (`personnel-signatures`) |
 | **Auth Provider** | Mock / Supabase Auth Dev | Supabase Auth (Staging Tenant) | Supabase Auth (Production Tenant) |
 | **Branch Target** | Feature Branches (`feature/*`) | `develop` Branch | `main` Branch |
+
+## 2.2 Infrastructure Region & Operational Location
+
+### 2.2.1 Operational Location & Primary User Base
+- **Laboratory Facility**: St. Rose Diagnostic Laboratory
+- **Physical Address**: 18 Lourdes St., Brgy. La Fuente, Santa Rosa, Nueva Ecija, Philippines
+- **Primary User Base**: Laboratory Administrators, Pathologists, Medical Technologists, Receptionists, and Patients of St. Rose Diagnostic Laboratory.
+
+### 2.2.2 Infrastructure Region Selection
+Production infrastructure deployment regions are selected to provide low-latency network connectivity and reliable service execution for users operating from Santa Rosa, Nueva Ecija, Philippines.
+
+| Component / Platform | Deployment Region | Location | Operational Rationale |
+|---|---|---|---|
+| **Supabase Project** | Singapore | Southeast Asia | Selected deployment region to provide low-latency connectivity for the laboratory's operational location in the Philippines. |
+| **Vercel Deployment** | Singapore | Southeast Asia | Selected compute region for Next.js application edge/serverless services to align with backend database services and provide low-latency access for clinical users. |
+
+Co-locating database storage and compute infrastructure in Singapore minimizes inter-service network latency during clinical workflow execution, patient registration, laboratory result encoding, report generation, and PDF document retrieval.
+
+### 2.2.3 Deployment Principles
+- **Operational Proximity**: Production infrastructure shall be deployed as close as practical to the laboratory's operational location in the Philippines.
+- **Regional Consistency**: Application compute services and the primary database should remain within the same deployment region whenever practical to minimize inter-service latency, simplify operations, and improve overall system reliability.
+- **Service Standards**: Infrastructure decisions shall prioritize reliability, security, availability, maintainability, and low-latency access.
+- **Workflow Optimization**: The deployment architecture is optimized for patient registration, laboratory result encoding, report generation, and report retrieval during high-volume shift operations.
 
 ---
 

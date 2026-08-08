@@ -1,0 +1,53 @@
+/* 
+  Physical A4 Document Specifications & Print Utility Styles
+  Enforces 210mm x 297mm Portrait A4 layout with 15mm margins per REPORT_RENDERING_ARCHITECTURE.md
+*/
+
+.a4-page-container {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 15mm;
+  margin: 0 auto;
+  background-color: #ffffff;
+  box-sizing: border-box;
+  position: relative;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1e293b;
+}
+
+/* Page Break Enforcer */
+.a4-page-break {
+  page-break-after: always;
+  break-after: page;
+}
+
+/* Print Target Styles */
+@media print {
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Suppress all Non-Report UI Elements */
+  header, nav, sidebar, aside, button, .no-print {
+    display: none !important;
+  }
+
+  .a4-page-container {
+    width: 210mm !important;
+    height: 297mm !important;
+    padding: 15mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* Screen Preview Simulation Target */
+.a4-preview-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+}

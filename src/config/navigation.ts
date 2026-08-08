@@ -1,8 +1,11 @@
+import { UserRole } from "@/domain/types";
+
 export interface NavItemConfig {
   title: string;
   href: string;
-  iconName: "LayoutDashboard" | "Users";
+  iconName: "LayoutDashboard" | "FileEdit" | "History" | "Users" | "UserCheck" | "ShieldCheck";
   description?: string;
+  requiredRole?: UserRole;
 }
 
 export const navigationConfig: NavItemConfig[] = [
@@ -10,12 +13,39 @@ export const navigationConfig: NavItemConfig[] = [
     title: "Dashboard",
     href: "/dashboard",
     iconName: "LayoutDashboard",
-    description: "System metrics and quick operations",
+    description: "System overview, operational metrics, and quick action shortcuts",
+  },
+  {
+    title: "Session Workspace",
+    href: "/workspace",
+    iconName: "FileEdit",
+    description: "Guided patient visit creation and result encoding workspace",
+  },
+  {
+    title: "Completed History",
+    href: "/history",
+    iconName: "History",
+    description: "30-day active record directory, report replacement, and export",
+  },
+  {
+    title: "Audit Logs",
+    href: "/audit",
+    iconName: "ShieldCheck",
+    description: "Inspect security audit logs and system event history",
+    requiredRole: "Admin",
   },
   {
     title: "User Management",
     href: "/users",
     iconName: "Users",
-    description: "Manage system accounts, roles, and status",
+    description: "Manage application login accounts, roles, and status",
+    requiredRole: "Admin",
+  },
+  {
+    title: "Personnel Directory",
+    href: "/personnel",
+    iconName: "UserCheck",
+    description: "Maintain PRC-licensed Pathologists, MedTechs, and signatures",
+    requiredRole: "Admin",
   },
 ];

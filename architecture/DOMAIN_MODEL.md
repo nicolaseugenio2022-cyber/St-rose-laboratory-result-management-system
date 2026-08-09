@@ -257,7 +257,7 @@ Represents the encoded value and reference evaluation for a single parameter.
   - `encodedValue`: `String` (Textual, numeric string, or selected option)
   - `unit`: `Nullable<String>`
   - `referenceRule`: `ReferenceRule` (Snapshot from template definition)
-  - `evaluationResult`: `EvaluationOutcome` (`Normal` | `Abnormal` | `Expected` | `Allowed` | `Informational` | `NoEvaluation`)
+  - `evaluationResult`: `EvaluationOutcome` (`Normal` | `Abnormal` | `Informational` | `NoEvaluation` | `Invalid`)
   - `isSelected`: `Boolean`
 
 - **Domain Responsibilities**:
@@ -550,6 +550,29 @@ stateDiagram-v2
 
 4. **`TemplateRegistryService`**:
    - Exposes authoritative template metadata, parameter definitions, reference rules, and signatory requirements.
+
+## 10.2 Shared Validation & Clinical Evaluation Pipeline
+
+The system enforces a strict two-stage pipeline for parameter evaluation across all workspace controls and renderer families:
+
+```text
+User Input
+     ↓
+Input Validation (Syntactic Check)
+     ↓
+EvaluationOutcome
+     ├── Invalid (Syntax Error, Red Validation UI)
+     ├── NoEvaluation (Empty Input, Pending State)
+     ├── Normal (Valid Numeric Value within Reference Range)
+     ├── Abnormal (Valid Numeric Value outside Reference Range)
+     └── Informational (Informational Text / Value)
+```
+
+### Domain Validation Invariants
+- **INVARIANT 1**: Syntactic input validation MUST occur before clinical evaluation.
+- **INVARIANT 2**: Clinical reference range interpretation (`Normal` vs `Abnormal`) MUST ONLY be performed on syntactically valid inputs.
+- **INVARIANT 3**: Non-numeric or malformed text entered into numeric fields MUST return `Invalid` and MUST NEVER display clinical `Abnormal` badges or flags.
+- **INVARIANT 4**: Empty fields MUST remain in `NoEvaluation` (`Pending`) status.
 
 ---
 

@@ -1,6 +1,12 @@
 import { IReferenceEvaluationService } from "./interfaces";
 import { ReferenceRuleSpec, EvaluationOutcome } from "../domain/types";
 
+function isValidNumericString(val: string): boolean {
+  if (!val) return false;
+  const num = Number(val);
+  return !isNaN(num) && isFinite(num);
+}
+
 /**
  * Reference Evaluation Service Implementation.
  * Pure deterministic reference range grading engine.
@@ -18,23 +24,23 @@ export class ReferenceEvaluationService implements IReferenceEvaluationService {
 
     switch (rule.evaluationType) {
       case "NumericRange": {
+        if (!isValidNumericString(trimmedValue)) return "Invalid";
         const num = parseFloat(trimmedValue);
-        if (isNaN(num)) return "Abnormal";
         const min = rule.minValue ?? -Infinity;
         const max = rule.maxValue ?? Infinity;
         return num >= min && num <= max ? "Normal" : "Abnormal";
       }
 
       case "LessThan": {
+        if (!isValidNumericString(trimmedValue)) return "Invalid";
         const num = parseFloat(trimmedValue);
-        if (isNaN(num)) return "Abnormal";
         const max = rule.maxValue ?? Infinity;
         return num < max ? "Normal" : "Abnormal";
       }
 
       case "GreaterThan": {
+        if (!isValidNumericString(trimmedValue)) return "Invalid";
         const num = parseFloat(trimmedValue);
-        if (isNaN(num)) return "Abnormal";
         const min = rule.minValue ?? -Infinity;
         return num > min ? "Normal" : "Abnormal";
       }

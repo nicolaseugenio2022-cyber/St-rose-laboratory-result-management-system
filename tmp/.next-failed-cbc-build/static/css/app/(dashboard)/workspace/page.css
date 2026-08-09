@@ -1,0 +1,84 @@
+/*!**********************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[3]!./src/rendering/styles/a4-document.css ***!
+  \**********************************************************************************************************************************************************************************************************************************************************************************/
+/* 
+  Physical A4 Document Specifications & Print Utility Styles
+  Enforces 210mm x 297mm Portrait A4 layout with official Word template margins
+  (Top: 25.4mm/31.6mm, Left: 25.4mm, Right: 12.7mm)
+*/
+
+.a4-page-container {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 12.7mm 12.7mm 25.4mm 25.4mm;
+  margin: 0 auto;
+  background-color: #ffffff;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000000;
+}
+
+/* Header Region: Natural flow grid header at page top */
+.a4-header-region {
+  width: 100%;
+  margin-bottom: 4mm;
+  box-sizing: border-box;
+}
+
+/* Body Region: Sits naturally below Header Region in block flow with zero hard-coded padding-top! */
+.a4-body-region {
+  width: 100%;
+  flex-grow: 1;
+  box-sizing: border-box;
+}
+
+/* Footer Region: Natural flow footer at page bottom */
+.a4-footer-region {
+  width: 100%;
+  margin-top: auto;
+  box-sizing: border-box;
+}
+
+/* Page Break Enforcer */
+.a4-page-break {
+  page-break-after: always;
+  -moz-column-break-after: page;
+       break-after: page;
+}
+
+/* Print Target Styles */
+@media print {
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Suppress all Non-Report UI Elements */
+  header, nav, sidebar, aside, button, .no-print {
+    display: none !important;
+  }
+
+  .a4-page-container {
+    width: 210mm !important;
+    height: 297mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* Screen Preview Simulation Target */
+.a4-preview-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+

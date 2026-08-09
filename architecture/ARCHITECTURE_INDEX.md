@@ -147,6 +147,6 @@ The following 8 core architecture specifications are explicitly **FROZEN** for M
 - **A4 Rendering Pipeline, Layouts & Fonts**: `Architecture/REPORT_RENDERING_ARCHITECTURE.md`
 - **AppShell, Guided Workspace & UI Tokens**: `Architecture/UI_ARCHITECTURE.md`
 - **Supabase Auth, RBAC & Signature Protection**: `Architecture/SECURITY_MODEL.md`
-- **Confirmed Decision Index (DEC-001 to DEC-026)**: `Architecture/DECISIONS.md`
+- **Confirmed Decision Index (DEC-001 to DEC-027)**: `Architecture/DECISIONS.md`
 - **Folder Structure, Coding Rules & DoD**: `Architecture/IMPLEMENTATION_GUIDELINES.md`
 - **Historical Architectural Rationale**: `Architecture/ADR/`

@@ -2,10 +2,17 @@ import { IPatientReportSession } from "./interfaces";
 import { PatientDemographics, SessionStatus } from "../types";
 import { LaboratoryReportDomain } from "./laboratory-report-domain";
 import { DomainInvariantError, ValidationError } from "../../lib/errors";
-import { calculateExpirationDate, formatDateISO } from "../../lib/utils";
+import { calculateExpirationDate } from "../../lib/utils";
+import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
+import { cloneAndFreezeSnapshot } from "@/domain/completion/completed-snapshot";
+import { ReportCompletionService } from "@/domain/completion/report-completion-service";
 
 export interface SignatoryRequirementsLookup {
-  (templateCode: string): { requiredPathologistsCount: number; requiredMedtechsCount: number };
+  (templateCode: string): {
+    requiredPathologistsCount: number;
+    requiredMedtechsCount: number;
+    requiresPatientStatus?: boolean;
+  };
 }
 
 export class PatientReportSessionAggregate implements IPatientReportSession {
@@ -17,6 +24,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
   public readonly createdAt: string;
   public completedAt: string | null;
   public expiresAt: string | null;
+  public readonly completedSnapshot: CompletedSessionSnapshot | null;
 
   constructor(props: {
     id: string;
@@ -27,6 +35,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
     createdAt?: string;
     completedAt?: string | null;
     expiresAt?: string | null;
+    completedSnapshot?: CompletedSessionSnapshot | null;
   }) {
     this.id = props.id;
     this.accessionNumber = props.accessionNumber;
@@ -36,12 +45,15 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
     this.createdAt = props.createdAt || new Date().toISOString();
     this.completedAt = props.completedAt || null;
     this.expiresAt = props.expiresAt || null;
+    this.completedSnapshot = props.completedSnapshot
+      ? cloneAndFreezeSnapshot(props.completedSnapshot)
+      : null;
   }
 
   /**
    * Validates patient demographics.
    */
-  public validateDemographics(): void {
+  public validateDemographics(_options: { requiresPatientStatus?: boolean } = {}): void {
     const errors: Record<string, string> = {};
 
     if (!this.demographics.fullName || !this.demographics.fullName.trim()) {
@@ -53,14 +65,8 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
     if (!this.demographics.sex) {
       errors.sex = "Patient sex is required.";
     }
-    if (!this.demographics.patientStatus) {
-      errors.patientStatus = "Patient status (OutPatient, InPatient, ER) is required.";
-    }
     if (!this.demographics.examinationDate) {
       errors.examinationDate = "Examination date is required.";
-    }
-    if (!this.demographics.requestingPhysician || !this.demographics.requestingPhysician.trim()) {
-      errors.requestingPhysician = "Requesting physician is required.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -73,25 +79,22 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
    * Performs signatory validation, scrubs deselected results, updates status to Completed,
    * sets completedAt, and computes retention expiration date (completedAt + 30 days).
    */
-  public completeSession(getRequirements: SignatoryRequirementsLookup): void {
+  public completeSession(_getRequirements?: SignatoryRequirementsLookup): void {
     if (this.status === "Completed") {
       throw new DomainInvariantError(`Session '${this.accessionNumber}' is already completed.`);
     }
 
-    this.validateDemographics();
-
-    if (!this.reports || this.reports.length === 0) {
-      throw new DomainInvariantError("Cannot complete session without at least one laboratory report.");
-    }
-
-    // Validate signatories and scrub results per report
-    for (const report of this.reports) {
-      const req = getRequirements(report.templateCode);
-      report.validateSignatories(req.requiredPathologistsCount, req.requiredMedtechsCount);
-      report.scrubDeselectedResults();
-    }
-
     const nowISO = new Date().toISOString();
+    const snapshot = ReportCompletionService.validateAndCompose(this, nowISO);
+
+    // Validation and snapshot composition complete before any mutable state changes.
+    for (const report of this.reports) report.scrubDeselectedResults();
+    Object.defineProperty(this, "completedSnapshot", {
+      value: cloneAndFreezeSnapshot(snapshot),
+      enumerable: true,
+      configurable: false,
+      writable: false,
+    });
     this.status = "Completed";
     this.completedAt = nowISO;
     this.expiresAt = calculateExpirationDate(new Date(nowISO)).toISOString();

@@ -52,7 +52,9 @@ export function DiagnosticGridRenderer({
               {selectedResults.slice(0, Math.ceil(selectedResults.length / 2)).map((res) => (
                 <div key={res.id} className="flex items-center justify-between border-b border-slate-100 pb-1">
                   <span className="font-bold text-slate-600 uppercase text-[11px]">{res.parameterName}:</span>
-                  <span className="font-extrabold text-slate-900">{res.resultValue || "—"}</span>
+                  <span className={`font-extrabold ${res.evaluationOutcome === "Invalid" ? "text-rose-600 font-bold" : "text-slate-900"}`}>
+                    {res.resultValue || "—"}
+                  </span>
                 </div>
               ))}
             </div>
@@ -62,7 +64,9 @@ export function DiagnosticGridRenderer({
               {selectedResults.slice(Math.ceil(selectedResults.length / 2)).map((res) => (
                 <div key={res.id} className="flex items-center justify-between border-b border-slate-100 pb-1">
                   <span className="font-bold text-slate-600 uppercase text-[11px]">{res.parameterName}:</span>
-                  <span className="font-extrabold text-slate-900">{res.resultValue || "—"}</span>
+                  <span className={`font-extrabold ${res.evaluationOutcome === "Invalid" ? "text-rose-600 font-bold" : "text-slate-900"}`}>
+                    {res.resultValue || "—"}
+                  </span>
                 </div>
               ))}
             </div>

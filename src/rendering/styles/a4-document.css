@@ -1,18 +1,43 @@
 /* 
   Physical A4 Document Specifications & Print Utility Styles
-  Enforces 210mm x 297mm Portrait A4 layout with 15mm margins per REPORT_RENDERING_ARCHITECTURE.md
+  Enforces 210mm x 297mm Portrait A4 layout with official Word template margins
+  (Top: 25.4mm/31.6mm, Left: 25.4mm, Right: 12.7mm)
 */
 
 .a4-page-container {
   width: 210mm;
   min-height: 297mm;
-  padding: 15mm;
+  padding: 12.7mm 12.7mm 25.4mm 25.4mm;
   margin: 0 auto;
   background-color: #ffffff;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   position: relative;
   font-family: Arial, Helvetica, sans-serif;
-  color: #1e293b;
+  color: #000000;
+}
+
+/* Header Region: Natural flow grid header at page top */
+.a4-header-region {
+  width: 100%;
+  margin-bottom: 4mm;
+  box-sizing: border-box;
+}
+
+/* Body Region: Sits naturally below Header Region in block flow with zero hard-coded padding-top! */
+.a4-body-region {
+  width: 100%;
+  flex-grow: 1;
+  box-sizing: border-box;
+}
+
+/* Footer Region: Natural flow footer at page bottom */
+.a4-footer-region {
+  width: 100%;
+  margin-top: auto;
+  box-sizing: border-box;
 }
 
 /* Page Break Enforcer */
@@ -39,7 +64,7 @@
   .a4-page-container {
     width: 210mm !important;
     height: 297mm !important;
-    padding: 15mm !important;
+    padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
     border: none !important;
@@ -51,3 +76,4 @@
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   border: 1px solid #e2e8f0;
 }
+

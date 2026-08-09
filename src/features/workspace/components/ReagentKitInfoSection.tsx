@@ -28,23 +28,13 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
         <h3 className="text-xs font-bold text-amber-900">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-amber-900 mb-1">Kit Brand / Manufacturer *</label>
-          <input
-            type="text"
-            value={current.kitBrand}
-            onChange={(e) => handleChange("kitBrand", e.target.value)}
-            placeholder="e.g. SD Bioline / Abbott"
-            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-            required
-          />
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="block text-[11px] font-semibold text-amber-900 mb-1">Lot Number *</label>
           <input
             type="text"
+            data-kit-field="lotNumber"
+            data-encoding-input
             value={current.lotNumber}
             onChange={(e) => handleChange("lotNumber", e.target.value)}
             placeholder="e.g. LOT-2026-X89"
@@ -56,7 +46,9 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
         <div>
           <label className="block text-[11px] font-semibold text-amber-900 mb-1">Kit Expiration Date *</label>
           <input
-            type="date"
+            type="text"
+            data-kit-field="expirationDate"
+            data-encoding-input
             value={current.expirationDate}
             onChange={(e) => handleChange("expirationDate", e.target.value)}
             className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"

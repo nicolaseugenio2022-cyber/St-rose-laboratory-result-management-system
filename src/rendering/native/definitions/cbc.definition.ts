@@ -1,0 +1,470 @@
+import type {
+  NativeDefinitionElement,
+  NativeReportDefinition,
+  NativeRichTextRun,
+  NativeTextStyle,
+} from "../types";
+
+const PAGE_WIDTH_MM = 210;
+const FORM_LEFT_MM = 25.4;
+const DEMOGRAPHIC_WIDTH_MM = 174.625;
+const DEMOGRAPHIC_COLUMNS_MM = [85.231, 28.699, 60.695];
+const DEMOGRAPHIC_ROW_HEIGHT_MM = 5.662;
+const DEMOGRAPHIC_FIRST_COLUMN_END_MM = FORM_LEFT_MM + DEMOGRAPHIC_COLUMNS_MM[0];
+const DEMOGRAPHIC_SECOND_COLUMN_END_MM = DEMOGRAPHIC_FIRST_COLUMN_END_MM + DEMOGRAPHIC_COLUMNS_MM[1];
+const DEMOGRAPHIC_THIRD_COLUMN_END_MM = DEMOGRAPHIC_SECOND_COLUMN_END_MM + DEMOGRAPHIC_COLUMNS_MM[2];
+const DEMOGRAPHIC_RIGHT_INSET_MM = 1.905;
+const adaptiveFit = {
+  maxLines: 3 as const,
+  oneLineMinFontSizePt: 11,
+  twoLineMinFontSizePt: 10.5,
+  threeLineMinFontSizePt: 10,
+};
+const singleLineFit = { maxLines: 1 as const, oneLineMinFontSizePt: 11 };
+const RESULT_TABLE_WIDTH_MM = 174.131;
+const EXAMINATION_WIDTH_MM = 53.834;
+const RESULT_WIDTH_MM = 52.67;
+const NORMAL_WIDTH_MM = 67.627;
+
+const RESULT_TABLE_TOP_MM = 60.4;
+const RESULT_HEADER_HEIGHT_MM = 4.075;
+const HEMOGLOBIN_HEIGHT_MM = 6.473;
+const TALL_RESULT_HEIGHT_MM = 7.885;
+const STANDARD_RESULT_HEIGHT_MM = 4.357;
+const REMARKS_HEIGHT_MM = 4.904;
+
+const HEMOGLOBIN_Y_MM = RESULT_TABLE_TOP_MM + RESULT_HEADER_HEIGHT_MM;
+const HEMATOCRIT_Y_MM = HEMOGLOBIN_Y_MM + HEMOGLOBIN_HEIGHT_MM;
+const RBC_Y_MM = HEMATOCRIT_Y_MM + TALL_RESULT_HEIGHT_MM;
+const WBC_Y_MM = RBC_Y_MM + TALL_RESULT_HEIGHT_MM;
+const PLATELET_Y_MM = WBC_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const SPACER_Y_MM = PLATELET_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const DIFFERENTIAL_Y_MM = SPACER_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const NEUTROPHIL_Y_MM = DIFFERENTIAL_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const LYMPHOCYTE_Y_MM = NEUTROPHIL_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const EOSINOPHIL_Y_MM = LYMPHOCYTE_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const MONOCYTE_Y_MM = EOSINOPHIL_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const BASOPHIL_Y_MM = MONOCYTE_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+const REMARKS_Y_MM = BASOPHIL_Y_MM + STANDARD_RESULT_HEIGHT_MM;
+
+const ACCENT = "#8064A2";
+const DEMOGRAPHIC_BAND = "#E5DFEC";
+const TABLE_BAND = "#DFD8E8";
+const DEMOGRAPHIC_BORDER = "#B2A1C7";
+const TABLE_TEXT = "#5F497A";
+const HEADER_BLUE = "#365F91";
+
+const bodyBold: NativeTextStyle = {
+  fontRole: "body",
+  fontSizePt: 13,
+  fontWeight: "bold",
+  color: "#000000",
+};
+
+const bodyRegular: NativeTextStyle = {
+  ...bodyBold,
+  fontWeight: "normal",
+};
+
+const tableLabelStyle: NativeTextStyle = {
+  fontRole: "body",
+  fontSizePt: 10,
+  fontWeight: "bold",
+  color: TABLE_TEXT,
+  uppercase: true,
+};
+
+const resultStyle: NativeTextStyle = {
+  fontRole: "body",
+  fontSizePt: 10,
+  fontWeight: "normal",
+  color: TABLE_TEXT,
+  align: "center",
+};
+
+const referenceStyle: NativeTextStyle = {
+  fontRole: "body",
+  fontSizePt: 10,
+  fontWeight: "normal",
+  color: TABLE_TEXT,
+  lineHeightMm: 3.35,
+};
+
+function superscriptReference(
+  id: string,
+  textBeforePower: string,
+  power: string,
+  y: number
+): NativeDefinitionElement {
+  const line: NativeRichTextRun[] = [
+    { text: textBeforePower },
+    { text: power, fontSizePt: 6, riseMm: -0.9 },
+    { text: "/L" },
+  ];
+
+  return {
+    kind: "rich-text",
+    id,
+    x: FORM_LEFT_MM + EXAMINATION_WIDTH_MM + RESULT_WIDTH_MM + 1.905,
+    y,
+    width: NORMAL_WIDTH_MM - 3.81,
+    height: 3.6,
+    lines: [line],
+    ...referenceStyle,
+  };
+}
+
+const elements: NativeDefinitionElement[] = [
+  {
+    kind: "image",
+    id: "laboratory-logo",
+    source: "/st-rose-logo-official.png",
+    x: 0,
+    y: 0,
+    width: 60.48,
+    height: 29.63,
+    fit: "contain",
+  },
+  {
+    kind: "text",
+    id: "laboratory-name",
+    text: "ST. ROSE DIAGNOSTIC LABORATORY",
+    x: 66.1,
+    y: 5.6,
+    width: 132,
+    height: 6,
+    fontRole: "header-display",
+    fontSizePt: 16,
+    fontWeight: "bold",
+    color: HEADER_BLUE,
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "laboratory-address",
+    text: "LA FUENTE, SANTA ROSA NUEVA ECIJA",
+    x: 66.1,
+    y: 13.1,
+    width: 132,
+    height: 4,
+    fontRole: "body",
+    fontSizePt: 9,
+    color: HEADER_BLUE,
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "laboratory-landmark",
+    text: "(IN FRONT OF LA FUENTE ELEMENTARY SCHOOL)",
+    x: 66.1,
+    y: 17.4,
+    width: 132,
+    height: 4,
+    fontRole: "body",
+    fontSizePt: 9,
+    color: HEADER_BLUE,
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "laboratory-phone",
+    text: "CELLPHONE NO. 0905-309-3602",
+    x: 66.1,
+    y: 21.7,
+    width: 132,
+    height: 4,
+    fontRole: "body",
+    fontSizePt: 9,
+    color: HEADER_BLUE,
+    align: "center",
+  },
+  {
+    kind: "line",
+    id: "header-divider",
+    x1: 66.1,
+    y1: 30.75,
+    x2: 198.1,
+    y2: 30.75,
+    color: "#000000",
+    widthMm: 0.18,
+  },
+  {
+    kind: "adaptive-rows",
+    id: "cbc-demographics",
+    x: FORM_LEFT_MM,
+    y: 37.35,
+    width: DEMOGRAPHIC_WIDTH_MM,
+    propagateHeightToFollowing: true,
+    rows: [
+      {
+        id: "row-1",
+        baseHeightMm: DEMOGRAPHIC_ROW_HEIGHT_MM,
+        bottomSeparator: { color: DEMOGRAPHIC_BORDER, widthMm: 0.529 },
+        fields: [
+          { id: "name-label", text: "Name:", x: 25.453, width: 14, ...bodyBold },
+          { id: "patient-name", binding: { source: "demographic", field: "fullName" }, x: 40.8, width: DEMOGRAPHIC_FIRST_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 40.8, uppercase: true, fit: adaptiveFit, ...bodyBold },
+          { id: "age-label", text: "Age:", x: 110.684, width: 11.2, ...bodyBold },
+          { id: "patient-age", binding: { source: "demographic", field: "age", formatter: "positive-number" }, x: 121.8, width: DEMOGRAPHIC_SECOND_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 121.8, fit: singleLineFit, ...bodyBold },
+          { id: "date-label", text: "Date:", x: 139.382, width: 12.8, ...bodyBold },
+          { id: "examination-date", binding: { source: "demographic", field: "examinationDate", formatter: "long-date-uppercase" }, x: 152.1, width: DEMOGRAPHIC_THIRD_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 152.1, fit: singleLineFit, ...bodyBold },
+        ],
+      },
+      {
+        id: "row-2",
+        baseHeightMm: DEMOGRAPHIC_ROW_HEIGHT_MM,
+        fill: DEMOGRAPHIC_BAND,
+        verticalSeparatorsX: [DEMOGRAPHIC_SECOND_COLUMN_END_MM],
+        bottomSeparator: { color: DEMOGRAPHIC_BORDER, widthMm: 0.088 },
+        fields: [
+          { id: "address-label", text: "Address:", x: 25.453, width: 20, ...bodyBold },
+          { id: "patient-address", binding: { source: "demographic", field: "address" }, x: 45.5, width: DEMOGRAPHIC_SECOND_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 45.5, uppercase: true, fit: adaptiveFit, ...bodyBold },
+          { id: "sex-label", text: "Sex:", x: 139.382, width: 10.2, ...bodyBold },
+          { id: "patient-sex", binding: { source: "demographic", field: "sex" }, x: 150.4, width: DEMOGRAPHIC_THIRD_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 150.4, uppercase: true, fit: singleLineFit, ...bodyRegular },
+        ],
+      },
+      {
+        id: "row-3",
+        baseHeightMm: DEMOGRAPHIC_ROW_HEIGHT_MM,
+        verticalSeparatorsX: [DEMOGRAPHIC_SECOND_COLUMN_END_MM],
+        bottomSeparator: { color: DEMOGRAPHIC_BORDER, widthMm: 0.088 },
+        fields: [
+          { id: "requested-by-label", text: "Requested by:", x: 25.453, width: 31.5, ...bodyBold },
+          { id: "requesting-physician", binding: { source: "demographic", field: "requestingPhysician" }, x: 57.8, width: DEMOGRAPHIC_SECOND_COLUMN_END_MM - DEMOGRAPHIC_RIGHT_INSET_MM - 57.8, fit: adaptiveFit, ...bodyBold },
+          { id: "status-label", text: "Status", x: 139.382, width: 60, ...bodyBold },
+        ],
+      },
+    ],
+  },
+  {
+    kind: "table",
+    id: "cbc-result-table",
+    x: FORM_LEFT_MM,
+    y: RESULT_TABLE_TOP_MM,
+    width: RESULT_TABLE_WIDTH_MM,
+    columns: [EXAMINATION_WIDTH_MM, RESULT_WIDTH_MM, NORMAL_WIDTH_MM],
+    rows: [
+      { height: RESULT_HEADER_HEIGHT_MM, fill: TABLE_BAND, topBorder: true, bottomBorder: true },
+      { height: HEMOGLOBIN_HEIGHT_MM, fill: TABLE_BAND },
+      { height: TALL_RESULT_HEIGHT_MM },
+      { height: TALL_RESULT_HEIGHT_MM, fill: TABLE_BAND },
+      { height: STANDARD_RESULT_HEIGHT_MM },
+      { height: STANDARD_RESULT_HEIGHT_MM, fill: TABLE_BAND },
+      { height: STANDARD_RESULT_HEIGHT_MM },
+      { height: STANDARD_RESULT_HEIGHT_MM, fill: TABLE_BAND },
+      { height: STANDARD_RESULT_HEIGHT_MM },
+      { height: STANDARD_RESULT_HEIGHT_MM, fill: TABLE_BAND },
+      { height: STANDARD_RESULT_HEIGHT_MM },
+      { height: STANDARD_RESULT_HEIGHT_MM, fill: TABLE_BAND },
+      { height: STANDARD_RESULT_HEIGHT_MM },
+      { height: REMARKS_HEIGHT_MM, fill: TABLE_BAND, bottomBorder: true },
+    ],
+    borderColor: ACCENT,
+    borderWidthMm: 0.353,
+    drawOuterBorder: false,
+    drawVerticalBorders: false,
+  },
+  {
+    kind: "text",
+    id: "examination-heading",
+    text: "EXAMINATION",
+    x: 26.9,
+    y: RESULT_TABLE_TOP_MM,
+    width: EXAMINATION_WIDTH_MM - 3,
+    height: RESULT_HEADER_HEIGHT_MM,
+    ...tableLabelStyle,
+  },
+  {
+    kind: "text",
+    id: "result-heading",
+    text: "RESULT",
+    x: FORM_LEFT_MM + EXAMINATION_WIDTH_MM,
+    y: RESULT_TABLE_TOP_MM,
+    width: RESULT_WIDTH_MM,
+    height: RESULT_HEADER_HEIGHT_MM,
+    ...tableLabelStyle,
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "normal-values-heading",
+    text: "NORMAL VALUES",
+    x: FORM_LEFT_MM + EXAMINATION_WIDTH_MM + RESULT_WIDTH_MM + 1.905,
+    y: RESULT_TABLE_TOP_MM,
+    width: NORMAL_WIDTH_MM - 3.81,
+    height: RESULT_HEADER_HEIGHT_MM,
+    ...tableLabelStyle,
+  },
+  {
+    kind: "result-rows",
+    id: "cbc-result-rows",
+    x: FORM_LEFT_MM,
+    width: RESULT_TABLE_WIDTH_MM,
+    columns: [EXAMINATION_WIDTH_MM, RESULT_WIDTH_MM, NORMAL_WIDTH_MM],
+    cellPaddingMm: 1.905,
+    labelStyle: tableLabelStyle,
+    resultStyle,
+    referenceStyle,
+    rows: [
+      { id: "hemoglobin", parameterCode: "hemoglobin", displayPrecision: 0, label: "HEMOGLOBIN", y: HEMOGLOBIN_Y_MM, height: HEMOGLOBIN_HEIGHT_MM, reference: ["MALE: 130 – 160 g/L", "FEMALE: 120 – 140 g/L"] },
+      { id: "hematocrit", parameterCode: "hematocrit", displayPrecision: 2, label: "HEMATOCRIT", y: HEMATOCRIT_Y_MM, height: TALL_RESULT_HEIGHT_MM, reference: ["MALE: 0.40 – 0.52", "FEMALE: 0.37 – 0.42"] },
+      { id: "rbc", parameterCode: "rbc", displayPrecision: 1, label: "RBC COUNT", y: RBC_Y_MM, height: TALL_RESULT_HEIGHT_MM },
+      { id: "wbc", parameterCode: "wbc", displayPrecision: 1, label: "WBC COUNT", y: WBC_Y_MM, height: STANDARD_RESULT_HEIGHT_MM },
+      { id: "platelet", parameterCode: "platelet", displayPrecision: 0, label: "PLATELET COUNT", y: PLATELET_Y_MM, height: STANDARD_RESULT_HEIGHT_MM },
+      { id: "spacer", y: SPACER_Y_MM, height: STANDARD_RESULT_HEIGHT_MM },
+      { id: "differential", label: "DIFFERENTIAL COUNT", y: DIFFERENTIAL_Y_MM, height: STANDARD_RESULT_HEIGHT_MM },
+      { id: "neutrophil", parameterCode: "neutrophil", displayPrecision: 2, label: "NEUTROPHIL", y: NEUTROPHIL_Y_MM, height: STANDARD_RESULT_HEIGHT_MM, labelIndentMm: 5.5, reference: ["0.50 – 0.70"] },
+      { id: "lymphocyte", parameterCode: "lymphocyte", displayPrecision: 2, label: "LYMPHOCYTE", y: LYMPHOCYTE_Y_MM, height: STANDARD_RESULT_HEIGHT_MM, labelIndentMm: 5.5, reference: ["0.25 – 0.40"] },
+      { id: "eosinophil", parameterCode: "eosinophil", displayPrecision: 2, label: "EOSINOPHIL", y: EOSINOPHIL_Y_MM, height: STANDARD_RESULT_HEIGHT_MM, labelIndentMm: 5.5, reference: ["0.01 – 0.04"] },
+      { id: "monocyte", parameterCode: "monocyte", displayPrecision: 2, label: "MONOCYTE", y: MONOCYTE_Y_MM, height: STANDARD_RESULT_HEIGHT_MM, labelIndentMm: 5.5, reference: ["0.03 – 0.08"] },
+      { id: "basophil", parameterCode: "basophil", displayPrecision: 2, label: "BASOPHIL", y: BASOPHIL_Y_MM, height: STANDARD_RESULT_HEIGHT_MM, labelIndentMm: 5.5, reference: ["0.00 – 0.01"] },
+    ],
+  },
+  superscriptReference("rbc-male-reference", "MALE: 4.5 – 6.0 x 10", "12", RBC_Y_MM),
+  superscriptReference("rbc-female-reference", "FEMALE: 4.0 – 5.5 x 10", "12", RBC_Y_MM + 3.35),
+  superscriptReference("wbc-reference", "5.0 – 10.0 x 10", "9", WBC_Y_MM),
+  superscriptReference("platelet-reference", "150 – 450 –x 10", "9", PLATELET_Y_MM),
+  {
+    kind: "text",
+    id: "remarks-label",
+    text: "REMARKS:",
+    x: FORM_LEFT_MM + 1.905,
+    y: REMARKS_Y_MM,
+    width: 19,
+    height: REMARKS_HEIGHT_MM,
+    fontRole: "body",
+    fontSizePt: 10,
+    fontWeight: "bold",
+    color: TABLE_TEXT,
+  },
+  {
+    kind: "text",
+    id: "remarks-value",
+    binding: { source: "report", field: "remarks" },
+    x: FORM_LEFT_MM + 22,
+    y: REMARKS_Y_MM,
+    width: RESULT_TABLE_WIDTH_MM - 23.905,
+    height: REMARKS_HEIGHT_MM,
+    fontRole: "body",
+    fontSizePt: 10,
+    fontWeight: "bold",
+    color: TABLE_TEXT,
+    uppercase: true,
+  },
+  {
+    kind: "image",
+    id: "pathologist-signature",
+    binding: { source: "signatory", role: "Pathologist", field: "signature-image" },
+    x: 56.092,
+    y: 132.49,
+    width: 25.682,
+    height: 13.212,
+    fit: "contain",
+  },
+  {
+    kind: "text",
+    id: "pathologist-name",
+    binding: { source: "signatory", role: "Pathologist", field: "name-with-credentials" },
+    x: FORM_LEFT_MM,
+    y: 140.8,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10.5,
+    fontWeight: "normal",
+    color: "#000000",
+    align: "center",
+    underline: true,
+  },
+  {
+    kind: "text",
+    id: "pathologist-license",
+    binding: { source: "signatory", role: "Pathologist", field: "license-number" },
+    x: FORM_LEFT_MM,
+    y: 145.033,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10,
+    color: "#000000",
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "pathologist-title",
+    text: "Pathologist",
+    x: FORM_LEFT_MM,
+    y: 149.266,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10,
+    color: "#000000",
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "medical-technologist-name",
+    binding: { source: "signatory", role: "MedicalTechnologist", field: "name-with-credentials" },
+    x: FORM_LEFT_MM + RESULT_TABLE_WIDTH_MM / 2,
+    y: 140.8,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10.5,
+    fontWeight: "normal",
+    color: "#000000",
+    align: "center",
+    underline: true,
+  },
+  {
+    kind: "text",
+    id: "medical-technologist-license",
+    binding: { source: "signatory", role: "MedicalTechnologist", field: "license-number" },
+    x: FORM_LEFT_MM + RESULT_TABLE_WIDTH_MM / 2,
+    y: 145.033,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10,
+    color: "#000000",
+    align: "center",
+  },
+  {
+    kind: "text",
+    id: "medical-technologist-title",
+    text: "Medical Technologist",
+    x: FORM_LEFT_MM + RESULT_TABLE_WIDTH_MM / 2,
+    y: 149.266,
+    width: RESULT_TABLE_WIDTH_MM / 2,
+    height: 4.233,
+    fontRole: "body",
+    fontSizePt: 10,
+    color: "#000000",
+    align: "center",
+  },
+];
+
+export const cbcNativeDefinition: NativeReportDefinition = {
+  templateCode: "CBC",
+  page: {
+    widthMm: PAGE_WIDTH_MM,
+    heightMm: 297,
+    contentBottomMm: 153.499,
+  },
+  fontRoles: {
+    "header-display": {
+      pdfFamily: "helvetica",
+      previewFamily: "Helvetica, Arial, sans-serif",
+    },
+    body: {
+      pdfFamily: "helvetica",
+      previewFamily: "Helvetica, Arial, sans-serif",
+    },
+  },
+  elements,
+  notes: [
+    "Helvetica is the approved pilot fallback pending distributable Copperplate Gothic Light and Calibri assets.",
+    "Platelet reference wording intentionally follows the approved DOCX/PNG and differs from CBC.md.",
+    "No separate CBC title or visible abnormal-result indicator belongs to this form.",
+  ],
+};

@@ -4,6 +4,7 @@ import { PatientReportSessionAggregate } from "../domain/models/patient-report-s
 import { LaboratoryReportDomain } from "../domain/models/laboratory-report-domain";
 import { autoSuggestionLearningService } from "../services/auto-suggestion-service";
 import { supabase } from "../lib/supabase/client";
+import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 
 export class SupabasePatientReportSessionRepository implements IPatientReportSessionRepository {
   private inMemoryStore: Map<string, IPatientReportSession> = new Map();
@@ -116,7 +117,25 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           renderer_family: report.rendererFamily,
           reagent_kit_info: report.reagentKitInfo || null,
           remarks: report.remarks || null,
+          encoding_data: report.encodingData || null,
         });
+
+        for (const res of report.results) {
+          await supabase.from("laboratory_results").upsert({
+            id: res.id,
+            report_id: report.id,
+            parameter_code: res.parameterCode,
+            parameter_name: res.parameterName,
+            result_value: res.resultValue || "",
+            raw_result_value: res.rawResultValue ?? null,
+            formatted_result_value: res.formattedResultValue ?? null,
+            unit: res.unit || null,
+            evaluation_outcome: res.evaluationOutcome,
+            reference_rule_snapshot: res.referenceRuleSnapshot || null,
+            computation_metadata: res.computationMetadata || null,
+            display_order: res.displayOrder,
+          });
+        }
       }
     } catch (err) {
       console.warn("Supabase saveDraft fallback to in-memory store:", err);
@@ -126,11 +145,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async completeSession(session: IPatientReportSession): Promise<IPatientReportSession> {
-    if (session instanceof PatientReportSessionAggregate) {
-      session.completeSession((code) => {
-        if (code === "HIV_RESULT") return { requiredPathologistsCount: 1, requiredMedtechsCount: 2 };
-        return { requiredPathologistsCount: 1, requiredMedtechsCount: 1 };
-      });
+    if (session instanceof PatientReportSessionAggregate && session.status !== "Completed") {
+      session.completeSession();
     }
 
     this.inMemoryStore.set(session.id, session);
@@ -144,6 +160,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         created_at: session.createdAt,
         completed_at: session.completedAt,
         expires_at: session.expiresAt,
+        completed_snapshot: session.completedSnapshot || null,
       });
 
       for (const report of session.reports) {
@@ -155,6 +172,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           renderer_family: report.rendererFamily,
           reagent_kit_info: report.reagentKitInfo || null,
           remarks: report.remarks || null,
+          encoding_data: report.encodingData || null,
         });
 
         for (const res of report.results) {
@@ -165,9 +183,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
               parameter_code: res.parameterCode,
               parameter_name: res.parameterName,
               result_value: res.resultValue,
+              raw_result_value: res.rawResultValue ?? null,
+              formatted_result_value: res.formattedResultValue ?? null,
               unit: res.unit || null,
               evaluation_outcome: res.evaluationOutcome,
               reference_rule_snapshot: res.referenceRuleSnapshot || null,
+              computation_metadata: res.computationMetadata || null,
               display_order: res.displayOrder,
             });
           }
@@ -241,15 +262,19 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         rendererFamily: r.renderer_family as LaboratoryReportDomain["rendererFamily"],
         reagentKitInfo: (r.reagent_kit_info as LaboratoryReportDomain["reagentKitInfo"]) || null,
         remarks: (r.remarks as string) || null,
+        encodingData: (r.encoding_data as LaboratoryReportDomain["encodingData"]) || undefined,
         results: rawResults.map((res) => ({
           id: String(res.id || ""),
           reportId: String(res.report_id || ""),
           parameterCode: String(res.parameter_code || ""),
           parameterName: String(res.parameter_name || ""),
           resultValue: String(res.result_value || ""),
+          rawResultValue: res.raw_result_value == null ? null : String(res.raw_result_value),
+          formattedResultValue: res.formatted_result_value == null ? null : String(res.formatted_result_value),
           unit: (res.unit as string) || null,
           evaluationOutcome: res.evaluation_outcome as LaboratoryReportDomain["results"][0]["evaluationOutcome"],
           referenceRuleSnapshot: (res.reference_rule_snapshot as LaboratoryReportDomain["results"][0]["referenceRuleSnapshot"]) || null,
+          computationMetadata: (res.computation_metadata as Record<string, unknown>) || null,
           displayOrder: Number(res.display_order || 0),
           isSelected: true,
         })),
@@ -274,6 +299,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
       createdAt: String(raw.created_at || ""),
       completedAt: (raw.completed_at as string) || null,
       expiresAt: (raw.expires_at as string) || null,
+      completedSnapshot: (raw.completed_snapshot as CompletedSessionSnapshot) || null,
     });
   }
 }

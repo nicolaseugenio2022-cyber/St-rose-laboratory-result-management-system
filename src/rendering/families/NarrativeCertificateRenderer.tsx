@@ -49,24 +49,33 @@ export function NarrativeCertificateRenderer({
           </p>
 
           {/* Dynamic Checkbox Block */}
-          <div className="bg-slate-50 border border-slate-300 rounded p-4 my-4 space-y-2 font-mono">
-            <div className="flex items-center gap-3">
-              <span className={`font-extrabold text-sm ${isNonReactive ? "text-emerald-700 font-black" : "text-slate-400"}`}>
-                {isNonReactive ? "[X]" : "[  ]"}
+          {hivResultObj?.evaluationOutcome === "Invalid" ? (
+            <div className="bg-rose-50 border border-rose-300 rounded p-4 my-4 text-center font-mono text-rose-900">
+              <span className="font-extrabold text-xs bg-rose-100 border border-rose-400 px-2 py-0.5 rounded uppercase">
+                INVALID INPUT VALUE: {resultVal}
               </span>
-              <span className={`font-bold ${isNonReactive ? "text-slate-900" : "text-slate-500"}`}>
-                Non-reactive or Negative
-              </span>
+              <p className="text-[11px] text-rose-700 mt-1">Please enter a valid result (&quot;Non-reactive&quot; or &quot;Reactive&quot;).</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`font-extrabold text-sm ${!isNonReactive ? "text-rose-700 font-black" : "text-slate-400"}`}>
-                {!isNonReactive ? "[X]" : "[  ]"}
-              </span>
-              <span className={`font-bold ${!isNonReactive ? "text-slate-900" : "text-slate-500"}`}>
-                Reactive or Positive
-              </span>
+          ) : (
+            <div className="bg-slate-50 border border-slate-300 rounded p-4 my-4 space-y-2 font-mono">
+              <div className="flex items-center gap-3">
+                <span className={`font-extrabold text-sm ${isNonReactive ? "text-emerald-700 font-black" : "text-slate-400"}`}>
+                  {isNonReactive ? "[X]" : "[  ]"}
+                </span>
+                <span className={`font-bold ${isNonReactive ? "text-slate-900" : "text-slate-500"}`}>
+                  Non-reactive or Negative
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`font-extrabold text-sm ${!isNonReactive ? "text-rose-700 font-black" : "text-slate-400"}`}>
+                  {!isNonReactive ? "[X]" : "[  ]"}
+                </span>
+                <span className={`font-bold ${!isNonReactive ? "text-slate-900" : "text-slate-500"}`}>
+                  Reactive or Positive
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           <p className="italic text-slate-600 text-[11px]">
             Notice: This certificate is issued for official screening reference purposes. Confidential test results are released strictly to authorized personnel.

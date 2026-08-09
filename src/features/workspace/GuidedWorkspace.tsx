@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { reportRegistryService } from "@/services/report-registry-service";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
-import { LaboratoryReportDomain, LaboratoryResultDomain } from "@/domain/models/laboratory-report-domain";
+import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
 import { AccessionNumberGenerator } from "@/domain/services/accession-number-generator";
 import { IPersonnel, ILaboratoryReport } from "@/domain/models/interfaces";
 import { PatientSex, PatientStatus } from "@/domain/types";
@@ -23,6 +23,9 @@ import { formatDateISO } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
+import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
+import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
+import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 
 const sessionRepo = new SupabasePatientReportSessionRepository();
 
@@ -36,7 +39,7 @@ export function GuidedWorkspace() {
         age: 0,
         ageUnit: "years",
         sex: "" as unknown as PatientSex, // No default sex selection
-        address: "",
+        address: initializeNewSessionAddress(""),
         patientStatus: "" as unknown as PatientStatus, // No default patient status selection
         examinationDate: formatDateISO(),
         requestingPhysician: "",
@@ -50,39 +53,39 @@ export function GuidedWorkspace() {
   const [availablePersonnel] = useState<IPersonnel[]>([
     {
       id: "p-01",
-      firstName: "Maria",
-      lastName: "Santos",
-      middleInitial: "A",
-      credentials: "MD, FPSP",
-      prcLicenseNumber: "PRC-0098765",
+      firstName: "PAULO ANTONIO E.",
+      lastName: "CLEMENTE",
+      middleInitial: "",
+      credentials: "MD, DPSP",
+      prcLicenseNumber: "113927",
       role: "Pathologist",
-      signatureImageUrl: "/signatures/dr-santos.png",
+      signatureImageUrl: "/pathologist-signature.png",
       isActive: true,
       createdAt: "",
       updatedAt: "",
     },
     {
       id: "mt-01",
-      firstName: "Juan",
-      lastName: "Dela Cruz",
-      middleInitial: "B",
-      credentials: "RMT",
-      prcLicenseNumber: "PRC-0012345",
+      firstName: "SANDRA ANNE P.",
+      lastName: "GROSPE",
+      middleInitial: "",
+      credentials: "RMT, MLS(ASCPi)",
+      prcLicenseNumber: "0124239",
       role: "MedicalTechnologist",
-      signatureImageUrl: "/signatures/j-delacruz.png",
+      signatureImageUrl: "", // Text only per Official Signature Rule
       isActive: true,
       createdAt: "",
       updatedAt: "",
     },
     {
       id: "mt-02",
-      firstName: "Ana",
-      lastName: "Reyes",
-      middleInitial: "C",
+      firstName: "LOVERNA MARI M.",
+      lastName: "CASTILLO",
+      middleInitial: "",
       credentials: "RMT",
-      prcLicenseNumber: "PRC-0054321",
+      prcLicenseNumber: "0135199",
       role: "MedicalTechnologist",
-      signatureImageUrl: "/signatures/a-reyes.png",
+      signatureImageUrl: "",
       isActive: true,
       createdAt: "",
       updatedAt: "",
@@ -156,26 +159,14 @@ export function GuidedWorkspace() {
     reportRegistryService.getTemplateByCode(activeTemplateCode).then((spec) => {
       if (spec) {
         setActiveSpec(spec);
+        const definition = ReportDefinitionRegistry.getDefinition(activeTemplateCode);
+        if (!definition) {
+          setValidationError(`No approved encoding definition is registered for ${activeTemplateCode}.`);
+          return;
+        }
 
         setSession((prevSession) => {
-          if (prevSession.reports.some((r) => r.templateCode === activeTemplateCode)) {
-            return prevSession;
-          }
-
-          const initialResults = spec.parameters.map(
-            (p) =>
-              new LaboratoryResultDomain({
-                id: `res-${p.parameterCode}-${Date.now()}`,
-                reportId: `rep-${spec.template.templateCode}`,
-                parameterCode: p.parameterCode,
-                parameterName: p.parameterName,
-                resultValue: p.defaultValue || "",
-                unit: p.unit,
-                evaluationOutcome: "NoEvaluation",
-                displayOrder: p.displayOrder,
-                isSelected: true,
-              })
-          );
+          const existingReport = prevSession.reports.find((r) => r.templateCode === activeTemplateCode);
 
           const defaultSignatories = suggestedSignatoryProvider.getSuggestedSignatories(
             spec.template.templateCode,
@@ -184,23 +175,25 @@ export function GuidedWorkspace() {
             availablePersonnel
           );
 
-          const newReport = new LaboratoryReportDomain({
-            id: `rep-${spec.template.templateCode}-${Date.now()}`,
+          const encodingReport = buildEncodingReport({
+            definition,
             sessionId: prevSession.id,
-            templateCode: spec.template.templateCode,
-            templateTitle: spec.template.templateTitle,
+            reportId: existingReport?.id || `rep-${spec.template.templateCode}-${Date.now()}`,
             rendererFamily: spec.template.rendererFamily,
-            remarks: spec.template.defaultRemarks || "",
-            reagentKitInfo: spec.template.requiresKitInfo
-              ? { kitBrand: "", lotNumber: "", expirationDate: "" }
-              : undefined,
-            results: initialResults,
             signatories: defaultSignatories,
+            existingReport,
+            legacyRequestedBy: prevSession.demographics.requestingPhysician,
+            legacyAdditionalFields: {
+              companyName: prevSession.demographics.companyName,
+            },
+            evaluationContext: { sex: prevSession.demographics.sex || null },
           });
 
           return new PatientReportSessionAggregate({
             ...prevSession,
-            reports: [...prevSession.reports, newReport],
+            reports: existingReport
+              ? prevSession.reports.map((report) => report.templateCode === activeTemplateCode ? encodingReport : report)
+              : [...prevSession.reports, encodingReport],
           });
         });
       }
@@ -307,15 +300,7 @@ export function GuidedWorkspace() {
 
     setSaveStatus("saving");
     try {
-      const lookupReq = (code: string) => {
-        const spec = allActiveTemplates.find((t) => t.template.templateCode === code);
-        return {
-          requiredPathologistsCount: spec?.signatoryRequirement.requiredPathologistsCount || 1,
-          requiredMedtechsCount: spec?.signatoryRequirement.requiredMedtechsCount || 1,
-        };
-      };
-
-      session.completeSession(lookupReq);
+      session.completeSession();
       await sessionRepo.completeSession(session);
       setSession(session);
       setIsDirty(false);
@@ -353,6 +338,7 @@ export function GuidedWorkspace() {
   }, [allActiveTemplates, selectedTemplateCodes]);
 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
+  const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-100/60">
@@ -555,12 +541,18 @@ export function GuidedWorkspace() {
               <PatientDemographicsForm
                 demographics={session.demographics}
                 onChange={(updated) => {
-                  setSession(
-                    new PatientReportSessionAggregate({
-                      ...session,
-                      demographics: updated,
-                    })
-                  );
+                  setSession((previous) => {
+                    const sexChanged = previous.demographics.sex !== updated.sex;
+                    const reports = sexChanged
+                      ? previous.reports.map((report) => {
+                          const definition = ReportDefinitionRegistry.getDefinition(report.templateCode);
+                          return definition
+                            ? reevaluateEncodingReport(report, definition, { sex: updated.sex || null })
+                            : report;
+                        })
+                      : previous.reports;
+                    return new PatientReportSessionAggregate({ ...previous, demographics: updated, reports });
+                  });
                   setIsDirty(true);
                   setSaveStatus("unsaved");
                 }}
@@ -578,11 +570,13 @@ export function GuidedWorkspace() {
               />
 
               {/* Dynamic Result Form Dispatcher */}
-              {activeSpec && activeReport && selectedSpecs.length > 0 ? (
+              {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
                 <DynamicResultForm
                   spec={activeSpec}
+                  definition={activeDefinition}
                   report={activeReport}
                   availablePersonnel={availablePersonnel}
+                  patientSex={session.demographics.sex || null}
                   onChangeReport={handleReportChange}
                 />
               ) : (

@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "noEmit": false,
+    "incremental": false,
+    "outDir": "./tmp/cbc-pdf-validation-build",
+    "rootDir": "."
+  },
+  "include": [
+    "scripts/generate-cbc-native-validation.ts",
+    "src/rendering/native/types.ts",
+    "src/rendering/native/composer.ts",
+    "src/rendering/native/text-layout.ts",
+    "src/rendering/native/native-pdf-exporter.ts",
+    "src/rendering/native/NativeReportPreview.tsx",
+    "src/rendering/native/definitions/cbc.definition.ts",
+    "src/rendering/components/PatientDemographicsBlock.tsx",
+    "src/domain/report-demographic-policy.ts",
+    "src/domain/models/patient-report-session-aggregate.ts",
+    "src/domain/models/laboratory-report-domain.ts",
+    "src/rendering/layouts/cbc.layout.ts",
+    "src/rendering/engine/render-payload.ts",
+    "src/rendering/types/layout.types.ts"
+  ]
+}

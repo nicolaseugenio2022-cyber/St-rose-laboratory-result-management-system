@@ -48,11 +48,13 @@ export function SimpleResultRenderer({
         <div className="w-full bg-slate-50 rounded-lg border-2 border-slate-300 p-6 my-4 text-center">
           <div className="space-y-4">
             {selectedResults.map((res) => {
+              const isInvalid = res.evaluationOutcome === "Invalid";
               // Special formatting for HbA1c per HBA1C.md (auto append %)
+              const rawVal = res.resultValue || "";
               const displayVal =
-                report.templateCode === "HBA1C" && res.resultValue && !res.resultValue.includes("%")
-                  ? `${res.resultValue}%`
-                  : res.resultValue || "—";
+                report.templateCode === "HBA1C" && rawVal && !rawVal.includes("%")
+                  ? `${rawVal}%`
+                  : rawVal || "—";
 
               const refRule = res.referenceRuleSnapshot;
               let refDisplay = "";
@@ -64,10 +66,15 @@ export function SimpleResultRenderer({
 
               return (
                 <div key={res.id} className="py-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
                     {res.parameterName}
+                    {isInvalid && (
+                      <span className="text-[9px] font-extrabold bg-rose-100 text-rose-900 border border-rose-300 px-1.5 py-0.2 rounded-full">
+                        INVALID INPUT
+                      </span>
+                    )}
                   </p>
-                  <p className="text-2xl font-black tracking-tight text-slate-900 uppercase">
+                  <p className={`text-2xl font-black tracking-tight uppercase ${isInvalid ? "text-rose-600" : "text-slate-900"}`}>
                     {displayVal}
                   </p>
                   {refDisplay && (

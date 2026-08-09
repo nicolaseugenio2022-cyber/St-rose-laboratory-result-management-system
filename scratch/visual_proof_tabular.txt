@@ -1,0 +1,53 @@
+=========================================================================
+FINAL VISUAL PROOF EVIDENCE MATRIX FOR TABULAR FAMILY TEMPLATES
+=========================================================================
+
+--- TEMPLATE: CBC (CBC.docx) ---
+ 1. Logo Asset: Word image1.png present=True -> Consumed via /report-logo.png
+ 2. Header Text: 'ST. ROSE  DIAGNOSTIC  LABORATORY'...
+ 3. Demographics: TBL[0] 3 rows, borderless 3-column table.
+ 4. Table Structure: 14 rows, 3 columns.
+ 5. Column Proportions: Word ['30.9%', '30.2%', '38.8%'] -> Rendered ['30.9%', '30.2%', '38.8%']
+ 6. Header Wording: Word ['EXAMINATION', 'RESULT', 'NORMAL VALUES'] -> Rendered ['EXAMINATION', 'RESULT', 'NORMAL VALUES']
+ 7. Embedded Remarks: 'REMARKS: TEST/S RECHECKED; RESULT/S VERI...'
+ 8. Signatories: Pathologist Left / MedTech Right present.
+
+--- TEMPLATE: CHEM_8 (CHEM 8.docx) ---
+ 1. Logo Asset: Word image1.png present=True -> Consumed via /report-logo.png
+ 2. Header Text: 'ST. ROSE  DIAGNOSTIC  LABORATORY'...
+ 3. Demographics: TBL[0] 3 rows, borderless 3-column table.
+ 4. Table Structure: 8 rows, 3 columns.
+ 5. Column Proportions: Word ['32.3%', '31.8%', '35.9%'] -> Rendered ['32.3%', '31.8%', '35.9%']
+ 6. Header Wording: Word ['EXAMINATION', 'RESULTS', 'NORMAL VALUES'] -> Rendered ['EXAMINATION', 'RESULTS', 'NORMAL VALUES']
+ 7. Embedded Remarks: 'REMARKS: TEST/S RECHECKED; RESULT/S VERI...'
+ 8. Signatories: Pathologist Left / MedTech Right present.
+
+--- TEMPLATE: CHEM_10 (CHEM 10.docx) ---
+ 1. Logo Asset: Word image1.png present=True -> Consumed via /report-logo.png
+ 2. Header Text: 'ST. ROSE  DIAGNOSTIC  LABORATORY'...
+ 3. Demographics: TBL[0] 3 rows, borderless 3-column table.
+ 4. Table Structure: 12 rows, 3 columns.
+ 5. Column Proportions: Word ['35.0%', '28.8%', '36.2%'] -> Rendered ['35.0%', '28.8%', '36.2%']
+ 6. Header Wording: Word ['EXAMINATION', 'RESULTS', 'NORMAL VALUES'] -> Rendered ['EXAMINATION', 'RESULTS', 'NORMAL VALUES']
+ 7. Embedded Remarks: 'REMARKS: TEST/S RECHECKED; RESULT/S VERI...'
+ 8. Signatories: Pathologist Left / MedTech Right present.
+
+--- TEMPLATE: HDL_LDL (HDL-LDL.docx) ---
+ 1. Logo Asset: Word image1.png present=True -> Consumed via /report-logo.png
+ 2. Header Text: 'ST. ROSE  DIAGNOSTIC  LABORATORY'...
+ 3. Demographics: TBL[0] 3 rows, borderless 3-column table.
+ 4. Table Structure: 10 rows, 3 columns.
+ 5. Column Proportions: Word ['32.3%', '31.8%', '35.9%'] -> Rendered ['32.3%', '31.8%', '35.9%']
+ 6. Header Wording: Word ['EXAMINATION', 'RESULTS', 'NORMAL VALUES'] -> Rendered ['EXAMINATION', 'RESULTS', 'NORMAL VALUES']
+ 7. Embedded Remarks: 'REMARKS: TEST/S RECHECKED; RESULT/S VERI...'
+ 8. Signatories: Pathologist Left / MedTech Right present.
+
+--- TEMPLATE: ESR (ESR.docx) ---
+ 1. Logo Asset: Word image1.png present=True -> Consumed via /report-logo.png
+ 2. Header Text: 'ST. ROSE  DIAGNOSTIC  LABORATORY'...
+ 3. Demographics: TBL[0] 3 rows, borderless 3-column table.
+ 4. Table Structure: 5 rows, 3 columns.
+ 5. Column Proportions: Word ['33.0%', '33.8%', '33.3%'] -> Rendered ['33.0%', '33.8%', '33.3%']
+ 6. Header Wording: Word ['ERYTHROCYTE SEDIMENTATION RATE'] -> Rendered ['ERYTHROCYTE SEDIMENTATION RATE']
+ 7. Embedded Remarks: 'Children: 0-13 mm/hr...'
+ 8. Signatories: Pathologist Left / MedTech Right present.

@@ -9,8 +9,18 @@ import { SimpleResultRenderer } from "./families/SimpleResultRenderer";
 import { DiagnosticGridRenderer } from "./families/DiagnosticGridRenderer";
 import { NarrativeCertificateRenderer } from "./families/NarrativeCertificateRenderer";
 import { PDFStreamAdapter } from "./adapters/pdf-stream-adapter";
+import { RenderingEngine } from "./engine/RenderingEngine";
+import { getReportLayout } from "./layouts";
+import {
+  composeNativeReportPage,
+  getNativeReportDefinition,
+  NativePDFExporter,
+  NativeReportPreview,
+} from "./native";
 import "./styles/a4-document.css";
-import { Printer, Download, Eye, Layers, Loader2 } from "lucide-react";
+import { Printer, Download, Eye, Layers, Loader2, Sparkles, Image as ImageIcon } from "lucide-react";
+
+type PreviewRendererMode = "native" | "experimental" | "legacy";
 
 export interface SharedRenderingEngineProps {
   session: IPatientReportSession;
@@ -27,10 +37,18 @@ export function SharedRenderingEngine({
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
 
+  // Native pilots remain side-by-side with both established reference paths.
+  const [previewRendererMode, setPreviewRendererMode] = useState<PreviewRendererMode>("native");
+  const [isDiagnosticBackgroundOnly, setIsDiagnosticBackgroundOnly] = useState<boolean>(false);
+
   const pagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
+  const selectedReport = activeReports[activePageIndex] || activeReports[0];
+  const selectedNativeDefinition = selectedReport
+    ? getNativeReportDefinition(selectedReport.templateCode)
+    : null;
 
   // Load hydrated template specifications for all reports
   useEffect(() => {
@@ -54,23 +72,33 @@ export function SharedRenderingEngine({
 
   // Handle Native PDF Stream Export consuming SharedRenderingEngine DOM
   const handleExportPDF = async () => {
-    if (!pagesContainerRef.current) return;
     setIsExportingPDF(true);
     setPdfProgress(10);
     try {
-      await PDFStreamAdapter.generatePDFFromSharedEngine(session, pagesContainerRef.current, {
-        onProgress: (percent) => setPdfProgress(percent),
-      });
+      const report = activeReports[activePageIndex] || activeReports[0];
+      const nativeDefinition = report ? getNativeReportDefinition(report.templateCode) : null;
+
+      if (report && nativeDefinition) {
+        await NativePDFExporter.exportSingleReportPDF(session, report, nativeDefinition, {
+          onProgress: (percent) => setPdfProgress(percent),
+        });
+      } else {
+        if (!pagesContainerRef.current) return;
+        await PDFStreamAdapter.generatePDFFromSharedEngine(session, pagesContainerRef.current, {
+          onProgress: (percent) => setPdfProgress(percent),
+        });
+      }
     } catch (err: unknown) {
       console.error("PDF Export Error:", err);
-      alert("Failed to export PDF report. Please try again.");
+      const message = err instanceof Error ? err.message : "Unknown PDF export error.";
+      alert(`Failed to export PDF report: ${message}`);
     } finally {
       setIsExportingPDF(false);
       setPdfProgress(0);
     }
   };
 
-  // Helper to render individual report by assigned RendererFamily
+  // Helper to render individual report
   const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
     const spec = specsMap.get(report.templateCode);
     const rendererFamily = spec?.template.rendererFamily || report.rendererFamily || "Tabular";
@@ -78,6 +106,52 @@ export function SharedRenderingEngine({
     const supportsRemarks = spec?.template.supportsRemarks ?? true;
     const requiresKitInfo = spec?.template.requiresKitInfo ?? false;
 
+    // Check if new Template Engine layout exists for this report (CBC in Phase 3)
+    const layoutConfig = getReportLayout(report.templateCode);
+    const nativeDefinition = getNativeReportDefinition(report.templateCode);
+
+    if (nativeDefinition && previewRendererMode === "native") {
+      const composedPage = composeNativeReportPage(nativeDefinition, session, report);
+      return (
+        <div
+          key={report.id || `${report.templateCode}-${index}`}
+          className={`a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
+          style={{
+            transform:
+              targetOutput === "ScreenPreview" && zoomLevel !== 100
+                ? `scale(${zoomLevel / 100})`
+                : undefined,
+            transformOrigin: "top center",
+          }}
+        >
+          <NativeReportPreview
+            page={composedPage}
+            scale={targetOutput === "ScreenPreview" ? 0.5 : 1}
+          />
+        </div>
+      );
+    }
+
+    if (layoutConfig && previewRendererMode === "experimental") {
+      return (
+        <div
+          key={report.id || `${report.templateCode}-${index}`}
+          className={`a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
+          style={{ transform: targetOutput === "ScreenPreview" && zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined }}
+        >
+          <RenderingEngine
+            session={session}
+            report={report}
+            layout={layoutConfig}
+            targetOutput={targetOutput}
+            previewScale={0.5}
+            backgroundOnlyDiagnostic={isDiagnosticBackgroundOnly}
+          />
+        </div>
+      );
+    }
+
+    // Fallback Legacy HTML Form Renderer (Preserved 100%)
     return (
       <div
         key={report.id || `${report.templateCode}-${index}`}
@@ -150,8 +224,68 @@ export function SharedRenderingEngine({
           </div>
         </div>
 
-        {/* Viewport Zoom & Actions */}
-        <div className="flex items-center gap-3">
+        {/* Viewport Zoom, Engine Pilot Switch & Actions */}
+        <div className="flex flex-wrap items-center gap-3">
+          {selectedNativeDefinition ? (
+            <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800 p-0.5">
+              {([
+                ["native", `Native ${selectedReport?.templateCode || "PDF"}`],
+                ["experimental", "Experimental"],
+                ["legacy", "Legacy HTML"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setPreviewRendererMode(mode);
+                    if (mode !== "experimental") setIsDiagnosticBackgroundOnly(false);
+                  }}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                    previewRendererMode === mode
+                      ? "bg-emerald-600 text-white"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title={`${label} preview path`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPreviewRendererMode(
+                previewRendererMode === "experimental" ? "legacy" : "experimental"
+              )}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
+                previewRendererMode === "experimental"
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                  : "bg-slate-800 text-slate-400 border-slate-700 hover:text-white"
+              }`}
+              title="Toggle between experimental Template Engine and Legacy HTML Form Renderer"
+            >
+              <Sparkles className="h-3 w-3 text-amber-400" />
+              {previewRendererMode === "experimental" ? "Template Engine (Active)" : "Legacy HTML Renderer"}
+            </button>
+          )}
+
+          {/* Diagnostic Mode Toggle: Layer 0 Background Only */}
+          {previewRendererMode === "experimental" && (
+            <button
+              type="button"
+              onClick={() => setIsDiagnosticBackgroundOnly(!isDiagnosticBackgroundOnly)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
+                isDiagnosticBackgroundOnly
+                  ? "bg-purple-600 text-white border-purple-500"
+                  : "bg-slate-800 text-slate-400 border-slate-700 hover:text-white"
+              }`}
+              title="Diagnostic Mode: Render ONLY Layer 0 (CBC.png background)"
+            >
+              <ImageIcon className="h-3 w-3" />
+              {isDiagnosticBackgroundOnly ? "Layer 0 Only (Diagnostic ON)" : "Layer 0 Only (OFF)"}
+            </button>
+          )}
+
           {/* Zoom Selector */}
           <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 text-xs">
             <button
@@ -198,7 +332,7 @@ export function SharedRenderingEngine({
             ) : (
               <>
                 <Download className="h-3.5 w-3.5" />
-                Export PDF Stream
+                {selectedNativeDefinition ? "Export Native PDF" : "Export PDF Stream"}
               </>
             )}
           </button>

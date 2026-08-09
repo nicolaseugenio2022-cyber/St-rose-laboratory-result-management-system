@@ -1,6 +1,7 @@
 import { 
   ILaboratoryReport, 
-  ILaboratoryResult 
+  ILaboratoryResult,
+  IReportEncodingData,
 } from "./interfaces";
 import { 
   RendererFamily, 
@@ -21,9 +22,12 @@ export class LaboratoryResultDomain implements ILaboratoryResult {
   public readonly parameterCode: string;
   public readonly parameterName: string;
   public readonly resultValue: string;
+  public readonly rawResultValue?: string | null;
+  public readonly formattedResultValue?: string | null;
   public readonly unit?: string | null;
   public readonly evaluationOutcome: EvaluationOutcome;
   public readonly referenceRuleSnapshot?: ReferenceRuleSpec | null;
+  public readonly computationMetadata?: Record<string, unknown> | null;
   public readonly displayOrder: number;
   public readonly isSelected: boolean;
 
@@ -33,9 +37,12 @@ export class LaboratoryResultDomain implements ILaboratoryResult {
     this.parameterCode = props.parameterCode;
     this.parameterName = props.parameterName;
     this.resultValue = props.resultValue;
+    this.rawResultValue = props.rawResultValue;
+    this.formattedResultValue = props.formattedResultValue;
     this.unit = props.unit;
     this.evaluationOutcome = props.evaluationOutcome;
     this.referenceRuleSnapshot = props.referenceRuleSnapshot;
+    this.computationMetadata = props.computationMetadata;
     this.displayOrder = props.displayOrder;
     this.isSelected = props.isSelected ?? true;
   }
@@ -49,6 +56,7 @@ export class LaboratoryReportDomain implements ILaboratoryReport {
   public readonly rendererFamily: RendererFamily;
   public readonly reagentKitInfo?: ReagentKitInfo | null;
   public readonly remarks?: string | null;
+  public readonly encodingData?: IReportEncodingData;
   public results: LaboratoryResultDomain[];
   public signatories: SignatorySnapshot[];
 
@@ -60,6 +68,7 @@ export class LaboratoryReportDomain implements ILaboratoryReport {
     rendererFamily: RendererFamily;
     reagentKitInfo?: ReagentKitInfo | null;
     remarks?: string | null;
+    encodingData?: IReportEncodingData;
     results: LaboratoryResultDomainProps[];
     signatories: SignatorySnapshot[];
   }) {
@@ -70,6 +79,18 @@ export class LaboratoryReportDomain implements ILaboratoryReport {
     this.rendererFamily = props.rendererFamily;
     this.reagentKitInfo = props.reagentKitInfo;
     this.remarks = props.remarks;
+    this.encodingData = props.encodingData
+      ? {
+          ...props.encodingData,
+          additionalFields: { ...(props.encodingData.additionalFields || {}) },
+          repeatableFindings: Object.fromEntries(
+            Object.entries(props.encodingData.repeatableFindings || {}).map(([category, findings]) => [
+              category,
+              findings.map((finding) => ({ ...finding })),
+            ])
+          ),
+        }
+      : undefined;
     this.results = props.results.map((r) => new LaboratoryResultDomain(r));
     this.signatories = props.signatories;
   }

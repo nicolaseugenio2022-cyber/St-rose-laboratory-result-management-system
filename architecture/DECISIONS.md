@@ -221,6 +221,14 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 ---
 
+### DEC-027: Shared Validation & Clinical Evaluation Pipeline Architecture
+- **Decision**: The system adopts the Single State Discriminator model (**Model A**), extending `EvaluationOutcome` to include `"Invalid"`.
+- **Why**: Syntactic input validation must occur before clinical evaluation. Non-numeric or malformed text entered into numeric fields returns `"Invalid"` immediately and is **never** clinically evaluated against reference ranges or flagged as `ABNORMAL`.
+- **Consequence**: Preserves 100% compatibility with existing domain contracts, renderer interfaces, DTOs, database schemas, and PDF generators while establishing clear visual separation between validation errors and medical findings.
+- **Related Authority**: `ADR-008`, `DOMAIN_MODEL.md`, `REPORT_RENDERING_ARCHITECTURE.md`.
+
+---
+
 # 3. Unresolved Open Decisions
 
 > [!WARNING]
@@ -262,4 +270,5 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 | **DEC-024** | Completion Auto-Suggestions | Aligns 100% with frozen `DOMAIN_MODEL.md` | ✅ Verified |
 | **DEC-025** | Defense-in-Depth Security | Aligns 100% with frozen `SECURITY_MODEL.md` | ✅ Verified |
 | **DEC-026** | Configuration-First Expansion | Aligns 100% with frozen `REPORT_REGISTRY_ARCHITECTURE.md` | ✅ Verified |
+| **DEC-027** | Shared Validation & Clinical Evaluation Pipeline | Single State Discriminator (`EvaluationOutcome` including `Invalid`); syntactic validation precedes clinical reference evaluation | ✅ Verified |
 | **OPEN-01** | Standard User Report Visibility | Recorded as explicit open decision awaiting client confirmation | ⚠️ Recorded |

@@ -1,0 +1,134 @@
+{
+  "generatedAt": "2026-08-09T05:32:43.546Z",
+  "pdf": "output\\pdf\\CBC-native-pilot-validation.pdf",
+  "longDemographicsPdf": "output\\pdf\\CBC-native-long-demographics-validation.pdf",
+  "longDemographicsPreviewHtml": "output\\pdf\\CBC-native-long-demographics-preview.html",
+  "bytes": 105092,
+  "pages": 1,
+  "pageSizeMm": {
+    "width": 210,
+    "height": 297
+  },
+  "contentBottomMm": 153.499,
+  "primitiveCount": 83,
+  "nativeTextChecks": [
+    "23",
+    "0.50",
+    "0.25",
+    "0.01",
+    "0.03",
+    "0.00",
+    "21",
+    "JUAN DELA CRUZ"
+  ],
+  "abnormalResultOutput": "23",
+  "forbiddenAbnormalOutputPresent": false,
+  "ageZeroSuppressed": true,
+  "ageUnitSuppressed": true,
+  "patientStatusSuppressed": true,
+  "cbcOnlyCompletionWithoutStatus": true,
+  "mixedSessionStatusStillRequired": true,
+  "patientStatusEncodingHidden": true,
+  "signatureSizeMm": {
+    "width": 25.682,
+    "height": 13.212
+  },
+  "signaturePositionMm": {
+    "x": 56.092,
+    "y": 132.49
+  },
+  "signatureCenteredInPathologistSlot": true,
+  "displayCasing": {
+    "storedName": "Juan dela Cruz",
+    "renderedName": "JUAN DELA CRUZ",
+    "storedAddress": "Sta. Rosa, Nueva Ecija",
+    "renderedAddress": "STA. ROSA, NUEVA ECIJA"
+  },
+  "fittedDemographicEvidence": [
+    {
+      "id": "patient-name",
+      "text": "MARIA CRISTINA EVANGELISTA DELA CRUZ-SANTOS",
+      "declaredFontSizePt": 13,
+      "fittedFontSizePt": 7.265,
+      "frameStartMm": 40.8,
+      "frameWidthMm": 67.926,
+      "frameEndMm": 108.726,
+      "cellContentEndMm": 108.726,
+      "measuredTextWidthMm": 66.55930652777775
+    },
+    {
+      "id": "patient-address",
+      "text": "123 MAHARLIKA HIGHWAY, BARANGAY SAN ROQUE, SANTA ROSA, NUEVA ECIJA",
+      "declaredFontSizePt": 13,
+      "fittedFontSizePt": 6.48,
+      "frameStartMm": 45,
+      "frameWidthMm": 92.42500000000001,
+      "frameEndMm": 137.425,
+      "cellContentEndMm": 137.425,
+      "measuredTextWidthMm": 90.57131999999997
+    },
+    {
+      "id": "requesting-physician",
+      "text": "Dr. Alexandrina Evangelista de la Cruz, MD, FPCP",
+      "declaredFontSizePt": 13,
+      "fittedFontSizePt": 9.396,
+      "frameStartMm": 57.8,
+      "frameWidthMm": 79.62500000000001,
+      "frameEndMm": 137.425,
+      "cellContentEndMm": 137.425,
+      "measuredTextWidthMm": 78.028038
+    }
+  ],
+  "resultDisplayPrecision": {
+    "hemoglobin": "23",
+    "hematocrit": "0.42",
+    "rbc": "4.8",
+    "wbc": "6.5",
+    "platelet": "250",
+    "neutrophil": "0.50",
+    "lymphocyte": "0.25",
+    "eosinophil": "0.01",
+    "monocyte": "0.03",
+    "basophil": "0.00"
+  },
+  "previewDomChecked": true,
+  "missingSignatureRejected": true,
+  "pdfjsDistUsedForGeneration": false,
+  "previewBrowserOverflowCount": 0,
+  "previewBrowserCheckedPrimitiveIds": [
+    "patient-name",
+    "patient-address",
+    "requesting-physician"
+  ],
+  "pdfjsDistUsedForTextVerification": true,
+  "extractedTextItems": 66,
+  "searchablePatientName": true,
+  "searchableAbnormalResultValue": true,
+  "abnormalFlagsPresent": false,
+  "patientStatusPresent": false,
+  "formattedPrecisionValuesSearchable": true,
+  "longDemographicValuesSearchable": true,
+  "longDemographicPdfBoundsMm": [
+    {
+      "text": "MARIA CRISTINA EVANGELISTA DELA CRUZ-SANTOS",
+      "startMm": 40.8,
+      "widthMm": 67.20516502777774,
+      "endMm": 108.00516502777774,
+      "cellEndMm": 108.726
+    },
+    {
+      "text": "123 MAHARLIKA HIGHWAY, BARANGAY SAN ROQUE, SANTA ROSA, NUEVA ECIJA",
+      "startMm": 44.99999999999999,
+      "widthMm": 91.95206400000005,
+      "endMm": 136.95206400000004,
+      "cellEndMm": 137.425
+    },
+    {
+      "text": "Dr. Alexandrina Evangelista de la Cruz, MD, FPCP",
+      "startMm": 57.79999999999999,
+      "widthMm": 78.28658460000004,
+      "endMm": 136.08658460000004,
+      "cellEndMm": 137.425
+    }
+  ]
+}

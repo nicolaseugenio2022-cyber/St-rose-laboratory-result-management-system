@@ -14,13 +14,18 @@
    ========================================================================== */
 
 :root {
-  /* --- PRIMARY BRANDING COLORS (St. Rose Official Logo Palette) --- */
-  /* Primary brand color derived from the official St. Rose logo */
-  --color-primary: #093982; /* St. Rose Deep Navy Blue */
-  /* Hover state for primary interactive elements (secondary blue from logo) */
-  --color-primary-hover: #1d5ea5; /* St. Rose Medium Vibrant Blue */
+  /* --- APPROVED BRANDING UI TOKENS (Phase A) --- */
+  /* Primary brand color */
+  --color-primary: #0B6384;
+  /* Hover state for primary interactive elements */
+  --color-primary-hover: #084D68;
   /* Contrast foreground text color on primary backgrounds */
   --color-primary-foreground: #ffffff;
+
+  /* Brand Tint, Decorative Pink, and Accessible Rose */
+  --color-tint: #E8F3F6;
+  --color-decorative-pink: #F8A8B8;
+  --color-accessible-rose: #8E3F58;
 
   /* Secondary dark neutral accent color for headers, secondary actions, and dark badges */
   --color-secondary: #0f172a; /* Slate 900 */
@@ -43,9 +48,9 @@
 
   /* --- TYPOGRAPHY & TEXT --- */
   /* Primary body text color */
-  --color-text: #0f172a;
+  --color-text: #0F172A;
   /* Muted text color for descriptions and metadata */
-  --color-text-muted: #64748b;
+  --color-text-muted: #475569;
   /* Subdued text color for placeholders and disabled labels */
   --color-text-subtle: #94a3b8;
 
@@ -66,9 +71,9 @@
   --color-danger-border: #fecaca;
 
   /* Information state color (Used strictly for info indicators & brand accents) */
-  --color-info: #093982; /* St. Rose Primary Blue */
-  --color-info-bg: #ebf3fa; /* Light blue background tint derived from logo */
-  --color-info-border: #c8dcf0;
+  --color-info: #0B6384;
+  --color-info-bg: #E8F3F6;
+  --color-info-border: #bce3ee;
 
   /* Semantic Role Colors */
   /* Admin Role Badge: Indigo/Violet */
@@ -84,10 +89,10 @@
   /* --- NAVIGATION & SIDEBAR --- */
   /* Sidebar background color */
   --color-sidebar: #ffffff;
-  /* Active navigation item background (Subtle Light Blue tint derived from logo) */
-  --color-sidebar-active: #ebf3fa;
-  /* Active navigation item text/icon color (St. Rose Primary Blue) */
-  --color-sidebar-active-text: #093982;
+  /* Active navigation item background (Brand Tint) */
+  --color-sidebar-active: #E8F3F6;
+  /* Active navigation item text/icon color (Brand Primary) */
+  --color-sidebar-active-text: #0B6384;
   /* Default sidebar item text color */
   --color-sidebar-text: #475569;
 
@@ -99,7 +104,7 @@
 
   /* --- ACCESSIBILITY & FOCUS --- */
   /* Focus ring outline color */
-  --color-focus-ring: #093982;
+  --color-focus-ring: #0B6384;
 }
 
 /* Baseline A4 Print Rules - Independent from Application Theme */

@@ -1,0 +1,177 @@
+
+=======================================================
+DETAILED ANALYSIS: CBC.docx
+=======================================================
+MARGINS (pt): Top=89.65, Bottom=98.65, Left=72.0, Right=36.0
+MARGINS (mm): Top=31.63mm, Bottom=34.80mm, Left=25.40mm, Right=12.70mm
+ word/header1.xml -> Text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602 | Images count: 1
+TBL[0] 3 rows | Borders: [] | GridCol Widths (pt): [241.6, 81.35, 172.05]
+   Row  0: 'Name:' (sz={13.0}, b=False) | 'Age:' (sz={13.0}, b=False) | 'Date: AUGUST 5, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA. ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex:' (sz={13.0}, b=True)
+   Row  2: 'Requested by:' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+P[1] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=False: ''
+TBL[2] 14 rows | Borders: [] | GridCol Widths (pt): [152.6, 149.3, 191.7]
+   Row  0: 'EXAMINATION' (sz={10.0}, b=False) | 'RESULT' (sz={10.0}, b=False) | 'NORMAL VALUES' (sz={10.0}, b=False)
+   Row  1: 'Hemoglobin' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 130 – 160 g/LFemale: 120 – 140 g/L' (sz={10.0}, b=False)
+   Row  2: 'Hematocrit' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 0.40 – 0.52Female: 0.37 – 0.42' (sz={10.0}, b=False)
+   Row  3: 'RBC count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 4.5 – 6.0 x 1012/LFemale: 4.0 – 5.5 x 1012/L' (sz={10.0}, b=False)
+   Row  4: 'WBC count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '5.0 – 10.0 x 109/L' (sz={10.0}, b=False)
+   Row  5: 'Platelet Count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '150 – 450 –x 109/L' (sz={10.0}, b=False)
+   Row  6: '' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '' (sz={10.0}, b=False)
+   Row  7: 'DIFFERENTIAL COUNT' (sz={10.0}, b=True) | '' (sz={10.0}, b=True) | '' (sz={10.0}, b=False)
+   Row  8: 'NEUTROPHIL' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.50 – 0.70' (sz={10.0}, b=False)
+   Row  9: 'Lymphocyte' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.25 – 0.40' (sz={10.0}, b=False)
+   Row 10: 'Eosinophil' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.01 – 0.04' (sz={10.0}, b=False)
+   Row 11: 'Monocyte' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.03 – 0.08' (sz={10.0}, b=False)
+   Row 12: 'Basophil' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.00 – 0.01' (sz={10.0}, b=False)
+   Row 13: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 20.0}, b=False)
+P[3] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'PAULO ANTONIO E. CLEMENTE, MD, DPSP         SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+P[4] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 12.0} bold=False: '                                License no. 113927     License no. 0124239'
+P[5] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: '                                       Pathologist                              Medical Technologist'
+P[6] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[7] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Drop down (sa lahat ng tests naman to)'
+P[8] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Sex'
+P[9] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Date (calendar style or natatype)'
+P[10] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Address: natatype or matic na may sta. rosa na'
+P[11] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Requested by: '
+P[12] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: 'Dr. Ralph Roland Asperas'
+P[13] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: 'Dr. Heinz Roland Asperas'
+P[14] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[15] align=       spBefore=0pt spAfter=0pt fonts={'Calibri'} sz={13.0} bold=False: 'Sa CBC automatic na si Dr. Ralph Roland Asperas sa requested by pero yung pwede pa rin iedit or itype kung sino doctor na iba'
+P[17] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[18] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={10.0, 13.0} bold=False: 'Sa may remarks matic na yung  “TEST/S RECHECKED; RESULT/S VERIFIED” pero naeedit pa rin'
+P[19] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={10.0} bold=False: ''
+P[20] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={10.0} bold=False: 'IBAHIN NA LANG FONT STYLE UNIFORM WITH OTHER TESTS'
+P[21] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+
+=======================================================
+DETAILED ANALYSIS: URINALYSIS.docx
+=======================================================
+MARGINS (pt): Top=89.65, Bottom=27.0, Left=72.0, Right=36.0
+MARGINS (mm): Top=31.63mm, Bottom=9.53mm, Left=25.40mm, Right=12.70mm
+ word/header1.xml -> Text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602 | Images count: 1
+TBL[0] 3 rows | Borders: [] | GridCol Widths (pt): [241.6, 81.35, 161.45]
+   Row  0: 'Name:' (sz={13.0}, b=False) | 'Age:' (sz={13.0}, b=False) | 'Date: AUGUST 6, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex: FEMALE' (sz={13.0}, b=True)
+   Row  2: 'Requested by:' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+P[1] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={1.0} bold=False: ''
+TBL[2] 9 rows | Borders: [] | GridCol Widths (pt): [249.05, 249.1]
+   Row  0: 'URINALYSIS' (sz={13.0, 14.0}, b=False)
+   Row  1: 'Color : YELLOW' (sz={13.0}, b=False) | 'WBC: >50/HPF' (sz={13.0}, b=True)
+   Row  2: 'Clarity : TURBID' (sz={13.0}, b=False) | 'RBC: 4-6/HPF' (sz={13.0}, b=True)
+   Row  3: 'pH: 5.0' (sz={13.0}, b=False) | 'Epithelial Cells :  MODERATE' (sz={13.0}, b=True)
+   Row  4: 'Specific Gravity: 1.025' (sz={13.0}, b=False) | 'Bacteria :  MODERATE' (sz={13.0}, b=True)
+   Row  5: 'Protein: TRACE' (sz={13.0}, b=True) | 'Mucus Threads :  FEW' (sz={13.0}, b=True)
+   Row  6: 'Glucose:  NEGATIVE' (sz={13.0}, b=False) | 'Amorphous URATES: MODERATE' (sz={13.0}, b=True)
+   Row  7: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 12.0, 13.0}, b=False)
+   Row  8: '' (sz={13.0}, b=True)
+P[3] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[4] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False [IMAGES:1]: ''
+P[5] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[6] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'PAULO ANTONIO E. CLEMENTE, MD, DPSP    SANDRA ANNE P. GROSPE , RMT, MLS(ASCPi)'
+P[7] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 12.0} bold=False: '                                License no. 113927             License no. 0124239'
+P[8] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0, 13.0} bold=False: '                                       Pathologist                          Medical Technologist'
+P[9] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz=set() bold=False: ''
+P[10] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+P[11] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Color dropdown = Straw, Pale Yellow, Light Yellow, Yellow, Dark Yellow, Amber, Brown, Red (+edit option)'
+P[12] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Clarity = Clear, Slightly Hazy, Hazy, Slightly Cloudy, Cloudy, Slightly Turbid, Turbid (+edit)'
+P[13] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'pH = 5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 9.0'
+P[14] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Specific Gravity = 1.000, 1.005, 1.010, 1.015, 1.020, 1.025, 1.030'
+P[15] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Protein = Negative, Trace, 1+, 2+ , 3+ , 4+'
+P[16] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Glucose = Negative, Trace, 1+, 2+ , 3+ , 4+'
+P[17] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Sa WBC at RBC =  as is yung “/HPF” hindi sya napapalitan yung number lang example ng result “0-2” “>50” “TOO NUMEROUS TO COUNT/HPF” and so on'
+P[18] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Epithelial cells, bacteria, and mucus threads = Rare, Few, Moderate, Many, Plenty'
+P[19] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Yung sa may amorphous urates kahit nagiging blank na lang sya if walang urates or phosphates na Nakita pero sa space na yon ang reporting is either:'
+P[20] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Amorphous Urates:'
+P[21] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Or Amorphous Phosphates:'
+P[22] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Tapos and dropdown ay: Rare, Few, Moderate, Many, Plenty'
+P[23] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Then if may other crystals sa result:sa ilalim sya ng glucose, example:'
+P[24] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=True: '“Calcium Oxalate Crystals: Rare”     or    “WBC seen in clumps” and so onnnso wag lang isang tab sa ilalim, pwede kasi maraming crystals ang makita sa isang patient'
+P[25] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Pwede naman nasa remarks tab sya'
+P[26] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: 'Or if may other ideas kayo'
+P[27] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+P[28] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+
+=======================================================
+DETAILED ANALYSIS: BLOOD TYPING.docx
+=======================================================
+MARGINS (pt): Top=89.65, Bottom=98.65, Left=72.0, Right=36.0
+MARGINS (mm): Top=31.63mm, Bottom=34.80mm, Left=25.40mm, Right=12.70mm
+ word/header1.xml -> Text:  | Images count: 0
+ word/header2.xml -> Text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602 | Images count: 1
+ word/footer1.xml -> Text:  | Images count: 0
+ word/footer2.xml -> Text:  | Images count: 0
+ word/header3.xml -> Text:  | Images count: 0
+ word/footer3.xml -> Text:  | Images count: 0
+TBL[0] 1 rows | Borders: [] | GridCol Widths (pt): [501.15, 11.1, 11.1, 241.6, 81.35, 172.05]
+   Row  0: 'Name: Age: Date: JUNE 5, 2026Address: STA ROSA, NUEVA ECIJASex: FEMALERequested by: Status' (sz={13.0}, b=True) | '' (sz={13.0}, b=True) | '' (sz={13.0}, b=True)
+P[1] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=True: ' '
+TBL[2] 2 rows | Borders: [] | GridCol Widths (pt): [162.25, 162.3, 162.3]
+   Row  0: 'TEST' (sz={20.0}, b=True) | '' (sz={20.0}, b=True) | '' (sz={20.0}, b=True)
+   Row  1: 'BLOOD TYPE' (sz={20.0}, b=True) | '“  B  ”' (sz={20.0}, b=True) | 'POSITIVE' (sz={20.0}, b=True)
+P[3] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={20.0} bold=False [IMAGES:1]: ''
+P[4] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'PAULO ANTONIO E. CLEMENTE, MD, DPSP    SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+P[5] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 12.0} bold=False: '                 License no. 113927                          License no. 0124239'
+P[6] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0, 13.0} bold=False: '                      Pathologist                                      Medical Technologist'
+P[7] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ' '
+P[8] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: 'Ang result here is yung “B” at positive'
+P[9] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[10] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: 'May dropdown sa positive na: “positive” and “negative”'
+P[11] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: 'Sa “B” naman: “A” “B” “AB” “O”'
+P[12] align=right  spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[13] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+P[14] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+P[15] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[16] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[17] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[18] align=right  spBefore=0.0pt spAfter=0.0pt fonts=set() sz={13.0} bold=False: ''
+P[19] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+P[20] align=       spBefore=0pt spAfter=0pt fonts=set() sz=set() bold=False: ''
+
+=======================================================
+DETAILED ANALYSIS: HIV RESULT FORM.docx
+=======================================================
+MARGINS (pt): Top=72.0, Bottom=42.5, Left=54.0, Right=54.0
+MARGINS (mm): Top=25.40mm, Bottom=14.99mm, Left=19.05mm, Right=19.05mm
+ word/header1.xml -> Text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602 | Images count: 1
+P[0] align=center spBefore=0pt spAfter=0pt fonts={'Times New Roman'} sz={14.0} bold=True: 'A I D S   F R E E   C E R T I F I C A T E'
+P[1] align=       spBefore=0pt spAfter=0pt fonts=set() sz={12.0} bold=False: 'TO WHOM IT MAY CONCERN:'
+P[2] align=       spBefore=0pt spAfter=0pt fonts=set() sz={12.0} bold=True: 'This is to certify that ______________ of Sta Rosa, Nueva Ecija was examined for Acquired Immune Deficiency Syndrome (AIDS) based on laboratory test for HIV-1/2.'
+P[3] align=       spBefore=0pt spAfter=0pt fonts=set() sz={12.0} bold=True: 'Said applicant / employee is found to be [ X ] Non-reactive or Negative; [   ] Reactive or Positive at the time of examination.'
+P[4] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: '                                                                                                                        SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+P[5] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 12.0} bold=True: '                                                                           License no. 0124239'
+P[6] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=False: ''
+P[7] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=True: ''
+P[8] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=True: 'SEROLOGY (HIV)'
+P[9] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=True: 'Order Date: 10/24/2025                   '
+P[10] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={14.0} bold=True: 'Order Time: 14:00'
+P[11] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0, 14.0} bold=True: 'Name:Age: 32Sex:  F'
+P[12] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 14.0} bold=True: 'Referring Doctor:Company: St. Rose Diagnostic Laboratory'
+P[13] align=       spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+TBL[14] 2 rows | Borders: [] | GridCol Widths (pt): [243.4, 243.45]
+   Row  0: 'TEST' (sz={16.0}, b=True) | 'RESULT' (sz={16.0}, b=True)
+   Row  1: 'Anti HIV-1/2 (Screening)' (sz={16.0}, b=True) | 'Nonreactive' (sz={16.0}, b=True)
+P[15] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: '                                                          '
+P[16] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[17] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: 'LOT NO: 20250815'
+P[18] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: 'EXP: 2027/6/30'
+P[19] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[20] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[21] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[22] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[23] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[24] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[25] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[26] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: '                    PERFORMED BY:                       VERIFIED BY:'
+P[27] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[28] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)                                LOVERNA MARI M. CASTILLO, RMT'
+P[29] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={16.0, 12.0} bold=False: '               License no. 0124239                                                           License no. 0135199'
+P[30] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: '             Medical Technologist                            Medical Technologist'
+P[31] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: ''
+P[32] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[33] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True [IMAGES:1]: '                '
+P[34] align=both   spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=True: ''
+P[35] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'PAULO ANTONIO E. CLEMENTE, MD, DPSP '
+P[36] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'License no. 113927'
+P[37] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={12.0} bold=False: 'Pathologist                    '
+P[38] align=center spBefore=0.0pt spAfter=0.0pt fonts=set() sz={18.0, 12.0} bold=False: 'Pwede ba to gawan din sa menu. Pero di kasi same ng format yung patient demographics compared to other tests      '

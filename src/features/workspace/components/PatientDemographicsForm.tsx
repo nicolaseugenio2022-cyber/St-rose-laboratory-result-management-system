@@ -1,24 +1,17 @@
-import React, { useState, useEffect } from "react";
-import { PatientDemographics, PatientSex, PatientStatus } from "@/domain/types";
+import React from "react";
+import { PatientDemographics, PatientSex } from "@/domain/types";
 import { formatDateISO } from "@/lib/utils";
-import { autoSuggestionLearningService } from "@/services/auto-suggestion-service";
-import { User, Calendar, Stethoscope, MapPin } from "lucide-react";
+import { User, Calendar, MapPin } from "lucide-react";
 
 export interface PatientDemographicsFormProps {
   demographics: PatientDemographics;
   onChange: (updated: PatientDemographics) => void;
 }
 
-export function PatientDemographicsForm({ demographics, onChange }: PatientDemographicsFormProps) {
-  const [physicianSuggestions, setPhysicianSuggestions] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Load initial auto-suggestions for physician
-    autoSuggestionLearningService.getSuggestionsByCategory("physician").then((list) => {
-      setPhysicianSuggestions(list.map((s) => s.suggestionText));
-    });
-  }, []);
-
+export function PatientDemographicsForm({
+  demographics,
+  onChange,
+}: PatientDemographicsFormProps) {
   const handleChange = (field: keyof PatientDemographics, value: unknown) => {
     onChange({
       ...demographics,
@@ -86,26 +79,6 @@ export function PatientDemographicsForm({ demographics, onChange }: PatientDemog
           </select>
         </div>
 
-        {/* Patient Status */}
-        <div>
-          <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-            Patient Status <span className="text-rose-500">*</span>
-          </label>
-          <select
-            value={demographics.patientStatus || ""}
-            onChange={(e) => handleChange("patientStatus", e.target.value as PatientStatus)}
-            className="w-full px-2.5 py-1 text-xs rounded-md border border-slate-300 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none bg-white font-medium"
-            required
-          >
-            <option value="" disabled>
-              -- Select Status --
-            </option>
-            <option value="OutPatient">OutPatient</option>
-            <option value="InPatient">InPatient</option>
-            <option value="ER">ER (Emergency Room)</option>
-          </select>
-        </div>
-
         {/* Examination Date */}
         <div>
           <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
@@ -123,34 +96,10 @@ export function PatientDemographicsForm({ demographics, onChange }: PatientDemog
           </div>
         </div>
 
-        {/* Requesting Physician */}
-        <div>
-          <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-            Requesting Physician <span className="text-rose-500">*</span>
-          </label>
-          <div className="relative">
-            <input
-              type="text"
-              list="physician-list"
-              value={demographics.requestingPhysician}
-              onChange={(e) => handleChange("requestingPhysician", e.target.value)}
-              placeholder="Dr. Full Name"
-              className="w-full px-2.5 py-1 text-xs rounded-md border border-slate-300 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none font-medium"
-              required
-            />
-            <Stethoscope className="absolute right-2.5 top-1.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-            <datalist id="physician-list">
-              {physicianSuggestions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </div>
-        </div>
-
         {/* Multiline Editable Address */}
         <div className="sm:col-span-2">
           <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-            Patient Address
+            Address
           </label>
           <div className="relative">
             <textarea

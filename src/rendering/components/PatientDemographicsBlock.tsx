@@ -1,47 +1,86 @@
 import React from "react";
-import { PatientDemographics } from "@/domain/types";
+import type { PatientDemographics } from "@/domain/types";
+import type {
+  PatientStatusOutputMode,
+  ReportDemographicPolicy,
+} from "@/domain/report-demographic-policy";
 
 export interface PatientDemographicsBlockProps {
   demographics: PatientDemographics;
-  accessionNumber: string;
+  accessionNumber?: string;
+  patientStatusOutputMode?: PatientStatusOutputMode;
+  ageOutputMode?: ReportDemographicPolicy["age"]["outputMode"];
 }
 
-export function PatientDemographicsBlock({ demographics, accessionNumber }: PatientDemographicsBlockProps) {
-  return (
-    <div className="w-full bg-slate-50/80 rounded-md border border-slate-200 p-3 mb-4 text-xs font-sans">
-      <div className="grid grid-cols-12 gap-x-4 gap-y-2">
-        {/* Row 1 */}
-        <div className="col-span-5 flex items-baseline gap-1.5">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">PATIENT NAME:</span>
-          <span className="font-extrabold text-slate-900 truncate uppercase">{demographics.fullName || "N/A"}</span>
-        </div>
-        <div className="col-span-3 flex items-baseline gap-1.5">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">AGE / SEX:</span>
-          <span className="font-bold text-slate-900">
-            {demographics.age} {demographics.ageUnit} / {demographics.sex}
-          </span>
-        </div>
-        <div className="col-span-4 flex items-baseline gap-1.5 justify-end">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">ACCESSION NO:</span>
-          <span className="font-mono font-bold text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
-            {accessionNumber}
-          </span>
-        </div>
+export function PatientDemographicsBlock({
+  demographics,
+  patientStatusOutputMode = "label-and-value",
+  ageOutputMode = "number-with-unit",
+}: PatientDemographicsBlockProps) {
+  const ageDisplay = demographics.age
+    ? ageOutputMode === "number-only"
+      ? String(demographics.age)
+      : `${demographics.age} ${demographics.ageUnit || ""}`.trim()
+    : "";
 
-        {/* Row 2 */}
-        <div className="col-span-5 flex items-baseline gap-1.5">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">ADDRESS:</span>
-          <span className="font-semibold text-slate-800 truncate">{demographics.address || "N/A"}</span>
-        </div>
-        <div className="col-span-4 flex items-baseline gap-1.5">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">REQUESTED BY:</span>
-          <span className="font-semibold text-slate-800 truncate">{demographics.requestingPhysician || "N/A"}</span>
-        </div>
-        <div className="col-span-3 flex items-baseline gap-1.5 justify-end">
-          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">DATE:</span>
-          <span className="font-semibold text-slate-800">{demographics.examinationDate || "N/A"}</span>
-        </div>
-      </div>
+  let statusDisplay = "";
+  if (demographics.patientStatus === "InPatient") {
+    statusDisplay = "In-Patient";
+  } else if (demographics.patientStatus === "OutPatient") {
+    statusDisplay = "Out-Patient";
+  } else if (demographics.patientStatus) {
+    statusDisplay = demographics.patientStatus;
+  }
+
+  return (
+    <div className="w-full mb-1 text-[11px] leading-tight font-sans text-black">
+      <table className="w-full border-collapse border border-[#7E749C]">
+        <tbody>
+          {/* Row 0: Name (46%) | Age (18%) | Date (36%) */}
+          <tr className="border-b border-[#7E749C]">
+            <td className="w-[46%] py-0.75 px-2 align-top font-bold">
+              <span className="font-bold">Name: </span>
+              <span className="font-bold uppercase">{demographics.fullName || ""}</span>
+            </td>
+            <td className="w-[18%] py-0.75 px-2 align-top font-bold border-l border-[#7E749C]">
+              <span className="font-bold">Age: </span>
+              <span className="font-bold">{ageDisplay}</span>
+            </td>
+            <td className="w-[36%] py-0.75 px-2 align-top font-bold border-l border-[#7E749C]">
+              <span className="font-bold">Date: </span>
+              <span className="font-bold uppercase">{demographics.examinationDate || ""}</span>
+            </td>
+          </tr>
+
+          {/* Row 1: Address (colSpan 2: 64%) vs Sex (36% with purple shading #EAE6F3) */}
+          <tr className="border-b border-[#7E749C]">
+            <td className="py-0.75 px-2 align-top font-bold" colSpan={2}>
+              <span className="font-bold">Address: </span>
+              <span className="font-bold uppercase">{demographics.address || ""}</span>
+            </td>
+            <td className="py-0.75 px-2 align-top font-bold bg-[#EAE6F3] border-l border-[#7E749C]">
+              <span className="font-bold">Sex: </span>
+              <span className="font-bold uppercase">{demographics.sex || ""}</span>
+            </td>
+          </tr>
+
+          {/* Row 2: Requested by (colSpan 2: 64%) vs Status (36% with purple shading #EAE6F3) */}
+          <tr>
+            <td className="py-0.75 px-2 align-top font-bold" colSpan={2}>
+              <span className="font-bold">Requested by: </span>
+              <span className="font-bold">{demographics.requestingPhysician || ""}</span>
+            </td>
+            <td className="py-0.75 px-2 align-top font-bold bg-[#EAE6F3] border-l border-[#7E749C]">
+              <span className="font-bold">
+                {patientStatusOutputMode === "static-label-only" ? "Status" : "Status: "}
+              </span>
+              {patientStatusOutputMode === "label-and-value" && (
+                <span className="font-bold">{statusDisplay}</span>
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

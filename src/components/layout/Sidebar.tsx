@@ -33,7 +33,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="flex h-16 items-center justify-between px-5 border-b border-brand-border">
           <Link href="/dashboard" className="flex items-center gap-3 group" onClick={onClose}>
             <Image
-              src="/st-rose-logo.png"
+              src="/st-rose-logo-official.png"
               alt="St. Rose Diagnostic Laboratory Logo"
               width={44}
               height={44}

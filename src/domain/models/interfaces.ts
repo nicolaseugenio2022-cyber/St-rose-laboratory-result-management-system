@@ -12,6 +12,7 @@ import {
   SignatorySnapshot,
   EvaluationOutcome 
 } from "../types";
+import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 
 export interface IUserProfile {
   id: string; // References auth.users(id)
@@ -81,10 +82,30 @@ export interface ILaboratoryResult {
   parameterCode: string;
   parameterName: string;
   resultValue: string;
+  rawResultValue?: string | null;
+  formattedResultValue?: string | null;
   unit?: string | null;
   evaluationOutcome: EvaluationOutcome;
   referenceRuleSnapshot?: ReferenceRuleSpec | null;
+  computationMetadata?: Record<string, unknown> | null;
   displayOrder: number;
+}
+
+export function getResultDisplayValue(result: ILaboratoryResult): string {
+  return result.formattedResultValue || result.resultValue || "";
+}
+
+export interface IRepeatableFindingValue {
+  id: string;
+  category: string;
+  value: string;
+  displayOrder: number;
+}
+
+export interface IReportEncodingData {
+  requestedBy?: string;
+  additionalFields?: Record<string, string>;
+  repeatableFindings?: Record<string, IRepeatableFindingValue[]>;
 }
 
 export interface ILaboratoryReport {
@@ -95,6 +116,7 @@ export interface ILaboratoryReport {
   rendererFamily: RendererFamily;
   reagentKitInfo?: ReagentKitInfo | null;
   remarks?: string | null;
+  encodingData?: IReportEncodingData;
   results: ILaboratoryResult[];
   signatories: SignatorySnapshot[];
 }
@@ -108,6 +130,7 @@ export interface IPatientReportSession {
   createdAt: string;
   completedAt?: string | null;
   expiresAt?: string | null; // NULL for draft, completed_at + 30 days for completed
+  completedSnapshot?: CompletedSessionSnapshot | null;
 }
 
 export interface IAutoSuggestion {

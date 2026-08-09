@@ -6,6 +6,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
  * Implements SECURITY_MODEL.md Section 9 & PRODUCTION_DEPLOYMENT_ARCHITECTURE.md Section 5.2.
  * Serves private pathologist/medtech signature PNGs from protected `personnel-signatures` storage bucket.
  */
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const path = searchParams.get("path");

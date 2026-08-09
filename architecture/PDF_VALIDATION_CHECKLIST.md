@@ -28,12 +28,12 @@ Every template output rendered via `SharedRenderingEngine` and exported as PDF m
 
 | Template Code | Official Template Name | Family | Renderer Family | Authoritative Params | Remarks Support | Kit Info Required | Signatories Count | Word Template Status |
 |---|---|---|---|---|---|---|---|---|
-| **CBC** | Complete Blood Count | Hematology | Tabular | 10 | ✅ Yes | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **ESR** | Erythrocyte Sedimentation Rate | Hematology | Tabular | 1 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
+| **CBC** | Complete Blood Count | Hematology | Tabular | 10 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
+| **ESR** | Erythrocyte Sedimentation Rate | Hematology | Tabular | 1 | ❌ No | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
 | **CT_BT** | Clotting & Bleeding Time | Hematology | Tabular | 2 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **CHEM_8** | Chemistry 8 Panel | Clinical Chemistry | Tabular | 6 | ✅ Yes | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **CHEM_10** | Chemistry 10 Panel | Clinical Chemistry | Tabular | 10 | ✅ Yes | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **HDL_LDL** | Lipid Profile (HDL/LDL) | Clinical Chemistry | Tabular | 4 | ✅ Yes | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
+| **CHEM_8** | Chemistry 8 Panel | Clinical Chemistry | Tabular | 6 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
+| **CHEM_10** | Chemistry 10 Panel | Clinical Chemistry | Tabular | 10 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
+| **HDL_LDL** | Lipid Profile (HDL/LDL) | Clinical Chemistry | Tabular | 4 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
 | **OGTT** | Oral Glucose Tolerance Test | Clinical Chemistry | Tabular | 3 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
 | **RBS** | Random Blood Sugar | Clinical Chemistry | SimpleResult | 1 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
 | **HBA1C** | HbA1c Report | Clinical Chemistry | SimpleResult | 1 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |

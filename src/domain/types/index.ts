@@ -41,7 +41,15 @@ export type EvaluationStrategy =
   | "Informational" 
   | "NoEvaluation";
 
-export type EvaluationOutcome = "Normal" | "Abnormal" | "Informational" | "NoEvaluation" | "Invalid";
+export type EvaluationOutcome =
+  | "Low"
+  | "Normal"
+  | "High"
+  | "Entered"
+  | "Abnormal"
+  | "Informational"
+  | "NoEvaluation"
+  | "Invalid";
 
 export interface PatientDemographics {
   fullName: string;

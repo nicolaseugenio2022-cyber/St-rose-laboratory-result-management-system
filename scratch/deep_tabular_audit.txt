@@ -1,0 +1,148 @@
+=======================================================
+AUDIT FOR TEMPLATE: CBC (CBC.docx)
+=======================================================
+MARGINS (mm): Top=31.6mm, Bottom=34.8mm, Left=25.4mm, Right=12.7mm
+ Header [word/header1.xml] text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602
+ TBL[ 0] 3 rows | GridCol Widths (pt): [241.6, 81.35, 172.05]
+   Row  0: 'Name:' (sz={13.0}, b=False) | 'Age:' (sz={13.0}, b=False) | 'Date: AUGUST 5, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA. ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex:' (sz={13.0}, b=True)
+   Row  2: 'Requested by:' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+ TBL[ 2] 14 rows | GridCol Widths (pt): [152.6, 149.3, 191.7]
+   Row  0: 'EXAMINATION' (sz={10.0}, b=False) | 'RESULT' (sz={10.0}, b=False) | 'NORMAL VALUES' (sz={10.0}, b=False)
+   Row  1: 'Hemoglobin' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 130 – 160 g/LFemale: 120 – 140 g/L' (sz={10.0}, b=False)
+   Row  2: 'Hematocrit' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 0.40 – 0.52Female: 0.37 – 0.42' (sz={10.0}, b=False)
+   Row  3: 'RBC count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | 'Male: 4.5 – 6.0 x 1012/LFemale: 4.0 – 5.5 x 1012/L' (sz={10.0}, b=False)
+   Row  4: 'WBC count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '5.0 – 10.0 x 109/L' (sz={10.0}, b=False)
+   Row  5: 'Platelet Count' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '150 – 450 –x 109/L' (sz={10.0}, b=False)
+   Row  6: '' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '' (sz={10.0}, b=False)
+   Row  7: 'DIFFERENTIAL COUNT' (sz={10.0}, b=True) | '' (sz={10.0}, b=True) | '' (sz={10.0}, b=False)
+   Row  8: 'NEUTROPHIL' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.50 – 0.70' (sz={10.0}, b=False)
+   Row  9: 'Lymphocyte' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.25 – 0.40' (sz={10.0}, b=False)
+   Row 10: 'Eosinophil' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.01 – 0.04' (sz={10.0}, b=False)
+   Row 11: 'Monocyte' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.03 – 0.08' (sz={10.0}, b=False)
+   Row 12: 'Basophil' (sz={10.0}, b=False) | '' (sz={10.0}, b=True) | '0.00 – 0.01' (sz={10.0}, b=False)
+   Row 13: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 20.0}, b=False)
+ P[ 3] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'PAULO ANTONIO E. CLEMENTE, MD, DPSP         SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+ P[ 4] (align=both  , font=set(), sz={16.0, 12.0}, bold=False, color=set()): 'License no. 113927     License no. 0124239'
+ P[ 5] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Pathologist                              Medical Technologist'
+ P[ 7] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Drop down (sa lahat ng tests naman to)'
+ P[ 8] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Sex'
+ P[ 9] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Date (calendar style or natatype)'
+ P[10] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Address: natatype or matic na may sta. rosa na'
+ P[11] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Requested by:'
+ P[12] (align=both  , font=set(), sz={13.0}, bold=False, color=set()): 'Dr. Ralph Roland Asperas'
+ P[13] (align=both  , font=set(), sz={13.0}, bold=False, color=set()): 'Dr. Heinz Roland Asperas'
+ P[15] (align=      , font={'Calibri'}, sz={13.0}, bold=False, color=set()): 'Sa CBC automatic na si Dr. Ralph Roland Asperas sa requested by pero yung pwede pa rin iedit or itype kung sino doctor na iba'
+ P[18] (align=both  , font=set(), sz={10.0, 13.0}, bold=False, color=set()): 'Sa may remarks matic na yung  “TEST/S RECHECKED; RESULT/S VERIFIED” pero naeedit pa rin'
+ P[20] (align=both  , font=set(), sz={10.0}, bold=False, color=set()): 'IBAHIN NA LANG FONT STYLE UNIFORM WITH OTHER TESTS'
+
+=======================================================
+AUDIT FOR TEMPLATE: CHEM_8 (CHEM 8.docx)
+=======================================================
+MARGINS (mm): Top=31.6mm, Bottom=34.8mm, Left=25.4mm, Right=12.7mm
+ Header [word/header1.xml] text: 
+ Header [word/header2.xml] text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602
+ Header [word/header3.xml] text: 
+ TBL[ 0] 3 rows | GridCol Widths (pt): [241.6, 81.35, 161.45]
+   Row  0: 'Name:' (sz={13.0}, b=False) | 'Age:' (sz={13.0}, b=False) | 'Date: AUGUST 7, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex: FEMALE' (sz={13.0}, b=True)
+   Row  2: 'Requested by:' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+ TBL[ 1] 8 rows | GridCol Widths (pt): [157.55, 155.0, 174.8]
+   Row  0: 'EXAMINATION' (sz={14.0}, b=True) | 'RESULTS' (sz={14.0}, b=True) | 'NORMAL VALUES' (sz={14.0}, b=True)
+   Row  1: 'FBS' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '70-110 mg/dL' (sz={14.0}, b=False)
+   Row  2: 'CHOLESTEROL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '< 200 mg/dL' (sz={14.0}, b=False)
+   Row  3: 'TRIGLYCERIDES' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '35-165 mg/dL' (sz={14.0}, b=False)
+   Row  4: 'URIC ACID' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | 'Female: 2.4-5.7 mg/dLMale: 3.4-7.0 mg/dL' (sz={14.0}, b=False)
+   Row  5: 'SGPT' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '4-41 IU/L' (sz={14.0}, b=False)
+   Row  6: 'CREATININE' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '0.4-1.4 mg/dL' (sz={14.0}, b=False)
+   Row  7: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 14.0}, b=False)
+ P[ 3] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'PAULO ANTONIO E. CLEMENTE, MD, DPSP    SANDRA ANNE P. GROSPE , RMT, MLS(ASCPi)'
+ P[ 4] (align=both  , font=set(), sz={16.0, 12.0}, bold=False, color=set()): 'License no. 113927            License no. 0124239'
+ P[ 5] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'Pathologist                                                   Medical Technologist'
+
+=======================================================
+AUDIT FOR TEMPLATE: CHEM_10 (CHEM 10.docx)
+=======================================================
+MARGINS (mm): Top=31.6mm, Bottom=34.8mm, Left=25.4mm, Right=12.7mm
+ Header [word/header1.xml] text: 
+ Header [word/header2.xml] text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602
+ Header [word/header3.xml] text: 
+ TBL[ 0] 3 rows | GridCol Widths (pt): [241.6, 81.35, 161.45]
+   Row  0: 'Name:' (sz={13.0}, b=False) | 'Age:' (sz={13.0}, b=False) | 'Date: JULY 1, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex: MALE' (sz={13.0}, b=True)
+   Row  2: 'Requested by:' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+ TBL[ 1] 12 rows | GridCol Widths (pt): [170.5, 140.3, 176.55]
+   Row  0: 'EXAMINATION' (sz={14.0}, b=True) | 'RESULTS' (sz={14.0}, b=True) | 'NORMAL VALUES' (sz={14.0}, b=True)
+   Row  1: 'FBS' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '70-110mg/dL' (sz={14.0}, b=False)
+   Row  2: 'CHOLESTEROL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '< 200 mg/dL' (sz={14.0}, b=False)
+   Row  3: 'TRIGLYCERIDES' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '35-165 mg/dL' (sz={14.0}, b=False)
+   Row  4: 'HDL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '0-110 mg/dL' (sz={14.0}, b=False)
+   Row  5: 'LDL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '<150 mg/dL' (sz={14.0}, b=False)
+   Row  6: 'URIC ACID' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | 'Female: 2.4-5.7 mg/dLMale: 3.4-7.0 mg/dL' (sz={14.0}, b=False)
+   Row  7: 'SGPT/ALT' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '4-41 IU/L' (sz={14.0}, b=False)
+   Row  8: 'SGOT/AST' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '4-41 IU/L' (sz={14.0}, b=False)
+   Row  9: 'BUN' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '10-45 mg/dL' (sz={14.0}, b=False)
+   Row 10: 'CREATININE' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '0.4-1.4 mg/dL' (sz={14.0}, b=False)
+   Row 11: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 14.0}, b=False)
+ P[ 3] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'PAULO ANTONIO E. CLEMENTE, MD, DPSP         SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+ P[ 4] (align=both  , font=set(), sz={16.0, 12.0}, bold=False, color=set()): 'License no. 113927     License no. 0124239'
+ P[ 5] (align=both  , font=set(), sz={12.0, 13.0}, bold=False, color=set()): 'Pathologist                              Medical Technologist'
+ P[ 7] (align=      , font=set(), sz={13.0}, bold=False, color=set()): 'Yung HDL and LDL nacocompute lang yung result'
+ P[ 9] (align=      , font=set(), sz={13.0}, bold=False, color=set()): 'HDL = Cholesterol x 40 ÷ 150'
+ P[10] (align=      , font=set(), sz=set(), bold=False, color=set()): 'LDL = Triglycerides ÷ 5 + HDL – cholesterol'
+ P[11] (align=      , font={'Calibri'}, sz={13.0}, bold=False, color=set()): 'Sa chemistry automatic na si Dr. Heinz Roland Asperas sa requested by pero yung pwede pa rin iedit or itype kung sino doctor na iba'
+ P[13] (align=      , font=set(), sz=set(), bold=False, color=set()): 'FBS = Fasting Blood Sugar (If kasya sa template pakicomplete na)'
+ P[14] (align=      , font=set(), sz=set(), bold=False, color=set()): 'BUN = Blood Urea Nitrogen'
+ P[15] (align=      , font=set(), sz=set(), bold=False, color=set()): 'SGPT/ALT'
+ P[16] (align=      , font=set(), sz=set(), bold=False, color=set()): 'SGOT/AST'
+
+=======================================================
+AUDIT FOR TEMPLATE: HDL_LDL (HDL-LDL.docx)
+=======================================================
+MARGINS (mm): Top=31.6mm, Bottom=34.8mm, Left=25.4mm, Right=12.7mm
+ Header [word/header1.xml] text: 
+ Header [word/header2.xml] text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602
+ Header [word/header3.xml] text: 
+ TBL[ 0] 3 rows | GridCol Widths (pt): [241.6, 81.35, 161.45]
+   Row  0: 'Name: ROMEO CAJUCOM' (sz={13.0}, b=False) | 'Age: 52' (sz={13.0}, b=False) | 'Date: JULY 24, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA. ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex: FEMALE' (sz={13.0}, b=True)
+   Row  2: 'Requested by: DR. HEINZ ROLAND ASPERAS' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+ TBL[ 1] 10 rows | GridCol Widths (pt): [157.55, 155.0, 174.8]
+   Row  0: 'EXAMINATION' (sz={14.0}, b=True) | 'RESULTS' (sz={14.0}, b=True) | 'NORMAL VALUES' (sz={14.0}, b=True)
+   Row  1: 'FBS' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '70-110mg/dl' (sz={14.0}, b=False)
+   Row  2: 'CHOLESTEROL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '< 200 mg/dL' (sz={14.0}, b=False)
+   Row  3: 'TRIGLYCERIDES' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '35-165 mg/dL' (sz={14.0}, b=False)
+   Row  4: 'HDL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '0-110 mg/dl' (sz={14.0}, b=False)
+   Row  5: 'LDL' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '<150 mg/dl' (sz={14.0}, b=False)
+   Row  6: 'URIC ACID' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | 'Female: 2.4-5.7 mg/DlMale: 3.4-7.0 mg/dl' (sz={14.0}, b=False)
+   Row  7: 'SGPT' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '4-41 IU/L' (sz={14.0}, b=False)
+   Row  8: 'CREATININE' (sz={14.0}, b=False) | '' (sz={14.0}, b=True) | '0.4-1.4 mg/dL' (sz={14.0}, b=False)
+   Row  9: 'REMARKS: TEST/S RECHECKED; RESULT/S VERIFIED' (sz={10.0, 14.0}, b=False)
+ P[ 3] (align=both  , font=set(), sz={12.0}, bold=False, color={'000000'}): 'PAULO ANTONIO E. CLEMENTE, MD, DPSP                     LOVERNA MARI M. CASTILLO, RMT'
+ P[ 4] (align=both  , font=set(), sz={16.0, 12.0, 13.0}, bold=False, color={'000000'}): 'License no. 113927            License no. 0135199'
+ P[ 5] (align=both  , font=set(), sz={12.0, 13.0}, bold=False, color=set()): 'Pathologist                                      Medical Technologist'
+ P[ 7] (align=      , font=set(), sz={13.0}, bold=False, color=set()): 'Same lang to ng computation ng HDL at LDL sa chem 10, difference lang nya is chem 8 to plus hdl+ldl, walang sgot at bun'
+ P[ 9] (align=      , font=set(), sz={12.0}, bold=False, color=set()): 'Pero pwede naman din na iisang menu na lang yung CHEM 8, HDL-LDL, at CHEM 10.'
+ P[10] (align=      , font=set(), sz={12.0}, bold=False, color=set()): 'Pag sinelect na lang yung “Chem” ang automatic nakacheck ay yung under lang ng CHEM 8 (FBS, CHOLESTEROL, TRIGLYCERIDES, URIC ACID, SGPT, CREATININE)'
+ P[11] (align=      , font=set(), sz={12.0}, bold=False, color=set()): 'kaya chem 8 kahit anim lang yung tests kasi included talaga dyan yung hdl at ldl pero prefer ni doc Heinz wag na include sa result yung hdl-ldl. Gulo diba hwahahwsha'
+
+=======================================================
+AUDIT FOR TEMPLATE: ESR (ESR.docx)
+=======================================================
+MARGINS (mm): Top=31.6mm, Bottom=34.8mm, Left=25.4mm, Right=12.7mm
+ Header [word/header1.xml] text: 
+ Header [word/header2.xml] text: ST. ROSE  DIAGNOSTIC  LABORATORY LA FUENTE , SANTA ROSA NUEVA ECIJA ( IN FRONT  OF LA FUENTE ELEMENTARY SCHOOL) CELLPHONE NO.  0905-309-3602
+ Header [word/header3.xml] text: 
+ TBL[ 0] 3 rows | GridCol Widths (pt): [241.6, 81.35, 172.05]
+   Row  0: 'Name: SANDRA ANNE GROSPE' (sz={13.0}, b=False) | 'Age: 26' (sz={13.0}, b=False) | 'Date: JUNE 5, 2026' (sz={13.0}, b=False)
+   Row  1: 'Address: STA ROSA, NUEVA ECIJA' (sz={13.0}, b=False) | 'Sex: FEMALE' (sz={13.0}, b=True)
+   Row  2: 'Requested by: DR. RALPH ROLAND ASPERAS' (sz={13.0}, b=False) | 'Status' (sz={13.0}, b=True)
+ TBL[ 2] 5 rows | GridCol Widths (pt): [160.45, 164.15, 161.75]
+   Row  0: 'ERYTHROCYTE SEDIMENTATION RATE' (sz={16.0}, b=True)
+   Row  1: 'TEST' (sz={16.0}, b=True) | 'RESULT' (sz={16.0}, b=True) | 'NORMAL VALUES' (sz={16.0}, b=True)
+   Row  2: '' (sz={16.0}, b=True) | '' (sz={16.0}, b=False) | 'MALE: 0-15 mm/hr' (sz={14.0}, b=False)
+   Row  3: 'ESR' (sz={16.0}, b=True) | '' (sz={16.0}, b=False) | 'FEMALE: 0-20 mm/hr' (sz={14.0}, b=False)
+   Row  4: '' (sz={16.0}, b=True) | '' (sz={16.0}, b=False) | 'Children: 0-13 mm/hr' (sz={14.0}, b=False)
+ P[ 5] (align=both  , font=set(), sz={12.0}, bold=False, color=set()): 'PAULO ANTONIO E. CLEMENTE, MD, DPSP         SANDRA ANNE P. GROSPE, RMT,MLS(ASCPi)'
+ P[ 6] (align=both  , font=set(), sz={16.0, 12.0}, bold=False, color=set()): 'License no. 113927                License no. 0124239'
+ P[ 7] (align=both  , font=set(), sz={12.0, 13.0}, bold=False, color=set()): 'Pathologist                            Medical Technologist'

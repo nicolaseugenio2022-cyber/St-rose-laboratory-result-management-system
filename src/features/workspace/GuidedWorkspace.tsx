@@ -134,14 +134,7 @@ export function GuidedWorkspace() {
   // Load ALL active hydrated template specs from ReportRegistryService on mount to refresh cache
   useEffect(() => {
     async function loadTemplates() {
-      const summaries = await reportRegistryService.getAllActiveTemplates();
-      const hydratedSpecs: HydratedTemplateSpec[] = [];
-      for (const summary of summaries) {
-        const spec = await reportRegistryService.getTemplateByCode(summary.templateCode);
-        if (spec) {
-          hydratedSpecs.push(spec);
-        }
-      }
+      const hydratedSpecs = await reportRegistryService.warmCache();
       if (hydratedSpecs.length > 0) {
         setAllActiveTemplates(hydratedSpecs);
       }

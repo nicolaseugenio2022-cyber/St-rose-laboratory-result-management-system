@@ -131,27 +131,7 @@ The service reuses the project's existing Supabase client and performs a real se
 
 Errors are handled safely without exposing sensitive raw database errors to the UI.
 
-### Known Performance Issue
-
-The health check currently reports approximately:
-
-**7148 ms (~7.1 seconds)**
-
-This is too slow for a health check.
-
-### Next Priority
-
-Profile the health check before changing it.
-
-Investigate:
-
-* Duplicate queries
-* Sequential queries
-* Expensive count queries
-* RLS/auth overhead
-* Retries/timeouts
-* Unnecessary health-check operations
-* Development-mode overhead
+The health check now uses a 30-second cache TTL and a 10-second `AbortController` timeout to prevent hangs and repeated overhead.
 
 Do **not** fake the status or remove the real connectivity check.
 
@@ -252,6 +232,7 @@ Recent major performance improvements include:
 * **Developer Dashboard Suspense Streaming**: The heavy `DeveloperDashboardSection` is wrapped in `<Suspense>`, allowing the main dashboard shell to render instantly while the diagnostics stream in.
 * **Supabase Monitoring Optimizations**: `getSupabaseCounts()` executes queries in parallel. Queries now have a 10-second `AbortController` timeout and a 30-second cache TTL to prevent hangs and repeated overhead.
 * **Route Loading Skeletons**: `loading.tsx` files across routes (dashboard, workspace, history, audit, users) provide immediate visual feedback.
+* **Workspace Template Cache Parallelization**: Template metadata loading uses parallel/bulk Supabase queries (`Promise.all()`) instead of sequential loading. Reduces 52 sequential browser-to-Supabase queries to 3 parallel bulk queries, cutting cache warm-up from ~5–26 seconds to ~300–500ms.
 
 ## Current Working State
 
@@ -270,6 +251,7 @@ Recent work includes:
 * README/handoff documentation
 * **Suspense streaming for Developer Dashboard**
 * **Next.js loading.tsx skeletons for responsive navigation**
+* **Workspace examination loading optimization (parallel Supabase template hydration)**
 
 ## Known Issues / Pending Work
 

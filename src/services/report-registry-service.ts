@@ -27,11 +27,15 @@ export class ReportRegistryService implements IReportRegistryService {
     }
 
     // 2. Fetch from repository
-    const template = await this.repository.getTemplateByCode(templateCode);
+    const [template, parameters, signatoryRequirement] = await Promise.all([
+      this.repository.getTemplateByCode(templateCode),
+      this.repository.getParametersByTemplateCode(templateCode),
+      this.repository.getSignatoryRequirementByTemplateCode(templateCode)
+    ]);
+
     if (!template) return null;
 
-    const parameters = await this.repository.getParametersByTemplateCode(templateCode);
-    const signatoryRequirement = await this.repository.getSignatoryRequirementByTemplateCode(templateCode) || {
+    const finalSignatoryRequirement = signatoryRequirement || {
       id: `default-${templateCode}`,
       templateCode,
       requiredPathologistsCount: 1,
@@ -41,7 +45,7 @@ export class ReportRegistryService implements IReportRegistryService {
     const spec: HydratedTemplateSpec = {
       template,
       parameters,
-      signatoryRequirement,
+      signatoryRequirement: finalSignatoryRequirement,
     };
 
     // 3. Cache hydrated spec
@@ -56,6 +60,26 @@ export class ReportRegistryService implements IReportRegistryService {
   async getAllTemplatesByFamily(family: string): Promise<IReportTemplate[]> {
     const all = await this.getAllActiveTemplates();
     return all.filter((t) => t.examinationFamily.toLowerCase() === family.toLowerCase());
+  }
+
+  /**
+   * Warms the cache by bulk-loading all active templates.
+   */
+  async warmCache(): Promise<HydratedTemplateSpec[]> {
+    if (this.repository.getAllHydratedTemplates) {
+      const specs = await this.repository.getAllHydratedTemplates();
+      for (const spec of specs) {
+        this.cache.set(spec.template.templateCode, spec);
+      }
+      return specs;
+    }
+    
+    // Fallback if bulk loading is not implemented
+    const templates = await this.getAllActiveTemplates();
+    const specs = await Promise.all(
+      templates.map(t => this.getTemplateByCode(t.templateCode))
+    );
+    return specs.filter((s): s is HydratedTemplateSpec => s !== null);
   }
 
   /**

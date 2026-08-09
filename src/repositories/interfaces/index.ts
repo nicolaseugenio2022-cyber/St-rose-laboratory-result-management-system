@@ -7,6 +7,7 @@ import {
   ITemplateSignatoryRequirement 
 } from "../../domain/models/interfaces";
 import { UserRole, UserStatus } from "../../domain/types";
+import { HydratedTemplateSpec } from "../../services/interfaces";
 
 export interface IPatientReportSessionRepository {
   findById(id: string): Promise<IPatientReportSession | null>;
@@ -41,4 +42,5 @@ export interface IReportRegistryRepository {
   getParametersByTemplateCode(templateCode: string): Promise<ITemplateParameter[]>;
   getSignatoryRequirementByTemplateCode(templateCode: string): Promise<ITemplateSignatoryRequirement | null>;
   getAllActiveTemplates(): Promise<IReportTemplate[]>;
+  getAllHydratedTemplates?(): Promise<HydratedTemplateSpec[]>;
 }

@@ -1,28 +1,28 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { User } from "@/types/user";
+import { UserProfile, UserRole } from "@/types/user";
 import {
   createUserSchema,
   updateUserSchema,
   CreateUserFormValues,
   UpdateUserFormValues,
 } from "@/lib/validations/userValidation";
-import { DuplicateUsernameError } from "@/services/userService";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 
 export interface UserFormProps {
-  initialData?: User | null;
+  initialData?: UserProfile | null;
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
+  currentUserRole?: UserRole;
 }
 
-export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }: UserFormProps) {
+export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, currentUserRole }: UserFormProps) {
   const isEditing = !!initialData;
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -68,10 +68,18 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
     }
   }, [initialData, reset]);
 
-  const roleOptions = [
-    { label: "Standard User", value: "User" },
-    { label: "Administrator", value: "Admin" },
-  ];
+  const roleOptions = useMemo(() => {
+    const options = [
+      { label: "Standard User", value: "User" },
+      { label: "Administrator", value: "Admin" },
+    ];
+
+    if (currentUserRole !== "Admin") {
+      options.splice(1, 0, { label: "Developer", value: "Developer" });
+    }
+
+    return options;
+  }, [currentUserRole]);
 
   const statusOptions = [
     { label: "Active", value: "Active" },
@@ -83,10 +91,11 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
     try {
       await onSubmit(values);
     } catch (err: any) {
-      if (err instanceof DuplicateUsernameError) {
-        setError("username", { type: "manual", message: err.message });
+      const message = err?.message || "Failed to save user account.";
+      if (message.toLowerCase().includes("username") && message.toLowerCase().includes("already")) {
+        setError("username", { type: "manual", message });
       } else {
-        setServerError(err?.message || "Failed to save user account.");
+        setServerError(message);
       }
     }
   };

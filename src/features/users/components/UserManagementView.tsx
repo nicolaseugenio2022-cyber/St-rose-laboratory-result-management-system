@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Search, Users } from "lucide-react";
-import { User } from "@/types/user";
-import { userService } from "@/services/userService";
+import { UserProfile, UserRole } from "@/types/user";
+import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,24 +11,27 @@ import { Select } from "@/components/ui/Select";
 import { UserTable } from "./UserTable";
 import { UserFormModal } from "./UserFormModal";
 
-export function UserManagementView() {
-  const [users, setUsers] = useState<User[]>([]);
+export interface UserManagementViewProps {
+  currentUserId: string;
+  currentUserRole?: UserRole;
+}
+
+export function UserManagementView({ currentUserId, currentUserRole }: UserManagementViewProps) {
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
-    const data = await userService.getUsers();
+    const data = await fetchUsers();
     setUsers(data);
   }, []);
 
   useEffect(() => {
     loadUsers();
-    // Subscribe to changes in the decoupled user service
-    const unsubscribe = userService.subscribe(loadUsers);
-    return () => unsubscribe();
   }, [loadUsers]);
 
   const handleOpenCreate = () => {
@@ -36,7 +39,7 @@ export function UserManagementView() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (user: User) => {
+  const handleOpenEdit = (user: UserProfile) => {
     setEditingUser(user);
     setIsModalOpen(true);
   };
@@ -50,11 +53,12 @@ export function UserManagementView() {
     setIsSubmitting(true);
     try {
       if (editingUser) {
-        await userService.updateUser(editingUser.id, data as UpdateUserFormValues);
+        await updateUserApi(editingUser.id, data as UpdateUserFormValues);
       } else {
-        await userService.createUser(data as CreateUserFormValues);
+        await createUserApi(data as CreateUserFormValues);
       }
       handleCloseModal();
+      await loadUsers();
     } catch (err) {
       console.error("Failed to save user record:", err);
       throw err;
@@ -63,11 +67,36 @@ export function UserManagementView() {
     }
   };
 
-  const handleToggleStatus = async (user: User) => {
+  const handleToggleStatus = async (user: UserProfile) => {
     try {
-      await userService.toggleUserStatus(user.id);
+      await updateUserApi(user.id, {
+        status: user.status === "Active" ? "Inactive" : "Active",
+      });
+      await loadUsers();
     } catch (err) {
       console.error("Failed to toggle status:", err);
+    }
+  };
+
+  const handleDeleteUser = async (user: UserProfile) => {
+    if (user.id === currentUserId) {
+      window.alert("You cannot delete the currently authenticated account.");
+      return;
+    }
+
+    if (!window.confirm(`Delete user account '${user.username}'? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(user.id);
+    try {
+      await deleteUserApi(user.id);
+      await loadUsers();
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+      window.alert((err as Error)?.message || "Failed to delete user account.");
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -79,11 +108,19 @@ export function UserManagementView() {
     return matchesSearch && matchesRole;
   });
 
-  const roleFilterOptions = [
-    { label: "All Roles", value: "ALL" },
-    { label: "Admin", value: "Admin" },
-    { label: "User", value: "User" },
-  ];
+  const roleFilterOptions = useMemo(() => {
+    const options = [
+      { label: "All Roles", value: "ALL" },
+      { label: "Admin", value: "Admin" },
+      { label: "User", value: "User" },
+    ];
+
+    if (currentUserRole === "Developer") {
+      options.splice(2, 0, { label: "Developer", value: "Developer" });
+    }
+
+    return options;
+  }, [currentUserRole]);
 
   return (
     <div className="space-y-6">
@@ -129,6 +166,8 @@ export function UserManagementView() {
         users={filteredUsers}
         onEdit={handleOpenEdit}
         onToggleStatus={handleToggleStatus}
+        onDelete={handleDeleteUser}
+        deletingUserId={isDeleting}
       />
 
       {/* Create / Edit Form Modal */}
@@ -138,6 +177,7 @@ export function UserManagementView() {
         initialData={editingUser}
         onSubmit={handleFormSubmit}
         isLoading={isSubmitting}
+        currentUserRole={currentUserRole}
       />
     </div>
   );

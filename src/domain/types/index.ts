@@ -3,7 +3,7 @@
  * Aligned 100% with DOMAIN_MODEL.md, DATABASE_DESIGN.md, and REPORT_REGISTRY_ARCHITECTURE.md
  */
 
-export type UserRole = "Admin" | "User";
+export type UserRole = "Admin" | "Developer" | "User";
 
 export type UserStatus = "Active" | "Inactive";
 

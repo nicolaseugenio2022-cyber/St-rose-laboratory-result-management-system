@@ -1,5 +1,5 @@
 import React from "react";
-import { User } from "@/types/user";
+import { UserProfile, UserRole } from "@/types/user";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
 import { Modal } from "@/components/ui/Modal";
 import { UserForm } from "./UserForm";
@@ -7,9 +7,10 @@ import { UserForm } from "./UserForm";
 export interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialData?: User | null;
+  initialData?: UserProfile | null;
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   isLoading?: boolean;
+  currentUserRole?: UserRole;
 }
 
 export function UserFormModal({
@@ -18,6 +19,7 @@ export function UserFormModal({
   initialData,
   onSubmit,
   isLoading = false,
+  currentUserRole,
 }: UserFormModalProps) {
   const isEditing = !!initialData;
   const title = isEditing ? "Edit User Account" : "Create New User Account";
@@ -32,6 +34,7 @@ export function UserFormModal({
         onSubmit={onSubmit}
         onCancel={onClose}
         isLoading={isLoading}
+        currentUserRole={currentUserRole}
       />
     </Modal>
   );

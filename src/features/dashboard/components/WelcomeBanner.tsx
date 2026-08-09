@@ -1,8 +1,14 @@
 import React from "react";
 import { Activity, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { getCurrentUserProfile } from "@/lib/auth-guards";
 
-export function WelcomeBanner() {
+export async function WelcomeBanner() {
+  const profile = await getCurrentUserProfile();
+  const role = profile?.role || "User";
+
+  const friendlyRole = role === "Admin" ? "Administrator" : role;
+
   return (
     <div className="rounded-xl border border-brand-border bg-brand-surface p-6 shadow-xs">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -30,7 +36,7 @@ export function WelcomeBanner() {
           </div>
           <div>
             <div className="text-[11px] font-semibold text-brand-text-muted uppercase tracking-wider">Access Role</div>
-            <div className="text-xs font-bold text-brand-text">Administrator</div>
+            <div className="text-xs font-bold text-brand-text">{friendlyRole}</div>
           </div>
         </div>
       </div>

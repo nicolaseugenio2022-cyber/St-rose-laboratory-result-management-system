@@ -1,4 +1,4 @@
-export type UserRole = "Admin" | "User";
+export type UserRole = "Admin" | "Developer" | "User";
 
 export type UserStatus = "Active" | "Inactive";
 
@@ -6,6 +6,7 @@ export interface User {
   id: string;
   username: string;
   role: UserRole;
+  password: string;
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
@@ -23,3 +24,5 @@ export interface UpdateUserInput {
   role?: UserRole;
   status?: UserStatus;
 }
+
+export type UserProfile = Omit<User, "password">;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const userRoleSchema = z.enum(["Admin", "User"]);
+export const userRoleSchema = z.enum(["Admin", "Developer", "User"]);
 
 export const userStatusSchema = z.enum(["Active", "Inactive"]);
 
@@ -36,5 +36,8 @@ export const updateUserSchema = z.object({
   status: userStatusSchema,
 });
 
+export const updateUserPayloadSchema = updateUserSchema.partial();
+
 export type CreateUserFormValues = z.infer<typeof createUserSchema>;
 export type UpdateUserFormValues = z.infer<typeof updateUserSchema>;
+export type UpdateUserPayload = z.infer<typeof updateUserPayloadSchema>;

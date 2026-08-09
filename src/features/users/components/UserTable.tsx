@@ -1,19 +1,21 @@
 import React from "react";
 import { Edit2, Power } from "lucide-react";
-import { User } from "@/types/user";
+import { UserProfile } from "@/types/user";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { RoleBadge } from "./RoleBadge";
 import { UserStatusBadge } from "./UserStatusBadge";
 
 export interface UserTableProps {
-  users: User[];
-  onEdit: (user: User) => void;
-  onToggleStatus: (user: User) => void;
+  users: UserProfile[];
+  onEdit: (user: UserProfile) => void;
+  onToggleStatus: (user: UserProfile) => void;
+  onDelete: (user: UserProfile) => void;
+  deletingUserId?: string | null;
   isLoading?: boolean;
 }
 
-export function UserTable({ users, onEdit, onToggleStatus, isLoading = false }: UserTableProps) {
+export function UserTable({ users, onEdit, onToggleStatus, onDelete, deletingUserId, isLoading = false }: UserTableProps) {
   if (users.length === 0) {
     return (
       <div className="rounded-xl border border-brand-border bg-brand-surface p-12 text-center">
@@ -88,6 +90,16 @@ export function UserTable({ users, onEdit, onToggleStatus, isLoading = false }: 
                   >
                     <Power className="h-4 w-4" />
                     <span className="text-xs">{isActive ? "Deactivate" : "Activate"}</span>
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => onDelete(user)}
+                    disabled={isLoading || deletingUserId === user.id}
+                    title="Delete User"
+                  >
+                    <Power className="h-4 w-4" />
+                    <span className="text-xs">Delete</span>
                   </Button>
                 </div>
               </TableCell>

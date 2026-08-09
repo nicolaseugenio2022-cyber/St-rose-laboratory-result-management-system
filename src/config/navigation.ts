@@ -5,7 +5,7 @@ export interface NavItemConfig {
   href: string;
   iconName: "LayoutDashboard" | "FileEdit" | "History" | "Users" | "UserCheck" | "ShieldCheck";
   description?: string;
-  requiredRole?: UserRole;
+  requiredRole?: UserRole | UserRole[];
 }
 
 export const navigationConfig: NavItemConfig[] = [
@@ -32,20 +32,20 @@ export const navigationConfig: NavItemConfig[] = [
     href: "/audit",
     iconName: "ShieldCheck",
     description: "Inspect security audit logs and system event history",
-    requiredRole: "Admin",
+    requiredRole: ["Admin", "Developer"],
   },
   {
     title: "User Management",
     href: "/users",
     iconName: "Users",
     description: "Manage application login accounts, roles, and status",
-    requiredRole: "Admin",
+    requiredRole: ["Admin", "Developer"],
   },
   {
     title: "Personnel Directory",
     href: "/personnel",
     iconName: "UserCheck",
     description: "Maintain PRC-licensed Pathologists, MedTechs, and signatures",
-    requiredRole: "Admin",
+    requiredRole: ["Admin", "Developer"],
   },
 ];

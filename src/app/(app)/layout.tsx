@@ -1,10 +1,17 @@
+import { redirect } from "next/navigation";
 import React from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { getCurrentUserProfile } from "@/lib/auth-guards";
 
-export default function AppRouteGroupLayout({
+export default async function AppRouteGroupLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <AppShell>{children}</AppShell>;
+  const currentUserProfile = await getCurrentUserProfile();
+  if (!currentUserProfile) {
+    redirect("/login");
+  }
+
+  return <AppShell currentUserRole={currentUserProfile.role}>{children}</AppShell>;
 }

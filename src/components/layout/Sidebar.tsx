@@ -1,16 +1,20 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { NavigationMenu } from "./NavigationMenu";
 import { cn } from "@/utils/cn";
+import { UserRole } from "@/domain/types";
 
 export interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUserRole?: UserRole;
 }
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
   return (
     <>
       {/* Mobile Backdrop Overlay */}
@@ -56,7 +60,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Dynamic Navigation Menu */}
         <div className="flex-1 overflow-y-auto p-3">
-          <NavigationMenu onNavigate={onClose} />
+          <NavigationMenu onNavigate={onClose} currentUserRole={currentUserRole} />
         </div>
 
         {/* Sidebar Footer */}

@@ -41,15 +41,25 @@ function mapStatus(isHealthy: boolean, fallbackHealthy = false): "Healthy" | "Wa
   return fallbackHealthy ? "Warning" : "Error";
 }
 
+const HEALTH_CACHE_TTL = 30_000; // 30 seconds
+let healthCache: { data: SupabaseHealthReport; fetchedAt: number } | null = null;
+let countsCache: { data: { totalPersonnel: number | null; totalLaboratoryResults: number | null }; fetchedAt: number } | null = null;
+
 async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
   const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
     const { error } = await supabase
       .from("patient_report_sessions")
       .select("id", { head: true, count: "exact" })
-      .limit(1);
+      .limit(1)
+      .abortSignal(controller.signal);
 
+    clearTimeout(timeout);
     const responseTimeMs = Date.now() - start;
+
     if (error) {
       return {
         status: "Disconnected",
@@ -68,6 +78,7 @@ async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
       message: "Supabase connection successful.",
     };
   } catch {
+    clearTimeout(timeout);
     return {
       status: "Disconnected",
       connected: false,
@@ -79,21 +90,27 @@ async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
 }
 
 async function getSupabaseCounts(): Promise<{ totalPersonnel: number | null; totalLaboratoryResults: number | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const personnelResponse = await supabase.from("report_signatories").select("personnel_id");
+    const [personnelResponse, totalLaboratoryResultsResponse] = await Promise.all([
+      supabase.from("report_signatories").select("personnel_id").abortSignal(controller.signal),
+      supabase.from("laboratory_results").select("id", { head: true, count: "exact" }).abortSignal(controller.signal),
+    ]);
+
+    clearTimeout(timeout);
+
     const totalPersonnel = personnelResponse.data
       ? new Set((personnelResponse.data as { personnel_id?: string }[]).map((item) => item.personnel_id).filter(Boolean)).size
       : null;
-
-    const totalLaboratoryResultsResponse = await supabase
-      .from("laboratory_results")
-      .select("id", { head: true, count: "exact" });
 
     return {
       totalPersonnel,
       totalLaboratoryResults: totalLaboratoryResultsResponse.count ?? null,
     };
   } catch {
+    clearTimeout(timeout);
     return {
       totalPersonnel: null,
       totalLaboratoryResults: null,
@@ -101,13 +118,31 @@ async function getSupabaseCounts(): Promise<{ totalPersonnel: number | null; tot
   }
 }
 
+async function getSupabaseHealthCached(): Promise<SupabaseHealthReport> {
+  if (healthCache && Date.now() - healthCache.fetchedAt < HEALTH_CACHE_TTL) {
+    return healthCache.data;
+  }
+  const data = await getSupabaseHealth();
+  healthCache = { data, fetchedAt: Date.now() };
+  return data;
+}
+
+async function getSupabaseCountsCached(): Promise<{ totalPersonnel: number | null; totalLaboratoryResults: number | null }> {
+  if (countsCache && Date.now() - countsCache.fetchedAt < HEALTH_CACHE_TTL) {
+    return countsCache.data;
+  }
+  const data = await getSupabaseCounts();
+  countsCache = { data, fetchedAt: Date.now() };
+  return data;
+}
+
 export class DeveloperDashboardService {
   public async getDashboardData(): Promise<DeveloperDashboardData> {
     const [users, auditLogs, supabaseHealth, supabaseCounts] = await Promise.all([
       userService.getUsers(),
       auditLogService.getLogs(),
-      getSupabaseHealth(),
-      getSupabaseCounts(),
+      getSupabaseHealthCached(),
+      getSupabaseCountsCached(),
     ]);
 
     const currentAuthStatus = "Authenticated";

@@ -1,10 +1,13 @@
 import React from "react";
 import { Activity, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { getCurrentUserProfile } from "@/lib/auth-guards";
+import { IUserProfile } from "@/domain/models/interfaces";
 
-export async function WelcomeBanner() {
-  const profile = await getCurrentUserProfile();
+interface WelcomeBannerProps {
+  profile: IUserProfile | null;
+}
+
+export function WelcomeBanner({ profile }: WelcomeBannerProps) {
   const role = profile?.role || "User";
 
   const friendlyRole = role === "Admin" ? "Administrator" : role;

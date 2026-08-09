@@ -1,13 +1,18 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { WelcomeBanner } from "./WelcomeBanner";
 import { SummaryCards } from "./SummaryCards";
 import { QuickActions } from "./QuickActions";
 import DeveloperDashboardSection from "./DeveloperDashboardSection";
+import { DeveloperDashboardSkeleton } from "./DeveloperDashboardSkeleton";
 import { userService } from "@/services/userService";
 import { UserSummary } from "@/lib/api/users";
-import { getCurrentUserProfile } from "@/lib/auth-guards";
+import { IUserProfile } from "@/domain/models/interfaces";
 
-export default async function DashboardView() {
+export interface DashboardViewProps {
+  currentUserProfile: IUserProfile | null;
+}
+
+export default async function DashboardView({ currentUserProfile }: DashboardViewProps) {
   const users = await userService.getUsers();
   const totalUsers = users.length;
   const activeUsers = users.filter((u) => u.status === "Active").length;
@@ -15,12 +20,11 @@ export default async function DashboardView() {
   const adminUsers = users.filter((u) => u.role === "Admin").length;
 
   const userSummary: UserSummary = { totalUsers, activeUsers, inactiveUsers, adminUsers };
-  const currentUserProfile = await getCurrentUserProfile();
   const isDeveloper = currentUserProfile?.role === "Developer";
 
   return (
     <div className="space-y-6">
-      <WelcomeBanner />
+      <WelcomeBanner profile={currentUserProfile} />
 
       <SummaryCards
         totalUsers={userSummary.totalUsers}
@@ -31,7 +35,11 @@ export default async function DashboardView() {
 
       <QuickActions />
 
-      {isDeveloper && <DeveloperDashboardSection />}
+      {isDeveloper && (
+        <Suspense fallback={<DeveloperDashboardSkeleton />}>
+          <DeveloperDashboardSection />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -195,17 +195,14 @@ Successfully completed:
 ```bash
 npx tsc --noEmit
 npm run lint
+npm run build
 ```
 
-Both completed without TypeScript or ESLint errors.
+All validations passed without TypeScript or ESLint errors. The production build was successfully generated.
 
 ### Production Build
 
-`npm run build` was attempted but the Next.js build worker exited because of a native Node.js **out-of-memory (OOM)** condition.
-
-This was not reported as a TypeScript or ESLint failure.
-
-Possible future test:
+Possible future test if Node.js memory usage becomes an issue:
 
 ```powershell
 $env:NODE_OPTIONS="--max_old_space_size=4096"
@@ -243,6 +240,18 @@ Architecture principles:
 * Type safety
 * Separation of concerns
 * Server-side authorization
+* **Per-request Authentication Deduplication**: Uses React `cache()` for `getCurrentUserProfile()`.
+* **Instant Navigation**: Uses `loading.tsx` skeleton pattern to provide immediate visual feedback during route transitions.
+
+## Performance Optimizations
+
+Recent major performance improvements include:
+
+* **userService Disk-Read Caching**: A 2-second in-memory cache TTL prevents redundant `fs.readFileSync` calls during a single render path.
+* **Authentication Lookup Deduplication**: React `cache()` wraps `getCurrentUserProfile()` so that within a single request, the HMAC verification and disk lookup only execute once.
+* **Developer Dashboard Suspense Streaming**: The heavy `DeveloperDashboardSection` is wrapped in `<Suspense>`, allowing the main dashboard shell to render instantly while the diagnostics stream in.
+* **Supabase Monitoring Optimizations**: `getSupabaseCounts()` executes queries in parallel. Queries now have a 10-second `AbortController` timeout and a 30-second cache TTL to prevent hangs and repeated overhead.
+* **Route Loading Skeletons**: `loading.tsx` files across routes (dashboard, workspace, history, audit, users) provide immediate visual feedback.
 
 ## Current Working State
 
@@ -255,34 +264,20 @@ Recent work includes:
 * Admin/Developer navigation updates
 * Audit navigation
 * Developer Monitoring Dashboard
-* Real Supabase health monitoring
+* Real Supabase health monitoring with 30s cache TTL and 10s timeout
 * Protected user APIs
-* User persistence improvements
+* User persistence improvements with 2s disk-read cache
 * README/handoff documentation
+* **Suspense streaming for Developer Dashboard**
+* **Next.js loading.tsx skeletons for responsive navigation**
 
 ## Known Issues / Pending Work
 
-1. Supabase Developer Dashboard health check is slow (~7148 ms).
-2. Production build requires investigation of Node.js memory usage.
+1. `(dashboard)` route-group authentication layout is missing, falling back to middleware.
+2. Audit logs are purely in-memory and are not persistent across restarts.
 3. Prototype passwords must be hashed before production.
 4. File-backed user persistence must eventually be replaced with a proper database.
 5. Production session secret must be configured securely.
-
-## Next Recommended Task
-
-**Profile and optimize the ~7148 ms Supabase health check.**
-
-Before implementation:
-
-1. Read this README.
-2. Inspect the current code.
-3. Identify the exact slow query/operation.
-4. Create an implementation plan.
-5. Optimize only the verified bottleneck.
-6. Run TypeScript and lint.
-7. Re-test the real Supabase connection status.
-8. Verify authentication/RBAC, Audit Logs, and Personnel Directory remain intact.
-9. Update this README after implementation.
 
 ## AI Handoff Rules
 

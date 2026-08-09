@@ -79,6 +79,8 @@ class InMemoryUserService implements IUserService {
   private users: User[] = [...initialUsers];
   private listeners: Set<() => void> = new Set();
   public readonly instanceId: string;
+  private lastDiskReadAt = 0;
+  private static CACHE_TTL_MS = 2000; // 2 seconds
 
   constructor() {
     this.instanceId = `inst-${Math.random().toString(36).slice(2, 9)}`;
@@ -93,6 +95,15 @@ class InMemoryUserService implements IUserService {
 
   private static getDataFilePath() {
     return path.join(process.cwd(), "data", "users.json");
+  }
+
+  private loadFromDiskIfStale() {
+    const now = Date.now();
+    if (now - this.lastDiskReadAt < InMemoryUserService.CACHE_TTL_MS) {
+      return; // Cache is fresh
+    }
+    this.loadFromDiskIfExists();
+    this.lastDiskReadAt = now;
   }
 
   private loadFromDiskIfExists() {
@@ -119,6 +130,7 @@ class InMemoryUserService implements IUserService {
     try {
       const file = InMemoryUserService.getDataFilePath();
       fs.writeFileSync(file, JSON.stringify(this.users, null, 2), "utf8");
+      this.lastDiskReadAt = Date.now();
     } catch (err) {
       // ignore disk errors for prototype
     }
@@ -137,11 +149,12 @@ class InMemoryUserService implements IUserService {
 
   public async getUsers(): Promise<User[]> {
     // Ensure fresh read from disk in case other instances updated it
-    this.loadFromDiskIfExists();
+    this.loadFromDiskIfStale();
     return [...this.users];
   }
 
   public async getUserById(id: string): Promise<User | null> {
+    this.loadFromDiskIfStale();
     const user = this.users.find((u) => u.id === id);
     return user ? { ...user } : null;
   }

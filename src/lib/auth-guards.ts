@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { IUserProfile } from "@/domain/models/interfaces";
 import { getSession } from "@/lib/session";
 import { securityService } from "@/services/security-service";
@@ -8,7 +9,7 @@ import { userService } from "@/services/userService";
  * Protects administrative routes (/users, /personnel) and API endpoints.
  */
 
-export async function getCurrentUserProfile(): Promise<IUserProfile | null> {
+export const getCurrentUserProfile = cache(async (): Promise<IUserProfile | null> => {
   const session = await getSession();
   if (!session?.userId) {
     return null;
@@ -21,7 +22,7 @@ export async function getCurrentUserProfile(): Promise<IUserProfile | null> {
 
   const { password, ...profile } = user;
   return profile;
-}
+});
 
 export function checkRouteAccess(pathname: string, userProfile: IUserProfile | null): { allowed: boolean; redirectUrl?: string } {
   if (!userProfile) {

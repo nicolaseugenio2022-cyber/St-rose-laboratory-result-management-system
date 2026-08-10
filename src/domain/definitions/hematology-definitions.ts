@@ -21,6 +21,19 @@ export const CBC_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CBC",
   templateTitle: "Complete Blood Count (CBC)",
   reportTitle: null, // Omit report title on document per contract
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: "standard-report-v1",
+    demographics: { ageDisplay: "NumberOnly", layoutVariant: "CBC" },
+    standardComposition: {
+      resultHeaders: ["EXAMINATION", "RESULT", "NORMAL VALUES"],
+      columnRatios: [31, 30, 39],
+      uppercaseParameterLabels: true,
+    },
+    resultSections: [
+      { id: "differential-count", label: "DIFFERENTIAL COUNT", beforeParameterCode: "NEUTROPHIL" },
+    ],
+  },
   examinationFamily: "Hematology",
   rendererFamily: "Tabular",
   suppressAbnormalIndicators: true,

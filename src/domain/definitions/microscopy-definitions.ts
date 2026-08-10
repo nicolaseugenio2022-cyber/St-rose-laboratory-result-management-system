@@ -177,6 +177,27 @@ export const URINALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "URINALYSIS",
   templateTitle: "Routine Urinalysis",
   reportTitle: "ROUTINE URINALYSIS",
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: "standard-report-v1",
+    specializedComposition: {
+      kind: "MicroscopyTwoColumn",
+      sections: [
+        {
+          id: "physical-chemical",
+          label: "PHYSICAL / CHEMICAL EXAMINATION",
+          parameterCodes: ["COLOR", "TRANSPARENCY", "PH", "SP_GRAVITY", "PROTEIN", "GLUCOSE"],
+        },
+        {
+          id: "microscopic",
+          label: "MICROSCOPIC EXAMINATION",
+          parameterCodes: ["WBC", "RBC", "EPITHELIAL_CELLS", "BACTERIA", "MUCUS_THREADS", "AMORPHOUS_CRYSTAL"],
+        },
+      ],
+      conditionalParameterCodes: ["AMORPHOUS_CRYSTAL"],
+      repeatableFindingCategories: ["Additional Microscopic Findings"],
+    },
+  },
   examinationFamily: "Clinical Microscopy",
   rendererFamily: "DiagnosticGrid",
   parameters: [

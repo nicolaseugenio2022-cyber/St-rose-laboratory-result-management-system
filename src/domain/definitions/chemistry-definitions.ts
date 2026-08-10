@@ -33,6 +33,11 @@ export const CHEM_8_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CHEM_8",
   templateTitle: "Clinical Chemistry (Chem 8)",
   reportTitle: "CLINICAL CHEMISTRY",
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: "standard-report-v1",
+    standardComposition: { resultHeaders: ["EXAMINATION", "RESULTS", "NORMAL VALUES"] },
+  },
   examinationFamily: "Clinical Chemistry",
   rendererFamily: "Tabular",
   parameters: [
@@ -65,6 +70,11 @@ export const HDL_LDL_DEFINITION: ClinicalReportDefinition = {
   templateCode: "HDL_LDL",
   templateTitle: "Lipid Profile (HDL / LDL)",
   reportTitle: "LIPID PROFILE",
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: "standard-report-v1",
+    standardComposition: { resultHeaders: ["EXAMINATION", "RESULTS", "NORMAL VALUES"] },
+  },
   examinationFamily: "Clinical Chemistry",
   rendererFamily: "Tabular",
   parameters: [
@@ -99,6 +109,11 @@ export const CHEM_10_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CHEM_10",
   templateTitle: "Clinical Chemistry (Chem 10)",
   reportTitle: "CLINICAL CHEMISTRY",
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: "standard-report-v1",
+    standardComposition: { resultHeaders: ["EXAMINATION", "RESULTS", "NORMAL VALUES"] },
+  },
   examinationFamily: "Clinical Chemistry",
   rendererFamily: "Tabular",
   parameters: [

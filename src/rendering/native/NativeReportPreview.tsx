@@ -1,8 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React from "react";
-import type { NativeComposedPage, NativePagePrimitive, NativeTextStyle } from "./types";
+import React, { useState } from "react";
+import type { NativeComposedPage, NativeImagePrimitive, NativePagePrimitive, NativeTextStyle } from "./types";
 
 const PX_PER_MM = 96 / 25.4;
 const PX_PER_PT = 96 / 72;
@@ -39,6 +39,31 @@ function textStyle(
     overflow: "hidden",
     boxSizing: "border-box",
   };
+}
+
+function NativePreviewImage({ primitive, scale }: { primitive: NativeImagePrimitive; scale: number }) {
+  const optional = primitive.failurePolicy === "OmitImage";
+  const [state, setState] = useState<"pending" | "loaded" | "omitted">(optional ? "pending" : "loaded");
+  if (state === "omitted") return null;
+  return (
+    <img
+      data-native-primitive-id={primitive.id}
+      data-native-optional-image={optional ? "true" : undefined}
+      src={primitive.source}
+      alt=""
+      onLoad={optional ? () => setState("loaded") : undefined}
+      onError={optional ? () => setState("omitted") : undefined}
+      style={{
+        position: "absolute",
+        left: primitive.x * PX_PER_MM * scale,
+        top: primitive.y * PX_PER_MM * scale,
+        width: (primitive.width || 0) * PX_PER_MM * scale,
+        height: (primitive.height || 0) * PX_PER_MM * scale,
+        objectFit: primitive.fit,
+        visibility: optional && state !== "loaded" ? "hidden" : "visible",
+      }}
+    />
+  );
 }
 
 function renderPrimitive(page: NativeComposedPage, primitive: NativePagePrimitive, scale: number) {
@@ -83,22 +108,7 @@ function renderPrimitive(page: NativeComposedPage, primitive: NativePagePrimitiv
   }
 
   if (primitive.kind === "image") {
-    return (
-      <img
-        key={primitive.id}
-        data-native-primitive-id={primitive.id}
-        src={primitive.source}
-        alt=""
-        style={{
-          position: "absolute",
-          left: primitive.x * PX_PER_MM * scale,
-          top: primitive.y * PX_PER_MM * scale,
-          width: (primitive.width || 0) * PX_PER_MM * scale,
-          height: (primitive.height || 0) * PX_PER_MM * scale,
-          objectFit: primitive.fit,
-        }}
-      />
-    );
+    return <NativePreviewImage key={primitive.id} primitive={primitive} scale={scale} />;
   }
 
   if (primitive.kind === "line") {
@@ -145,14 +155,17 @@ function renderPrimitive(page: NativeComposedPage, primitive: NativePagePrimitiv
 
 export function NativeReportPreview({
   page,
-  scale = 0.5,
+  scale = 1,
   className = "",
 }: NativeReportPreviewProps) {
   return (
     <div
       className={`relative overflow-hidden bg-white text-black ${className}`}
       data-native-report-preview={page.templateCode}
+      data-native-composition-source={page.compositionSource}
       data-content-bottom-mm={page.contentBottomMm}
+      data-content-limit-mm="148.5"
+      data-native-text-content="selectable"
       style={{
         width: page.widthMm * PX_PER_MM * scale,
         height: page.heightMm * PX_PER_MM * scale,

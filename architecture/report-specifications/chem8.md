@@ -32,8 +32,10 @@
 2. **Cholesterol** (`CHOLESTEROL`): `< 200` `mg/dL`
 3. **Triglycerides** (`TRIGLYCERIDES`): `35–165` `mg/dL`
 4. **Uric Acid** (`URIC_ACID`): Male `3.4–7.0`, Female `2.4–5.7` `mg/dL`
-5. **SGPT / ALT** (`SGPT_ALT`): `4–41` `U/L`
+5. **SGPT** (`SGPT`): `4–41` `U/L`
 6. **Creatinine** (`CREATININE`): `0.4–1.4` `mg/dL`
+
+`SGPT_ALT` is accepted only as a legacy alias when reconciling older drafts/data. New data uses canonical code `SGPT`.
 
 ### Reagent Kit Information
 - **Requires Kit Info:** No

@@ -8,6 +8,7 @@ import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../
 import { ValidationError, DomainInvariantError } from "../src/lib/errors";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cloneAndFreezeSnapshot } from "../src/domain/completion/completed-snapshot";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
@@ -170,9 +171,17 @@ const hivSession = sessionFor(hiv);
 hivSession.completeSession();
 assert(hivSession.completedSnapshot!.reports[0].requestedBy === "Dr. Required Physician" && hivSession.completedSnapshot!.reports[0].additionalFields.examinationDateTime === "2026-08-09 10:30" && hivSession.completedSnapshot!.reports[0].signatories.length === 3, "HIV freezes Referring Doctor, supplemental demographics, and all three signatories");
 assert(hivSession.completedSnapshot!.reports[0].reagentKitInfo?.lotNumber === "LOT-B5" && hivSession.completedSnapshot!.reports[0].remarks === "", "HIV freezes reagent kit and remarks data");
+assert(hivSession.completedSnapshot!.snapshotVersion === 2, "new completions use completed snapshot version 2");
+assert(hivSession.completedSnapshot!.reports[0].renderContractVersion === 1 && hivSession.completedSnapshot!.reports[0].printedTitle === "HIV 1 & 2 RAPID TEST CERTIFICATE" && hivSession.completedSnapshot!.reports[0].staticContentVersion === "hiv-certificate-v1", "HIV freezes render contract version, printed title, and specialized static-content version");
+for (const address of ["EDITED HIV PATIENT ADDRESS", ""]) {
+  const addressedHivSession = sessionFor(hiv, validReport(hiv), address);
+  addressedHivSession.completeSession();
+  assert(addressedHivSession.completedSnapshot!.demographics.address === address, `HIV completion preserves the ${address ? "edited" : "intentionally blank"} Patient Address exactly without applying a rendering default`);
+}
 
 const cbcSnapshotSession = sessionFor(cbc);
 cbcSnapshotSession.completeSession();
+assert(cbcSnapshotSession.completedSnapshot!.reports[0].printedTitle === null && cbcSnapshotSession.completedSnapshot!.reports[0].staticContentVersion === "standard-report-v1", "CBC freezes its absent printed title and standard static-content contract version");
 const frozenHemoglobin = cbcSnapshotSession.completedSnapshot!.reports[0].results.find((result) => result.parameterCode === "HEMOGLOBIN")!;
 assert(frozenHemoglobin.referenceDisplay !== null && frozenHemoglobin.referenceRule !== null, "snapshot freezes CBC reference display and reference-rule evidence");
 assert(frozenHemoglobin.referenceDisplay === "120–140 g/L", "B5 freezes the Female sex-resolved reference display with its declared unit");
@@ -217,6 +226,12 @@ assert(Object.isFrozen(immutableSession.completedSnapshot) && Object.isFrozen(im
 immutableSession.reports[0].results = [new LaboratoryResultDomain({ ...immutableSession.reports[0].results[0], resultValue: "CHANGED AFTER COMPLETION" })];
 assert(immutableSession.completedSnapshot!.demographics.address === frozenAddress && !immutableSession.completedSnapshot!.reports[0].results.some((result) => result.formattedResultValue === "CHANGED AFTER COMPLETION"), "historical snapshot is independent from later mutable report data and is not recomputed");
 try { immutableSession.completeSession(); throw new Error("expected completion guard"); } catch (error) { assert(error instanceof DomainInvariantError, "completed sessions cannot be completed/recomputed again"); }
+
+const version2Snapshot = immutableSession.completedSnapshot!;
+const legacyV1Reports = version2Snapshot.reports.map(({ renderContractVersion: _renderContractVersion, printedTitle: _printedTitle, staticContentVersion: _staticContentVersion, ...report }) => report);
+const legacyV1Snapshot = cloneAndFreezeSnapshot({ ...version2Snapshot, snapshotVersion: 1, reports: legacyV1Reports });
+assert(legacyV1Snapshot.snapshotVersion === 1 && legacyV1Snapshot.reports[0].printedTitle === undefined, "legacy snapshot v1 remains loadable without historically unavailable render metadata");
+assert(legacyV1Snapshot.reports[0].results[0].formattedResultValue === version2Snapshot.reports[0].results[0].formattedResultValue, "legacy snapshot v1 clinical values remain snapshot-authoritative");
 
 const legacyCompleted = new PatientReportSessionAggregate({ id: "legacy-completed", accessionNumber: "LEGACY-C", status: "Completed", demographics: demographics("LEGACY ADDRESS"), reports: [new LaboratoryReportDomain({ ...validReport(cbc), results: [new LaboratoryResultDomain({ ...validReport(cbc).results[0], resultValue: "LEGACY FINAL VALUE" })] })], completedAt: "2025-01-01T00:00:00.000Z", completedSnapshot: null });
 assert(legacyCompleted.completedSnapshot === null && legacyCompleted.reports[0].results[0].resultValue === "LEGACY FINAL VALUE", "legacy completed rows remain authoritative and are not synthesized from current definitions");

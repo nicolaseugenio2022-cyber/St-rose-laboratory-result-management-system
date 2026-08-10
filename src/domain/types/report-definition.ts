@@ -105,6 +105,91 @@ export interface UnresolvedNoteSpec {
   note: string;
 }
 
+export type CertificateStaticSegmentSpec =
+  | { kind: "Text"; text: string }
+  | { kind: "PatientName" }
+  | { kind: "PatientAddress" }
+  | { kind: "ResultMark"; resultValue: string };
+
+export interface CertificateStaticParagraphSpec {
+  id: string;
+  segments: CertificateStaticSegmentSpec[];
+}
+
+export interface CertificateStaticContentSpec {
+  kind: "Certificate";
+  heading: string;
+  salutation: string;
+  narrativeParagraphs: CertificateStaticParagraphSpec[];
+  sectionTitle: string;
+  fieldLabels: {
+    orderDate: string;
+    orderTime: string;
+    patientName: string;
+    age: string;
+    sex: string;
+    referringDoctor: string;
+    company: string;
+  };
+  resultTable: {
+    testHeader: string;
+    resultHeader: string;
+    testLabel: string;
+  };
+  kitLabels: {
+    lotNumber: string;
+    expirationDate: string;
+  };
+  signatoryLabels: {
+    performedBy: string;
+    verifiedBy: string;
+    licenseNumber: string;
+    medicalTechnologist: string;
+    pathologist: string;
+  };
+}
+
+export interface DeclarativeRenderContractSpec {
+  renderContractVersion: number;
+  staticContentVersion: string;
+  sourceReference?: string;
+  staticContent?: CertificateStaticContentSpec;
+  demographics?: {
+    ageDisplay?: "NumberOnly" | "NumberWithUnit";
+    layoutVariant?: "Standard" | "CBC";
+  };
+  standardComposition?: {
+    resultHeaders?: [string, string, string];
+    columnRatios?: [number, number, number];
+    uppercaseParameterLabels?: boolean;
+  };
+  specializedComposition?:
+    | {
+        kind: "Certificate";
+      }
+    | {
+        kind: "MicroscopyTwoColumn";
+        sections: Array<{
+          id: string;
+          label: string;
+          parameterCodes: string[];
+        }>;
+        conditionalParameterCodes: string[];
+        repeatableFindingCategories: string[];
+      };
+  resultSections?: Array<{
+    id: string;
+    label: string;
+    beforeParameterCode: string;
+  }>;
+  signatorySlots?: Array<{
+    slotId: string;
+    personnelRole: "Pathologist" | "MedicalTechnologist";
+    semanticRole: "Pathologist" | "MedicalTechnologist" | "Examiner" | "Verifier";
+    displayOrder: number;
+  }>;
+}
+
 export interface ClinicalReportDefinition {
   templateCode: string;
   templateTitle: string;       // Catalog / Navigation Display Title
@@ -131,4 +216,5 @@ export interface ClinicalReportDefinition {
   };
   suppressAbnormalIndicators?: boolean;
   unresolvedNotes?: UnresolvedNoteSpec[];
+  renderContract?: DeclarativeRenderContractSpec;
 }

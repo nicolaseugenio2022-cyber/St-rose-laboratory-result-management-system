@@ -40,6 +40,16 @@
 - **Company Name:** Optional staff entry string
 - **Signatories Required:** 3 Signatories (Examiner MedTech, Verifier MedTech, Pathologist)
 
+### Versioned Static Certificate Content
+- **Printed Report Title:** `HIV 1 & 2 RAPID TEST CERTIFICATE`
+- **Static Content Version:** `hiv-certificate-v1`
+- **Static Certificate Heading:** `AIDS FREE CERTIFICATE`
+- **Content Ownership:** Exact certificate wording and labels are captured once in the declarative `HIV_RESULT` render contract, transcribed from `Templates/render/HIVRESULTFORM.png`. The PNG is provenance/QA evidence only and is not a production rendering asset or runtime data source.
+- **Certification Narrative Binding:** `This is to certify that ` + Patient Name + ` of ` + Patient Address + ` was examined for Acquired Immune Deficiency Syndrome (AIDS) based on laboratory test for HIV-1/2.`
+- **Draft Address Source:** Current stored session Address, including an edited or intentionally blank value.
+- **Completed Address Source:** `CompletedSessionSnapshot.demographics.address` exactly as frozen at completion.
+- **No Rendering Default:** Rendering never hardcodes Sta. Rosa or reapplies the new-session Address default.
+
 ### Remarks & Output Rules
 - **Remarks:** Supported, default empty.
 - **Output-Specific Behavior:** Renders dedicated HIV certificate format with full custom layout rules.

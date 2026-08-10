@@ -12,11 +12,10 @@ import { PDFStreamAdapter } from "./adapters/pdf-stream-adapter";
 import { RenderingEngine } from "./engine/RenderingEngine";
 import { getReportLayout } from "./layouts";
 import {
-  composeNativeReportPage,
-  getNativeReportDefinition,
-  NativePDFExporter,
-  NativeReportPreview,
+  getNativeLivePreviewCompositionDefinition,
+  NativeLivePreviewPage,
 } from "./native";
+import { resolveSessionRenderModel } from "./model";
 import "./styles/a4-document.css";
 import { Printer, Download, Eye, Layers, Loader2, Sparkles, Image as ImageIcon } from "lucide-react";
 
@@ -37,18 +36,29 @@ export function SharedRenderingEngine({
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
 
-  // Native pilots remain side-by-side with both established reference paths.
+  // Production Native is the default; historical comparison modes stay explicit.
   const [previewRendererMode, setPreviewRendererMode] = useState<PreviewRendererMode>("native");
   const [isDiagnosticBackgroundOnly, setIsDiagnosticBackgroundOnly] = useState<boolean>(false);
 
   const pagesContainerRef = useRef<HTMLDivElement>(null);
+  const legacyPdfContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
   const selectedReport = activeReports[activePageIndex] || activeReports[0];
-  const selectedNativeDefinition = selectedReport
-    ? getNativeReportDefinition(selectedReport.templateCode)
+  const resolvedSession = resolveSessionRenderModel(session);
+  const selectedResolvedReport = selectedReport
+    ? resolvedSession.reports.find((candidate) => candidate.templateCode === selectedReport.templateCode)
     : null;
+  const selectedNativePreviewDefinition = selectedResolvedReport
+    ? getNativeLivePreviewCompositionDefinition(selectedResolvedReport)
+    : null;
+
+  // Comparison modes never carry implicitly between report tabs.
+  useEffect(() => {
+    setPreviewRendererMode("native");
+    setIsDiagnosticBackgroundOnly(false);
+  }, [selectedReport?.templateCode]);
 
   // Load hydrated template specifications for all reports
   useEffect(() => {
@@ -71,71 +81,106 @@ export function SharedRenderingEngine({
   };
 
   // Handle Native PDF Stream Export consuming SharedRenderingEngine DOM
-  const handleExportPDF = async () => {
-    setIsExportingPDF(true);
+  const handleExportPDF = () => {
+    if (isExportingPDF) return;
     setPdfProgress(10);
-    try {
-      const report = activeReports[activePageIndex] || activeReports[0];
-      const nativeDefinition = report ? getNativeReportDefinition(report.templateCode) : null;
-
-      if (report && nativeDefinition) {
-        await NativePDFExporter.exportSingleReportPDF(session, report, nativeDefinition, {
-          onProgress: (percent) => setPdfProgress(percent),
-        });
-      } else {
-        if (!pagesContainerRef.current) return;
-        await PDFStreamAdapter.generatePDFFromSharedEngine(session, pagesContainerRef.current, {
-          onProgress: (percent) => setPdfProgress(percent),
-        });
-      }
-    } catch (err: unknown) {
-      console.error("PDF Export Error:", err);
-      const message = err instanceof Error ? err.message : "Unknown PDF export error.";
-      alert(`Failed to export PDF report: ${message}`);
-    } finally {
-      setIsExportingPDF(false);
-      setPdfProgress(0);
-    }
+    setIsExportingPDF(true);
   };
 
-  // Helper to render individual report
-  const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
+  // The legacy PDF DOM is mounted only for the duration of an explicit export.
+  // This keeps it out of the production Native Live Preview layout and scroll area.
+  useEffect(() => {
+    if (!isExportingPDF) return;
+    const exportContainer = legacyPdfContainerRef.current;
+    if (!exportContainer) {
+      setIsExportingPDF(false);
+      setPdfProgress(0);
+      return;
+    }
+    const mountedExportContainer: HTMLDivElement = exportContainer;
+    let cancelled = false;
+    async function runExport() {
+      try {
+        await PDFStreamAdapter.generatePDFFromSharedEngine(session, mountedExportContainer, {
+          onProgress: (percent) => {
+            if (!cancelled) setPdfProgress(percent);
+          },
+        });
+      } catch (err: unknown) {
+        console.error("PDF Export Error:", err);
+        const message = err instanceof Error ? err.message : "Unknown PDF export error.";
+        if (!cancelled) alert(`Failed to export PDF report: ${message}`);
+      } finally {
+        if (!cancelled) {
+          setIsExportingPDF(false);
+          setPdfProgress(0);
+        }
+      }
+    }
+    void runExport();
+    return () => {
+      cancelled = true;
+    };
+  }, [isExportingPDF, session]);
+
+  const renderLegacyReportPage = (
+    report: ILaboratoryReport,
+    index: number,
+    isLastPage: boolean,
+    forPdfExport = false
+  ) => {
     const spec = specsMap.get(report.templateCode);
     const rendererFamily = spec?.template.rendererFamily || report.rendererFamily || "Tabular";
     const colorPalette = spec?.template.colorPalette || "#093982";
     const supportsRemarks = spec?.template.supportsRemarks ?? true;
     const requiresKitInfo = spec?.template.requiresKitInfo ?? false;
+    return (
+      <div
+        key={`${forPdfExport ? "pdf-legacy" : "preview-legacy"}-${report.id || `${report.templateCode}-${index}`}`}
+        data-live-preview-renderer={forPdfExport ? "legacy-export" : "legacy"}
+        className={`a4-page-container ${forPdfExport ? "" : "a4-preview-shadow"} ${!isLastPage ? "a4-page-break" : ""}`}
+        style={{ transform: !forPdfExport && targetOutput === "ScreenPreview" ? `scale(${zoomLevel / 100})` : undefined }}
+      >
+        {rendererFamily === "Tabular" && (
+          <TabularRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} />
+        )}
+        {rendererFamily === "SimpleResult" && (
+          <SimpleResultRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} requiresKitInfo={requiresKitInfo} />
+        )}
+        {rendererFamily === "DiagnosticGrid" && (
+          <DiagnosticGridRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} />
+        )}
+        {rendererFamily === "NarrativeCertificate" && (
+          <NarrativeCertificateRenderer report={report} session={session} colorPalette={colorPalette} requiresKitInfo={requiresKitInfo} />
+        )}
+      </div>
+    );
+  };
 
-    // Check if new Template Engine layout exists for this report (CBC in Phase 3)
-    const layoutConfig = getReportLayout(report.templateCode);
-    const nativeDefinition = getNativeReportDefinition(report.templateCode);
-
-    if (nativeDefinition && previewRendererMode === "native") {
-      const composedPage = composeNativeReportPage(nativeDefinition, session, report);
+  // Helper to render individual report
+  const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
+    if (targetOutput === "ScreenPreview" && previewRendererMode === "native") {
+      const resolvedReport = resolvedSession.reports.find((candidate) => candidate.templateCode === report.templateCode);
+      if (!resolvedReport) throw new Error(`Resolved render model is missing report '${report.templateCode}'.`);
       return (
-        <div
+        <NativeLivePreviewPage
           key={report.id || `${report.templateCode}-${index}`}
-          className={`a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
-          style={{
-            transform:
-              targetOutput === "ScreenPreview" && zoomLevel !== 100
-                ? `scale(${zoomLevel / 100})`
-                : undefined,
-            transformOrigin: "top center",
-          }}
-        >
-          <NativeReportPreview
-            page={composedPage}
-            scale={targetOutput === "ScreenPreview" ? 0.5 : 1}
-          />
-        </div>
+          resolvedSession={resolvedSession}
+          resolvedReport={resolvedReport}
+          reportTitle={report.templateTitle}
+          zoomLevel={zoomLevel}
+          isLastPage={isLastPage}
+        />
       );
     }
 
+    // Check if new Template Engine layout exists for this report (CBC in Phase 3)
+    const layoutConfig = getReportLayout(report.templateCode);
     if (layoutConfig && previewRendererMode === "experimental") {
       return (
         <div
           key={report.id || `${report.templateCode}-${index}`}
+          data-live-preview-renderer="experimental"
           className={`a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
           style={{ transform: targetOutput === "ScreenPreview" && zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined }}
         >
@@ -151,51 +196,7 @@ export function SharedRenderingEngine({
       );
     }
 
-    // Fallback Legacy HTML Form Renderer (Preserved 100%)
-    return (
-      <div
-        key={report.id || `${report.templateCode}-${index}`}
-        className={`a4-page-container a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
-        style={{ transform: targetOutput === "ScreenPreview" ? `scale(${zoomLevel / 100})` : undefined }}
-      >
-        {rendererFamily === "Tabular" && (
-          <TabularRenderer
-            report={report}
-            session={session}
-            colorPalette={colorPalette}
-            supportsRemarks={supportsRemarks}
-          />
-        )}
-
-        {rendererFamily === "SimpleResult" && (
-          <SimpleResultRenderer
-            report={report}
-            session={session}
-            colorPalette={colorPalette}
-            supportsRemarks={supportsRemarks}
-            requiresKitInfo={requiresKitInfo}
-          />
-        )}
-
-        {rendererFamily === "DiagnosticGrid" && (
-          <DiagnosticGridRenderer
-            report={report}
-            session={session}
-            colorPalette={colorPalette}
-            supportsRemarks={supportsRemarks}
-          />
-        )}
-
-        {rendererFamily === "NarrativeCertificate" && (
-          <NarrativeCertificateRenderer
-            report={report}
-            session={session}
-            colorPalette={colorPalette}
-            requiresKitInfo={requiresKitInfo}
-          />
-        )}
-      </div>
-    );
+    return renderLegacyReportPage(report, index, isLastPage);
   };
 
   if (activeReports.length === 0) {
@@ -226,10 +227,10 @@ export function SharedRenderingEngine({
 
         {/* Viewport Zoom, Engine Pilot Switch & Actions */}
         <div className="flex flex-wrap items-center gap-3">
-          {selectedNativeDefinition ? (
+          {selectedNativePreviewDefinition ? (
             <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800 p-0.5">
               {([
-                ["native", `Native ${selectedReport?.templateCode || "PDF"}`],
+                ["native", `Native ${selectedReport?.templateCode || "Preview"}`],
                 ["experimental", "Experimental"],
                 ["legacy", "Legacy HTML"],
               ] as const).map(([mode, label]) => (
@@ -332,7 +333,7 @@ export function SharedRenderingEngine({
             ) : (
               <>
                 <Download className="h-3.5 w-3.5" />
-                {selectedNativeDefinition ? "Export Native PDF" : "Export PDF Stream"}
+                Export PDF Stream
               </>
             )}
           </button>
@@ -365,19 +366,40 @@ export function SharedRenderingEngine({
       {/* Render Pages Container */}
       <div
         ref={pagesContainerRef}
-        className="w-full overflow-x-auto py-4 flex flex-col items-center gap-8 bg-slate-100/60 rounded-xl border border-slate-200"
+        data-live-preview-viewport="true"
+        className="w-full max-h-[calc(100dvh-16rem)] overflow-auto bg-slate-100/60 rounded-xl border border-slate-200"
       >
-        {targetOutput === "ScreenPreview" ? (
-          // Render selected active page or all pages stacked
-          activeReports.map((report, idx) => {
-            if (activeReports.length > 1 && idx !== activePageIndex) return null;
-            return renderReportPage(report, idx, idx === activeReports.length - 1);
-          })
-        ) : (
-          // Render all pages sequentially for Print / PDF Stream
-          activeReports.map((report, idx) => renderReportPage(report, idx, idx === activeReports.length - 1))
-        )}
+        <div
+          data-live-preview-page-track="true"
+          className="flex w-max min-w-full flex-col items-center gap-8 py-4"
+        >
+          {targetOutput === "ScreenPreview" ? (
+            // Render only the selected report in the interactive preview viewport.
+            activeReports.map((report, idx) => {
+              if (activeReports.length > 1 && idx !== activePageIndex) return null;
+              return renderReportPage(report, idx, idx === activeReports.length - 1);
+            })
+          ) : (
+            // Render all pages sequentially for Print / PDF Stream.
+            activeReports.map((report, idx) => renderReportPage(report, idx, idx === activeReports.length - 1))
+          )}
+        </div>
       </div>
+
+      {/* C4 keeps the existing raster/legacy PDF route isolated from the native Live Preview DOM. */}
+      {isExportingPDF && (
+        <div
+          ref={legacyPdfContainerRef}
+          className="no-print fixed top-0 -left-[10000px] pointer-events-none"
+          aria-hidden="true"
+          data-c4-preserved-pdf-route="legacy"
+          data-export-dom-active="true"
+        >
+          {activeReports.map((report, index) =>
+            renderLegacyReportPage(report, index, index === activeReports.length - 1, true)
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,14 @@
 import type { EvaluationOutcome, PatientDemographics, ReagentKitInfo, RendererFamily, SignatorySnapshot } from "@/domain/types";
 import type { IRepeatableFindingValue } from "@/domain/models/interfaces";
 
+export const CURRENT_COMPLETED_SNAPSHOT_VERSION = 2 as const;
+
+export interface FrozenRenderContractMetadata {
+  renderContractVersion: number;
+  printedTitle: string | null;
+  staticContentVersion: string;
+}
+
 export interface CompletedResultSnapshot {
   parameterCode: string;
   parameterName: string;
@@ -19,6 +27,10 @@ export interface CompletedReportSnapshot {
   templateCode: string;
   templateTitle: string;
   rendererFamily: RendererFamily;
+  /** Present on snapshot v2+. Absent legacy v1 metadata is resolved by the current versioned static definition only. */
+  renderContractVersion?: number;
+  printedTitle?: string | null;
+  staticContentVersion?: string;
   requestedBy: string;
   additionalFields: Record<string, string>;
   results: CompletedResultSnapshot[];
@@ -29,7 +41,7 @@ export interface CompletedReportSnapshot {
 }
 
 export interface CompletedSessionSnapshot {
-  snapshotVersion: 1;
+  snapshotVersion: 1 | typeof CURRENT_COMPLETED_SNAPSHOT_VERSION;
   completedAt: string;
   demographics: PatientDemographics;
   reports: CompletedReportSnapshot[];

@@ -1,11 +1,8 @@
 import jsPDF from "jspdf";
-import type { ILaboratoryReport, IPatientReportSession } from "@/domain/models/interfaces";
-import { composeNativeReportPage } from "./composer";
 import type {
   NativeComposedPage,
   NativeImagePrimitive,
   NativePagePrimitive,
-  NativeReportDefinition,
   NativeRichTextPrimitive,
   NativeTextPrimitive,
 } from "./types";
@@ -19,13 +16,6 @@ export interface NativePdfAsset {
 
 export interface NativePdfAssetResolver {
   load(source: string): Promise<NativePdfAsset>;
-}
-
-export interface NativePdfExportOptions {
-  fileName?: string;
-  download?: boolean;
-  onProgress?: (progressPercent: number) => void;
-  assetResolver?: NativePdfAssetResolver;
 }
 
 function parseHexColor(value = "#000000"): RGB {
@@ -149,7 +139,11 @@ async function drawPrimitive(
     return;
   }
   if (primitive.kind === "image") {
-    await drawImage(pdf, primitive, resolver);
+    try {
+      await drawImage(pdf, primitive, resolver);
+    } catch (error) {
+      if (primitive.failurePolicy !== "OmitImage") throw error;
+    }
     return;
   }
   if (primitive.kind === "line") {
@@ -186,12 +180,6 @@ export const browserNativePdfAssetResolver: NativePdfAssetResolver = {
   },
 };
 
-function createFileName(session: IPatientReportSession, report: ILaboratoryReport): string {
-  const safe = (value: string, fallback: string) =>
-    (value || fallback).replace(/[^a-zA-Z0-9-]/g, "_");
-  return `LabReport_${safe(report.templateCode, "Report")}_${safe(session.accessionNumber, "Accession")}_${safe(session.demographics.fullName, "Patient")}.pdf`;
-}
-
 export async function createNativeReportPdf(
   page: NativeComposedPage,
   resolver: NativePdfAssetResolver = browserNativePdfAssetResolver
@@ -208,29 +196,4 @@ export async function createNativeReportPdf(
     await drawPrimitive(pdf, page, primitive, resolver);
   }
   return pdf;
-}
-
-export class NativePDFExporter {
-  static async exportSingleReportPDF(
-    session: IPatientReportSession,
-    report: ILaboratoryReport,
-    definition: NativeReportDefinition,
-    options: NativePdfExportOptions = {}
-  ): Promise<Blob> {
-    options.onProgress?.(10);
-    const page = composeNativeReportPage(definition, session, report);
-    options.onProgress?.(25);
-    const pdf = await createNativeReportPdf(
-      page,
-      options.assetResolver || browserNativePdfAssetResolver
-    );
-    options.onProgress?.(90);
-
-    const blob = pdf.output("blob");
-    if (options.download !== false) {
-      pdf.save(options.fileName || createFileName(session, report));
-    }
-    options.onProgress?.(100);
-    return blob;
-  }
 }

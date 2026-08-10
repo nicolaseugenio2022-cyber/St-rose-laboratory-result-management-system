@@ -11,6 +11,10 @@
 
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
 import { validEntryOnly } from "./evaluation-policies";
+import {
+  HIV_CERTIFICATE_STATIC_CONTENT,
+  HIV_CERTIFICATE_STATIC_CONTENT_VERSION,
+} from "./hiv-certificate-static-content";
 
 /**
  * HBSAG: 1 qualitative parameter (Nonreactive / Reactive).
@@ -224,6 +228,18 @@ export const HIV_RESULT_DEFINITION: ClinicalReportDefinition = {
   templateCode: "HIV_RESULT",
   templateTitle: "HIV 1 & 2 Rapid Test Certificate",
   reportTitle: "HIV 1 & 2 RAPID TEST CERTIFICATE",
+  renderContract: {
+    renderContractVersion: 1,
+    staticContentVersion: HIV_CERTIFICATE_STATIC_CONTENT_VERSION,
+    sourceReference: "Templates/render/HIVRESULTFORM.png",
+    staticContent: HIV_CERTIFICATE_STATIC_CONTENT,
+    specializedComposition: { kind: "Certificate" },
+    signatorySlots: [
+      { slotId: "examiner-medtech", personnelRole: "MedicalTechnologist", semanticRole: "Examiner", displayOrder: 1 },
+      { slotId: "verifier-medtech", personnelRole: "MedicalTechnologist", semanticRole: "Verifier", displayOrder: 2 },
+      { slotId: "pathologist", personnelRole: "Pathologist", semanticRole: "Pathologist", displayOrder: 3 },
+    ],
+  },
   examinationFamily: "Serology & Immunology",
   rendererFamily: "Dedicated Certificate",
   parameters: [

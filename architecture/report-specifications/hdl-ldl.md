@@ -31,8 +31,10 @@
 4. **HDL** (`HDL`): `0–110` `mg/dL` (`Computed`: $Cholesterol \times 40 / 150$, 2 decimals half-up)
 5. **LDL** (`LDL`): `< 150` `mg/dL` (`Computed`: $Triglycerides / 5 + HDL_{unrounded} - Cholesterol$, 2 decimals half-up)
 6. **Uric Acid** (`URIC_ACID`): Male `3.4–7.0`, Female `2.4–5.7` `mg/dL` (`NumericText`)
-7. **SGPT / ALT** (`SGPT_ALT`): `4–41` `U/L` (`NumericText`)
+7. **SGPT** (`SGPT`): `4–41` `U/L` (`NumericText`)
 8. **Creatinine** (`CREATININE`): `0.4–1.4` `mg/dL` (`NumericText`)
+
+`SGPT_ALT` is accepted only as a legacy alias when reconciling older drafts/data. New data uses canonical code `SGPT`.
 
 ### Reagent Kit Information
 - **Requires Kit Info:** No

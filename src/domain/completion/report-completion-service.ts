@@ -1,6 +1,12 @@
 import type { IPatientReportSession, ILaboratoryReport, IRepeatableFindingValue } from "@/domain/models/interfaces";
 import type { ClinicalReportDefinition, ParameterSpec } from "@/domain/types/report-definition";
-import type { CompletedReportSnapshot, CompletedResultSnapshot, CompletedSessionSnapshot } from "./completed-snapshot";
+import {
+  CURRENT_COMPLETED_SNAPSHOT_VERSION,
+  type CompletedReportSnapshot,
+  type CompletedResultSnapshot,
+  type CompletedSessionSnapshot,
+  type FrozenRenderContractMetadata,
+} from "./completed-snapshot";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
 import { stripFixedSuffix } from "@/services/formatter-registry";
@@ -8,6 +14,8 @@ import { ValidationError } from "@/lib/errors";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
 
 const STANDARD_SIGNATORIES = { requiredPathologistsCount: 1, requiredMedtechsCount: 1 };
+const STANDARD_RENDER_CONTRACT_VERSION = 1;
+const STANDARD_STATIC_CONTENT_VERSION = "standard-report-v1";
 
 function nonBlank(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -20,6 +28,14 @@ function findResult(report: ILaboratoryReport, parameter: ParameterSpec) {
 
 function rawInputValue(parameter: ParameterSpec, value: string): string {
   return parameter.suffixSpec ? stripFixedSuffix(value, parameter.suffixSpec.suffix) : value;
+}
+
+function freezeRenderContractMetadata(definition: ClinicalReportDefinition): FrozenRenderContractMetadata {
+  return {
+    renderContractVersion: definition.renderContract?.renderContractVersion ?? STANDARD_RENDER_CONTRACT_VERSION,
+    printedTitle: definition.reportTitle ?? null,
+    staticContentVersion: definition.renderContract?.staticContentVersion ?? STANDARD_STATIC_CONTENT_VERSION,
+  };
 }
 
 function validateDemographics(session: IPatientReportSession, errors: Record<string, string>): void {
@@ -134,6 +150,7 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     templateCode: definition.templateCode,
     templateTitle: report.templateTitle,
     rendererFamily: report.rendererFamily,
+    ...freezeRenderContractMetadata(definition),
     requestedBy,
     additionalFields,
     results,
@@ -158,6 +175,11 @@ export class ReportCompletionService {
       return composeReportSnapshot(session, report, definition, errors);
     }).filter((item): item is CompletedReportSnapshot => item !== null);
     if (Object.keys(errors).length > 0) throw new ValidationError(`Session cannot be completed: ${Object.values(errors).join(" ")}`, errors);
-    return { snapshotVersion: 1, completedAt, demographics: structuredClone(session.demographics), reports };
+    return {
+      snapshotVersion: CURRENT_COMPLETED_SNAPSHOT_VERSION,
+      completedAt,
+      demographics: structuredClone(session.demographics),
+      reports,
+    };
   }
 }

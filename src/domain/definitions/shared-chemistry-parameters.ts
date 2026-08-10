@@ -112,6 +112,7 @@ export const BUN_PARAM: ParameterSpec = {
 /** Exact label "SGPT" for CHEM_8 and HDL_LDL */
 export const SGPT_PARAM: ParameterSpec = {
   parameterCode: "SGPT",
+  legacyParameterCodes: ["SGPT_ALT"],
   parameterName: "SGPT",
   inputType: "NumericText",
   unit: "U/L",

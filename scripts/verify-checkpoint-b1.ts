@@ -18,6 +18,7 @@ import { GenericReportResolver } from "../src/services/generic-report-resolver";
 import { ClinicalReportDefinition } from "../src/domain/types/report-definition";
 import { ILaboratoryResult, getResultDisplayValue } from "../src/domain/models/interfaces";
 import { validEntryOnly } from "../src/domain/definitions/evaluation-policies";
+import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -262,5 +263,35 @@ const newResult: ILaboratoryResult = {
   displayOrder: 2,
 };
 assert(getResultDisplayValue(newResult) === "40.00", `getResultDisplayValue reads formattedResultValue when present`);
+
+// ---------------------------------------------------------------------------
+// Test 7: Canonical SGPT Identity & Versioned HIV Static Content
+// ---------------------------------------------------------------------------
+console.log("\n--- Test 7: Render Contract Authority Metadata ---");
+const chem8Definition = ReportDefinitionRegistry.getDefinition("CHEM_8")!;
+const hdlLdlDefinition = ReportDefinitionRegistry.getDefinition("HDL_LDL")!;
+const chem10Definition = ReportDefinitionRegistry.getDefinition("CHEM_10")!;
+for (const definition of [chem8Definition, hdlLdlDefinition]) {
+  const sgpt = definition.parameters.find((parameter) => parameter.parameterCode === "SGPT")!;
+  assert(sgpt.parameterName === "SGPT", `${definition.templateCode} uses canonical SGPT code and printed label`);
+  assert(sgpt.legacyParameterCodes?.includes("SGPT_ALT") === true, `${definition.templateCode} accepts SGPT_ALT only as a legacy alias`);
+}
+assert(chem10Definition.parameters.some((parameter) => parameter.parameterCode === "SGPT_ALT" && parameter.parameterName === "SGPT / ALT"), "CHEM_10 retains canonical SGPT_ALT with printed label SGPT / ALT");
+
+const hivDefinition = ReportDefinitionRegistry.getDefinition("HIV_RESULT")!;
+const hivStatic = hivDefinition.renderContract?.staticContent;
+assert(hivDefinition.reportTitle === "HIV 1 & 2 RAPID TEST CERTIFICATE", "HIV printed report title remains distinct from certificate static content");
+assert(hivDefinition.renderContract?.staticContentVersion === "hiv-certificate-v1", "HIV static certificate content is explicitly versioned");
+assert(hivStatic?.heading === "AIDS FREE CERTIFICATE" && hivStatic.salutation === "TO WHOM IT MAY CONCERN:", "HIV captures the approved certificate heading and salutation declaratively");
+const hivCertificationSegments = hivStatic?.narrativeParagraphs[0].segments || [];
+assert(JSON.stringify(hivCertificationSegments) === JSON.stringify([
+  { kind: "Text", text: "This is to certify that " },
+  { kind: "PatientName" },
+  { kind: "Text", text: " of " },
+  { kind: "PatientAddress" },
+  { kind: "Text", text: " was examined for Acquired Immune Deficiency Syndrome (AIDS) based on laboratory test for HIV-1/2." },
+]), "HIV certification narrative declares the exact Patient Name and Patient Address binding sequence");
+assert(!hivCertificationSegments.some((segment) => segment.kind === "Text" && segment.text.toLocaleLowerCase().includes("sta.rosa")), "HIV static narrative contains no hardcoded Sta. Rosa address");
+assert(hivStatic?.resultTable.testLabel === "Anti HIV-1/2 (Screening)" && hivStatic.sectionTitle === "SEROLOGY (HIV)", "HIV captures the approved serology section and test wording");
 
 console.log("\n=== ALL B1 VERIFICATION TESTS PASSED SUCCESSFULLY ===");

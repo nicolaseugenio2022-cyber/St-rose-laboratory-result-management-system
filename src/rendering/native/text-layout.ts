@@ -27,7 +27,7 @@ export function measureNativeTextWidthMm(
 export function fitNativeTextFontSizePt(options: {
   text: string;
   font: NativeFontRoleDefinition | undefined;
-  weight: NativeFontWeight | undefined;
+  weight?: NativeFontWeight;
   declaredFontSizePt: number;
   availableWidthMm: number;
   guardMm?: number;
@@ -128,5 +128,25 @@ export function fitNativeTextLines(options: {
 
   throw new Error(
     `Native report composition failed: ${options.id} cannot fit complete text within ${options.maxLines} line(s) at the approved minimum font size.`
+  );
+}
+
+export function wrapNativeTextLines(options: {
+  id: string;
+  text: string;
+  font: NativeFontRoleDefinition | undefined;
+  weight?: NativeFontWeight;
+  fontSizePt: number;
+  availableWidthMm: number;
+  guardMm?: number;
+}): string[] {
+  if (!options.text.trim()) return [];
+  const targetWidthMm = fitTargetWidthMm(options.availableWidthMm, options.guardMm);
+  const lines = wrapAtAllowedBoundaries(options.text, targetWidthMm, (value) =>
+    measureNativeTextWidthMm(value, options.font, options.weight, options.fontSizePt)
+  );
+  if (lines) return lines;
+  throw new Error(
+    `Native report composition failed: ${options.id} contains text that cannot wrap within its declared width.`
   );
 }

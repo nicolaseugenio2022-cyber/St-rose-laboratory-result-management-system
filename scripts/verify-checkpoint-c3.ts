@@ -302,10 +302,13 @@ async function main(): Promise<void> {
     .join("\n");
   assert(!/templateCode\s*(?:===|!==|==|!=)\s*["']/.test(genericSource) && !/switch\s*\([^)]*templateCode/.test(genericSource), "generic specialized composers must contain no report-code literal branches");
   assert(!/GenericReportResolver|resolveReferenceDisplay|FormulaRegistry|ILaboratoryReport|IPatientReportSession/.test(genericSource), "specialized composers must import no clinical resolver or mutable session logic");
-  const activeRoutingSource = ["SharedRenderingEngine.tsx", "native/NativeReportPreview.tsx", "native/definition-registry.ts"]
+  const productionPreviewSource = ["SharedRenderingEngine.tsx", "native/NativeReportPreview.tsx"]
     .map((file) => readFileSync(path.join(process.cwd(), "src", "rendering", file), "utf8"))
     .join("\n");
-  assert(!activeRoutingSource.includes("composeSpecializedNativeReportPage"), "C3 must not switch active Preview or PDF routing");
+  const livePreviewComposerSource = readFileSync(path.join(process.cwd(), "src", "rendering", "native", "live-preview-composer.ts"), "utf8");
+  assert(!productionPreviewSource.includes("composeSpecializedNativeReportPage"), "top-level production preview components must route through the shared native composition boundary");
+  assert(livePreviewComposerSource.includes("MicroscopyTwoColumn") && livePreviewComposerSource.includes("Certificate") && livePreviewComposerSource.includes("composeSpecializedNativeReportPage"), "declarative specialized families must route through the shared Live Preview composer");
+  assert(!/templateCode\s*(?:===|!==|==|!=)\s*[\"']/.test(livePreviewComposerSource) && !/switch\s*\([^)]*templateCode/.test(livePreviewComposerSource), "Live Preview routing must select specialized composition by declared layout family, not report-code branches");
 
   process.stdout.write("C3 verification passed: HIV certificate and Urinalysis specialized composition, frozen Address/content ownership, optional signatures, conditional findings, suffix deduplication, and upper-half overflow protection.\n");
 }

@@ -127,6 +127,14 @@ function textByIdPrefix(page: NativeComposedPage, prefix: string): string {
     .join(" ");
 }
 
+function normalizedDisplayText(value: string): string {
+  return value.toLocaleLowerCase().replaceAll("×", "x").replace(/\s+/g, "");
+}
+
+function displayOwnsUnit(display: string, unit: string): boolean {
+  return normalizedDisplayText(display).includes(normalizedDisplayText(unit));
+}
+
 function primitiveBottom(primitive: NativePagePrimitive): number {
   if (primitive.kind === "line") return Math.max(primitive.y1, primitive.y2);
   return primitive.y + (primitive.height || 0);
@@ -172,7 +180,12 @@ async function main(): Promise<void> {
     for (const result of report.results.filter((candidate) => candidate.omission === "Render")) {
       if (result.formattedValue) assert(textByIdPrefix(page, `result-${result.parameterCode}-value`) === result.formattedValue, `${report.templateCode}/${result.parameterCode} formatted value must survive`);
       if (result.referenceDisplay) assert(textByIdPrefix(page, `result-${result.parameterCode}-reference`) === result.referenceDisplay, `${report.templateCode}/${result.parameterCode} reference must survive`);
-      if (result.unitDisplay) assert(textByIdPrefix(page, `result-${result.parameterCode}-unit`) === result.unitDisplay, `${report.templateCode}/${result.parameterCode} unit must survive`);
+      if (result.unitDisplay) {
+        const renderedValue = textByIdPrefix(page, `result-${result.parameterCode}-value`);
+        const renderedReference = textByIdPrefix(page, `result-${result.parameterCode}-reference`);
+        assert(!page.primitives.some((primitive) => primitive.id.startsWith(`result-${result.parameterCode}-unit`)), `${report.templateCode}/${result.parameterCode} must not create a fourth unit pseudo-column`);
+        assert(displayOwnsUnit(renderedValue, result.unitDisplay) || displayOwnsUnit(renderedReference, result.unitDisplay), `${report.templateCode}/${result.parameterCode} unit must survive in its declared RESULT or reference owner`);
+      }
     }
     const images = page.primitives.filter((primitive) => primitive.kind === "image");
     assert(images.some((primitive) => primitive.source === "/st-rose-logo-official.png"), `${report.templateCode} must use the canonical logo`);

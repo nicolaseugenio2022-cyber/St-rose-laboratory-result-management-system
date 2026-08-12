@@ -19,6 +19,18 @@ Read at session start; treat as authoritative and never restate or override:
 - **Codex CLI** (`codex exec`) — the only agent that writes application code.
 - **User** — approves plans and any material change to an approved plan.
 
+The split exists to eliminate duplicated reasoning, duplicated repository reading, and
+duplicated verification — not to hit a token quota. Review rigour is unchanged.
+
+**Claude owns:** architecture and scope reconciliation · authority-file interpretation ·
+freezing the plan · producing a compact delegation prompt · reviewing the complete diff ·
+running the full verification suite · committing once every required gate passes.
+
+**Codex owns:** reading only the frozen scope files and the dependencies those files directly
+require · implementing the approved change · running targeted verification · returning a
+concise delta report. Codex does not rediscover architecture Claude has already supplied,
+does not restate project context, and does not run the historical regression suite.
+
 ## Version control
 
 Neither Claude nor Codex may commit or push unless the user explicitly requests it.
@@ -65,11 +77,38 @@ Read-only inspection tasks may use `--sandbox read-only`; the model pin still ap
 Every `codex exec` prompt must carry:
 
 - The frozen plan verbatim, including its acceptance criteria.
-- "Obey AGENTS.md, Project.md, the report specifications, and existing repository authority."
+- The specific invariants that apply, extracted by Claude — not a pointer to go read them.
 - "Do not modify `AGENTS.md` or `Project.md`."
 - "Implement only this plan. No future-milestone work, no refactors, no unrelated improvements."
 - "Do not commit or push. Leave all changes in the working tree."
-- The verification to run.
+- The targeted verification to run, and nothing beyond it.
+
+### Prompt economy
+
+Claude has already read the authority files and reconciled scope. The prompt carries the
+conclusions, so Codex does not repeat that work:
+
+- Do not instruct Codex to read `AGENTS.md`, `Project.md`, `architecture/`, or unrelated
+  directories when the applicable rules are already stated in the prompt.
+- State the relevant invariants inline. Omit invariants the change cannot touch.
+- Name the files in scope. Codex may open additional files only when an import or call path
+  directly requires it.
+- Require a delta-only report: changed files, results, deviations. Not a restatement of the
+  frozen plan.
+
+Scope discipline, hard stops, and the clean-tree requirement are unchanged. A shorter prompt
+must never mean a vaguer one.
+
+### Verification split
+
+**Codex runs** `tsc`, `lint`, and the one verifier tied to the change — enough to catch its own
+implementation errors, no more. It stops after that and reports.
+
+**Claude runs** the full suite: `build`, M6A, M6B, M6C, the Admin invariant verifier, the
+recovery verifier, and C1, C4, C4.2, C5, as applicable to the change.
+
+Do not run the same expensive gate in both places without a specific reason. Claude may
+delegate broader verification explicitly when a change warrants it.
 
 ## Review contract
 
@@ -89,21 +128,25 @@ Never rely on Codex's summary. Independently check, every time:
 
 The checks above are the review and are never skipped. They are reading, not execution.
 
-### Rerunning verification
+### Running verification
 
-When Codex completed normally and supplied verification evidence, do not mechanically rerun the
-whole suite — the bar in `Project.md` (Milestone Completion Rules) and
-`architecture/IMPLEMENTATION_GUIDELINES.md` is already evidenced. Rerun what a specific reason
-demands:
+The full suite is Claude's responsibility, run once, after the diff review. Codex's targeted
+`tsc`/`lint`/verifier results are a fast failure signal, not a substitute — do not re-run them
+merely to duplicate evidence, and do not treat their absence as a pass.
 
-- Codex was interrupted, timed out, or failed — then run the full required verification (as in C5.1).
-- Verification evidence is missing, partial, or unattributable to this run.
-- Codex's report conflicts with the actual diff.
+Accept Codex's targeted results at face value only for the gates it actually ran and reported.
+Re-run one of those gates when:
+
+- Codex was interrupted, timed out, or failed.
+- Its evidence is missing, partial, or unattributable to this run.
+- Its report conflicts with the actual diff.
 - A verification script itself changed — validate it by running it.
-- An acceptance criterion is not adequately supported by the diff plus the evidence.
-- Anything in the implementation looks suspicious, and running is the cheapest way to settle it.
+- Something in the implementation looks suspicious and running is the cheapest way to settle it.
 
-State which reason applied. When none does, say the evidence was accepted and why that was sound.
+State which reason applied. When none does, say the targeted evidence was accepted and why that
+was sound.
+
+A gate that Codex never ran is not evidence of anything. Claude runs it.
 
 ### Reporting
 

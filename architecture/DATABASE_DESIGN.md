@@ -416,25 +416,14 @@ Root transactional table for a single patient visit.
 ```sql
 CREATE TABLE patient_report_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_number VARCHAR(50) NOT NULL UNIQUE,
+    accession_number TEXT NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL DEFAULT 'Draft' CHECK (
-        status IN ('Draft', 'Validating', 'Completed', 'Expired')
+        status IN ('Draft', 'Completed')
     ),
-    -- Shared Demographics (Captured Once per Visit)
-    patient_name VARCHAR(150) NOT NULL,
-    age_value INTEGER NOT NULL CHECK (age_value >= 0),
-    age_unit VARCHAR(10) NOT NULL DEFAULT 'Years' CHECK (age_unit IN ('Years', 'Months', 'Days')),
-    sex VARCHAR(10) NOT NULL CHECK (sex IN ('Male', 'Female')),
-    address TEXT NOT NULL,
-    patient_status VARCHAR(20) NOT NULL DEFAULT 'OutPatient' CHECK (
-        patient_status IN ('OutPatient', 'InPatient', 'ER')
-    ),
-    examination_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    requesting_physician VARCHAR(150) NOT NULL,
-    referrer VARCHAR(150) NULL,
-    company_name VARCHAR(150) NULL,
+    -- Shared Demographics (Captured Once per Visit) — single JSONB value object
+    demographics JSONB NOT NULL,
     -- Audit & Retention Metadata
-    created_by_user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE RESTRICT,
+    created_by_user_id UUID NULL REFERENCES user_profiles(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ NULL,
@@ -444,6 +433,9 @@ CREATE TABLE patient_report_sessions (
 ```
 
 - **Domain Invariants**: `INV-001` (1 visit = 1 session), `INV-002` (demographics captured once per visit).
+- **Persisted Status Values**: exactly `Draft` and `Completed`, matching the `SessionStatus` domain union. `Validating` is a transient domain-service check performed during completion, not a persisted status. `Expired` is derived from `expires_at`, never stored.
+- **Demographics Storage**: demographics are stored as a single JSONB value object, matching `DOMAIN_MODEL.md` §7.2.1 composition and the resolved render model. They are not normalized into individual columns.
+- **Staged Session Ownership**: `created_by_user_id` is nullable at Milestone 6A because no write path yet supplies an authenticated identity. From 6C the server derives it from the authenticated session on every session write; the client never supplies or overrides it. Before the column is changed to `NOT NULL`, rows with `created_by_user_id IS NULL` must be inspected — the expected count is zero because the remote database is provisioned empty and 6A denies browser-direct protected writes. If unexpected NULL-owner rows exist, the work stops and reports them; no default, fabricated, or Admin-assigned ownership is ever introduced. Draft ownership per `SECURITY_MODEL.md` Invariant 5 is enforced at the server authorization boundary from 6C onward.
 - **Immutable Retention Anchor**: `completed_at` and `expires_at` are set at first completion and are never modified by replacement. Re-completion records `last_replaced_at` for audit purposes only; retention is never restarted or extended.
 - **Atomic Replacement**: Replacement of the session record, reports, results, signatories, and `completed_snapshot` is performed inside a single server-side database function invoked exclusively from the application server boundary. Sequential client-side writes do not satisfy the atomicity requirement.
 

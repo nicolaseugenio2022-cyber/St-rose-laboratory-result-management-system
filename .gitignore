@@ -33,3 +33,7 @@ AGENTS.md
 
 # Templates for Clinic
 Templates/
+
+# Supabase CLI link artifacts (contain project ref and pooler details)
+supabase/.temp/
+supabase/.branches/

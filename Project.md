@@ -36,14 +36,16 @@ Implemented checkpoints:
 - C3 — HIV and Urinalysis specialized declarative composition (verified)
 - C4 — Native Live Preview integration for all 17 reports (verified)
 - C4.1/C4.2 — visual-system, scale, runtime layout, and spacing refinements (verified)
+- Manual C4 visual approval granted; Native approved as the sole production Live Preview renderer
+- Post-C4 Native-only Live Preview cleanup: the Experimental and Legacy HTML preview paths removed from Live Preview
 
-Automated C1, C2, C3, C4, C4.1, and C4.2 verification currently passes. No repository evidence establishes manual visual approval; it remains pending before native PDF migration.
+Automated C1, C2, C3, C4, C4.1, and C4.2 verification currently passes. C4 has received manual visual approval.
 
 ## Current Focus
 
-Complete manual visual approval of the Native Live Preview.
+C5 — Native PDF/export integration and Preview/PDF parity validation.
 
-**C5 has not started.** Native PDF/export migration must not begin until C4 receives manual approval.
+**C5 has not started.** C5.3 removal of transitional legacy PDF infrastructure must not begin until C5.2 Preview/PDF parity receives manual approval.
 
 ---
 
@@ -179,11 +181,13 @@ Implemented:
 - Native Live Preview production routing for all 17 reports
 - True A4 preview geometry and selectable native text
 - Actionable upper-half overflow enforcement
+- Manual C4 visual approval; Native confirmed as the sole production Live Preview renderer
+- Removal of the Experimental and Legacy HTML comparison preview paths
 
 Pending:
 
-- Manual C4 visual approval
 - C5 native PDF/export integration and Preview/PDF parity validation
+- Removal of transitional legacy PDF infrastructure after C5.2 parity approval
 
 ## Milestone 5 — Drafts and History
 
@@ -224,7 +228,7 @@ Pending:
 - Native millimetre-based resolved composition model
 - Browser-native selectable text for Live Preview
 - jsPDF native primitives are available in the native rendering infrastructure
-- Current pre-C5 PDF stream/export still uses the isolated legacy DOM and `html2canvas`/jsPDF route
+- Current pre-C5 PDF stream/export still uses the isolated legacy DOM and `html2canvas`/jsPDF route, reachable only through the explicit PDF export action
 
 ## Deployment Target
 
@@ -317,7 +321,7 @@ All 17 reports resolve through four production layout families:
 - `MicroscopyTwoColumn` — 1 report
 - `Certificate` — 1 report
 
-CBC has one production native path: `StandardAdaptiveTabular`. The obsolete CBC-only native pilot is not part of the active architecture.
+CBC has one production native path: `StandardAdaptiveTabular`. The obsolete CBC-only native pilot has been removed from the repository.
 
 ## Native Live Preview Geometry
 
@@ -391,9 +395,11 @@ The target principle remains:
 
 Current condition:
 
-- Native Live Preview is active for all 17 reports
+- Native Live Preview is the sole production renderer for all 17 reports
+- There is no user-selectable renderer mode
 - Browser Print uses the current application print workflow
-- Legacy and experimental renderers remain available only as explicit comparison/reference paths
+- The experimental Template Engine preview path has been removed
+- Legacy HTML rendering is retained only as transitional PDF export infrastructure and is not reachable as a Live Preview renderer
 - The hidden legacy export DOM mounts only during an explicit PDF export
 - PDF export still uses the pre-C5 rasterized `html2canvas`/jsPDF stream
 - Native PDF migration and Preview/PDF parity are pending C5
@@ -414,6 +420,6 @@ Generic rendering infrastructure should not require report-code-specific present
 
 # Current Objective
 
-Obtain manual visual approval for C4 Native Live Preview, then proceed to C5 Native PDF integration only after explicit approval.
+Implement C5 Native PDF/export integration so that PDF export resolves through the same approved Native composition as Live Preview, then obtain manual Preview/PDF parity approval before removing transitional legacy PDF infrastructure.
 
-C5 and later Phase C checkpoints have not been started.
+C5 has not been started.

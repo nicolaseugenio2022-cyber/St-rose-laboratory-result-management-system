@@ -30,7 +30,7 @@ This document operates strictly within the project authority hierarchy:
 
 1. **Defense in Depth**: Security controls are enforced at multiple independent layers: Client Route Guards, Server API Authorization, and Database-Enforced Row-Level Security (RLS) policies.
 2. **Principle of Least Privilege**: Users are granted minimum operational access required for their role. Non-administrative users cannot manage accounts or personnel master data.
-3. **Zero Local Password Storage**: The application database **never** stores password hashes or identity credentials. Supabase Auth exclusively manages authentication credentials.
+3. **No Recoverable Credential Storage**: Authentication credentials and security-question answers are stored exclusively as salted one-way hashes produced by a memory-hard key derivation function. Plaintext passwords and plaintext recovery answers are never stored, logged, or transmitted to clients. No reversible form of either is retained.
 4. **Strict Identity Decoupling**: Application login identities (`user_profiles`) and PRC-licensed medical professionals (`personnel`) are completely separate entities.
 5. **Report & Signature Integrity**: Pathologist signature images are stored in protected storage with restricted access policies. Completed reports are protected against unauthorized modification.
 
@@ -59,7 +59,7 @@ graph TD
     Invariants --> Inv5["5. Drafts Accessible Only via Ownership Model"]
     Invariants --> Inv6["6. Authorization Enforced Independently of UI"]
     Invariants --> Inv7["7. Least Privilege Applies to Every Operation"]
-    Invariants --> Inv8["8. Zero Credential Storage in Application Schema"]
+    Invariants --> Inv8["8. Irreversible Credential Storage"]
 ```
 
 ## 3.1 Detail of Security Invariant Specifications
@@ -69,9 +69,9 @@ graph TD
 3. **Signatory Authority Isolation**: Authentication identities (`user_profiles`) represent system login accounts and **never** grant medical signatory authority on report outputs.
 4. **Non-Public Signature Storage**: Signature assets in storage are non-public and **never** accessible via unauthenticated or direct public URLs.
 5. **Draft Access Boundaries**: Drafts are accessible only according to active user session context and ownership rules.
-6. **UI-Independent Authorization**: Security controls are enforced at server API and database layers, independently of client UI controls.
+6. **UI-Independent Authorization**: Security controls are enforced at the server boundary independently of client UI controls. Protected application data is accessed only from server code; browser clients hold no database credentials or privileges.
 7. **Least Privilege Enforcement**: Non-administrative users are strictly prohibited from performing administrative operations regardless of API payload manipulation.
-8. **Zero Local Credential Storage**: Application database tables store **zero** password hashes or authentication credentials.
+8. **Irreversible Credential Storage**: Credentials and security-question answers are stored only as salted one-way hashes. No plaintext or reversible form is persisted. Credential and recovery columns are readable exclusively by server-side authentication code, are excluded from every browser-reachable projection, and never appear in any API response.
 
 ---
 
@@ -91,15 +91,15 @@ graph TD
     end
 
     subgraph "Trusted Boundary 2: Security & Database Infrastructure"
-        SupabaseAuth["Supabase Auth Provider"]
+        CredentialStore["user_profiles (scrypt credential hashes)"]
         PostgreSQL["PostgreSQL + Row-Level Security (RLS)"]
         StorageBucket["Protected Storage (personnel-signatures)"]
     end
 
-    ClientApp -- "HTTPS + Auth Token" --> RouteGuard
+    ClientApp -- "HTTPS + session cookie" --> RouteGuard
     RouteGuard -- "Validated Identity Context" --> APIHandlers
-    APIHandlers -- "Verify Credentials" --> SupabaseAuth
-    APIHandlers -- "Execute Query with Auth Context" --> PostgreSQL
+    APIHandlers -- "Verify Credential Hash" --> CredentialStore
+    APIHandlers -- "Server-only secret credential" --> PostgreSQL
     APIHandlers -- "Request Token-Gated Stream" --> StorageBucket
 ```
 
@@ -117,68 +117,95 @@ graph TD
 
 ---
 
-# 5. Authentication Architecture (Supabase Auth)
+# 5. Authentication Architecture (Application-Owned)
 
-## 5.1 Identity & Credential Separation
+## 5.1 Identity, Credentials, and Trust Boundary
 
-Authentication is powered by **Supabase Auth**:
+Authentication is application-owned. Supabase provides database and storage only; Supabase Auth is not used.
 
 ```mermaid
 graph LR
-    subgraph "Identity Provider (auth.users)"
-        AuthUser["auth.users (User ID, Identity Credentials)"]
+    subgraph "Browser (Untrusted)"
+        Client["Client Components"]
     end
 
-    subgraph "Application Database (user_profiles)"
-        UserProfile["user_profiles (id REFERENCES auth.users, username, role, status)"]
+    subgraph "Application Server (Trusted)"
+        Boundary["Session Verification + Role Authorization"]
     end
 
-    AuthUser -- "1:1 Primary Key Link" --> UserProfile
+    subgraph "Database"
+        UserProfile["user_profiles (username UK, role, status, credential hashes)"]
+    end
+
+    Client -- "server action / route handler" --> Boundary
+    Boundary -- "server-only secret credential" --> UserProfile
 ```
 
-- **Identity Provider Responsibilities**: Manages primary user identity, credential validation, token issuance, and session revocation.
-- **Application Profile Responsibilities (`user_profiles`)**: Stores domain-specific authorization metadata (`username`, `role`, `status`) referencing `auth.users(id)` via `UUID PRIMARY KEY`.
+- **Identity**: `user_profiles` is the single authentication identity record, keyed by a unique `username`. No email address or phone number is collected or required.
+- **Username canonicalization**: Usernames are canonicalized before storage and before every lookup: NFKC normalization, outer-whitespace trim, then locale-independent lowercasing. The canonical form is the stored and displayed form. Permitted characters are `a–z`, `0–9`, and the separators `.`, `_`, `-`; the value must begin and end with `a–z` or `0–9`, contain no consecutive separators, and be 3–50 characters long. Uniqueness is enforced on the canonical value, so `Admin` and `admin` are the same account and cannot both exist.
+- **Credentials**: Passwords and security-question answers are stored as salted one-way scrypt hashes. The security question itself is stored in readable form; its answer is never recoverable.
+- **Key derivation**: scrypt with `N=32768`, `r=8`, `p=1`, 32-byte derived key, and a 16-byte cryptographically random salt per record, independently generated for passwords and for recovery answers. `maxmem` is configured explicitly at 64 MiB; Node's 32 MiB default is insufficient for these parameters. Verification uses `timingSafeEqual`. Encoded form: `scrypt$N$r$p$<base64 salt>$<base64 hash>`.
+- **Recovery answer normalization**: Answers are normalized identically before hashing and before verification — NFKC normalization, outer-whitespace trim, internal whitespace runs collapsed to a single space, then locale-independent lowercasing. Normalization affects whitespace and case only; punctuation and diacritics are never stripped.
+- **Sessions**: Represented by an HMAC-signed, httpOnly, server-verified cookie. A `token_version` counter on `user_profiles` is embedded in the session payload; incrementing it invalidates all existing sessions for that account.
+- **Trust boundary**: Every protected operation verifies the session server-side and resolves the caller's role and active status before any data access occurs. Client components call server actions or route handlers; they never query protected tables directly.
+- **Recovery**: Username and security-question based. No email or phone recovery exists.
 - **Decoupling Rule**: `user_profiles` maintains **zero connection** to `personnel`.
 
 ---
 
 # 6. Authorization Model & Completed Report Authorization
 
-The application enforces a 2-tier Role-Based Access Control (RBAC) model across all resources:
+The application enforces a 3-tier Role-Based Access Control (RBAC) model across all resources:
 
 ## 6.1 Role Definitions
 
 - **`Admin`**: Full system administration access. Retains system-wide administrative authority to manage user accounts, toggle account active/inactive status, manage personnel directory, upload signature assets, create patient sessions, encode results, launch previews, print reports, and view history across all laboratory records.
 - **`User`**: Clinical operational access. Can create patient sessions, encode results, manage drafts, replace completed reports within the allowed 30-day retention window, launch previews, print reports, and view history. Cannot access `/users` or `/personnel`.
+- **`Developer`**: Technical monitoring and maintenance access — system health, database health and status, diagnostics, and audit/technical information. Least privilege applies: no user-management writes, no Personnel Directory writes, no routine patient or report operational access, and no routine Completed History access. Developer accounts may be created or granted only by an existing Developer; Admin cannot create or promote them.
 
 ## 6.2 Confirmed Rules for Completed Reports
 
 1. **30-Day Retention Boundary**: Completed reports are retained for **30 days** (`expires_at = completed_at + 30 days`).
-2. **Replacement within Retention**: Authorized users may reopen, preview, print, regenerate PDF, and replace the current report within the allowed 30-day retention period. Replaces active report record and signatory snapshots without version branching.
+2. **Replacement within Retention**: Authorized users may reopen, preview, print, regenerate PDF, and replace the current report within the allowed 30-day retention period. Replacement is performed by re-completion: the session is reopened in an explicit Replacement Mode, revalidated through the existing completion pipeline, and a newly composed completion snapshot atomically replaces the current one. A frozen snapshot is never mutated or bypassed. The retention anchor is immutable: `expires_at` remains `original completed_at + 30 days` and is never restarted or extended by replacement. No version branching is introduced.
 3. **No Version History**: There is **no version history** in the initial release (single-record replacement semantics).
 4. **UI-Independent Authorization**: Authorization must be enforced outside the client UI (at both Server API and Database RLS layers).
 5. **Immutability of Expired Reports**: Expired reports (`expires_at < NOW()`) cannot be edited or replaced under any circumstances.
 
-> [!WARNING]
-> **UNRESOLVED AUTHORIZATION POLICY DECISION**:
-> **Completed Report visibility and edit scope across different users requires client confirmation.**
-> 
-> Current authority documents do not explicitly establish whether standard `User` accounts may view/edit:
-> - **All completed laboratory reports system-wide** across the entire laboratory, or
-> - **Only Patient Report Sessions they originally created**.
-> 
-> To preserve requirements integrity, this scope is **NOT** inferred or hardcoded in architecture. The database architecture permits either policy via RLS adjustments once client confirmation is received.
+> [!NOTE]
+> **RESOLVED — Completed Report visibility.** `Admin` and `User` may retrieve all completed
+> laboratory reports system-wide within the approved retention policy. No per-encoder ownership
+> model is introduced. `Developer` does not receive routine Completed History access.
 
 ## 6.3 Authorization Matrix for Completed Reports
 
-| Action on Completed Report | `User` Role | `Admin` Role | Enforcement Boundary & Condition |
-|---|---|---|---|
-| **View Completed Report** | Allowed (Scope TBD) | Allowed (System-Wide) | Authenticated Active User required. |
-| **Launch Preview** | Allowed (Scope TBD) | Allowed (System-Wide) | Authenticated Active User required. Invokes shared rendering engine. |
-| **Print Report** | Allowed (Scope TBD) | Allowed (System-Wide) | Authenticated Active User required. Invokes print stream target. |
-| **Export PDF** | Allowed (Scope TBD) | Allowed (System-Wide) | Authenticated Active User required. Invokes PDF output adapter. |
-| **Edit / Replace Report** | Allowed (Scope TBD) | Allowed (System-Wide) | Allowed **only** within 30-day retention window (`completed_at + 30 days`). |
-| **Edit Expired Report** | **Denied** | **Denied** | Immutability rule: Expired reports (`expires_at < NOW()`) cannot be edited. |
+| Action on Completed Report | `User` Role | `Admin` Role | `Developer` Role | Enforcement Boundary & Condition |
+|---|---|---|---|---|
+| **View Completed Report** | Allowed (System-Wide) | Allowed (System-Wide) | **Denied** | Authenticated Active User required. |
+| **Launch Preview** | Allowed (System-Wide) | Allowed (System-Wide) | **Denied** | Authenticated Active User required. Invokes shared rendering engine. |
+| **Print Report** | Allowed (System-Wide) | Allowed (System-Wide) | **Denied** | Authenticated Active User required. Invokes print stream target. |
+| **Export PDF** | Allowed (System-Wide) | Allowed (System-Wide) | **Denied** | Authenticated Active User required. Invokes PDF output adapter. |
+| **Edit / Replace Report** | Allowed (System-Wide) | Allowed (System-Wide) | **Denied** | Allowed **only** within 30-day retention window (`original completed_at + 30 days`). Performed by re-completion. |
+| **Edit Expired Report** | **Denied** | **Denied** | **Denied** | Immutability rule: Expired reports (`expires_at < NOW()`) cannot be edited. |
+
+## 6.4 Developer Directory Visibility
+
+`Developer` may read a restricted user directory exposing only `username`, `role`, and account `status`. This read is served exclusively through an authenticated server action or route handler that verifies the session, confirms the Developer role, and returns a restricted projection. The browser holds no direct database privilege on this data.
+
+Developer has no access to credential or recovery fields, no password-reset controls, no account write operations, no Personnel Directory writes, and no routine patient or report access.
+
+## 6.5 Initial Developer Bootstrap
+
+The permanent rule stands: Admin cannot create or promote Developer accounts, and Developer grants remain specially protected.
+
+A fresh database is provisioned with its first Developer account through a one-time operator procedure that is not exposed as application functionality:
+
+- Executed directly against the server by an operator holding database access; no HTTP route, UI affordance, or application API performs it.
+- Refuses to execute if any Developer account already exists.
+- Temporary credentials are supplied at invocation through the process environment, never from source files, migrations, documentation, logs, or committed artifacts, and are never echoed.
+- The created account carries `must_change_password = true` and `must_set_recovery = true`, so the operator's temporary credential cannot persist and the operator never learns the recovery answer.
+- Execution is recorded as an audit event.
+
+This creates no permanent Admin-to-Developer escalation path.
 
 ---
 
@@ -189,8 +216,8 @@ The system strictly enforces the separation of **Authentication Users** (`user_p
 ```mermaid
 graph TD
     subgraph "Authentication Identity System"
-        AuthUser["auth.users (Identity Provider User ID)"]
-        UserProfile["user_profiles (System Login Account: Admin / User)"]
+        AuthUser["Application Session (server-verified cookie)"]
+        UserProfile["user_profiles (System Login Account: Admin / User / Developer)"]
         AuthUser --> UserProfile
     end
 
@@ -209,7 +236,18 @@ graph TD
 
 # 8. Database Security Strategy (Row-Level Security)
 
-Database security is enforced via PostgreSQL Row-Level Security (RLS) on **all 10 application tables**:
+## 8.0 Authorization Boundary Under Application-Owned Authentication
+
+Because authentication is application-owned rather than Supabase Auth, `auth.uid()` is not available to database policies. Authorization is layered:
+
+1. **Authoritative layer — application server.** The server verifies the session cookie, resolves role and active status, and authorizes every operation. This is the authoritative boundary for all Admin / User / Developer decisions.
+2. **Defensive layer — database permissions and RLS.** Grants and policies deny unauthorized direct access, particularly from browser or anon clients. They are defense-in-depth, not the per-user authorization mechanism.
+
+Privileged server operations use a server-only Supabase secret credential that bypasses RLS. For those calls, RLS must not be represented as providing per-user authorization; the server boundary is authoritative. Policies written against `auth.uid()` are obsolete and must be superseded.
+
+**Browser and anon access posture**: the anon role holds no SELECT or write privilege on any protected application table or view, including identity, personnel, session, report, audit, and directory data.
+
+Database security is additionally enforced via PostgreSQL Row-Level Security (RLS) on the application tables:
 
 ## 8.1 Active Status Verification Requirement
 
@@ -217,9 +255,11 @@ All database RLS policies evaluate caller identity context and verify that the r
 
 ## 8.2 Summary of Database RLS Boundaries
 
-- **Read Operations (`SELECT`)**: Restricted to authenticated active users for operational tables.
-- **Administrative Write Operations (`INSERT`/`UPDATE`/`DELETE`)**: Restricted strictly to active `Admin` users for `user_profiles`, `personnel`, and template configuration tables (`report_templates`, `template_parameters`, `template_signatory_requirements`).
-- **Operational Write Operations**: Allowed for active `Admin` and `User` accounts for `patient_report_sessions`, `laboratory_reports`, `laboratory_results`, `report_signatories`, and `auto_suggestions`.
+- **Browser / anon role**: no privilege on protected application tables or views.
+- **Server privileged access**: performed with a server-only Supabase secret credential after the application server has verified the session and authorized the operation.
+- **Administrative Write Operations**: authorized at the server boundary for active `Admin` accounts only, for `user_profiles`, `personnel`, and template configuration tables (`report_templates`, `template_parameters`, `template_signatory_requirements`).
+- **Operational Write Operations**: authorized at the server boundary for active `Admin` and `User` accounts, for `patient_report_sessions`, `laboratory_reports`, `laboratory_results`, `report_signatories`, and `auto_suggestions`.
+- **Audit records**: append-only; no application role holds UPDATE or DELETE privilege, and database-level enforcement rejects such operations regardless of credential.
 
 ---
 
@@ -230,6 +270,8 @@ Pathologist PNG signature images represent sensitive legal medical assets:
 - **Storage Bucket Boundary**: Stored in a **non-public** storage bucket (`personnel-signatures`).
 - **Access Rule**: Direct unauthenticated HTTP downloads are blocked.
 - **Delivery Mechanism**: Served exclusively via authenticated API proxy handlers or short-lived, time-limited token-gated access URLs.
+- **Service Credential Handling**: The server-only Supabase secret credential (`SUPABASE_SECRET_KEY`) is the privileged server-side Data API credential. It is strictly server-only and must never appear in a `NEXT_PUBLIC_*` variable, a client-importable module, a client bundle, application logs, committed files, documentation, tests, migrations, or any prompt or message sent to an external service. It is used only after the application server has authenticated the session and authorized the operation.
+- **Migration Credential Separation**: Schema migrations and DDL use the Supabase CLI or a direct database migration connection with operator-supplied credentials. The server-only secret credential is never used for DDL, and migration credentials never enter application environment configuration.
 
 ---
 
@@ -247,6 +289,11 @@ Security-relevant operations across the system must be logged to an append-only 
    - User status changes (Active <-> Inactive)
    - User role modifications
    - Password reset requests
+   - Security-question configuration or change
+   - Recovery lookup attempts and answer verification failures
+   - Password reset completion
+   - Account lockout activation and release
+   - Initial Developer bootstrap execution
 2. **Personnel & Credential Events**:
    - Personnel record creation or modification
    - PRC license number updates
@@ -260,6 +307,16 @@ Security-relevant operations across the system must be logged to an append-only 
    - Unauthorized access attempts to administrative routes (`/users`, `/personnel`)
    - Failed authentication attempts
    - Direct signature asset access denials
+
+## 10.5 Accepted Residual Risk — Recovery Question Disclosure
+
+The approved recovery workflow displays an account's security question after username entry, which confirms account existence. This is intrinsic to the client-approved workflow. Mitigations: per-username and per-IP rate limiting, progressive cooldown and lockout, uniform response behaviour where practical, and persistent auditing of every recovery attempt. Accepted and approved by the client.
+
+## 10.6 Audit Immutability Enforcement
+
+Because privileged server operations use a server-only secret credential that bypasses row-level security, grants alone cannot guarantee append-only behaviour. Immutability is enforced at the database level by a trigger that raises an exception on any UPDATE or DELETE against `audit_logs`, in addition to revoking those privileges from application roles.
+
+Any exceptional maintenance requiring modification or pruning is a separate, explicit, individually authorized database administration action, never reachable through application code paths.
 
 ---
 
@@ -275,11 +332,16 @@ Security-relevant operations across the system must be logged to an append-only 
 
 | Architecture Requirement / Invariant | Security Model Mapping | Status |
 |---|---|---|
-| **Zero Credential Storage** | Identity provider owns credentials; application schema stores zero hashes | ✅ Pass |
+| **Irreversible Credential Storage** | Salted one-way scrypt hashes only; no plaintext or reversible form persisted | ✅ Pass |
+| **Three-Tier Role Model** | `Admin`, `User`, `Developer` defined in §6.1 with Developer least privilege | ✅ Pass |
+| **Server-Only Data Access Boundary** | §8.0 establishes the server as the authoritative authorization boundary | ✅ Pass |
+| **Anon Access Denial** | Browser/anon holds no privilege on protected tables or views | ✅ Pass |
+| **Audit Immutability** | Database-enforced append-only via trigger; §10.6 | ✅ Pass |
 | **Auth User vs Personnel Decoupling** | `user_profiles` and `personnel` strictly separated; zero FKs | ✅ Pass |
 | **Security Invariants** | Section 3 documents 8 non-negotiable security contracts | ✅ Pass |
-| **Unresolved Policy Documented** | "Completed Report visibility and edit scope across different users requires client confirmation." | ⚠️ Recorded |
-| **30-Day Retention Rules** | 30-day replacement allowed; expired reports immutable; no version history | ✅ Pass |
+| **Completed Report Visibility** | Resolved: system-wide for `Admin` and `User`; `Developer` denied | ✅ Resolved |
+| **Accepted Residual Risk** | Recovery-question account-existence disclosure documented in §10.5 | ⚠️ Accepted |
+| **30-Day Retention Rules** | Immutable retention anchor; replacement by re-completion; expired reports immutable; no version history | ✅ Pass |
 | **Audit Categories Specification** | Section 10 explicitly frames 4 audit categories as implementation requirements | ✅ Pass |
 | **Signature Asset Security** | Non-public storage bucket; served via authenticated token-gated access | ✅ Pass |
 | **Authority Baseline Alignment** | 100% consistent with all 7 frozen authority specifications | ✅ Pass |

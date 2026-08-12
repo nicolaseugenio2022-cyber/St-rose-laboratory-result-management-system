@@ -209,13 +209,28 @@ approval they must not:
 
 ## Milestone 5 — Drafts and History
 
-Draft persistence, completed snapshots, history, and re-rendering foundations exist as supporting application work. Formal milestone completion and any remaining editing, reprinting, retention, or operational acceptance work must be assessed separately.
+Draft persistence, completed snapshots, history, and re-rendering foundations exist as supporting application work.
+
+Approved scope:
+
+- Completed-report replacement correction: reopen in Replacement Mode, re-completion producing a new frozen snapshot, atomic database replacement, immutable retention anchor
+- Personnel Directory: Admin-managed Pathologist and Medical Technologist records feeding the Workspace signatory dropdowns
+- Draft autosave with accidental-refresh protection
+- Completed History persistence and system-wide visibility within the retention policy
 
 ## Milestone 6 — Production Hardening
 
 Pending:
 
-- Security hardening
+- Security hardening:
+  - Migration-state preflight and schema provisioning
+  - Application-owned authentication with irreversible credential storage
+  - Canonical username semantics
+  - Server-only protected data access; removal of browser-direct database access
+  - Developer least-privilege boundary
+  - One-time protected Developer bootstrap
+  - Persistent, database-enforced append-only audit logging
+  - Admin-mediated password recovery
 - Performance validation
 - Accessibility validation
 - Monitoring
@@ -236,9 +251,10 @@ Pending:
 
 ## Data and Infrastructure
 
-- Supabase PostgreSQL
-- Supabase Auth
-- Supabase Storage, including personnel signature assets
+- Application-owned authentication: username and password with salted one-way scrypt hashing; no email or phone identifier is collected
+- Server-verified application session cookies
+- Supabase PostgreSQL, accessed from server code only; browser clients do not query protected tables directly
+- Supabase Storage, including personnel signature assets, served through authenticated server endpoints
 - Repository/service abstractions, with some development services retaining local or in-memory behavior
 
 ## Report Rendering
@@ -266,6 +282,17 @@ Responsible for:
 - Report Registry Management
 - Optional Pathologist signature management
 - System Configuration
+
+## Developer
+
+Responsible for:
+
+- System health monitoring
+- Database health and status
+- Diagnostics and technical maintenance information
+- Audit and technical information review
+
+Developer is an authentication role. It holds no routine operational or administrative write privileges and no routine patient or report access.
 
 ## Laboratory User
 
@@ -298,6 +325,16 @@ Authentication users are independent from laboratory personnel. Authentication c
 
 Supported personnel roles include Pathologist and Medical Technologist, with report-specific semantic slots such as HIV Examiner and Verifier.
 
+Authentication roles are Admin, User, and Developer. Personnel classifications are Pathologist and Medical Technologist. Pathologist and Medical Technologist are never authentication roles, and authentication roles never confer signatory authority.
+
+Account creation collects username, password, and a security question. The account holder sets the recovery answer during first-login setup, so the administrator never knows it. Password recovery is username and security-question based. No email address or phone number is collected.
+
+## Data Access Boundary
+
+Protected application data is accessed only from server code. Client components call server actions or route handlers, which verify the application session, resolve the caller's role, and enforce authorization before any database operation. Browser clients hold no database credentials or privileges. Database grants and row-level policies provide defense against unauthorized direct access; they are not the per-user authorization mechanism.
+
+Verification of this boundary uses two distinct checks. Schema availability is verified through the authorized server path. Denial of browser access is verified separately using the browser/anon credential, where any successful read of a protected table is a security failure.
+
 ## Declarative Report Registry
 
 The Report Registry contains exactly 17 authoritative report definitions. It determines:
@@ -322,6 +359,8 @@ Draft rendering may resolve current Encoding state through approved domain resol
 Completed reports render from frozen completed snapshots. Frozen formatted values, reference displays, evaluation outcomes, computations, demographics, Requested By values, remarks, kit information, findings, and signatory identities are output-authoritative and must not be clinically recomputed from current definitions.
 
 Snapshot v2 freezes `renderContractVersion`, `printedTitle`, and `staticContentVersion`. Legacy snapshot v1 remains readable under its documented compatibility policy.
+
+Replacement within the retention window does not weaken this authority. A completed report is replaced only by re-completion, which composes a new frozen snapshot through the normal completion rules and atomically replaces the current one. Frozen snapshots are never mutated in place, the retention anchor is never restarted, and render-time clinical recomputation remains forbidden.
 
 ## Shared Resolved Render Model
 

@@ -30,7 +30,7 @@ This document operates strictly within the project authority hierarchy:
 ## 2.1 Core Database Principles
 
 1. **Faithful Domain Mapping**: Relational tables map 1:1 to domain aggregates and entities established in `DOMAIN_MODEL.md`.
-2. **Supabase Auth Integration**: Passwords and core authentication identities are managed strictly by Supabase Auth (`auth.users`). Application profiles and roles (`Admin`, `User`) reside in `user_profiles` referencing `auth.users(id)`. No credentials or password hashes are duplicated.
+2. **Application-Owned Authentication**: `user_profiles` is the single authentication identity record, keyed by a unique canonical `username`. Roles are `Admin`, `User`, and `Developer`. Passwords and security-question answers are stored exclusively as salted one-way scrypt hashes. No plaintext or reversible credential form is stored. No email or phone identifier is collected. Supabase provides database and storage only; Supabase Auth is not used.
 3. **Decoupled Authentication vs. Personnel**: `user_profiles` (application login access) and `personnel` (PRC-licensed medical professionals printed on reports) are strictly separate tables with no foreign key dependencies.
 4. **Refined Template Extensibility**:
    - A new laboratory template using existing renderer families (`Tabular`, `SimpleResult`, `DiagnosticGrid`, `NarrativeCertificate`), supported input types, and existing reference rule strategies is configuration-only (requiring SQL `INSERT` rows into `report_templates` and `template_parameters`).
@@ -56,7 +56,6 @@ This document operates strictly within the project authority hierarchy:
 
 ```mermaid
 erDiagram
-    supabase_auth_users ||--|| user_profiles : "extends identity"
     user_profiles ||--o{ patient_report_sessions : "creates"
     
     patient_report_sessions ||--|{ laboratory_reports : "owns"
@@ -72,16 +71,17 @@ erDiagram
     
     auto_suggestions
 
-    supabase_auth_users {
-        uuid id PK
-        varchar email
-    }
-
     user_profiles {
-        uuid id PK, FK
+        uuid id PK
         varchar username UK
         varchar role
         varchar status
+        text password_hash
+        text security_question
+        text security_answer_hash
+        boolean must_change_password
+        boolean must_set_recovery
+        integer token_version
         timestamptz created_at
         timestamptz updated_at
     }
@@ -212,21 +212,110 @@ erDiagram
 ## 4.1 Access & Administration Context
 
 ### 4.1.1 `user_profiles`
-Extends Supabase Auth identity (`auth.users`) with application domain role and account status. No passwords or security credentials are duplicated.
+The single application authentication identity record. Credentials are stored only as salted one-way hashes; no plaintext or reversible form is persisted.
 
 ```sql
 CREATE TABLE user_profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) NOT NULL UNIQUE,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'User')),
+    role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'User', 'Developer')),
     status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+    password_hash TEXT NOT NULL,
+    security_question TEXT NOT NULL,
+    security_answer_hash TEXT NULL,
+    must_change_password BOOLEAN NOT NULL DEFAULT TRUE,
+    must_set_recovery BOOLEAN NOT NULL DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 1,
+    password_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 - **Domain Mapping**: Aggregate Root `AuthenticationUser`.
-- **Decoupling Rule**: References `auth.users(id)` for Supabase Auth identity, but maintains **zero** foreign key dependencies with `personnel`.
+- **Canonical Username**: `username` stores the canonical form only — NFKC-normalized, trimmed, lowercased. Permitted characters are `a–z`, `0–9`, and the separators `.`, `_`, `-`; the value must begin and end with `a–z` or `0–9`, contain no consecutive separators, and be 3–50 characters long. The UNIQUE constraint applies to this canonical value, preventing logically duplicate accounts such as `Admin` and `admin`.
+- **Credential Storage**: `password_hash` and `security_answer_hash` hold encoded scrypt digests of the form `scrypt$N$r$p$<base64 salt>$<base64 hash>` with independent random salts. Salt and KDF parameters are encoded inside the hash string; no separate columns are required.
+- **First-Login Setup**: `security_answer_hash` is nullable because the account holder sets it at first login; `must_set_recovery` enforces completion. `must_change_password` and `must_set_recovery` are independently enforced.
+- **Session Invalidation**: `token_version` is embedded in the session payload; incrementing it invalidates all existing sessions for the account.
+- **Decoupling Rule**: Maintains **zero** foreign key dependencies with `personnel`.
+
+### 4.1.2 `auth_attempts`
+Abuse protection for login and recovery flows. Counters are persisted because serverless instances do not share memory.
+
+```sql
+CREATE TABLE auth_attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT NOT NULL,
+    attempt_kind TEXT NOT NULL CHECK (attempt_kind IN
+        ('Login','RecoveryLookup','RecoveryAnswer','PasswordReset')),
+    succeeded BOOLEAN NOT NULL,
+    client_ip TEXT,
+    attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_auth_attempts_username_time ON auth_attempts (username, attempted_at DESC);
+```
+
+### 4.1.3 `audit_logs`
+Append-only security and lifecycle event record.
+
+```sql
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    performed_by_user_id UUID NULL,
+    performed_by_username TEXT NULL,
+    target_reference TEXT NULL,
+    details JSONB NULL,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+REVOKE UPDATE, DELETE ON audit_logs FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION audit_logs_append_only()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_logs is append-only: % is not permitted', TG_OP;
+END;
+$$;
+
+CREATE TRIGGER trg_audit_logs_append_only
+    BEFORE UPDATE OR DELETE ON audit_logs
+    FOR EACH ROW EXECUTE FUNCTION audit_logs_append_only();
+```
+
+- **Immutability**: The trigger holds even for privileged callers that bypass row-level security. Grants alone are insufficient because server operations use a secret credential that bypasses RLS.
+- **Exceptional Maintenance**: Disabling the trigger is a separate, explicit, individually authorized database administration action, never reachable through application code paths.
+
+### 4.1.4 Credential and Directory Protection
+
+Credential and recovery columns are protected by three independent mechanisms:
+
+1. **Server-only access** — credential reads and writes occur exclusively in server-side authentication code. No browser-reachable code queries these columns.
+2. **Privilege denial** — the anon role holds no SELECT or write privilege on any protected application table or view.
+3. **Restricted projection** — directory reads, including Developer visibility, return only `username`, `role`, and `status`, and are served through an authenticated server endpoint. No browser-reachable database privilege exists for this data.
+
+### 4.1.5 Authorization Model
+
+Because authentication is application-owned, `auth.uid()` is unavailable to database policies. Policies depending on it are obsolete and must be superseded. The application server boundary is authoritative for all Admin / User / Developer decisions; database grants and row-level policies are defense-in-depth against unauthorized direct access.
+
+Privileged server operations use a server-only Supabase secret credential (`SUPABASE_SECRET_KEY`). It is the Data API credential only. Schema migrations and DDL use the Supabase CLI or a direct database migration connection with operator-supplied credentials; the secret credential is never used for DDL.
+
+### 4.1.6 Provisioning State (recorded 2026-08-12)
+
+A read-only diagnostic against the configured Supabase project established:
+
+- The Supabase endpoint is reachable and the application key authenticates.
+- All eight queried application tables — `patient_report_sessions`, `laboratory_reports`, `laboratory_results`, `report_signatories`, `user_profiles`, `personnel`, `report_templates`, `auto_suggestions` — are currently unavailable through the exposed PostgREST schema (PGRST205).
+- Persistence calls therefore fail, and `SupabasePatientReportSessionRepository` masks those failures through an in-memory fallback, which explains the empty Completed History observed during manual testing.
+- Row-level security is **not** the cause of the observed behaviour.
+
+Whether the schema is absent or present-but-unexposed is to be determined during the Milestone 6 migration-state preflight, before any DDL is executed.
+
+This diagnostic used the browser/anon credential and is valid only as a pre-hardening observation. After Security Foundation, anon is intentionally denied all access to protected tables, so this check can no longer demonstrate schema availability. Two separate verifications apply thereafter:
+
+1. **Server-side provisioning check** — through the authorized server path, confirming the required tables exist and authorized server code can access them.
+2. **Anon-denial check** — with the browser/anon credential, confirming protected tables return authorization denial and expose no data. A successful anon read is a security failure.
 
 ---
 
@@ -349,11 +438,14 @@ CREATE TABLE patient_report_sessions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ NULL,
-    expires_at TIMESTAMPTZ NULL -- Computed as completed_at + INTERVAL '30 days' upon completion
+    expires_at TIMESTAMPTZ NULL, -- Computed as ORIGINAL completed_at + INTERVAL '30 days'
+    last_replaced_at TIMESTAMPTZ NULL -- Audit only; never affects completed_at or expires_at
 );
 ```
 
 - **Domain Invariants**: `INV-001` (1 visit = 1 session), `INV-002` (demographics captured once per visit).
+- **Immutable Retention Anchor**: `completed_at` and `expires_at` are set at first completion and are never modified by replacement. Re-completion records `last_replaced_at` for audit purposes only; retention is never restarted or extended.
+- **Atomic Replacement**: Replacement of the session record, reports, results, signatories, and `completed_snapshot` is performed inside a single server-side database function invoked exclusively from the application server boundary. Sequential client-side writes do not satisfy the atomicity requirement.
 
 ---
 

@@ -519,6 +519,7 @@ function verifyAdminInvariantApi(): void {
     "LastActiveAdminError",
     "SelfDeactivationError",
     "AccountOwnsReportsError",
+    "SelfDeletionError",
   ]) {
     assert(
       new RegExp(`error\\s+instanceof\\s+${errorName}`).test(source),

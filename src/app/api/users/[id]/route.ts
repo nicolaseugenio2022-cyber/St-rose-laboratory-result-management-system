@@ -3,6 +3,7 @@ import {
   AccountOwnsReportsError,
   LastActiveAdminError,
   SelfDeactivationError,
+  SelfDeletionError,
 } from "@/services/userService";
 import { userService } from "@/services/user-service-instance";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
@@ -12,7 +13,8 @@ function isUserConflict(error: unknown): boolean {
   return (
     error instanceof LastActiveAdminError ||
     error instanceof SelfDeactivationError ||
-    error instanceof AccountOwnsReportsError
+    error instanceof AccountOwnsReportsError ||
+    error instanceof SelfDeletionError
   );
 }
 

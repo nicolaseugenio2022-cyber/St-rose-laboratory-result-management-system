@@ -44,6 +44,13 @@ export class SelfDeactivationError extends Error {
   }
 }
 
+export class SelfDeletionError extends Error {
+  constructor() {
+    super("You cannot delete the currently authenticated account.");
+    this.name = "SelfDeletionError";
+  }
+}
+
 export class AccountOwnsReportsError extends Error {
   constructor() {
     super("This account owns report sessions and cannot be deleted.");
@@ -213,7 +220,7 @@ export class UserService implements IUserService {
   }
 
   async deleteUser(id: string, currentUserId?: string): Promise<void> {
-    if (currentUserId === id) throw new Error("Cannot delete currently authenticated account.");
+    if (currentUserId === id) throw new SelfDeletionError();
     const target = await this.credentials.findById(id);
     if (!target) throw new UserNotFoundError(id);
     if (

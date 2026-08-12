@@ -19,9 +19,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-export async function fetchUsers(): Promise<Omit<User, "password">[]> {
+export async function fetchUsers(): Promise<User[]> {
   const response = await fetch("/api/users", { cache: "no-store" });
-  return parseResponse<Omit<User, "password">[]>(response);
+  return parseResponse<User[]>(response);
 }
 
 export async function fetchUserSummary(): Promise<UserSummary> {
@@ -29,24 +29,24 @@ export async function fetchUserSummary(): Promise<UserSummary> {
   return parseResponse<UserSummary>(response);
 }
 
-export async function createUserApi(data: CreateUserFormValues): Promise<Omit<User, "password">> {
+export async function createUserApi(data: CreateUserFormValues): Promise<User> {
   const response = await fetch("/api/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
     cache: "no-store",
   });
-  return parseResponse<Omit<User, "password">>(response);
+  return parseResponse<User>(response);
 }
 
-export async function updateUserApi(userId: string, data: UpdateUserPayload): Promise<Omit<User, "password">> {
+export async function updateUserApi(userId: string, data: UpdateUserPayload): Promise<User> {
   const response = await fetch(`/api/users/${userId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
     cache: "no-store",
   });
-  return parseResponse<Omit<User, "password">>(response);
+  return parseResponse<User>(response);
 }
 
 export async function deleteUserApi(userId: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 import { createUserSchema } from "@/lib/validations/userValidation";
 
@@ -12,13 +12,12 @@ export async function GET() {
   }
 
   const users = await userService.getUsers();
-  const sanitizedUsers = users.map(({ password, ...user }) => user);
 
   if (currentUserProfile?.role === "Admin") {
-    return NextResponse.json(sanitizedUsers.filter((user) => user.role !== "Developer"));
+    return NextResponse.json(users.filter((user) => user.role !== "Developer"));
   }
 
-  return NextResponse.json(sanitizedUsers);
+  return NextResponse.json(users);
 }
 
 export async function POST(request: Request) {
@@ -41,8 +40,7 @@ export async function POST(request: Request) {
 
   try {
     const user = await userService.createUser(parsed.data);
-    const { password, ...sanitizedUser } = user;
-    return NextResponse.json(sanitizedUser);
+    return NextResponse.json(user);
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Failed to create user" }, { status: 400 });
   }

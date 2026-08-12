@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 
 export async function GET() {

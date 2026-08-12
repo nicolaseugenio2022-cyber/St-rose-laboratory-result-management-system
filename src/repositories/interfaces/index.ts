@@ -9,6 +9,57 @@ import {
 import { UserRole, UserStatus } from "../../domain/types";
 import { HydratedTemplateSpec } from "../../services/interfaces";
 
+export type AuthRole = "Admin" | "User" | "Developer";
+export type AuthStatus = "Active" | "Inactive";
+
+export interface AuthCredentialRecord {
+  id: string;
+  username: string;
+  role: AuthRole;
+  status: AuthStatus;
+  passwordHash: string;
+  securityQuestion: string;
+  securityAnswerHash: string | null;
+  mustChangePassword: boolean;
+  mustSetRecovery: boolean;
+  tokenVersion: number;
+  passwordUpdatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IAuthCredentialRepository {
+  findById(id: string): Promise<AuthCredentialRecord | null>;
+  findByUsername(username: string): Promise<AuthCredentialRecord | null>;
+  findAll(): Promise<AuthCredentialRecord[]>;
+  create(record: AuthCredentialRecord): Promise<AuthCredentialRecord>;
+  update(id: string, updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>): Promise<AuthCredentialRecord>;
+  delete(id: string): Promise<void>;
+}
+
+export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset";
+
+export interface AuthAttemptRecord {
+  id: string;
+  username: string;
+  attemptKind: AuthAttemptKind;
+  succeeded: boolean;
+  clientIp: string | null;
+  attemptedAt: string;
+}
+
+export interface AuthAttemptQuery {
+  attemptKind: AuthAttemptKind;
+  since: string;
+  username?: string;
+  clientIp?: string;
+}
+
+export interface IAuthAttemptRepository {
+  record(attempt: AuthAttemptRecord): Promise<AuthAttemptRecord>;
+  findAttempts(query: AuthAttemptQuery): Promise<AuthAttemptRecord[]>;
+}
+
 export interface IPatientReportSessionRepository {
   findById(id: string): Promise<IPatientReportSession | null>;
   findByAccessionNumber(accessionNumber: string): Promise<IPatientReportSession | null>;

@@ -4,7 +4,7 @@ import { SummaryCards } from "./SummaryCards";
 import { QuickActions } from "./QuickActions";
 import DeveloperDashboardSection from "./DeveloperDashboardSection";
 import { DeveloperDashboardSkeleton } from "./DeveloperDashboardSkeleton";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
 import { UserSummary } from "@/lib/api/users";
 import { IUserProfile } from "@/domain/models/interfaces";
 

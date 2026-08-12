@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 import { updateUserPayloadSchema } from "@/lib/validations/userValidation";
 
@@ -24,8 +24,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const { id } = await context.params;
     const user = await userService.updateUser(id, parsed.data);
-    const { password, ...sanitizedUser } = user;
-    return NextResponse.json(sanitizedUser);
+    return NextResponse.json(user);
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Failed to update user" }, { status: 400 });
   }

@@ -1,7 +1,0 @@
-{
-  "/page": "/",
-  "/(dashboard)/workspace/page": "/workspace",
-  "/(app)/dashboard/page": "/dashboard",
-  "/(app)/history/page": "/history",
-  "/(app)/audit/page": "/audit"
-}

@@ -1,36 +1,33 @@
 import { cache } from "react";
-import { IUserProfile } from "@/domain/models/interfaces";
 import { getSession } from "@/lib/session";
+import {
+  firstLoginRedirectPath,
+  isFirstLoginPathAllowed,
+} from "@/lib/first-login-gate";
 import { securityService } from "@/services/security-service";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
+import { UserProfile } from "@/types/user";
 
-/**
- * Server Authorization Route Guards
- * Protects administrative routes (/users, /personnel) and API endpoints.
- */
-
-export const getCurrentUserProfile = cache(async (): Promise<IUserProfile | null> => {
+export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
   const session = await getSession();
-  if (!session?.userId) {
-    return null;
-  }
-
-  const user = await userService.getUserById(session.userId);
-  if (!user) {
-    return null;
-  }
-
-  const { password, ...profile } = user;
-  return profile;
+  if (!session) return null;
+  return userService.getUserById(session.userId);
 });
 
-export function checkRouteAccess(pathname: string, userProfile: IUserProfile | null): { allowed: boolean; redirectUrl?: string } {
-  if (!userProfile) {
-    return { allowed: false, redirectUrl: "/login" };
-  }
-
+export function checkRouteAccess(
+  pathname: string,
+  userProfile: UserProfile | null
+): { allowed: boolean; redirectUrl?: string } {
+  if (!userProfile) return { allowed: false, redirectUrl: "/login" };
   if (userProfile.status !== "Active") {
     return { allowed: false, redirectUrl: "/login?reason=deactivated" };
+  }
+
+  if (
+    (userProfile.mustChangePassword || userProfile.mustSetRecovery) &&
+    !isFirstLoginPathAllowed(pathname)
+  ) {
+    return { allowed: false, redirectUrl: firstLoginRedirectPath(userProfile) };
   }
 
   const isUserManagementRoute = pathname.startsWith("/users");
@@ -40,11 +37,9 @@ export function checkRouteAccess(pathname: string, userProfile: IUserProfile | n
   if (isUserManagementRoute && !["Admin", "Developer"].includes(userProfile.role)) {
     return { allowed: false, redirectUrl: "/dashboard?error=unauthorized" };
   }
-
   if (isAuditRoute && !["Admin", "Developer"].includes(userProfile.role)) {
     return { allowed: false, redirectUrl: "/dashboard?error=unauthorized" };
   }
-
   if (isPersonnelRoute && !["Admin", "Developer"].includes(userProfile.role)) {
     return { allowed: false, redirectUrl: "/dashboard?error=unauthorized" };
   }
@@ -52,6 +47,6 @@ export function checkRouteAccess(pathname: string, userProfile: IUserProfile | n
   return { allowed: true };
 }
 
-export function assertAdminAccess(userProfile: IUserProfile, operationName: string): void {
+export function assertAdminAccess(userProfile: UserProfile, operationName: string): void {
   securityService.requireAdmin(userProfile, operationName);
 }

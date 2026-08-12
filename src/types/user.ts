@@ -6,8 +6,11 @@ export interface User {
   id: string;
   username: string;
   role: UserRole;
-  password: string;
   status: UserStatus;
+  mustChangePassword: boolean;
+  mustSetRecovery: boolean;
+  tokenVersion: number;
+  passwordUpdatedAt: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +19,8 @@ export interface CreateUserInput {
   username: string;
   password: string;
   role: UserRole;
+  securityQuestion: string;
+  customSecurityQuestion?: string;
 }
 
 export interface UpdateUserInput {
@@ -25,4 +30,4 @@ export interface UpdateUserInput {
   status?: UserStatus;
 }
 
-export type UserProfile = Omit<User, "password">;
+export type UserProfile = User;

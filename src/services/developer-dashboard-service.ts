@@ -1,7 +1,7 @@
 import packageJson from "../../package.json";
 import { AuditLogEntryDomain } from "@/domain/models/audit-log-entry";
 import { auditLogService } from "@/services/audit-log-service";
-import { userService } from "@/services/userService";
+import { userService } from "@/services/user-service-instance";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export interface SupabaseHealthReport {

@@ -13,6 +13,10 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import {
+  CUSTOM_SECURITY_QUESTION,
+  SECURITY_QUESTION_OPTIONS,
+} from "@/config/security-questions";
 
 export interface UserFormProps {
   initialData?: UserProfile | null;
@@ -33,6 +37,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
     handleSubmit,
     reset,
     setError,
+    watch,
     formState: { errors },
   } = useForm<CreateUserFormValues | UpdateUserFormValues>({
     resolver: zodResolver(schema),
@@ -47,6 +52,8 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
           username: "",
           password: "",
           role: "User",
+          securityQuestion: SECURITY_QUESTION_OPTIONS[0],
+          customSecurityQuestion: "",
         },
   });
 
@@ -64,6 +71,8 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
         username: "",
         password: "",
         role: "User",
+        securityQuestion: SECURITY_QUESTION_OPTIONS[0],
+        customSecurityQuestion: "",
       });
     }
   }, [initialData, reset]);
@@ -85,6 +94,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
     { label: "Active", value: "Active" },
     { label: "Inactive", value: "Inactive" },
   ];
+  const selectedSecurityQuestion = watch("securityQuestion" as keyof CreateUserFormValues);
 
   const handleFormSubmit = async (values: CreateUserFormValues | UpdateUserFormValues) => {
     setServerError(null);
@@ -114,6 +124,28 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
         error={errors.username?.message}
         {...register("username")}
       />
+
+      {!isEditing && (
+        <>
+          <Select
+            label="Security Question"
+            options={SECURITY_QUESTION_OPTIONS.map((question) => ({
+              label: question,
+              value: question,
+            }))}
+            error={(errors as { securityQuestion?: { message?: string } }).securityQuestion?.message}
+            {...register("securityQuestion" as keyof CreateUserFormValues)}
+          />
+          {selectedSecurityQuestion === CUSTOM_SECURITY_QUESTION && (
+            <Input
+              label="Custom Security Question"
+              placeholder="Enter the account holder's question"
+              error={(errors as { customSecurityQuestion?: { message?: string } }).customSecurityQuestion?.message}
+              {...register("customSecurityQuestion" as keyof CreateUserFormValues)}
+            />
+          )}
+        </>
+      )}
 
       <Input
         label={isEditing ? "New Password (optional)" : "Password"}

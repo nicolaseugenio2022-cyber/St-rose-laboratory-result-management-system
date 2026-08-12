@@ -292,25 +292,6 @@ function withMilestone6BIdentifiers(source: string): string {
     .replace(/\bILoginAttemptRepository\b/g, "IAuthAttemptRepository");
 }
 
-function withCorrectedInitialAccountLifecycle(source: string): string {
-  return source
-    .replace(
-      "  getUserById(id: string): Promise<User | null>;\n",
-      "  getUserById(id: string): Promise<User | null>;\n" +
-        "  getSecurityQuestionForUser(id: string): Promise<string | null>;\n"
-    )
-    .replace(
-      "  async createUser(input: CreateUserInput): Promise<User> {",
-      "  async getSecurityQuestionForUser(id: string): Promise<string | null> {\n" +
-        "    const record = await this.credentials.findById(id);\n" +
-        "    return record?.securityQuestion ?? null;\n" +
-        "  }\n\n" +
-        "  async createUser(input: CreateUserInput): Promise<User> {"
-    )
-    .replace("      mustChangePassword: true,", "      mustChangePassword: false,")
-    .replace("      updates.mustChangePassword = true;\n", "");
-}
-
 function verifyApprovedImportDifferencesOnly(
   relativePath: string,
   current: ParsedImport[],
@@ -380,31 +361,239 @@ function verifyBehaviouralFreeze(): void {
     );
   }
 
+}
+
+function verifyUserServiceInvariants(): void {
   const relativePath = "src/services/userService.ts";
-  const current = read(relativePath);
+  const source = read(relativePath);
   assert(
-    !/FileAuth|SupabaseCredentialRepository|SupabaseLoginAttemptRepository|supabaseServer/.test(current),
-    `${relativePath} must reference no concrete repository or client type`
+    !/FileAuth|SupabaseCredentialRepository|SupabaseLoginAttemptRepository|supabaseServer|@supabase\//.test(
+      source
+    ),
+    `${relativePath} must reference no concrete repository or Supabase client type`
   );
   assert(
-    /ICredentialRepository|ILoginAttemptRepository/.test(current),
-    `${relativePath} must depend on the persistence-neutral contracts`
-  );
-  assert(
-    !/IAuthCredentialRepository|IAuthAttemptRepository/.test(current),
-    `${relativePath} must use only the renamed contracts, so undoing the rename is unambiguous`
+    /private readonly credentials:\s*ICredentialRepository/.test(source) &&
+      /attempts:\s*ILoginAttemptRepository/.test(source),
+    `${relativePath} must depend only on the persistence-neutral credential and login-attempt contracts`
   );
 
-  const baseline = readAtMilestone6B(relativePath);
-  const renamed = withMilestone6BIdentifiers(current);
-  verifyApprovedImportDifferencesOnly(
-    relativePath,
-    parseImports(renamed),
-    parseImports(baseline)
+  const toUser = /function\s+toUser\b[\s\S]*?(?=\nfunction\s+validatedSecurityQuestion\b)/.exec(
+    source
+  )?.[0];
+  assert(toUser, "userService.toUser must be present");
+  assert(
+    /passwordHash:\s*_passwordHash/.test(toUser) &&
+      /securityAnswerHash:\s*_securityAnswerHash/.test(toUser) &&
+      /securityQuestion:\s*_securityQuestion/.test(toUser),
+    "userService.toUser must strip passwordHash, securityAnswerHash, and securityQuestion"
   );
   assert(
-    bodyAfterImports(renamed) === bodyAfterImports(withCorrectedInitialAccountLifecycle(baseline)),
-    `${relativePath} must contain only the approved initial-account-lifecycle changes outside the import block`
+    !/^\s*(?:password|securityAnswer|recoveryAnswer)\s*:/m.test(source),
+    "userService must not store a plaintext password or recovery answer"
+  );
+  assert(
+    !/(?:console\.(?:log|info|warn|error)|process\.(?:stdout|stderr)\.write)[^\n]*(?:password|answer|credential)/i.test(
+      source
+    ),
+    "userService must not log passwords, recovery answers, or credential material"
+  );
+  assert(
+    !/\breturn\s+(?:record|current)\s*;/.test(source),
+    "userService must not return raw credential records"
+  );
+
+  const passwordImport = /import\s*\{[\s\S]*?\}\s*from\s*["']@\/lib\/password["'];/.exec(
+    source
+  )?.[0];
+  assert(passwordImport, "userService must import the approved password helpers");
+  for (const helper of ["hashPassword", "verifyPassword", "hashSecurityAnswer"]) {
+    assert(
+      new RegExp(`\\b${helper}\\b`).test(passwordImport) &&
+        new RegExp(`\\b${helper}\\s*\\(`).test(source),
+      `userService must import and use ${helper} from @/lib/password`
+    );
+  }
+
+  const createUser = /async\s+createUser\b[\s\S]*?(?=\n\s*async\s+updateUser\b)/.exec(source)?.[0];
+  const updateUser = /async\s+updateUser\b[\s\S]*?(?=\n\s*async\s+toggleUserStatus\b)/.exec(
+    source
+  )?.[0];
+  const toggleUserStatus = /async\s+toggleUserStatus\b[\s\S]*?(?=\n\s*async\s+deleteUser\b)/.exec(
+    source
+  )?.[0];
+  const deleteUser = /async\s+deleteUser\b[\s\S]*?(?=\n\s*async\s+authenticate\b)/.exec(
+    source
+  )?.[0];
+  const authenticate = /async\s+authenticate\b[\s\S]*?(?=\n\s*async\s+changeFirstLoginPassword\b)/.exec(
+    source
+  )?.[0];
+  const changeFirstLoginPassword = /async\s+changeFirstLoginPassword\b[\s\S]*?(?=\n\s*async\s+setFirstLoginRecoveryAnswer\b)/.exec(
+    source
+  )?.[0];
+  const setFirstLoginRecoveryAnswer = /async\s+setFirstLoginRecoveryAnswer\b[\s\S]*?\n\s*}\n}/.exec(
+    source
+  )?.[0];
+  assert(
+    createUser &&
+      updateUser &&
+      toggleUserStatus &&
+      deleteUser &&
+      authenticate &&
+      changeFirstLoginPassword &&
+      setFirstLoginRecoveryAnswer,
+    "all invariant-bearing userService methods must be present"
+  );
+
+  assert(
+    /canonicalizeAndValidateUsername\s*\(\s*input\.username\s*\)/.test(createUser) &&
+      /canonicalizeAndValidateUsername\s*\(\s*input\.username\s*\)/.test(updateUser) &&
+      /canonicalizeUsername\s*\(\s*usernameInput\s*\)/.test(authenticate),
+    "userService must retain canonical username handling on create, update, and authenticate"
+  );
+  assert(
+    /loginRateLimiter\.assertAllowed\s*\(/.test(authenticate) &&
+      /loginRateLimiter\.record\s*\(/.test(authenticate),
+    "userService.authenticate must invoke both login rate-limiter operations"
+  );
+  assert(
+    /mustChangePassword:\s*false/.test(createUser) &&
+      !/mustChangePassword:\s*true/.test(createUser),
+    "userService.createUser must set mustChangePassword false"
+  );
+
+  assert(
+    /tokenVersion:\s*current\.tokenVersion\s*\+\s*1/.test(changeFirstLoginPassword),
+    "changeFirstLoginPassword must increment tokenVersion"
+  );
+  assert(
+    /tokenVersion:\s*current\.tokenVersion\s*\+\s*1/.test(setFirstLoginRecoveryAnswer),
+    "setFirstLoginRecoveryAnswer must increment tokenVersion"
+  );
+  assert(
+    /if\s*\(\s*input\.password\s*\)[\s\S]*?updates\.tokenVersion\s*=\s*current\.tokenVersion\s*\+\s*1/.test(
+      updateUser
+    ),
+    "a password change through updateUser must increment tokenVersion"
+  );
+
+  const countOtherActiveAdmins = /private\s+async\s+countOtherActiveAdmins\b[\s\S]*?(?=\n\s*async\s+getUsers\b)/.exec(
+    source
+  )?.[0];
+  assert(
+    countOtherActiveAdmins &&
+      /credentials\.findAll\s*\(\s*\)/.test(countOtherActiveAdmins) &&
+      /user\.id\s*!==\s*userId/.test(countOtherActiveAdmins) &&
+      /user\.role\s*===\s*["']Admin["']/.test(countOtherActiveAdmins) &&
+      /user\.status\s*===\s*["']Active["']/.test(countOtherActiveAdmins),
+    "userService must count other Active Admin accounts through ICredentialRepository.findAll"
+  );
+  assert(
+    /countOtherActiveAdmins\s*\(\s*id\s*\)/.test(deleteUser) &&
+      /throw\s+new\s+LastActiveAdminError\s*\(\s*\)/.test(deleteUser),
+    "deleteUser must enforce the last-Active-Admin invariant"
+  );
+  assert(
+    /countOtherActiveAdmins\s*\(\s*id\s*\)/.test(updateUser) &&
+      /throw\s+new\s+LastActiveAdminError\s*\(\s*\)/.test(updateUser) &&
+      /currentUserId\s*===\s*id\s*&&\s*input\.status\s*===\s*["']Inactive["'][\s\S]*?throw\s+new\s+SelfDeactivationError/.test(
+        updateUser
+      ),
+    "updateUser must enforce last-Active-Admin and self-deactivation invariants"
+  );
+  assert(
+    /this\.updateUser\s*\([\s\S]*?currentUserId\s*\)/.test(toggleUserStatus),
+    "toggleUserStatus must thread currentUserId through the invariant-bearing updateUser path"
+  );
+  assert(
+    /error\.code\s*===\s*["']23503["'][\s\S]*?throw\s+new\s+AccountOwnsReportsError/.test(
+      deleteUser
+    ),
+    "deleteUser must translate foreign-key code 23503 to AccountOwnsReportsError"
+  );
+}
+
+function verifyAdminInvariantApi(): void {
+  const source = read("src/app/api/users/[id]/route.ts");
+  for (const errorName of [
+    "LastActiveAdminError",
+    "SelfDeactivationError",
+    "AccountOwnsReportsError",
+  ]) {
+    assert(
+      new RegExp(`error\\s+instanceof\\s+${errorName}`).test(source),
+      `the user API route must classify ${errorName} as a conflict`
+    );
+  }
+  assert(
+    (source.match(/status:\s*isUserConflict\s*\(\s*error\s*\)\s*\?\s*409\s*:\s*400/g) ?? [])
+      .length === 2,
+    "PATCH and DELETE must map user invariant conflicts to HTTP 409 and other failures to 400"
+  );
+  assert(
+    /userService\.updateUser\s*\(\s*id\s*,\s*parsed\.data\s*,\s*currentUserProfile\?\.id\s*\)/.test(
+      source
+    ),
+    "PATCH must pass the authenticated user ID to updateUser"
+  );
+  assert(
+    (source.match(/status:\s*403/g) ?? []).length >= 2 && /status:\s*400/.test(source),
+    "authorization must remain HTTP 403 and validation must remain HTTP 400"
+  );
+}
+
+function verifyCredentialVisibilityControls(): void {
+  const firstLoginSource = read("src/features/auth/components/FirstLoginForm.tsx");
+  assert(
+    /\[showAnswer,\s*setShowAnswer\]\s*=\s*useState\s*\(\s*false\s*\)/.test(
+      firstLoginSource
+    ) && /type=\{showAnswer\s*\?\s*["']text["']\s*:\s*["']password["']\}/.test(firstLoginSource),
+    "FirstLoginForm must mask the recovery answer by default and reveal only the typed input"
+  );
+  assert(
+    /aria-label=\{showAnswer\s*\?\s*["']Hide recovery answer["']\s*:\s*["']Show recovery answer["']\}/.test(
+      firstLoginSource
+    ),
+    "FirstLoginForm must carry both recovery-answer visibility aria-labels"
+  );
+  assert(
+    /className=["']relative["'][\s\S]*?className=["']pr-10["'][\s\S]*?<button[\s\S]*?type=["']button["'][\s\S]*?absolute right-3 top-1\/2 -translate-y-1\/2/.test(
+      firstLoginSource
+    ),
+    "FirstLoginForm must use the inline, keyboard-reachable visibility-button pattern"
+  );
+
+  const loginSource = read("src/app/login/page.tsx");
+  assert(
+    /aria-label=\{showPassword\s*\?\s*["']Hide password["']\s*:\s*["']Show password["']\}/.test(
+      loginSource
+    ),
+    "the login password toggle must carry both visibility aria-labels"
+  );
+  assert(
+    !/tabIndex\s*=\s*\{\s*-1\s*\}/.test(firstLoginSource) &&
+      !/tabIndex\s*=\s*\{\s*-1\s*\}/.test(loginSource),
+    "neither credential visibility button may set tabIndex={-1}"
+  );
+
+  const forgotPasswordRoutes = sourceFiles("src/app").filter((relativePath) =>
+    /(?:^|[\\/])forgot[-_]?password(?:[\\/]|\.|$)/i.test(relativePath)
+  );
+  assert(forgotPasswordRoutes.length === 0, "no forgot-password route or endpoint may exist");
+  assert(
+    !sourceFiles("src").some((relativePath) =>
+      /["'`]\/(?:api\/)?forgot[-_]?password(?:[\/"'`?#]|$)/i.test(read(relativePath))
+    ),
+    "source code must not reference a forgot-password route or endpoint"
+  );
+  const forgotPasswordControl = /<a\b[\s\S]*?Forgot password\?[\s\S]*?<\/a>/.exec(
+    loginSource
+  )?.[0];
+  assert(
+    forgotPasswordControl &&
+      /href\s*=\s*["']#["']/.test(forgotPasswordControl) &&
+      /preventDefault\s*\(\s*\)/.test(forgotPasswordControl),
+    "the existing Forgot password placeholder must remain inactive"
   );
 }
 
@@ -557,6 +746,9 @@ verifySupabaseServerClient();
 verifySessionRepositoryFailures();
 verifyRenamedContractsOnly();
 verifyBehaviouralFreeze();
+verifyUserServiceInvariants();
+verifyAdminInvariantApi();
+verifyCredentialVisibilityControls();
 verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();
 verifyOwnershipMigration();
@@ -564,5 +756,5 @@ verifyPrototypeMigration();
 verifyDeletedAdapters();
 
 process.stdout.write(
-  "M6C verification passed: server-only Supabase persistence, behavioural freeze, ownership enforcement, and prototype provisioning verified.\n"
+  "M6C verification passed: server-only Supabase persistence, targeted authentication invariants, ownership enforcement, and prototype provisioning verified.\n"
 );

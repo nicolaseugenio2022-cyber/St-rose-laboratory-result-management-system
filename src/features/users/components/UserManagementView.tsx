@@ -68,6 +68,11 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
   };
 
   const handleToggleStatus = async (user: UserProfile) => {
+    if (user.id === currentUserId && user.status === "Active") {
+      window.alert("You cannot deactivate the currently authenticated account.");
+      return;
+    }
+
     try {
       await updateUserApi(user.id, {
         status: user.status === "Active" ? "Inactive" : "Active",
@@ -75,6 +80,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
       await loadUsers();
     } catch (err) {
       console.error("Failed to toggle status:", err);
+      window.alert((err as Error)?.message || "Failed to update user status.");
     }
   };
 
@@ -107,6 +113,10 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
 
     return matchesSearch && matchesRole;
   });
+
+  const activeAdminCount = users.filter(
+    (user) => user.role === "Admin" && user.status === "Active"
+  ).length;
 
   const roleFilterOptions = useMemo(() => {
     const options = [
@@ -167,6 +177,8 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
         onEdit={handleOpenEdit}
         onToggleStatus={handleToggleStatus}
         onDelete={handleDeleteUser}
+        currentUserId={currentUserId}
+        activeAdminCount={activeAdminCount}
         deletingUserId={isDeleting}
       />
 

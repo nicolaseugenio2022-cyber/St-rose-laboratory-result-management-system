@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState, useTransition } from "react";
-import { Loader2, LogOut } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import {
   Card,
@@ -26,6 +26,7 @@ export interface FirstLoginFormProps {
 
 export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) {
   const [isPending, startTransition] = useTransition();
+  const [showAnswer, setShowAnswer] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const isPasswordStep = step === "password";
 
@@ -108,15 +109,37 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
                   {securityQuestion}
                 </p>
               </div>
-              <Input
-                id="answer"
-                name="answer"
-                label="Recovery Answer"
-                type="password"
-                autoComplete="off"
-                disabled={isPending}
-                required
-              />
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="answer"
+                  className="block text-xs font-semibold text-brand-text"
+                >
+                  Recovery Answer
+                </label>
+                <div className="relative">
+                  <Input
+                    id="answer"
+                    name="answer"
+                    type={showAnswer ? "text" : "password"}
+                    autoComplete="off"
+                    disabled={isPending}
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-text-muted hover:text-brand-text"
+                    onClick={() => setShowAnswer(!showAnswer)}
+                    aria-label={showAnswer ? "Hide recovery answer" : "Show recovery answer"}
+                  >
+                    {showAnswer ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </CardContent>

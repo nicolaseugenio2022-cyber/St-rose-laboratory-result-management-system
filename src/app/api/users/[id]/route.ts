@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server";
+import {
+  AccountOwnsReportsError,
+  LastActiveAdminError,
+  SelfDeactivationError,
+} from "@/services/userService";
 import { userService } from "@/services/user-service-instance";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 import { updateUserPayloadSchema } from "@/lib/validations/userValidation";
+
+function isUserConflict(error: unknown): boolean {
+  return (
+    error instanceof LastActiveAdminError ||
+    error instanceof SelfDeactivationError ||
+    error instanceof AccountOwnsReportsError
+  );
+}
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const currentUserProfile = await getCurrentUserProfile();
@@ -23,10 +36,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   try {
     const { id } = await context.params;
-    const user = await userService.updateUser(id, parsed.data);
+    const user = await userService.updateUser(id, parsed.data, currentUserProfile?.id);
     return NextResponse.json(user);
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Failed to update user" }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update user";
+    return NextResponse.json(
+      { error: message },
+      { status: isUserConflict(error) ? 409 : 400 }
+    );
   }
 }
 
@@ -42,7 +59,11 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const { id } = await context.params;
     await userService.deleteUser(id, currentUserProfile?.id);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Failed to delete user" }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete user";
+    return NextResponse.json(
+      { error: message },
+      { status: isUserConflict(error) ? 409 : 400 }
+    );
   }
 }

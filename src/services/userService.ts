@@ -30,6 +30,27 @@ export class UserNotFoundError extends Error {
   }
 }
 
+export class LastActiveAdminError extends Error {
+  constructor() {
+    super("At least one Active Admin account must remain.");
+    this.name = "LastActiveAdminError";
+  }
+}
+
+export class SelfDeactivationError extends Error {
+  constructor() {
+    super("You cannot deactivate the currently authenticated account.");
+    this.name = "SelfDeactivationError";
+  }
+}
+
+export class AccountOwnsReportsError extends Error {
+  constructor() {
+    super("This account owns report sessions and cannot be deleted.");
+    this.name = "AccountOwnsReportsError";
+  }
+}
+
 export class InvalidCredentialsError extends Error {
   constructor() {
     super("Invalid username or password");
@@ -42,8 +63,8 @@ export interface IUserService {
   getUserById(id: string): Promise<User | null>;
   getSecurityQuestionForUser(id: string): Promise<string | null>;
   createUser(input: CreateUserInput): Promise<User>;
-  updateUser(id: string, input: UpdateUserInput): Promise<User>;
-  toggleUserStatus(id: string): Promise<User>;
+  updateUser(id: string, input: UpdateUserInput, currentUserId?: string): Promise<User>;
+  toggleUserStatus(id: string, currentUserId?: string): Promise<User>;
   deleteUser(id: string, currentUserId?: string): Promise<void>;
   authenticate(username: string, password: string, clientIp?: string | null): Promise<User>;
   changeFirstLoginPassword(id: string, password: string): Promise<User>;
@@ -86,6 +107,13 @@ export class UserService implements IUserService {
     attempts: ILoginAttemptRepository
   ) {
     this.loginRateLimiter = new LoginRateLimiter(attempts);
+  }
+
+  private async countOtherActiveAdmins(userId: string): Promise<number> {
+    const users = await this.credentials.findAll();
+    return users.filter(
+      (user) => user.id !== userId && user.role === "Admin" && user.status === "Active"
+    ).length;
   }
 
   async getUsers(): Promise<User[]> {
@@ -132,9 +160,26 @@ export class UserService implements IUserService {
     }
   }
 
-  async updateUser(id: string, input: UpdateUserInput): Promise<User> {
+  async updateUser(
+    id: string,
+    input: UpdateUserInput,
+    currentUserId?: string
+  ): Promise<User> {
     const current = await this.credentials.findById(id);
     if (!current) throw new UserNotFoundError(id);
+
+    if (currentUserId === id && input.status === "Inactive") {
+      throw new SelfDeactivationError();
+    }
+
+    const removesActiveAdmin =
+      current.role === "Admin" &&
+      current.status === "Active" &&
+      (input.status === "Inactive" ||
+        (input.role !== undefined && input.role !== "Admin"));
+    if (removesActiveAdmin && (await this.countOtherActiveAdmins(id)) === 0) {
+      throw new LastActiveAdminError();
+    }
 
     const updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">> = {
       updatedAt: new Date().toISOString(),
@@ -157,16 +202,41 @@ export class UserService implements IUserService {
     return toUser(await this.credentials.update(id, updates));
   }
 
-  async toggleUserStatus(id: string): Promise<User> {
+  async toggleUserStatus(id: string, currentUserId?: string): Promise<User> {
     const user = await this.credentials.findById(id);
     if (!user) throw new UserNotFoundError(id);
-    return this.updateUser(id, { status: user.status === "Active" ? "Inactive" : "Active" });
+    return this.updateUser(
+      id,
+      { status: user.status === "Active" ? "Inactive" : "Active" },
+      currentUserId
+    );
   }
 
   async deleteUser(id: string, currentUserId?: string): Promise<void> {
     if (currentUserId === id) throw new Error("Cannot delete currently authenticated account.");
-    if (!(await this.credentials.findById(id))) throw new UserNotFoundError(id);
-    await this.credentials.delete(id);
+    const target = await this.credentials.findById(id);
+    if (!target) throw new UserNotFoundError(id);
+    if (
+      target.role === "Admin" &&
+      target.status === "Active" &&
+      (await this.countOtherActiveAdmins(id)) === 0
+    ) {
+      throw new LastActiveAdminError();
+    }
+
+    try {
+      await this.credentials.delete(id);
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "23503"
+      ) {
+        throw new AccountOwnsReportsError();
+      }
+      throw error;
+    }
   }
 
   async authenticate(usernameInput: string, password: string, clientIp: string | null = null): Promise<User> {

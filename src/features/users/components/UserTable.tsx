@@ -11,11 +11,13 @@ export interface UserTableProps {
   onEdit: (user: UserProfile) => void;
   onToggleStatus: (user: UserProfile) => void;
   onDelete: (user: UserProfile) => void;
+  currentUserId: string;
+  activeAdminCount: number;
   deletingUserId?: string | null;
   isLoading?: boolean;
 }
 
-export function UserTable({ users, onEdit, onToggleStatus, onDelete, deletingUserId, isLoading = false }: UserTableProps) {
+export function UserTable({ users, onEdit, onToggleStatus, onDelete, currentUserId, activeAdminCount, deletingUserId, isLoading = false }: UserTableProps) {
   if (users.length === 0) {
     return (
       <div className="rounded-xl border border-brand-border bg-brand-surface p-12 text-center">
@@ -56,6 +58,25 @@ export function UserTable({ users, onEdit, onToggleStatus, onDelete, deletingUse
       <TableBody>
         {users.map((user) => {
           const isActive = user.status === "Active";
+          const isCurrentUser = user.id === currentUserId;
+          const isLastActiveAdmin =
+            isActive && user.role === "Admin" && activeAdminCount === 1;
+          const deactivateDisabled =
+            isLoading || (isActive && (isCurrentUser || isLastActiveAdmin));
+          const deactivateTitle = isCurrentUser
+            ? "You cannot deactivate the currently authenticated account."
+            : isLastActiveAdmin
+              ? "The last Active Admin account cannot be deactivated."
+              : isActive
+                ? "Deactivate User"
+                : "Activate User";
+          const deleteDisabled =
+            isLoading || deletingUserId === user.id || isCurrentUser || isLastActiveAdmin;
+          const deleteTitle = isCurrentUser
+            ? "You cannot delete the currently authenticated account."
+            : isLastActiveAdmin
+              ? "The last Active Admin account cannot be deleted."
+              : "Delete User";
           return (
             <TableRow key={user.id}>
               <TableCell className="font-semibold text-brand-text font-mono text-sm">
@@ -84,8 +105,8 @@ export function UserTable({ users, onEdit, onToggleStatus, onDelete, deletingUse
                     variant={isActive ? "outline" : "secondary"}
                     size="sm"
                     onClick={() => onToggleStatus(user)}
-                    disabled={isLoading}
-                    title={isActive ? "Deactivate User" : "Activate User"}
+                    disabled={deactivateDisabled}
+                    title={deactivateTitle}
                     className={isActive ? "text-brand-warning hover:bg-brand-warning-bg hover:border-brand-warning-border" : "text-brand-success-bg bg-brand-success hover:opacity-90"}
                   >
                     <Power className="h-4 w-4" />
@@ -95,8 +116,8 @@ export function UserTable({ users, onEdit, onToggleStatus, onDelete, deletingUse
                     variant="danger"
                     size="sm"
                     onClick={() => onDelete(user)}
-                    disabled={isLoading || deletingUserId === user.id}
-                    title="Delete User"
+                    disabled={deleteDisabled}
+                    title={deleteTitle}
                   >
                     <Power className="h-4 w-4" />
                     <span className="text-xs">Delete</span>

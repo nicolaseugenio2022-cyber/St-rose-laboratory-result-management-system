@@ -38,14 +38,19 @@ Implemented checkpoints:
 - C4.1/C4.2 — visual-system, scale, runtime layout, and spacing refinements (verified)
 - Manual C4 visual approval granted; Native approved as the sole production Live Preview renderer
 - Post-C4 Native-only Live Preview cleanup: the Experimental and Legacy HTML preview paths removed from Live Preview
+- C5.1 — session-level multi-page Native PDF export sharing the Live Preview composition (verified)
+- C5.2 — manual Preview/PDF parity approval granted
+- C5.3 — transitional legacy PDF infrastructure removed (verified); manually approved
 
-Automated C1, C2, C3, C4, C4.1, and C4.2 verification currently passes. C4 has received manual visual approval.
+Automated C1, C2, C3, C4, C4.1, C4.2, and C5 verification currently passes. C4, C5.2, and C5.3 have received manual approval.
+
+**Phase C is complete and frozen.** See Milestone 4 for the freeze scope.
 
 ## Current Focus
 
-C5 — Native PDF/export integration and Preview/PDF parity validation.
+Phase C is closed. Preview, Print, and PDF resolve through one authoritative Native composition.
 
-**C5 has not started.** C5.3 removal of transitional legacy PDF infrastructure must not begin until C5.2 Preview/PDF parity receives manual approval.
+Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
 
 ---
 
@@ -168,7 +173,7 @@ Implemented in source and covered by passing B1–B5 verification:
 - Frozen completed-session/report snapshots
 - Legacy draft and completed-report compatibility
 
-## Milestone 4 — Report Engine (In Progress)
+## Milestone 4 — Report Engine (Complete and Frozen)
 
 Implemented:
 
@@ -183,11 +188,24 @@ Implemented:
 - Actionable upper-half overflow enforcement
 - Manual C4 visual approval; Native confirmed as the sole production Live Preview renderer
 - Removal of the Experimental and Legacy HTML comparison preview paths
+- Session-level multi-page Native PDF export emitting one A4 page per report in session order
+- Manual C5.2 Preview/PDF parity approval
+- Removal of the transitional legacy PDF infrastructure
 
-Pending:
+Milestone 4 is complete. No Report Engine work remains outstanding.
 
-- C5 native PDF/export integration and Preview/PDF parity validation
-- Removal of transitional legacy PDF infrastructure after C5.2 parity approval
+### Report Engine Architecture Freeze
+
+The Report Engine architecture is frozen. The following invariant is authoritative:
+
+`Preview + Print + PDF → one authoritative resolved rendering model and Native composition engine`
+
+Future milestones may integrate with the Report Engine and fix defects in it. Without explicit
+approval they must not:
+
+- Redesign the Report Engine architecture
+- Introduce a second report-composition path
+- Restore retired Legacy or Experimental rendering infrastructure
 
 ## Milestone 5 — Drafts and History
 
@@ -227,8 +245,9 @@ Pending:
 
 - Native millimetre-based resolved composition model
 - Browser-native selectable text for Live Preview
-- jsPDF native primitives are available in the native rendering infrastructure
-- Current pre-C5 PDF stream/export still uses the isolated legacy DOM and `html2canvas`/jsPDF route, reachable only through the explicit PDF export action
+- jsPDF native primitives render the production PDF export directly from the resolved composition
+- PDF export emits one A4 page per report as selectable vector text, with no DOM rasterization
+- `html2canvas` is no longer used by the application; it remains only as an unused optional transitive dependency of jsPDF
 
 ## Deployment Target
 
@@ -306,9 +325,13 @@ Snapshot v2 freezes `renderContractVersion`, `printedTitle`, and `staticContentV
 
 ## Shared Resolved Render Model
 
-The production Native Live Preview path is:
+The production Native rendering paths are:
 
-`SharedRenderingEngine → resolveSessionRenderModel → NativeLivePreviewPage → live-preview-composer → layout-family composer → native primitives`
+`Live Preview: SharedRenderingEngine → resolveSessionRenderModel → NativeLivePreviewPage → live-preview-composer → layout-family composer → native primitives`
+
+`PDF export: SharedRenderingEngine → resolveSessionRenderModel → createNativeSessionPdf → live-preview-composer → layout-family composer → native primitives → jsPDF`
+
+Both paths consume the identical composed page. PDF export must never introduce a second composition path.
 
 The composer consumes the source-neutral resolved model and declarative physical metadata. It does not own formulas, clinical evaluation, mutable session behavior, or reference resolution.
 
@@ -387,24 +410,22 @@ Across native layouts:
 - Optional signatures use omission-on-failure behavior
 - Historical DOCX/PNG references are not production report backgrounds
 
-## Current Preview, Print, and PDF Transition
+## Preview, Print, and PDF Architecture
 
-The target principle remains:
+The target principle is realized:
 
-`Preview + Print + PDF → one authoritative resolved rendering model and composition engine`
+`Preview + Print + PDF → one authoritative resolved rendering model and Native composition engine`
 
 Current condition:
 
 - Native Live Preview is the sole production renderer for all 17 reports
 - There is no user-selectable renderer mode
-- Browser Print uses the current application print workflow
+- PDF export composes through the same Native composition as Live Preview, emitting one A4 page per report in session order
+- Browser Print uses the application print workflow over the Native Live Preview output
 - The experimental Template Engine preview path has been removed
-- Legacy HTML rendering is retained only as transitional PDF export infrastructure and is not reachable as a Live Preview renderer
-- The hidden legacy export DOM mounts only during an explicit PDF export
-- PDF export still uses the pre-C5 rasterized `html2canvas`/jsPDF stream
-- Native PDF migration and Preview/PDF parity are pending C5
+- The legacy HTML rendering infrastructure and its rasterized PDF route have been removed
 
-Native PDF migration must not be documented as complete until C5 is implemented, verified, and approved.
+Native PDF migration is complete: C5.1 implemented and verified, C5.2 parity manually approved, C5.3 legacy removal verified and manually approved.
 
 ## Future Extensibility
 
@@ -420,6 +441,6 @@ Generic rendering infrastructure should not require report-code-specific present
 
 # Current Objective
 
-Implement C5 Native PDF/export integration so that PDF export resolves through the same approved Native composition as Live Preview, then obtain manual Preview/PDF parity approval before removing transitional legacy PDF infrastructure.
+Phase C is complete. Preview, Print, and PDF resolve through one authoritative Native composition model, verified by automated checkpoints C1–C5 and approved by manual C4, C5.2, and C5.3 review.
 
-C5 has not been started.
+Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).

@@ -22,14 +22,6 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (isPublicPath && session) {
-    const destination =
-      session.mustChangePassword || session.mustSetRecovery
-        ? firstLoginRedirectPath(session)
-        : "/dashboard";
-    return NextResponse.redirect(new URL(destination, request.url), 303);
-  }
-
   if (
     session &&
     (session.mustChangePassword || session.mustSetRecovery) &&

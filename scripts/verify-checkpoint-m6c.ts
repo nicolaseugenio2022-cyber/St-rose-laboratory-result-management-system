@@ -22,6 +22,63 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
+function verifyRevokedSessionPublicPathRouting(): void {
+  const middlewareSource = read("src/middleware.ts");
+  assert(
+    !/if\s*\(\s*(?:isPublicPath\s*&&\s*session|session\s*&&\s*isPublicPath)\s*\)\s*(?:\{[^{}]*NextResponse\.redirect\s*\(|(?:return\s+)?NextResponse\.redirect\s*\()/.test(
+      middlewareSource
+    ),
+    "middleware must not redirect from a public path based on a decode-only session"
+  );
+
+  const protectedPathWithoutSession =
+    /if\s*\(\s*!isPublicPath\s*&&\s*!session\s*\)\s*\{([\s\S]*?)\n\s*\}/.exec(
+      middlewareSource
+    )?.[1];
+  assert(
+    protectedPathWithoutSession,
+    "middleware must retain the protected-path branch for a missing usable session"
+  );
+  assert(
+    /NextResponse\.redirect\s*\(\s*new URL\s*\(\s*["']\/login["']\s*,\s*request\.url\s*\)\s*,\s*303\s*\)/.test(
+      protectedPathWithoutSession
+    ),
+    "a protected path without a usable session must redirect to /login"
+  );
+  assert(
+    /response\.cookies\.delete\s*\(\s*["']session_token["']\s*\)/.test(
+      protectedPathWithoutSession
+    ),
+    "a protected path with an unusable session cookie must delete that cookie"
+  );
+
+  const loginLayoutSource = read("src/app/login/layout.tsx");
+  assert(
+    /import\s*\{\s*getSession\s*\}\s*from\s*["']@\/lib\/session["']/.test(
+      loginLayoutSource
+    ),
+    "the login layout must import getSession from @/lib/session"
+  );
+  assert(
+    /const\s+session\s*=\s*await\s+getSession\s*\(\s*\)/.test(loginLayoutSource),
+    "the login layout must use the authoritative session check"
+  );
+  assert(
+    /session\.mustChangePassword\s*\|\|\s*session\.mustSetRecovery[\s\S]*?\?\s*firstLoginRedirectPath\s*\(\s*session\s*\)[\s\S]*?:\s*["']\/dashboard["'][\s\S]*?redirect\s*\(\s*destination\s*\)/.test(
+      loginLayoutSource
+    ),
+    "the login layout must redirect first-login sessions through firstLoginRedirectPath and other sessions to /dashboard"
+  );
+  assert(
+    !/decryptSessionToken/.test(loginLayoutSource),
+    "the login layout must not use decryptSessionToken"
+  );
+  assert(
+    !/^\s*["']use client["'];/m.test(loginLayoutSource),
+    "the login layout must remain a server component"
+  );
+}
+
 function milestone6BCommit(): string {
   const result = spawnSync(
     "git",
@@ -493,6 +550,7 @@ function verifyDeletedAdapters(): void {
 }
 
 verifyClientBoundary();
+verifyRevokedSessionPublicPathRouting();
 verifyServerActionResponseBoundary();
 verifyServerOnlyBoundary();
 verifySupabaseServerClient();

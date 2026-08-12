@@ -9,17 +9,10 @@ import { SimpleResultRenderer } from "./families/SimpleResultRenderer";
 import { DiagnosticGridRenderer } from "./families/DiagnosticGridRenderer";
 import { NarrativeCertificateRenderer } from "./families/NarrativeCertificateRenderer";
 import { PDFStreamAdapter } from "./adapters/pdf-stream-adapter";
-import { RenderingEngine } from "./engine/RenderingEngine";
-import { getReportLayout } from "./layouts";
-import {
-  getNativeLivePreviewCompositionDefinition,
-  NativeLivePreviewPage,
-} from "./native";
+import { NativeLivePreviewPage } from "./native";
 import { resolveSessionRenderModel } from "./model";
 import "./styles/a4-document.css";
-import { Printer, Download, Eye, Layers, Loader2, Sparkles, Image as ImageIcon } from "lucide-react";
-
-type PreviewRendererMode = "native" | "experimental" | "legacy";
+import { Printer, Download, Eye, Layers, Loader2 } from "lucide-react";
 
 export interface SharedRenderingEngineProps {
   session: IPatientReportSession;
@@ -36,29 +29,12 @@ export function SharedRenderingEngine({
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
 
-  // Production Native is the default; historical comparison modes stay explicit.
-  const [previewRendererMode, setPreviewRendererMode] = useState<PreviewRendererMode>("native");
-  const [isDiagnosticBackgroundOnly, setIsDiagnosticBackgroundOnly] = useState<boolean>(false);
-
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const legacyPdfContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
-  const selectedReport = activeReports[activePageIndex] || activeReports[0];
   const resolvedSession = resolveSessionRenderModel(session);
-  const selectedResolvedReport = selectedReport
-    ? resolvedSession.reports.find((candidate) => candidate.templateCode === selectedReport.templateCode)
-    : null;
-  const selectedNativePreviewDefinition = selectedResolvedReport
-    ? getNativeLivePreviewCompositionDefinition(selectedResolvedReport)
-    : null;
-
-  // Comparison modes never carry implicitly between report tabs.
-  useEffect(() => {
-    setPreviewRendererMode("native");
-    setIsDiagnosticBackgroundOnly(false);
-  }, [selectedReport?.templateCode]);
 
   // Load hydrated template specifications for all reports
   useEffect(() => {
@@ -159,44 +135,18 @@ export function SharedRenderingEngine({
 
   // Helper to render individual report
   const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
-    if (targetOutput === "ScreenPreview" && previewRendererMode === "native") {
-      const resolvedReport = resolvedSession.reports.find((candidate) => candidate.templateCode === report.templateCode);
-      if (!resolvedReport) throw new Error(`Resolved render model is missing report '${report.templateCode}'.`);
-      return (
-        <NativeLivePreviewPage
-          key={report.id || `${report.templateCode}-${index}`}
-          resolvedSession={resolvedSession}
-          resolvedReport={resolvedReport}
-          reportTitle={report.templateTitle}
-          zoomLevel={zoomLevel}
-          isLastPage={isLastPage}
-        />
-      );
-    }
-
-    // Check if new Template Engine layout exists for this report (CBC in Phase 3)
-    const layoutConfig = getReportLayout(report.templateCode);
-    if (layoutConfig && previewRendererMode === "experimental") {
-      return (
-        <div
-          key={report.id || `${report.templateCode}-${index}`}
-          data-live-preview-renderer="experimental"
-          className={`a4-preview-shadow ${!isLastPage ? "a4-page-break" : ""}`}
-          style={{ transform: targetOutput === "ScreenPreview" && zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined }}
-        >
-          <RenderingEngine
-            session={session}
-            report={report}
-            layout={layoutConfig}
-            targetOutput={targetOutput}
-            previewScale={0.5}
-            backgroundOnlyDiagnostic={isDiagnosticBackgroundOnly}
-          />
-        </div>
-      );
-    }
-
-    return renderLegacyReportPage(report, index, isLastPage);
+    const resolvedReport = resolvedSession.reports.find((candidate) => candidate.templateCode === report.templateCode);
+    if (!resolvedReport) throw new Error(`Resolved render model is missing report '${report.templateCode}'.`);
+    return (
+      <NativeLivePreviewPage
+        key={report.id || `${report.templateCode}-${index}`}
+        resolvedSession={resolvedSession}
+        resolvedReport={resolvedReport}
+        reportTitle={report.templateTitle}
+        zoomLevel={zoomLevel}
+        isLastPage={isLastPage}
+      />
+    );
   };
 
   if (activeReports.length === 0) {
@@ -225,68 +175,8 @@ export function SharedRenderingEngine({
           </div>
         </div>
 
-        {/* Viewport Zoom, Engine Pilot Switch & Actions */}
+        {/* Viewport Zoom & Actions */}
         <div className="flex flex-wrap items-center gap-3">
-          {selectedNativePreviewDefinition ? (
-            <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800 p-0.5">
-              {([
-                ["native", `Native ${selectedReport?.templateCode || "Preview"}`],
-                ["experimental", "Experimental"],
-                ["legacy", "Legacy HTML"],
-              ] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    setPreviewRendererMode(mode);
-                    if (mode !== "experimental") setIsDiagnosticBackgroundOnly(false);
-                  }}
-                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                    previewRendererMode === mode
-                      ? "bg-emerald-600 text-white"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title={`${label} preview path`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setPreviewRendererMode(
-                previewRendererMode === "experimental" ? "legacy" : "experimental"
-              )}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
-                previewRendererMode === "experimental"
-                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:text-white"
-              }`}
-              title="Toggle between experimental Template Engine and Legacy HTML Form Renderer"
-            >
-              <Sparkles className="h-3 w-3 text-amber-400" />
-              {previewRendererMode === "experimental" ? "Template Engine (Active)" : "Legacy HTML Renderer"}
-            </button>
-          )}
-
-          {/* Diagnostic Mode Toggle: Layer 0 Background Only */}
-          {previewRendererMode === "experimental" && (
-            <button
-              type="button"
-              onClick={() => setIsDiagnosticBackgroundOnly(!isDiagnosticBackgroundOnly)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
-                isDiagnosticBackgroundOnly
-                  ? "bg-purple-600 text-white border-purple-500"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:text-white"
-              }`}
-              title="Diagnostic Mode: Render ONLY Layer 0 (CBC.png background)"
-            >
-              <ImageIcon className="h-3 w-3" />
-              {isDiagnosticBackgroundOnly ? "Layer 0 Only (Diagnostic ON)" : "Layer 0 Only (OFF)"}
-            </button>
-          )}
-
           {/* Zoom Selector */}
           <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 text-xs">
             <button

@@ -48,8 +48,19 @@ All work stays in the working tree for review.
 - The work belongs to a later milestone or checkpoint, or is an unrelated improvement.
 - The working tree is dirty at freeze time.
 - Correction rounds are exhausted.
+- The Codex session's actual model or reasoning effort does not match gpt-5.6-sol / high.
 
 ## Delegation contract
+
+Implementation delegations must pin the model explicitly. Never rely on ambient global
+config — `~/.codex/config.toml` can change between delegations without the plan, the
+prompt, or the review noticing:
+
+```
+codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox workspace-write "<prompt>"
+```
+
+Read-only inspection tasks may use `--sandbox read-only`; the model pin still applies.
 
 Every `codex exec` prompt must carry:
 
@@ -71,5 +82,9 @@ Never rely on Codex's summary. Independently check:
 - No invented requirements, fields, rules, or styling; nothing beyond plan scope.
 - Each acceptance criterion, individually.
 - Verification executed by Claude, not quoted from Codex: the bar defined in `Project.md` (Milestone Completion Rules) and `architecture/IMPLEMENTATION_GUIDELINES.md`, plus the relevant `scripts/verify-checkpoint-*.ts`.
+- **Delegation identity** — read the actual session rollout, do not assume the flags took effect:
+  `ls -t ~/.codex/sessions/*/*/*/rollout-*.jsonl | head -1`, confirm it is the delegation just run
+  (`"originator":"codex_exec"`, correct `cwd`), then extract `"model"` and `"reasoning_effort"`.
+  Report both in the review, and whether they matched **gpt-5.6-sol / high**.
 
 Report failures with the actual output.

@@ -254,12 +254,20 @@ async function main(): Promise<void> {
   const exportSection = engineSource.slice(engineSource.indexOf("const handleExportPDF"), engineSource.indexOf("const renderLegacyReportPage"));
   assert(exportSection.includes("PDFStreamAdapter") && !exportSection.includes("NativePDFExporter"), "pre-C5 PDF export must remain on the existing stream adapter");
   assert(engineSource.includes("NativeLivePreviewPage") && engineSource.includes("data-c4-preserved-pdf-route=\"legacy\""), "SharedRenderingEngine must use native Live Preview while isolating legacy PDF DOM");
-  const productionNativeBranch = engineSource.slice(engineSource.indexOf('targetOutput === "ScreenPreview" && previewRendererMode === "native"'), engineSource.indexOf("// Check if new Template Engine layout exists"));
-  assert(productionNativeBranch.includes("NativeLivePreviewPage"), "production native mode must use the family-based Live Preview component");
-  assert(engineSource.includes('useState<PreviewRendererMode>("native")'), "Live Preview must initialize in Native mode");
+  assert(!engineSource.includes("previewRendererMode") && !engineSource.includes("PreviewRendererMode"), "Live Preview must have no selectable renderer mode");
+  assert(engineSource.includes("NativeLivePreviewPage"), "Live Preview must route unconditionally through NativeLivePreviewPage");
+  assert(!engineSource.includes("getReportLayout") && !engineSource.includes("<RenderingEngine"), "experimental preview infrastructure must be removed");
   assert(!engineSource.includes("CBC Pilot (Rollback)"), "the obsolete CBC pilot selector must be absent");
   assert(!/(localStorage|sessionStorage|useSearchParams|searchParams)/.test(engineSource), "preview mode must not be restored from browser or query persistence");
-  assert(engineSource.includes("TabularRenderer") && engineSource.includes("RenderingEngine") && engineSource.includes("getReportLayout"), "legacy and experimental rollback paths must remain available");
+  const legacyReportPageCallIndexes = Array.from(engineSource.matchAll(/renderLegacyReportPage\(/g), (match) => match.index)
+    .filter((matchIndex) => !engineSource.slice(0, matchIndex).trimEnd().endsWith("const"));
+  const exportContainerMarkerIndex = engineSource.indexOf('data-c4-preserved-pdf-route="legacy"');
+  const exportContainerStartIndex = engineSource.lastIndexOf("{isExportingPDF &&", exportContainerMarkerIndex);
+  const exportContainerEndIndex = engineSource.indexOf("</div>", exportContainerMarkerIndex);
+  assert(legacyReportPageCallIndexes.length === 1
+    && legacyReportPageCallIndexes[0] > exportContainerStartIndex
+    && legacyReportPageCallIndexes[0] < exportContainerEndIndex
+    && engineSource.includes('data-c4-preserved-pdf-route="legacy"'), "legacy HTML must be reachable only through the explicit PDF export container");
 
   process.stdout.write(`C4 verification passed: 17 native Live Preview routes; families ${JSON.stringify(familyCounts)}; draft/completed authority; optional signatures; upper-half enforcement; PDF routing preserved.\n`);
 }

@@ -14,6 +14,10 @@ CREATE TRIGGER trg_report_templates_updated_at
 BEFORE UPDATE ON report_templates
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER trg_patient_report_sessions_updated_at
+BEFORE UPDATE ON patient_report_sessions
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- B-Tree Performance Indexes for high-frequency repository lookups
 CREATE INDEX IF NOT EXISTS idx_patient_report_sessions_accession_number
 ON patient_report_sessions(accession_number);

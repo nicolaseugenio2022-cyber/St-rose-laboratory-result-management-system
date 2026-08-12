@@ -3,12 +3,24 @@
 
 -- 1. user_profiles (Decoupled system login identity metadata)
 CREATE TABLE IF NOT EXISTS user_profiles (
-    id UUID PRIMARY KEY, -- References auth.users(id)
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL CHECK (role IN ('Admin', 'User')),
-    status TEXT NOT NULL CHECK (status IN ('Active', 'Inactive')),
+    role TEXT NOT NULL CHECK (role IN ('Admin', 'User', 'Developer')),
+    status TEXT NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+    password_hash TEXT NOT NULL,
+    security_question TEXT NOT NULL,
+    security_answer_hash TEXT NULL,
+    must_change_password BOOLEAN NOT NULL DEFAULT TRUE,
+    must_set_recovery BOOLEAN NOT NULL DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 1,
+    password_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_user_profiles_canonical_username CHECK (
+        char_length(username) BETWEEN 3 AND 50
+        AND username ~ '^[a-z0-9][a-z0-9._-]*[a-z0-9]$'
+        AND username !~ '[._-]{2}'
+    )
 );
 
 -- 2. personnel (Independent PRC-licensed medical professional directory)
@@ -90,9 +102,12 @@ CREATE TABLE IF NOT EXISTS patient_report_sessions (
     accession_number TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL CHECK (status IN ('Draft', 'Completed')),
     demographics JSONB NOT NULL,
+    created_by_user_id UUID NULL REFERENCES user_profiles(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
-    expires_at TIMESTAMPTZ
+    expires_at TIMESTAMPTZ,
+    last_replaced_at TIMESTAMPTZ NULL
 );
 
 -- 8. laboratory_reports (Selected report within a visit session)

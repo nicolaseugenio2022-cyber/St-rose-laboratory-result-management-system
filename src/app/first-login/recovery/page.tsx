@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { FirstLoginForm } from "@/features/auth/components/FirstLoginForm";
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
 import { getSession } from "@/lib/session";
+import { userService } from "@/services/user-service-instance";
 
 export default async function FirstLoginRecoveryPage() {
   const session = await getSession();
@@ -12,5 +13,7 @@ export default async function FirstLoginRecoveryPage() {
     );
   }
 
-  return <FirstLoginForm step="recovery" />;
+  const securityQuestion = await userService.getSecurityQuestionForUser(session.userId);
+
+  return <FirstLoginForm step="recovery" securityQuestion={securityQuestion} />;
 }

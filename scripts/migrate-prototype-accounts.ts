@@ -144,7 +144,7 @@ async function main(): Promise<void> {
       passwordHash: await hashPassword(input.temporaryPassword),
       securityQuestion: input.securityQuestion.value.trim(),
       securityAnswerHash: null,
-      mustChangePassword: true,
+      mustChangePassword: false,
       mustSetRecovery: true,
       tokenVersion: 1,
       passwordUpdatedAt: now,

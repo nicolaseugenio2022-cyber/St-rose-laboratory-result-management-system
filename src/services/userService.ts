@@ -40,6 +40,7 @@ export class InvalidCredentialsError extends Error {
 export interface IUserService {
   getUsers(): Promise<User[]>;
   getUserById(id: string): Promise<User | null>;
+  getSecurityQuestionForUser(id: string): Promise<string | null>;
   createUser(input: CreateUserInput): Promise<User>;
   updateUser(id: string, input: UpdateUserInput): Promise<User>;
   toggleUserStatus(id: string): Promise<User>;
@@ -96,6 +97,11 @@ export class UserService implements IUserService {
     return record ? toUser(record) : null;
   }
 
+  async getSecurityQuestionForUser(id: string): Promise<string | null> {
+    const record = await this.credentials.findById(id);
+    return record?.securityQuestion ?? null;
+  }
+
   async createUser(input: CreateUserInput): Promise<User> {
     const username = canonicalizeAndValidateUsername(input.username);
     if (!username) throw new Error("Username does not match the canonical username rule.");
@@ -110,7 +116,7 @@ export class UserService implements IUserService {
       passwordHash: await hashPassword(input.password),
       securityQuestion: validatedSecurityQuestion(input),
       securityAnswerHash: null,
-      mustChangePassword: true,
+      mustChangePassword: false,
       mustSetRecovery: true,
       tokenVersion: 1,
       passwordUpdatedAt: now,
@@ -145,7 +151,6 @@ export class UserService implements IUserService {
     if (input.password) {
       updates.passwordHash = await hashPassword(input.password);
       updates.passwordUpdatedAt = new Date().toISOString();
-      updates.mustChangePassword = true;
       updates.tokenVersion = current.tokenVersion + 1;
     }
 

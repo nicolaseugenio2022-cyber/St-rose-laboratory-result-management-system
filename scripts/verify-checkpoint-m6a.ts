@@ -53,6 +53,11 @@ function normalizedSha256(content: string): string {
 const migrationNames = readdirSync(migrationsDirectory)
   .filter((name) => name.endsWith(".sql"))
   .sort();
+const correctionMigrationName = "20260812110000_correct_initial_account_lifecycle.sql";
+assert(
+  migrationNames.at(-1) === correctionMigrationName,
+  "the initial-account-lifecycle correction migration must sort last"
+);
 const migrationChain = migrationNames
   .map((name) => read(path.join("supabase", "migrations", name)))
   .join("\n");
@@ -75,10 +80,29 @@ assert(/\bpassword_hash\s+TEXT\s+NOT\s+NULL/i.test(userProfiles), "password_hash
 assert(/\bsecurity_question\s+TEXT\s+NOT\s+NULL/i.test(userProfiles), "security_question must be present and required");
 assert(/\bsecurity_answer_hash\s+TEXT\s+NULL\b/i.test(userProfiles), "security_answer_hash must be explicitly nullable");
 assert(!/\bsecurity_answer_hash\s+TEXT\s+NOT\s+NULL/i.test(userProfiles), "security_answer_hash must not be NOT NULL");
-assert(/\bmust_change_password\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+TRUE/i.test(userProfiles), "must_change_password must independently default TRUE");
+assert(/\bmust_change_password\s+BOOLEAN\s+NOT\s+NULL\b/i.test(userProfiles), "02_tables.sql must declare must_change_password BOOLEAN NOT NULL");
 assert(/\bmust_set_recovery\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+TRUE/i.test(userProfiles), "must_set_recovery must independently default TRUE");
 assert(/\btoken_version\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+1/i.test(userProfiles), "token_version must be present");
 assert(/\bpassword_updated_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i.test(userProfiles), "password_updated_at must be present");
+
+const correctionSql = read(path.join("supabase", "migrations", correctionMigrationName));
+const expectedCorrectionSql = `ALTER TABLE user_profiles ALTER COLUMN must_change_password SET DEFAULT FALSE;
+
+UPDATE user_profiles
+SET must_change_password = FALSE,
+    updated_at = NOW()
+WHERE must_change_password = TRUE
+  AND security_answer_hash IS NULL;`;
+assert(
+  correctionSql.trim() === expectedCorrectionSql,
+  "the correction migration must contain exactly the approved two statements"
+);
+assert(
+  /ALTER\s+TABLE\s+user_profiles\s+ALTER\s+COLUMN\s+must_change_password\s+SET\s+DEFAULT\s+FALSE\s*;/i.test(
+    correctionSql
+  ),
+  "the correction migration must set must_change_password DEFAULT FALSE"
+);
 
 assert(/CONSTRAINT\s+chk_user_profiles_canonical_username\s+CHECK/i.test(userProfiles), "canonical username CHECK must be named and present");
 assert(/char_length\s*\(\s*username\s*\)\s+BETWEEN\s+3\s+AND\s+50/i.test(userProfiles), "canonical username length must be 3-50");

@@ -21,9 +21,10 @@ import {
 
 export interface FirstLoginFormProps {
   step: "password" | "recovery";
+  securityQuestion?: string | null;
 }
 
-export function FirstLoginForm({ step }: FirstLoginFormProps) {
+export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) {
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
   const isPasswordStep = step === "password";
@@ -98,15 +99,25 @@ export function FirstLoginForm({ step }: FirstLoginFormProps) {
               required
             />
           ) : (
-            <Input
-              id="answer"
-              name="answer"
-              label="Recovery Answer"
-              type="password"
-              autoComplete="off"
-              disabled={isPending}
-              required
-            />
+            <>
+              <div className="rounded-md border border-brand-primary/20 bg-brand-primary/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-text-muted">
+                  Security Question
+                </p>
+                <p className="mt-1 text-base font-semibold text-brand-text">
+                  {securityQuestion}
+                </p>
+              </div>
+              <Input
+                id="answer"
+                name="answer"
+                label="Recovery Answer"
+                type="password"
+                autoComplete="off"
+                disabled={isPending}
+                required
+              />
+            </>
           )}
         </CardContent>
 

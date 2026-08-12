@@ -65,6 +65,11 @@ function verifyClientBoundary(): void {
     const source = read(relativePath);
     if (!/^\s*["']use client["'];/m.test(source)) continue;
 
+    assert(
+      !/security_?answer_?hash/i.test(source),
+      `${relativePath} must not expose securityAnswerHash from a client component`
+    );
+
     const importedModules = [...source.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map(
       (match) => match[1]
     );
@@ -76,6 +81,17 @@ function verifyClientBoundary(): void {
           moduleName !== "@supabase/supabase-js"
       ),
       `${relativePath} must not import a repository or Supabase client`
+    );
+  }
+}
+
+function verifyServerActionResponseBoundary(): void {
+  for (const relativePath of sourceFiles("src")) {
+    const source = read(relativePath);
+    if (!/^\s*["']use server["'];/m.test(source)) continue;
+    assert(
+      !/security_?answer_?hash/i.test(source),
+      `${relativePath} must not expose securityAnswerHash in a server-action response type`
     );
   }
 }
@@ -219,6 +235,25 @@ function withMilestone6BIdentifiers(source: string): string {
     .replace(/\bILoginAttemptRepository\b/g, "IAuthAttemptRepository");
 }
 
+function withCorrectedInitialAccountLifecycle(source: string): string {
+  return source
+    .replace(
+      "  getUserById(id: string): Promise<User | null>;\n",
+      "  getUserById(id: string): Promise<User | null>;\n" +
+        "  getSecurityQuestionForUser(id: string): Promise<string | null>;\n"
+    )
+    .replace(
+      "  async createUser(input: CreateUserInput): Promise<User> {",
+      "  async getSecurityQuestionForUser(id: string): Promise<string | null> {\n" +
+        "    const record = await this.credentials.findById(id);\n" +
+        "    return record?.securityQuestion ?? null;\n" +
+        "  }\n\n" +
+        "  async createUser(input: CreateUserInput): Promise<User> {"
+    )
+    .replace("      mustChangePassword: true,", "      mustChangePassword: false,")
+    .replace("      updates.mustChangePassword = true;\n", "");
+}
+
 function verifyApprovedImportDifferencesOnly(
   relativePath: string,
   current: ParsedImport[],
@@ -260,7 +295,7 @@ function verifyBehaviouralFreeze(): void {
     );
   }
 
-  for (const relativePath of ["src/services/userService.ts", "src/lib/login-rate-limit.ts"]) {
+  for (const relativePath of ["src/lib/login-rate-limit.ts"]) {
     const current = read(relativePath);
     assert(
       !/FileAuth|SupabaseCredentialRepository|SupabaseLoginAttemptRepository|supabaseServer/.test(current),
@@ -287,6 +322,64 @@ function verifyBehaviouralFreeze(): void {
       `${relativePath} must be byte-identical to Milestone 6B outside the import block once the contract renames are undone`
     );
   }
+
+  const relativePath = "src/services/userService.ts";
+  const current = read(relativePath);
+  assert(
+    !/FileAuth|SupabaseCredentialRepository|SupabaseLoginAttemptRepository|supabaseServer/.test(current),
+    `${relativePath} must reference no concrete repository or client type`
+  );
+  assert(
+    /ICredentialRepository|ILoginAttemptRepository/.test(current),
+    `${relativePath} must depend on the persistence-neutral contracts`
+  );
+  assert(
+    !/IAuthCredentialRepository|IAuthAttemptRepository/.test(current),
+    `${relativePath} must use only the renamed contracts, so undoing the rename is unambiguous`
+  );
+
+  const baseline = readAtMilestone6B(relativePath);
+  const renamed = withMilestone6BIdentifiers(current);
+  verifyApprovedImportDifferencesOnly(
+    relativePath,
+    parseImports(renamed),
+    parseImports(baseline)
+  );
+  assert(
+    bodyAfterImports(renamed) === bodyAfterImports(withCorrectedInitialAccountLifecycle(baseline)),
+    `${relativePath} must contain only the approved initial-account-lifecycle changes outside the import block`
+  );
+}
+
+function verifyCorrectedInitialAccountLifecycle(): void {
+  const userServiceSource = read("src/services/userService.ts");
+  const createUser = /async\s+createUser\b[\s\S]*?(?=\n\s*async\s+updateUser\b)/.exec(
+    userServiceSource
+  )?.[0];
+  assert(createUser, "userService.createUser must be present");
+  assert(
+    /mustChangePassword:\s*false/.test(createUser) &&
+      !/mustChangePassword:\s*true/.test(createUser),
+    "userService.createUser must not set mustChangePassword true"
+  );
+
+  const updateUser = /async\s+updateUser\b[\s\S]*?(?=\n\s*async\s+toggleUserStatus\b)/.exec(
+    userServiceSource
+  )?.[0];
+  assert(updateUser, "userService.updateUser must be present");
+  assert(
+    !/updates\.mustChangePassword\s*=/.test(updateUser),
+    "userService.updateUser must contain no automatic mustChangePassword assignment"
+  );
+
+  const recoveryPage = read("src/app/first-login/recovery/page.tsx");
+  assert(
+    /getSecurityQuestionForUser\s*\(\s*session\.userId\s*\)/.test(recoveryPage) &&
+      /<FirstLoginForm\s+step=["']recovery["']\s+securityQuestion=\{securityQuestion\}\s*\/>/.test(
+        recoveryPage
+      ),
+    "the recovery page must pass the authenticated user's security-question prop to FirstLoginForm"
+  );
 }
 
 function verifyOwnershipInputs(): void {
@@ -319,8 +412,8 @@ function verifyOwnershipMigration(): void {
   const migrationName = ownershipMigrations[0];
   assert(migrationName > "20260812100100_", "the ownership migration must sort after 20260812100100");
   assert(
-    migrationNames.at(-1) === migrationName,
-    "the ownership-enforcement migration must sort last"
+    migrationName < "20260812110000_correct_initial_account_lifecycle.sql",
+    "the ownership-enforcement migration must sort before the initial-account-lifecycle correction"
   );
 
   const source = read(path.join("supabase", "migrations", migrationName));
@@ -365,9 +458,9 @@ function verifyPrototypeMigration(): void {
   );
   assert(
     /securityAnswerHash:\s*null/.test(source) &&
-      /mustChangePassword:\s*true/.test(source) &&
+      /mustChangePassword:\s*false/.test(source) &&
       /mustSetRecovery:\s*true/.test(source),
-    "provisioned accounts must defer password change and recovery setup"
+    "provisioned accounts must preserve the assigned password and defer recovery setup"
   );
   const withoutRequiredNullHash = source.replace(/securityAnswerHash:\s*null/, "");
   assert(
@@ -400,11 +493,13 @@ function verifyDeletedAdapters(): void {
 }
 
 verifyClientBoundary();
+verifyServerActionResponseBoundary();
 verifyServerOnlyBoundary();
 verifySupabaseServerClient();
 verifySessionRepositoryFailures();
 verifyRenamedContractsOnly();
 verifyBehaviouralFreeze();
+verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();
 verifyOwnershipMigration();
 verifyPrototypeMigration();

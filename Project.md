@@ -230,7 +230,7 @@ Pending:
   - Developer least-privilege boundary
   - One-time protected Developer bootstrap
   - Persistent, database-enforced append-only audit logging
-  - Admin-mediated password recovery
+  - Self-service password recovery based on username and the configured security question
 - Performance validation
 - Accessibility validation
 - Monitoring

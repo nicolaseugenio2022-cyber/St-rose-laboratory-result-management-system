@@ -223,7 +223,7 @@ CREATE TABLE user_profiles (
     password_hash TEXT NOT NULL,
     security_question TEXT NOT NULL,
     security_answer_hash TEXT NULL,
-    must_change_password BOOLEAN NOT NULL DEFAULT TRUE,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     must_set_recovery BOOLEAN NOT NULL DEFAULT TRUE,
     token_version INTEGER NOT NULL DEFAULT 1,
     password_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -235,7 +235,7 @@ CREATE TABLE user_profiles (
 - **Domain Mapping**: Aggregate Root `AuthenticationUser`.
 - **Canonical Username**: `username` stores the canonical form only — NFKC-normalized, trimmed, lowercased. Permitted characters are `a–z`, `0–9`, and the separators `.`, `_`, `-`; the value must begin and end with `a–z` or `0–9`, contain no consecutive separators, and be 3–50 characters long. The UNIQUE constraint applies to this canonical value, preventing logically duplicate accounts such as `Admin` and `admin`.
 - **Credential Storage**: `password_hash` and `security_answer_hash` hold encoded scrypt digests of the form `scrypt$N$r$p$<base64 salt>$<base64 hash>` with independent random salts. Salt and KDF parameters are encoded inside the hash string; no separate columns are required.
-- **First-Login Setup**: `security_answer_hash` is nullable because the account holder sets it at first login; `must_set_recovery` enforces completion. `must_change_password` and `must_set_recovery` are independently enforced.
+- **First-Login Setup**: `security_answer_hash` is nullable because the account holder sets it at first login; `must_set_recovery` enforces completion. `must_change_password` is not set by normal account creation and is reserved for an explicit forced-password-reset workflow; the two flags are independently enforced.
 - **Session Invalidation**: `token_version` is embedded in the session payload; incrementing it invalidates all existing sessions for the account.
 - **Decoupling Rule**: Maintains **zero** foreign key dependencies with `personnel`.
 

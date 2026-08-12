@@ -182,7 +182,7 @@ function verifySessionsAndGate(): void {
   );
 }
 
-function verifyNoTrackedCredentialsOrRecoverySurface(): void {
+function verifyNoTrackedCredentialsAndRecoverySecurity(): void {
   assert(!existsSync(path.join(root, "data", "users.json")), "data/users.json must be absent");
 
   const encodedCredential = /(?:scrypt\$\d+\$\d+\$\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+|\$2[aby]\$\d+\$[./A-Za-z0-9]+|\$argon2(?:id|i|d)\$)/;
@@ -202,25 +202,43 @@ function verifyNoTrackedCredentialsOrRecoverySurface(): void {
     );
   }
 
-  const apiDirectory = path.join(root, "src", "app", "api");
-  const apiFiles = trackedFiles().filter((file) =>
-    path.resolve(root, file).startsWith(`${apiDirectory}${path.sep}`)
-  );
-  assert(
-    apiFiles.every((file) => !/(?:recovery|forgot|password-reset|reset-password)/i.test(file)),
-    "no recovery or password-reset endpoint may exist"
-  );
+  const recoveryBoundaryFiles = [
+    path.join("src", "features", "auth", "forgotPasswordActions.ts"),
+    ...trackedFiles().filter(
+      (file) =>
+        /(?:^|\/)src\/app\/api\//.test(file) &&
+        /(?:recovery|forgot|password-reset|reset-password)/i.test(file)
+    ),
+  ].filter((file) => existsSync(path.join(root, file)));
+  assert(recoveryBoundaryFiles.length > 0, "the recovery action boundary must exist");
+  for (const relativePath of recoveryBoundaryFiles) {
+    const source = read(relativePath);
+    assert(
+      !/security_?answer_?hash|password_?hash/i.test(source),
+      `${relativePath} must not return or reference a credential hash`
+    );
+  }
 
-  const sourceFiles = trackedFiles().filter(
-    (file) => file.startsWith("src/") && /\.[cm]?[jt]sx?$/.test(file)
-  );
-  const applicationSource = sourceFiles
-    .filter((file) => existsSync(path.join(root, file)))
-    .map(read)
-    .join("\n");
+  const recoveryRateLimitSource = read(path.join("src", "lib", "recovery-rate-limit.ts"));
   assert(
-    !/(?:recovery[^\n]{0,80}(?:brute[- ]?force|rate[- ]?limit|throttl)|(?:brute[- ]?force|rate[- ]?limit|throttl)[^\n]{0,80}recovery)/i.test(applicationSource),
-    "no code or comment may claim active recovery brute-force protection"
+    /attemptKind:\s*["']RecoveryAnswer["']\s*,\s*username\s*,\s*since/.test(
+      recoveryRateLimitSource
+    ) &&
+      /attemptKind:\s*["']RecoveryAnswer["']\s*,\s*clientIp\s*,\s*since/.test(
+        recoveryRateLimitSource
+      ),
+    "the recovery-answer path must be rate-limited on both username and IP dimensions"
+  );
+  assert(
+    /attemptKind:\s*["']RecoveryLookup["']\s*,\s*clientIp\s*,\s*since/.test(
+      recoveryRateLimitSource
+    ),
+    "the recovery-lookup path must enforce its per-IP throttle"
+  );
+  assert(
+    !/attemptKind\s*:\s*["']Login["']/.test(recoveryRateLimitSource) &&
+      !/this\.record\(\s*["']Login["']/.test(recoveryRateLimitSource),
+    "recovery lockout logic must never query or record attemptKind Login"
   );
 }
 
@@ -231,7 +249,7 @@ async function main(): Promise<void> {
   await verifyAtomicWriteFailure();
   verifyRepositoryBoundaries();
   verifySessionsAndGate();
-  verifyNoTrackedCredentialsOrRecoverySurface();
+  verifyNoTrackedCredentialsAndRecoverySecurity();
   process.stdout.write("M6B verification passed: authentication foundation, first-login gate, repository boundaries, atomic storage, and credential hygiene verified.\n");
 }
 

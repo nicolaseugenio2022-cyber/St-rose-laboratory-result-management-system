@@ -34,6 +34,11 @@ export interface ICredentialRepository {
   findAll(): Promise<AuthCredentialRecord[]>;
   create(record: AuthCredentialRecord): Promise<AuthCredentialRecord>;
   update(id: string, updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>): Promise<AuthCredentialRecord>;
+  updateIfTokenVersion(
+    id: string,
+    expectedTokenVersion: number,
+    updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>
+  ): Promise<AuthCredentialRecord | null>;
   delete(id: string): Promise<void>;
 }
 
@@ -58,6 +63,21 @@ export interface AuthAttemptQuery {
 export interface ILoginAttemptRepository {
   record(attempt: AuthAttemptRecord): Promise<AuthAttemptRecord>;
   findAttempts(query: AuthAttemptQuery): Promise<AuthAttemptRecord[]>;
+}
+
+export type AuditLogEntry = {
+  id: string;
+  category: string;
+  eventType: string;
+  performedByUserId: string | null;
+  performedByUsername: string | null;
+  targetReference: string | null;
+  details: Record<string, unknown> | null;
+  occurredAt: string;
+};
+
+export interface IAuditLogRepository {
+  append(entry: AuditLogEntry): Promise<void>;
 }
 
 export interface IPatientReportSessionRepository {

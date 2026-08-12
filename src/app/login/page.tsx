@@ -2,6 +2,7 @@
 
 import React, { useTransition, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -152,13 +153,12 @@ export default function LoginPage() {
                 Remember me
               </label>
             </div>
-            <a 
-              href="#" 
+            <Link 
+              href="/forgot-password" 
               className="text-sm font-medium text-brand-primary hover:underline"
-              onClick={(e) => { e.preventDefault(); /* Placeholder for future backend auth */ }}
             >
               Forgot password?
-            </a>
+            </Link>
           </div>
         </CardContent>
         

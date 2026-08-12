@@ -62,6 +62,18 @@ class FakeCredentialRepository implements ICredentialRepository {
     return { ...updated };
   }
 
+  async updateIfTokenVersion(
+    id: string,
+    expectedTokenVersion: number,
+    updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>
+  ): Promise<AuthCredentialRecord | null> {
+    const current = this.records.get(id);
+    if (!current || current.tokenVersion !== expectedTokenVersion) return null;
+    const updated = { ...current, ...updates };
+    this.records.set(id, updated);
+    return { ...updated };
+  }
+
   async delete(id: string): Promise<void> {
     if (this.deleteFailure !== undefined) throw this.deleteFailure;
     if (!this.records.delete(id)) throw new Error(`Credential ${id} was not found.`);

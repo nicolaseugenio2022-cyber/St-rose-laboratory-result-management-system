@@ -171,6 +171,23 @@ export class SupabaseCredentialRepository implements ICredentialRepository {
     return mapCredential(data as CredentialRow);
   }
 
+  async updateIfTokenVersion(
+    id: string,
+    expectedTokenVersion: number,
+    updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>
+  ): Promise<AuthCredentialRecord | null> {
+    const { data, error } = await supabaseServer
+      .from("user_profiles")
+      .update(toCredentialUpdates(updates))
+      .eq("id", id)
+      .eq("token_version", expectedTokenVersion)
+      .select(CREDENTIAL_COLUMNS)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? mapCredential(data as CredentialRow) : null;
+  }
+
   async delete(id: string): Promise<void> {
     const { data, error } = await supabaseServer
       .from("user_profiles")

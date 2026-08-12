@@ -8,8 +8,19 @@ import type {
 } from "@/repositories/interfaces";
 import { CreateUserInput, UpdateUserInput, User } from "@/types/user";
 import { canonicalizeAndValidateUsername, canonicalizeUsername } from "@/lib/username";
-import { hashPassword, hashSecurityAnswer, verifyPassword } from "@/lib/password";
+import {
+  hashPassword,
+  hashSecurityAnswer,
+  normalizeSecurityAnswer,
+  verifyPassword,
+  verifySecurityAnswer,
+} from "@/lib/password";
 import { LoginRateLimiter } from "@/lib/login-rate-limit";
+import {
+  RecoveryRateLimitError,
+  RecoveryRateLimiter,
+} from "@/lib/recovery-rate-limit";
+import { AuditService } from "@/services/audit-service";
 import {
   CUSTOM_SECURITY_QUESTION,
   PREDEFINED_SECURITY_QUESTIONS,
@@ -65,6 +76,32 @@ export class InvalidCredentialsError extends Error {
   }
 }
 
+export class RecoveryResetConflictError extends Error {
+  constructor() {
+    super("The password recovery state is no longer valid.");
+    this.name = "RecoveryResetConflictError";
+  }
+}
+
+export type RecoveryChallengeResult =
+  | {
+      eligible: true;
+      userId: string;
+      username: string;
+      securityQuestion: string;
+      tokenVersion: number;
+    }
+  | { eligible: false };
+
+export type RecoveryAnswerResult =
+  | { verified: true; userId: string; tokenVersion: number }
+  | { verified: false };
+
+export type RecoveryPasswordResetResult = {
+  userId: string;
+  tokenVersion: number;
+};
+
 export interface IUserService {
   getUsers(): Promise<User[]>;
   getUserById(id: string): Promise<User | null>;
@@ -76,6 +113,17 @@ export interface IUserService {
   authenticate(username: string, password: string, clientIp?: string | null): Promise<User>;
   changeFirstLoginPassword(id: string, password: string): Promise<User>;
   setFirstLoginRecoveryAnswer(id: string, answer: string): Promise<User>;
+  getRecoveryChallenge(username: string, clientIp: string): Promise<RecoveryChallengeResult>;
+  verifyRecoveryAnswer(
+    username: string,
+    answer: string,
+    clientIp: string
+  ): Promise<RecoveryAnswerResult>;
+  resetPasswordAfterRecovery(
+    userId: string,
+    expectedTokenVersion: number,
+    newPassword: string
+  ): Promise<RecoveryPasswordResetResult>;
 }
 
 function toUser(record: AuthCredentialRecord): User {
@@ -108,12 +156,22 @@ function validatedSecurityQuestion(input: CreateUserInput): string {
 
 export class UserService implements IUserService {
   private readonly loginRateLimiter: LoginRateLimiter;
+  private readonly recoveryRateLimiter: RecoveryRateLimiter;
 
   constructor(
     private readonly credentials: ICredentialRepository,
-    attempts: ILoginAttemptRepository
+    attempts: ILoginAttemptRepository,
+    private readonly auditService?: AuditService
   ) {
     this.loginRateLimiter = new LoginRateLimiter(attempts);
+    this.recoveryRateLimiter = new RecoveryRateLimiter(attempts);
+  }
+
+  private get recoveryAudit(): AuditService {
+    if (!this.auditService) {
+      throw new Error("Persistent recovery audit service is not configured.");
+    }
+    return this.auditService;
   }
 
   private async countOtherActiveAdmins(userId: string): Promise<number> {
@@ -285,5 +343,194 @@ export class UserService implements IUserService {
         updatedAt: new Date().toISOString(),
       })
     );
+  }
+
+  async getRecoveryChallenge(
+    usernameInput: string,
+    clientIp: string
+  ): Promise<RecoveryChallengeResult> {
+    const username = canonicalizeUsername(usernameInput);
+    let attemptCounts: { ipAttemptCount: number; usernameAttemptCount: number };
+
+    try {
+      attemptCounts = await this.recoveryRateLimiter.assertLookupAllowed(username, clientIp);
+    } catch (error) {
+      if (!(error instanceof RecoveryRateLimitError)) throw error;
+      await this.recoveryRateLimiter.recordLookup(username, clientIp, false);
+      await this.recoveryAudit.emit({
+        eventType: "RecoveryLookupAttempted",
+        targetReference: username,
+        details: {
+          outcome: "not_eligible",
+          reasonCode: "recovery_lookup_throttled",
+          clientIp,
+          ipAttemptCount: error.attemptCount + 1,
+        },
+      });
+      await this.recoveryAudit.emit({
+        eventType: "RecoveryLookupThrottled",
+        targetReference: username,
+        details: {
+          outcome: "throttled",
+          reasonCode: "recovery_lookup_ip_limit",
+          clientIp,
+          ipAttemptCount: error.attemptCount + 1,
+        },
+      });
+      return { eligible: false };
+    }
+
+    const record = await this.credentials.findByUsername(username);
+    const reasonCode = !record
+      ? "unknown_username"
+      : record.status !== "Active"
+        ? "account_inactive"
+        : record.securityAnswerHash === null
+          ? "recovery_not_configured"
+          : "eligible";
+    const eligible = Boolean(
+      record && record.status === "Active" && record.securityAnswerHash !== null
+    );
+
+    await this.recoveryRateLimiter.recordLookup(username, clientIp, eligible);
+    await this.recoveryAudit.emit({
+      eventType: "RecoveryLookupAttempted",
+      targetReference: username,
+      details: {
+        outcome: eligible ? "eligible" : "not_eligible",
+        reasonCode,
+        clientIp,
+        ipAttemptCount: attemptCounts.ipAttemptCount + 1,
+        usernameAttemptCount: attemptCounts.usernameAttemptCount + 1,
+      },
+    });
+
+    if (!record || !eligible) return { eligible: false };
+    return {
+      eligible: true,
+      userId: record.id,
+      username: record.username,
+      securityQuestion: record.securityQuestion,
+      tokenVersion: record.tokenVersion,
+    };
+  }
+
+  async verifyRecoveryAnswer(
+    usernameInput: string,
+    answer: string,
+    clientIp: string
+  ): Promise<RecoveryAnswerResult> {
+    const username = canonicalizeUsername(usernameInput);
+    try {
+      await this.recoveryRateLimiter.assertAnswerAllowed(username, clientIp);
+    } catch (error) {
+      if (!(error instanceof RecoveryRateLimitError)) throw error;
+      await this.recoveryAudit.emit({
+        eventType: "RecoveryAnswerFailed",
+        targetReference: username,
+        details: {
+          outcome: "throttled",
+          reasonCode: "recovery_answer_rate_limited",
+          clientIp,
+          attemptCount: error.attemptCount,
+        },
+      });
+      throw error;
+    }
+
+    const record = await this.credentials.findByUsername(username);
+    const normalizedAnswer = normalizeSecurityAnswer(answer);
+    const verified = Boolean(
+      record &&
+        record.status === "Active" &&
+        record.securityAnswerHash !== null &&
+        (await verifySecurityAnswer(normalizedAnswer, record.securityAnswerHash))
+    );
+    await this.recoveryRateLimiter.recordAnswer(username, clientIp, verified);
+
+    if (!record || !verified) {
+      const reasonCode = !record
+        ? "unknown_username"
+        : record.status !== "Active"
+          ? "account_inactive"
+          : record.securityAnswerHash === null
+            ? "recovery_not_configured"
+            : "recovery_answer_mismatch";
+      await this.recoveryAudit.emit({
+        eventType: "RecoveryAnswerFailed",
+        targetReference: username,
+        details: {
+          outcome: "not_verified",
+          reasonCode,
+          clientIp,
+        },
+      });
+      return { verified: false };
+    }
+
+    await this.recoveryAudit.emit({
+      eventType: "RecoveryAnswerVerified",
+      targetReference: record.username,
+      details: {
+        outcome: "verified",
+        reasonCode: "recovery_answer_verified",
+        clientIp,
+        tokenVersion: record.tokenVersion,
+      },
+    });
+    return {
+      verified: true,
+      userId: record.id,
+      tokenVersion: record.tokenVersion,
+    };
+  }
+
+  async resetPasswordAfterRecovery(
+    userId: string,
+    expectedTokenVersion: number,
+    newPassword: string
+  ): Promise<RecoveryPasswordResetResult> {
+    const current = await this.credentials.findById(userId);
+    if (!current) throw new RecoveryResetConflictError();
+
+    try {
+      await this.recoveryRateLimiter.assertPasswordResetAllowed(current.username);
+    } catch (error) {
+      if (error instanceof RecoveryRateLimitError) {
+        await this.recoveryRateLimiter.recordPasswordReset(current.username, false);
+      }
+      throw error;
+    }
+
+    let succeeded = false;
+    try {
+      const now = new Date().toISOString();
+      const updated = await this.credentials.updateIfTokenVersion(
+        userId,
+        expectedTokenVersion,
+        {
+          passwordHash: await hashPassword(newPassword),
+          tokenVersion: expectedTokenVersion + 1,
+          passwordUpdatedAt: now,
+          updatedAt: now,
+        }
+      );
+      if (!updated) throw new RecoveryResetConflictError();
+      succeeded = true;
+
+      await this.recoveryAudit.emit({
+        eventType: "RecoveryPasswordResetCompleted",
+        targetReference: updated.username,
+        details: {
+          outcome: "completed",
+          reasonCode: "recovery_password_reset_completed",
+          previousTokenVersion: expectedTokenVersion,
+          newTokenVersion: updated.tokenVersion,
+        },
+      });
+      return { userId: updated.id, tokenVersion: updated.tokenVersion };
+    } finally {
+      await this.recoveryRateLimiter.recordPasswordReset(current.username, succeeded);
+    }
   }
 }

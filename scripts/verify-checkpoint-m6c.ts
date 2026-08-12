@@ -123,8 +123,8 @@ function verifyClientBoundary(): void {
     if (!/^\s*["']use client["'];/m.test(source)) continue;
 
     assert(
-      !/security_?answer_?hash/i.test(source),
-      `${relativePath} must not expose securityAnswerHash from a client component`
+      !/security_?answer_?hash|password_?hash/i.test(source),
+      `${relativePath} must not expose a credential hash from a client component`
     );
 
     const importedModules = [...source.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map(
@@ -147,8 +147,8 @@ function verifyServerActionResponseBoundary(): void {
     const source = read(relativePath);
     if (!/^\s*["']use server["'];/m.test(source)) continue;
     assert(
-      !/security_?answer_?hash/i.test(source),
-      `${relativePath} must not expose securityAnswerHash in a server-action response type`
+      !/security_?answer_?hash|password_?hash/i.test(source),
+      `${relativePath} must not expose a credential hash in a server-action response type`
     );
   }
 }
@@ -163,11 +163,13 @@ function verifyServerOnlyBoundary(): void {
     "src/lib/supabase/server.ts",
     "src/repositories/supabase-credential-repository.ts",
     "src/repositories/supabase-login-attempt-repository.ts",
+    "src/repositories/supabase-audit-log-repository.ts",
     "src/repositories/supabase-report-registry-repository.ts",
     "src/repositories/supabase-session-repository.ts",
     "src/services/report-registry-service.ts",
     "src/services/user-service-instance.ts",
     "src/services/userService.ts",
+    "src/services/audit-service.ts",
     "src/features/server-boundary/server-actions.ts",
   ];
   for (const relativePath of privilegedModules) {
@@ -228,13 +230,80 @@ function verifySessionRepositoryFailures(): void {
   );
 }
 
+function contractBlock(source: string, kind: "interface" | "type", name: string): string {
+  const pattern =
+    kind === "interface"
+      ? new RegExp(`export interface ${name} \\{[\\s\\S]*?\\n\\}`)
+      : new RegExp(`export type ${name}\\s*=\\s*[\\s\\S]*?;`);
+  return pattern.exec(source)?.[0] ?? "";
+}
+
+function normalizeContract(source: string): string {
+  return source.replace(/\s+/g, " ").trim();
+}
+
 function verifyRenamedContractsOnly(): void {
-  const expected = readAtMilestone6B("src/repositories/interfaces/index.ts")
+  const baseline = readAtMilestone6B("src/repositories/interfaces/index.ts")
     .replace(/IAuthCredentialRepository/g, "ICredentialRepository")
     .replace(/IAuthAttemptRepository/g, "ILoginAttemptRepository");
+  const current = read("src/repositories/interfaces/index.ts");
+
+  for (const name of [
+    "AuthCredentialRecord",
+    "AuthAttemptRecord",
+    "AuthAttemptQuery",
+    "ILoginAttemptRepository",
+    "IPatientReportSessionRepository",
+    "IPersonnelRepository",
+    "IUserProfileRepository",
+    "IReportRegistryRepository",
+  ]) {
+    const currentBlock = contractBlock(current, "interface", name);
+    const baselineBlock = contractBlock(baseline, "interface", name);
+    assert(currentBlock && baselineBlock, `${name} must remain present`);
+    assert(
+      normalizeContract(currentBlock) === normalizeContract(baselineBlock),
+      `${name} must retain its Milestone 6B record shape and method signatures`
+    );
+  }
+
+  for (const name of ["AuthRole", "AuthStatus", "AuthAttemptKind"]) {
+    assert(
+      normalizeContract(contractBlock(current, "type", name)) ===
+        normalizeContract(contractBlock(baseline, "type", name)),
+      `${name} must retain its Milestone 6B shape`
+    );
+  }
+
+  const credentialContract = contractBlock(current, "interface", "ICredentialRepository");
+  const baselineCredentialContract = contractBlock(
+    baseline,
+    "interface",
+    "ICredentialRepository"
+  );
+  assert(credentialContract && baselineCredentialContract, "ICredentialRepository must exist");
+  const withoutGuardedUpdate = credentialContract.replace(
+    /\n\s*updateIfTokenVersion\([\s\S]*?\): Promise<AuthCredentialRecord \| null>;/,
+    ""
+  );
   assert(
-    read("src/repositories/interfaces/index.ts") === expected,
-    "repository contracts must match Milestone 6B apart from the two interface renames"
+    normalizeContract(withoutGuardedUpdate) === normalizeContract(baselineCredentialContract),
+    "ICredentialRepository must retain every Milestone 6B method unchanged"
+  );
+  assert(
+    /updateIfTokenVersion\([\s\S]*?\): Promise<AuthCredentialRecord \| null>;/.test(
+      credentialContract
+    ),
+    "updateIfTokenVersion must return AuthCredentialRecord | null"
+  );
+
+  const auditContract = contractBlock(current, "interface", "IAuditLogRepository");
+  assert(auditContract, "IAuditLogRepository must exist");
+  assert(
+    /^export interface IAuditLogRepository \{\s*append\(entry: AuditLogEntry\): Promise<void>;\s*\}$/.test(
+      auditContract
+    ),
+    "IAuditLogRepository must expose append and nothing else"
   );
 }
 
@@ -577,24 +646,57 @@ function verifyCredentialVisibilityControls(): void {
     "neither credential visibility button may set tabIndex={-1}"
   );
 
-  const forgotPasswordRoutes = sourceFiles("src/app").filter((relativePath) =>
-    /(?:^|[\\/])forgot[-_]?password(?:[\\/]|\.|$)/i.test(relativePath)
-  );
-  assert(forgotPasswordRoutes.length === 0, "no forgot-password route or endpoint may exist");
   assert(
-    !sourceFiles("src").some((relativePath) =>
-      /["'`]\/(?:api\/)?forgot[-_]?password(?:[\/"'`?#]|$)/i.test(read(relativePath))
-    ),
-    "source code must not reference a forgot-password route or endpoint"
+    existsSync(path.join(root, "src", "app", "forgot-password", "layout.tsx")) &&
+      existsSync(path.join(root, "src", "app", "forgot-password", "page.tsx")),
+    "the /forgot-password route must exist"
   );
-  const forgotPasswordControl = /<a\b[\s\S]*?Forgot password\?[\s\S]*?<\/a>/.exec(
-    loginSource
-  )?.[0];
   assert(
-    forgotPasswordControl &&
-      /href\s*=\s*["']#["']/.test(forgotPasswordControl) &&
-      /preventDefault\s*\(\s*\)/.test(forgotPasswordControl),
-    "the existing Forgot password placeholder must remain inactive"
+    /import\s+Link\s+from\s+["']next\/link["']/.test(loginSource) &&
+      /<Link\b[\s\S]*?href=["']\/forgot-password["'][\s\S]*?>\s*Forgot password\?\s*<\/Link>/.test(
+        loginSource
+      ) &&
+      !/href\s*=\s*["']#["']/.test(loginSource),
+    "the login page must navigate to /forgot-password without an inert href"
+  );
+
+  const forgotPasswordSource = read(
+    "src/features/auth/components/ForgotPasswordForm.tsx"
+  );
+  for (const [stateName, inputName] of [
+    ["showAnswer", "answer"],
+    ["showNewPassword", "password"],
+    ["showConfirmPassword", "confirmPassword"],
+  ]) {
+    assert(
+      new RegExp(`\\[${stateName},\\s*set[A-Z][A-Za-z]+\\]\\s*=\\s*useState\\(false\\)`).test(
+        forgotPasswordSource
+      ) &&
+        new RegExp(
+          `name=["']${inputName}["'][\\s\\S]*?type=\\{${stateName}\\s*\\?\\s*["']text["']\\s*:\\s*["']password["']\\}`
+        ).test(forgotPasswordSource),
+      `${inputName} must be masked by default and reveal only its typed value`
+    );
+  }
+
+  for (const [stateName, visibleLabel, hiddenLabel] of [
+    ["showAnswer", "Hide recovery answer", "Show recovery answer"],
+    ["showNewPassword", "Hide new password", "Show new password"],
+    ["showConfirmPassword", "Hide confirm password", "Show confirm password"],
+  ]) {
+    assert(
+      new RegExp(
+        `aria-label=\\{[\\s\\n]*${stateName}\\s*\\?\\s*["']${visibleLabel}["']\\s*:\\s*["']${hiddenLabel}["'][\\s\\n]*\\}`
+      ).test(forgotPasswordSource),
+      `${stateName} must carry both switching visibility aria-labels`
+    );
+  }
+
+  assert(
+    (forgotPasswordSource.match(/<button\s+[\s\S]*?type=["']button["']/g) ?? [])
+      .length >= 3 &&
+      !/tabIndex\s*=\s*\{\s*-1\s*\}/.test(forgotPasswordSource),
+    "all three recovery visibility controls must be keyboard-reachable buttons"
   );
 }
 

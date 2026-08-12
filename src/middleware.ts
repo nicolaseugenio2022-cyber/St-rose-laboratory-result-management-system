@@ -6,7 +6,7 @@ import {
   isFirstLoginPathAllowed,
 } from "@/lib/first-login-gate";
 
-const publicPaths = ["/login"];
+const publicPaths = ["/login", "/forgot-password"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

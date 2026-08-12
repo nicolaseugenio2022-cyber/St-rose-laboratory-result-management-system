@@ -73,18 +73,39 @@ Every `codex exec` prompt must carry:
 
 ## Review contract
 
-Never rely on Codex's summary. Independently check:
+Never rely on Codex's summary. Independently check, every time:
 
 - `git status` — unexpected or untracked files.
 - `git diff` against the recorded baseline — every hunk.
 - Each changed file read in its surrounding context.
 - `AGENTS.md` and `Project.md` untouched (check both `Project.md` and `PROJECT.md`; same file on Windows).
 - No invented requirements, fields, rules, or styling; nothing beyond plan scope.
-- Each acceptance criterion, individually.
-- Verification executed by Claude, not quoted from Codex: the bar defined in `Project.md` (Milestone Completion Rules) and `architecture/IMPLEMENTATION_GUIDELINES.md`, plus the relevant `scripts/verify-checkpoint-*.ts`.
+- Each acceptance criterion, individually, against the implementation itself — not against Codex's claim about it.
+- Any modified `scripts/verify-checkpoint-*.ts` read in full. A passing test Codex edited proves nothing until its assertions are read.
 - **Delegation identity** — read the actual session rollout, do not assume the flags took effect:
   `ls -t ~/.codex/sessions/*/*/*/rollout-*.jsonl | head -1`, confirm it is the delegation just run
   (`"originator":"codex_exec"`, correct `cwd`), then extract `"model"` and `"reasoning_effort"`.
   Report both in the review, and whether they matched **gpt-5.6-sol / high**.
 
-Report failures with the actual output.
+The checks above are the review and are never skipped. They are reading, not execution.
+
+### Rerunning verification
+
+When Codex completed normally and supplied verification evidence, do not mechanically rerun the
+whole suite — the bar in `Project.md` (Milestone Completion Rules) and
+`architecture/IMPLEMENTATION_GUIDELINES.md` is already evidenced. Rerun what a specific reason
+demands:
+
+- Codex was interrupted, timed out, or failed — then run the full required verification (as in C5.1).
+- Verification evidence is missing, partial, or unattributable to this run.
+- Codex's report conflicts with the actual diff.
+- A verification script itself changed — validate it by running it.
+- An acceptance criterion is not adequately supported by the diff plus the evidence.
+- Anything in the implementation looks suspicious, and running is the cheapest way to settle it.
+
+State which reason applied. When none does, say the evidence was accepted and why that was sound.
+
+### Reporting
+
+For passing checks report `check → PASS` (or exit status) and nothing more. Reserve full output for
+failures, discrepancies, deviations from the frozen plan, and material findings.

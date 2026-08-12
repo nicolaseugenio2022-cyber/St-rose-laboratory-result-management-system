@@ -197,3 +197,38 @@ export async function createNativeReportPdf(
   }
   return pdf;
 }
+
+export async function createNativeMultiPagePdf(
+  pages: readonly NativeComposedPage[],
+  resolver: NativePdfAssetResolver = browserNativePdfAssetResolver,
+  onProgress?: (percent: number) => void
+): Promise<jsPDF> {
+  if (pages.length === 0) {
+    throw new Error("Cannot create a native PDF without composed pages.");
+  }
+
+  const firstPage = pages[0];
+  const pdf = new jsPDF({
+    orientation: firstPage.widthMm <= firstPage.heightMm ? "portrait" : "landscape",
+    unit: "mm",
+    format: [firstPage.widthMm, firstPage.heightMm],
+    compress: true,
+    putOnlyUsedFonts: true,
+  });
+
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index];
+    if (index > 0) {
+      pdf.addPage(
+        [page.widthMm, page.heightMm],
+        page.widthMm <= page.heightMm ? "portrait" : "landscape"
+      );
+    }
+    for (const primitive of page.primitives) {
+      await drawPrimitive(pdf, page, primitive, resolver);
+    }
+    onProgress?.(Math.round(((index + 1) / pages.length) * 100));
+  }
+
+  return pdf;
+}

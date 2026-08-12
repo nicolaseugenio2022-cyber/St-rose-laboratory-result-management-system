@@ -1,15 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { IPatientReportSession, ILaboratoryReport } from "@/domain/models/interfaces";
-import { reportRegistryService } from "@/services/report-registry-service";
-import { HydratedTemplateSpec } from "@/services/interfaces";
-import { TabularRenderer } from "./families/TabularRenderer";
-import { SimpleResultRenderer } from "./families/SimpleResultRenderer";
-import { DiagnosticGridRenderer } from "./families/DiagnosticGridRenderer";
-import { NarrativeCertificateRenderer } from "./families/NarrativeCertificateRenderer";
-import { PDFStreamAdapter } from "./adapters/pdf-stream-adapter";
-import { NativeLivePreviewPage } from "./native";
+import { createNativeSessionPdf, NativeLivePreviewPage } from "./native";
 import { resolveSessionRenderModel } from "./model";
 import "./styles/a4-document.css";
 import { Printer, Download, Eye, Layers, Loader2 } from "lucide-react";
@@ -23,65 +16,46 @@ export function SharedRenderingEngine({
   session,
   targetOutput = "ScreenPreview",
 }: SharedRenderingEngineProps) {
-  const [specsMap, setSpecsMap] = useState<Map<string, HydratedTemplateSpec>>(new Map());
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
 
   const pagesContainerRef = useRef<HTMLDivElement>(null);
-  const legacyPdfContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
-  const resolvedSession = resolveSessionRenderModel(session);
-
-  // Load hydrated template specifications for all reports
-  useEffect(() => {
-    async function loadSpecs() {
-      const map = new Map<string, HydratedTemplateSpec>();
-      for (const report of activeReports) {
-        const spec = await reportRegistryService.getTemplateByCode(report.templateCode);
-        if (spec) {
-          map.set(report.templateCode, spec);
-        }
-      }
-      setSpecsMap(map);
-    }
-    loadSpecs();
-  }, [activeReports]);
+  const resolvedSession = useMemo(() => resolveSessionRenderModel(session), [session]);
 
   // Handle Browser Print Target
   const handlePrint = () => {
     window.print();
   };
 
-  // Handle Native PDF Stream Export consuming SharedRenderingEngine DOM
+  // Handle Native PDF export from the resolved session composition.
   const handleExportPDF = () => {
     if (isExportingPDF) return;
     setPdfProgress(10);
     setIsExportingPDF(true);
   };
 
-  // The legacy PDF DOM is mounted only for the duration of an explicit export.
-  // This keeps it out of the production Native Live Preview layout and scroll area.
   useEffect(() => {
     if (!isExportingPDF) return;
-    const exportContainer = legacyPdfContainerRef.current;
-    if (!exportContainer) {
-      setIsExportingPDF(false);
-      setPdfProgress(0);
-      return;
-    }
-    const mountedExportContainer: HTMLDivElement = exportContainer;
     let cancelled = false;
     async function runExport() {
       try {
-        await PDFStreamAdapter.generatePDFFromSharedEngine(session, mountedExportContainer, {
+        const pdf = await createNativeSessionPdf(resolvedSession, undefined, {
           onProgress: (percent) => {
             if (!cancelled) setPdfProgress(percent);
           },
         });
+        const accessionClean = resolvedSession.accessionNumber.replace(/[^a-zA-Z0-9-]/g, "_");
+        const patientNameClean = (resolvedSession.demographics.fullName || "Patient").replace(
+          /[^a-zA-Z0-9-]/g,
+          "_"
+        );
+        const fileName = `LabReport_${accessionClean}_${patientNameClean}.pdf`;
+        if (!cancelled) pdf.save(fileName);
       } catch (err: unknown) {
         console.error("PDF Export Error:", err);
         const message = err instanceof Error ? err.message : "Unknown PDF export error.";
@@ -97,41 +71,7 @@ export function SharedRenderingEngine({
     return () => {
       cancelled = true;
     };
-  }, [isExportingPDF, session]);
-
-  const renderLegacyReportPage = (
-    report: ILaboratoryReport,
-    index: number,
-    isLastPage: boolean,
-    forPdfExport = false
-  ) => {
-    const spec = specsMap.get(report.templateCode);
-    const rendererFamily = spec?.template.rendererFamily || report.rendererFamily || "Tabular";
-    const colorPalette = spec?.template.colorPalette || "#093982";
-    const supportsRemarks = spec?.template.supportsRemarks ?? true;
-    const requiresKitInfo = spec?.template.requiresKitInfo ?? false;
-    return (
-      <div
-        key={`${forPdfExport ? "pdf-legacy" : "preview-legacy"}-${report.id || `${report.templateCode}-${index}`}`}
-        data-live-preview-renderer={forPdfExport ? "legacy-export" : "legacy"}
-        className={`a4-page-container ${forPdfExport ? "" : "a4-preview-shadow"} ${!isLastPage ? "a4-page-break" : ""}`}
-        style={{ transform: !forPdfExport && targetOutput === "ScreenPreview" ? `scale(${zoomLevel / 100})` : undefined }}
-      >
-        {rendererFamily === "Tabular" && (
-          <TabularRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} />
-        )}
-        {rendererFamily === "SimpleResult" && (
-          <SimpleResultRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} requiresKitInfo={requiresKitInfo} />
-        )}
-        {rendererFamily === "DiagnosticGrid" && (
-          <DiagnosticGridRenderer report={report} session={session} colorPalette={colorPalette} supportsRemarks={supportsRemarks} />
-        )}
-        {rendererFamily === "NarrativeCertificate" && (
-          <NarrativeCertificateRenderer report={report} session={session} colorPalette={colorPalette} requiresKitInfo={requiresKitInfo} />
-        )}
-      </div>
-    );
-  };
+  }, [isExportingPDF, resolvedSession]);
 
   // Helper to render individual report
   const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
@@ -275,21 +215,6 @@ export function SharedRenderingEngine({
           )}
         </div>
       </div>
-
-      {/* C4 keeps the existing raster/legacy PDF route isolated from the native Live Preview DOM. */}
-      {isExportingPDF && (
-        <div
-          ref={legacyPdfContainerRef}
-          className="no-print fixed top-0 -left-[10000px] pointer-events-none"
-          aria-hidden="true"
-          data-c4-preserved-pdf-route="legacy"
-          data-export-dom-active="true"
-        >
-          {activeReports.map((report, index) =>
-            renderLegacyReportPage(report, index, index === activeReports.length - 1, true)
-          )}
-        </div>
-      )}
     </div>
   );
 }

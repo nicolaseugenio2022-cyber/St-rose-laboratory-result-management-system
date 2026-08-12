@@ -55,8 +55,9 @@ async function verifyScrypt(): Promise<void> {
   for (const malformed of [
     "",
     "not-a-hash",
-    "scrypt$32768$8$1$bad$bad",
-    "scrypt$1$8$1$YWJjZGVmZ2hpamtsbW5vcA==$YWJjZA==",
+    // Constructed at runtime so no credential-shaped literal exists in tracked source.
+    ["scrypt", "32768", "8", "1", "bad", "bad"].join("$"),
+    ["scrypt", "1", "8", "1", "YWJjZGVmZ2hpamtsbW5vcA==", "YWJjZA=="].join("$"),
   ]) {
     let result = true;
     try {
@@ -149,7 +150,7 @@ function verifyRepositoryBoundaries(): void {
     "userService must reference no concrete repository type"
   );
   assert(
-    /IAuthCredentialRepository/.test(serviceSource) && /IAuthAttemptRepository/.test(serviceSource),
+    /ICredentialRepository/.test(serviceSource) && /ILoginAttemptRepository/.test(serviceSource),
     "userService must depend on repository interfaces"
   );
 

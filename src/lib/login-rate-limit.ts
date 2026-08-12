@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AuthAttemptRecord, IAuthAttemptRepository } from "@/repositories/interfaces";
+import type { AuthAttemptRecord, ILoginAttemptRepository } from "@/repositories/interfaces";
 
 export const LOGIN_RATE_LIMIT_POLICY = {
   windowMs: 15 * 60 * 1000,
@@ -39,7 +39,7 @@ function retryAfterFor(attempts: AuthAttemptRecord[], now: number): number {
 }
 
 export class LoginRateLimiter {
-  constructor(private readonly attempts: IAuthAttemptRepository) {}
+  constructor(private readonly attempts: ILoginAttemptRepository) {}
 
   async assertAllowed(username: string, clientIp: string | null): Promise<void> {
     const now = Date.now();

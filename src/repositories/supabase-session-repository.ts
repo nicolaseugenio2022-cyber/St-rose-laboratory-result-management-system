@@ -1,17 +1,56 @@
+import "server-only";
+
 import { IPatientReportSessionRepository } from "./interfaces";
 import { IPatientReportSession } from "../domain/models/interfaces";
 import { PatientReportSessionAggregate } from "../domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "../domain/models/laboratory-report-domain";
 import { autoSuggestionLearningService } from "../services/auto-suggestion-service";
-import { supabase } from "../lib/supabase/client";
+import { supabaseServer } from "../lib/supabase/server";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 
+type SessionRepositoryCaller = {
+  userId: string;
+  role: "Admin" | "User";
+};
+
+type SessionOwnershipRow = {
+  created_by_user_id: string;
+};
+
 export class SupabasePatientReportSessionRepository implements IPatientReportSessionRepository {
-  private inMemoryStore: Map<string, IPatientReportSession> = new Map();
+  constructor(private readonly caller?: SessionRepositoryCaller) {}
+
+  private requireCaller(): SessionRepositoryCaller {
+    if (!this.caller) throw new Error("An authenticated operational caller is required.");
+    return this.caller;
+  }
+
+  private applyDraftOwnershipScope<T extends {
+    or(filters: string): T;
+  }>(query: T): T {
+    const caller = this.requireCaller();
+    return query.or(
+      `status.eq.Completed,and(status.eq.Draft,created_by_user_id.eq.${caller.userId})`
+    );
+  }
+
+  private async assertExistingSessionOwnership(id: string): Promise<void> {
+    const caller = this.requireCaller();
+    const { data, error } = await supabaseServer
+      .from("patient_report_sessions")
+      .select("created_by_user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data && (data as SessionOwnershipRow).created_by_user_id !== caller.userId) {
+      throw new Error("Session ownership validation failed.");
+    }
+  }
 
   async findById(id: string): Promise<IPatientReportSession | null> {
-    try {
-      const { data, error } = await supabase
+    const { data, error } = await this.applyDraftOwnershipScope(
+      supabaseServer
         .from("patient_report_sessions")
         .select(`
           *,
@@ -22,21 +61,15 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           )
         `)
         .eq("id", id)
-        .single();
+    ).maybeSingle();
 
-      if (error || !data) {
-        return this.inMemoryStore.get(id) || null;
-      }
-
-      return this.mapToAggregate(data);
-    } catch {
-      return this.inMemoryStore.get(id) || null;
-    }
+    if (error) throw error;
+    return data ? this.mapToAggregate(data) : null;
   }
 
   async findByAccessionNumber(accessionNumber: string): Promise<IPatientReportSession | null> {
-    try {
-      const { data, error } = await supabase
+    const { data, error } = await this.applyDraftOwnershipScope(
+      supabaseServer
         .from("patient_report_sessions")
         .select(`
           *,
@@ -47,22 +80,10 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           )
         `)
         .eq("accession_number", accessionNumber)
-        .single();
+    ).maybeSingle();
 
-      if (error || !data) {
-        for (const session of this.inMemoryStore.values()) {
-          if (session.accessionNumber === accessionNumber) return session;
-        }
-        return null;
-      }
-
-      return this.mapToAggregate(data);
-    } catch {
-      for (const session of this.inMemoryStore.values()) {
-        if (session.accessionNumber === accessionNumber) return session;
-      }
-      return null;
-    }
+    if (error) throw error;
+    return data ? this.mapToAggregate(data) : null;
   }
 
   async findActiveCompletedSessions(): Promise<IPatientReportSession[]> {
@@ -71,8 +92,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async getRecentSessions(limit = 50): Promise<PatientReportSessionAggregate[]> {
-    try {
-      const { data, error } = await supabase
+    const { data, error } = await this.applyDraftOwnershipScope(
+      supabaseServer
         .from("patient_report_sessions")
         .select(`
           *,
@@ -83,33 +104,31 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           )
         `)
         .order("created_at", { ascending: false })
-        .limit(limit);
+        .limit(limit)
+    );
 
-      if (error || !data || data.length === 0) {
-        return Array.from(this.inMemoryStore.values()) as PatientReportSessionAggregate[];
-      }
-
-      return data.map((d) => this.mapToAggregate(d));
-    } catch {
-      return Array.from(this.inMemoryStore.values()) as PatientReportSessionAggregate[];
-    }
+    if (error) throw error;
+    if (!data) throw new Error("Supabase session history query returned no data.");
+    return data.map((row) => this.mapToAggregate(row));
   }
 
   async saveDraft(session: IPatientReportSession): Promise<IPatientReportSession> {
-    this.inMemoryStore.set(session.id, session);
+    const caller = this.requireCaller();
+    await this.assertExistingSessionOwnership(session.id);
 
-    try {
-      await supabase.from("patient_report_sessions").upsert({
+    const { error: sessionError } = await supabaseServer.from("patient_report_sessions").upsert({
         id: session.id,
         accession_number: session.accessionNumber,
         status: "Draft",
         demographics: session.demographics,
+        created_by_user_id: caller.userId,
         created_at: session.createdAt || new Date().toISOString(),
         expires_at: null,
       });
+    if (sessionError) throw sessionError;
 
-      for (const report of session.reports) {
-        await supabase.from("laboratory_reports").upsert({
+    for (const report of session.reports) {
+      const { error: reportError } = await supabaseServer.from("laboratory_reports").upsert({
           id: report.id,
           session_id: session.id,
           template_code: report.templateCode,
@@ -119,9 +138,10 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           remarks: report.remarks || null,
           encoding_data: report.encodingData || null,
         });
+      if (reportError) throw reportError;
 
-        for (const res of report.results) {
-          await supabase.from("laboratory_results").upsert({
+      for (const res of report.results) {
+        const { error: resultError } = await supabaseServer.from("laboratory_results").upsert({
             id: res.id,
             report_id: report.id,
             parameter_code: res.parameterCode,
@@ -135,10 +155,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
             computation_metadata: res.computationMetadata || null,
             display_order: res.displayOrder,
           });
-        }
+        if (resultError) throw resultError;
       }
-    } catch (err) {
-      console.warn("Supabase saveDraft fallback to in-memory store:", err);
     }
 
     return session;
@@ -149,22 +167,24 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
       session.completeSession();
     }
 
-    this.inMemoryStore.set(session.id, session);
+    const caller = this.requireCaller();
+    await this.assertExistingSessionOwnership(session.id);
 
-    try {
-      await supabase.from("patient_report_sessions").upsert({
+    const { error: sessionError } = await supabaseServer.from("patient_report_sessions").upsert({
         id: session.id,
         accession_number: session.accessionNumber,
         status: "Completed",
         demographics: session.demographics,
+        created_by_user_id: caller.userId,
         created_at: session.createdAt,
         completed_at: session.completedAt,
         expires_at: session.expiresAt,
         completed_snapshot: session.completedSnapshot || null,
       });
+    if (sessionError) throw sessionError;
 
-      for (const report of session.reports) {
-        await supabase.from("laboratory_reports").upsert({
+    for (const report of session.reports) {
+      const { error: reportError } = await supabaseServer.from("laboratory_reports").upsert({
           id: report.id,
           session_id: session.id,
           template_code: report.templateCode,
@@ -174,10 +194,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           remarks: report.remarks || null,
           encoding_data: report.encodingData || null,
         });
+      if (reportError) throw reportError;
 
-        for (const res of report.results) {
-          if (res.resultValue) {
-            await supabase.from("laboratory_results").upsert({
+      for (const res of report.results) {
+        if (res.resultValue) {
+          const { error: resultError } = await supabaseServer.from("laboratory_results").upsert({
               id: res.id,
               report_id: report.id,
               parameter_code: res.parameterCode,
@@ -191,11 +212,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
               computation_metadata: res.computationMetadata || null,
               display_order: res.displayOrder,
             });
-          }
+          if (resultError) throw resultError;
         }
+      }
 
-        for (const sig of report.signatories) {
-          await supabase.from("report_signatories").upsert({
+      for (const sig of report.signatories) {
+        const { error: signatoryError } = await supabaseServer.from("report_signatories").upsert({
             report_id: report.id,
             personnel_id: sig.personnelId,
             role: sig.role,
@@ -205,13 +227,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
             signature_image_url: sig.signatureImageUrl || null,
             display_order: sig.displayOrder,
           });
-        }
+        if (signatoryError) throw signatoryError;
       }
-
-      await autoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
-    } catch (err) {
-      console.warn("Supabase completeSession fallback to in-memory store:", err);
     }
+
+    await autoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
 
     return session;
   }
@@ -222,30 +242,15 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
 
   async purgeExpiredSessions(): Promise<number> {
     const now = new Date();
-    let purgedCount = 0;
-
-    for (const [id, session] of this.inMemoryStore.entries()) {
-      if (session.expiresAt && new Date(session.expiresAt) < now) {
-        this.inMemoryStore.delete(id);
-        purgedCount++;
-      }
-    }
-
-    try {
-      const { data } = await supabase
+    const { data, error } = await supabaseServer
         .from("patient_report_sessions")
         .delete()
         .lt("expires_at", now.toISOString())
         .select("id");
 
-      if (data) {
-        purgedCount = Math.max(purgedCount, data.length);
-      }
-    } catch (err) {
-      console.warn("Supabase purgeExpiredSessions fallback to in-memory store:", err);
-    }
-
-    return purgedCount;
+    if (error) throw error;
+    if (!data) throw new Error("Supabase expired-session purge returned no data.");
+    return data.length;
   }
 
   private mapToAggregate(raw: Record<string, unknown>): PatientReportSessionAggregate {

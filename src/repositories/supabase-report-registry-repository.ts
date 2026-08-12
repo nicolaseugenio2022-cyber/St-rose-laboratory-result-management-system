@@ -1,3 +1,5 @@
+import "server-only";
+
 import { IReportRegistryRepository } from "./interfaces";
 import { 
   IReportTemplate, 
@@ -9,7 +11,7 @@ import {
   INITIAL_TEMPLATE_PARAMETERS, 
   INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS 
 } from "../services/registry-seed-data";
-import { supabase } from "../lib/supabase/client";
+import { supabaseServer } from "../lib/supabase/server";
 import { HydratedTemplateSpec } from "../services/interfaces";
 
 /**
@@ -19,7 +21,7 @@ import { HydratedTemplateSpec } from "../services/interfaces";
 export class SupabaseReportRegistryRepository implements IReportRegistryRepository {
   async getTemplateByCode(templateCode: string): Promise<IReportTemplate | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer
         .from("report_templates")
         .select("*")
         .eq("template_code", templateCode)
@@ -57,7 +59,7 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
 
   async getParametersByTemplateCode(templateCode: string): Promise<ITemplateParameter[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer
         .from("template_parameters")
         .select("*")
         .eq("template_code", templateCode)
@@ -95,7 +97,7 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
     templateCode: string
   ): Promise<ITemplateSignatoryRequirement | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer
         .from("template_signatory_requirements")
         .select("*")
         .eq("template_code", templateCode)
@@ -124,7 +126,7 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
 
   async getAllActiveTemplates(): Promise<IReportTemplate[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer
         .from("report_templates")
         .select("*")
         .eq("is_active", true);
@@ -155,9 +157,9 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
   async getAllHydratedTemplates(): Promise<HydratedTemplateSpec[]> {
     try {
       const [templatesResult, parametersResult, requirementsResult] = await Promise.all([
-        supabase.from("report_templates").select("*").eq("is_active", true),
-        supabase.from("template_parameters").select("*").order("display_order", { ascending: true }),
-        supabase.from("template_signatory_requirements").select("*"),
+        supabaseServer.from("report_templates").select("*").eq("is_active", true),
+        supabaseServer.from("template_parameters").select("*").order("display_order", { ascending: true }),
+        supabaseServer.from("template_signatory_requirements").select("*"),
       ]);
 
       if (templatesResult.error || !templatesResult.data || templatesResult.data.length === 0) {

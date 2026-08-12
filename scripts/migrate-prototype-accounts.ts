@@ -1,19 +1,21 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import { PREDEFINED_SECURITY_QUESTIONS } from "../src/config/security-questions";
-import { writeJsonStoreAtomic } from "../src/lib/atomic-json-store";
 import { hashPassword } from "../src/lib/password";
 import {
   canonicalizeAndValidateUsername,
 } from "../src/lib/username";
-import type { AuthCredentialRecord } from "../src/repositories/interfaces";
+import { SupabaseCredentialRepository } from "../src/repositories/supabase-credential-repository";
+import type {
+  AuthCredentialRecord,
+  ICredentialRepository,
+} from "../src/repositories/interfaces";
 
 const MIGRATION_ENV = "M6B_PROTOTYPE_ACCOUNTS_JSON";
 
 type MigrationAccountInput = {
   id?: string;
   username: string;
-  role: "Admin" | "User" | "Developer";
+  role: "Admin" | "User";
   status: "Active" | "Inactive";
   temporaryPassword: string;
   securityQuestion:
@@ -31,8 +33,10 @@ const ACCOUNT_KEYS = new Set([
 ]);
 
 function fail(message: string): never {
-  throw new Error(`Prototype account migration refused: ${message}`);
+  throw new PrototypeAccountMigrationError(`Prototype account migration refused: ${message}`);
 }
+
+class PrototypeAccountMigrationError extends Error {}
 
 function parseInputs(): MigrationAccountInput[] {
   const encoded = process.env[MIGRATION_ENV];
@@ -64,7 +68,12 @@ function parseInputs(): MigrationAccountInput[] {
     if (typeof record.username !== "string") {
       fail(`account ${index + 1} requires a username`);
     }
-    if (!(["Admin", "User", "Developer"] as unknown[]).includes(record.role)) {
+    if (record.role === "Developer") {
+      fail(
+        `account ${index + 1} has role Developer; use the Milestone 6D one-time Developer bootstrap`
+      );
+    }
+    if (!(["Admin", "User"] as unknown[]).includes(record.role)) {
       fail(`account ${index + 1} requires a valid role`);
     }
     if (!(["Active", "Inactive"] as unknown[]).includes(record.status)) {
@@ -111,13 +120,6 @@ function parseInputs(): MigrationAccountInput[] {
 
 async function main(): Promise<void> {
   const inputs = parseInputs();
-  const outputPath = path.resolve(
-    process.env.M6B_AUTH_STORE_PATH ?? path.join("data", "auth-store.local.json")
-  );
-  if (!outputPath.endsWith(".local.json")) {
-    fail("M6B_AUTH_STORE_PATH must name a .local.json file");
-  }
-
   const now = new Date().toISOString();
   const ids = new Set<string>();
   const usernames = new Set<string>();
@@ -151,12 +153,18 @@ async function main(): Promise<void> {
     });
   }
 
-  await writeJsonStoreAtomic(outputPath, { accounts });
+  const credentials: ICredentialRepository = new SupabaseCredentialRepository();
+  for (const account of accounts) {
+    await credentials.create(account);
+  }
   process.stdout.write(`Prototype account migration completed for ${accounts.length} account(s).\n`);
 }
 
 void main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "unknown migration failure";
+  const message =
+    error instanceof PrototypeAccountMigrationError
+      ? error.message
+      : "Prototype account migration failed without printing credential details.";
   process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 });

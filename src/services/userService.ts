@@ -1,8 +1,10 @@
+import "server-only";
+
 import { randomUUID } from "node:crypto";
-import {
+import type {
   AuthCredentialRecord,
-  IAuthAttemptRepository,
-  IAuthCredentialRepository,
+  ICredentialRepository,
+  ILoginAttemptRepository,
 } from "@/repositories/interfaces";
 import { CreateUserInput, UpdateUserInput, User } from "@/types/user";
 import { canonicalizeAndValidateUsername, canonicalizeUsername } from "@/lib/username";
@@ -79,8 +81,8 @@ export class UserService implements IUserService {
   private readonly loginRateLimiter: LoginRateLimiter;
 
   constructor(
-    private readonly credentials: IAuthCredentialRepository,
-    attempts: IAuthAttemptRepository
+    private readonly credentials: ICredentialRepository,
+    attempts: ILoginAttemptRepository
   ) {
     this.loginRateLimiter = new LoginRateLimiter(attempts);
   }

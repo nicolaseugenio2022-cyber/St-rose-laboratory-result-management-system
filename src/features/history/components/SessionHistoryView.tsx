@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
-import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
+import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
+import { fromSessionTransport } from "@/features/server-boundary/session-transport";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import { Search, History, Eye, Edit3, Calendar, FileText, CheckCircle2, Clock, X } from "lucide-react";
 import { formatDateISO } from "@/lib/utils";
-
-const sessionRepo = new SupabasePatientReportSessionRepository();
 
 export function SessionHistoryView() {
   const [sessions, setSessions] = useState<PatientReportSessionAggregate[]>([]);
@@ -15,15 +14,19 @@ export function SessionHistoryView() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Draft" | "Completed">("ALL");
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load session history
   const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await sessionRepo.getRecentSessions(50);
-      setSessions(data);
-    } catch {
-      setSessions([]);
+      const data = await listRecentSessionsAction({ limit: 50 });
+      setSessions(data.map(fromSessionTransport));
+      setLoadError(null);
+    } catch (error: unknown) {
+      setLoadError(
+        error instanceof Error ? error.message : "Session history could not be loaded."
+      );
     } finally {
       setLoading(false);
     }
@@ -118,6 +121,10 @@ export function SessionHistoryView() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-xs">Loading session history...</div>
+        ) : loadError ? (
+          <div className="p-12 text-center text-rose-700 text-xs">
+            Session history could not be loaded: {loadError}
+          </div>
         ) : filteredSessions.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs">
             No patient report sessions found matching query &apos;{searchQuery}&apos;.

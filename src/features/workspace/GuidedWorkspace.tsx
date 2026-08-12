@@ -1,24 +1,27 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { reportRegistryService } from "@/services/report-registry-service";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
 import { AccessionNumberGenerator } from "@/domain/services/accession-number-generator";
 import { IPersonnel, ILaboratoryReport } from "@/domain/models/interfaces";
 import { PatientSex, PatientStatus } from "@/domain/types";
-import {
-  INITIAL_REPORT_TEMPLATES,
-  INITIAL_TEMPLATE_PARAMETERS,
-  INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS,
-} from "@/services/registry-seed-data";
 import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
 import { DynamicResultForm } from "./components/DynamicResultForm";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
-import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
+import {
+  completeSessionAction,
+  getRegistryTemplateAction,
+  listRegistryTemplatesAction,
+  saveDraftAction,
+} from "@/features/server-boundary/server-actions";
+import {
+  fromSessionTransport,
+  toSessionTransport,
+} from "@/features/server-boundary/session-transport";
 import { formatDateISO } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User } from "lucide-react";
@@ -26,8 +29,6 @@ import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provi
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
-
-const sessionRepo = new SupabasePatientReportSessionRepository();
 
 export function GuidedWorkspace() {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
@@ -92,19 +93,7 @@ export function GuidedWorkspace() {
     },
   ]);
 
-  // Synchronously pre-hydrate all 17 templates so catalog renders instantly with 17 Available templates
-  const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>(() => {
-    return INITIAL_REPORT_TEMPLATES.map((t) => ({
-      template: t,
-      parameters: INITIAL_TEMPLATE_PARAMETERS.filter((p) => p.templateCode === t.templateCode),
-      signatoryRequirement: INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS.find((s) => s.templateCode === t.templateCode) || {
-        id: `req-${t.templateCode}`,
-        templateCode: t.templateCode,
-        requiredPathologistsCount: 1,
-        requiredMedtechsCount: 1,
-      },
-    }));
-  });
+  const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>([]);
 
   const router = useRouter();
   const [activeTemplateCode, setActiveTemplateCode] = useState<string | null>(null);
@@ -131,12 +120,16 @@ export function GuidedWorkspace() {
     router.push("/dashboard");
   }, [router]);
 
-  // Load ALL active hydrated template specs from ReportRegistryService on mount to refresh cache
+  // Load all active hydrated template specs through the authenticated server boundary.
   useEffect(() => {
     async function loadTemplates() {
-      const hydratedSpecs = await reportRegistryService.warmCache();
-      if (hydratedSpecs.length > 0) {
+      try {
+        const hydratedSpecs = await listRegistryTemplatesAction({});
         setAllActiveTemplates(hydratedSpecs);
+      } catch (error: unknown) {
+        setValidationError(
+          error instanceof Error ? error.message : "The report registry could not be loaded."
+        );
       }
     }
     loadTemplates();
@@ -149,8 +142,9 @@ export function GuidedWorkspace() {
       return;
     }
 
-    reportRegistryService.getTemplateByCode(activeTemplateCode).then((spec) => {
-      if (spec) {
+    getRegistryTemplateAction({ templateCode: activeTemplateCode })
+      .then((spec) => {
+        if (spec) {
         setActiveSpec(spec);
         const definition = ReportDefinitionRegistry.getDefinition(activeTemplateCode);
         if (!definition) {
@@ -189,8 +183,13 @@ export function GuidedWorkspace() {
               : [...prevSession.reports, encodingReport],
           });
         });
-      }
-    });
+        }
+      })
+      .catch((error: unknown) => {
+        setValidationError(
+          error instanceof Error ? error.message : "The report template could not be loaded."
+        );
+      });
   }, [activeTemplateCode, availablePersonnel]);
 
   // Toggle template selection in session
@@ -270,7 +269,8 @@ export function GuidedWorkspace() {
   const handleSaveDraft = async () => {
     setSaveStatus("saving");
     try {
-      await sessionRepo.saveDraft(session);
+      const saved = await saveDraftAction({ session: toSessionTransport(session) });
+      setSession(fromSessionTransport(saved));
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
@@ -293,9 +293,8 @@ export function GuidedWorkspace() {
 
     setSaveStatus("saving");
     try {
-      session.completeSession();
-      await sessionRepo.completeSession(session);
-      setSession(session);
+      const completed = await completeSessionAction({ session: toSessionTransport(session) });
+      setSession(fromSessionTransport(completed));
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
@@ -315,7 +314,7 @@ export function GuidedWorkspace() {
     setShowExitModal(false);
     setSaveStatus("saving");
     try {
-      await sessionRepo.saveDraft(session);
+      await saveDraftAction({ session: toSessionTransport(session) });
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);

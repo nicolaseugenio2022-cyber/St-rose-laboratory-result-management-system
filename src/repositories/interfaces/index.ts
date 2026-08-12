@@ -28,7 +28,7 @@ export interface AuthCredentialRecord {
   updatedAt: string;
 }
 
-export interface IAuthCredentialRepository {
+export interface ICredentialRepository {
   findById(id: string): Promise<AuthCredentialRecord | null>;
   findByUsername(username: string): Promise<AuthCredentialRecord | null>;
   findAll(): Promise<AuthCredentialRecord[]>;
@@ -55,7 +55,7 @@ export interface AuthAttemptQuery {
   clientIp?: string;
 }
 
-export interface IAuthAttemptRepository {
+export interface ILoginAttemptRepository {
   record(attempt: AuthAttemptRecord): Promise<AuthAttemptRecord>;
   findAttempts(query: AuthAttemptQuery): Promise<AuthAttemptRecord[]>;
 }

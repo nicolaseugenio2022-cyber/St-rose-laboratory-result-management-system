@@ -32,8 +32,13 @@ export type AuditReadCriteria = {
   offset: number;
 };
 
-export type AuditEventTransport = Omit<AuditLogEntry, "category" | "details"> & {
+export type AuditEventTransport = Omit<
+  AuditLogEntry,
+  "category" | "details" | "actorRole" | "targetRole"
+> & {
   category: AuditCategory;
+  actorRole: "Admin" | "User" | "Developer" | null;
+  targetRole: "Admin" | "User" | "Developer" | null;
   details: Record<string, unknown> | null;
 };
 
@@ -73,6 +78,8 @@ function toTransport(entry: AuditLogEntry): AuditEventTransport {
     performedByUserId: entry.performedByUserId,
     performedByUsername: entry.performedByUsername,
     targetReference: entry.targetReference,
+    actorRole: entry.actorRole ?? null,
+    targetRole: entry.targetRole ?? null,
     details: redactDetails(entry.details),
     occurredAt: entry.occurredAt,
   };
@@ -107,6 +114,7 @@ export class AuditReadService {
     if (readerRole === "Admin") {
       const developerIdentities = await this.credentialDirectory.listDeveloperIdentities();
       queryCriteria.exclusion = {
+        excludeDeveloperInvolved: true,
         performedByUserIds: [...new Set(developerIdentities.map(({ id }) => id))],
         usernames: [...new Set(developerIdentities.map(({ username }) => username))],
       };

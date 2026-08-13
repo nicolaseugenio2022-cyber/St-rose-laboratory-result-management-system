@@ -15,6 +15,8 @@ const AUDIT_LOG_COLUMNS = `
   performed_by_user_id,
   performed_by_username,
   target_reference,
+  actor_role,
+  target_role,
   details,
   occurred_at
 `;
@@ -26,6 +28,8 @@ type AuditLogRow = {
   performed_by_user_id: string | null;
   performed_by_username: string | null;
   target_reference: string | null;
+  actor_role: "Admin" | "User" | "Developer" | null;
+  target_role: "Admin" | "User" | "Developer" | null;
   details: Record<string, unknown> | null;
   occurred_at: string;
 };
@@ -38,6 +42,8 @@ function mapAuditLog(row: AuditLogRow): AuditLogEntry {
     performedByUserId: row.performed_by_user_id,
     performedByUsername: row.performed_by_username,
     targetReference: row.target_reference,
+    actorRole: row.actor_role,
+    targetRole: row.target_role,
     details: row.details,
     occurredAt: row.occurred_at,
   };
@@ -59,23 +65,33 @@ function buildExclusionPredicate(criteria: AuditLogQueryCriteria): string | null
   const exclusion = criteria.exclusion;
   if (!exclusion) return null;
 
-  const predicates: string[] = [];
+  const identityPredicates: string[] = [];
   if (exclusion.performedByUserIds.length > 0) {
     const ids = exclusion.performedByUserIds.map(quotePostgrestValue).join(",");
-    predicates.push(
+    identityPredicates.push(
       `or(performed_by_user_id.is.null,performed_by_user_id.not.in.(${ids}))`
     );
   }
 
   if (exclusion.usernames.length > 0) {
     const usernames = exclusion.usernames.map(quotePostgrestValue).join(",");
-    predicates.push(
+    identityPredicates.push(
       `or(performed_by_username.is.null,performed_by_username.not.in.(${usernames}))`,
       `or(target_reference.is.null,target_reference.not.in.(${usernames}))`
     );
   }
 
-  return predicates.length > 0 ? `and(${predicates.join(",")})` : null;
+  const classifiedBranch = [
+    "or(actor_role.not.is.null,target_role.not.is.null)",
+    "developer_involved.eq.false",
+  ].join(",");
+  const legacyBranch = [
+    "actor_role.is.null",
+    "target_role.is.null",
+    ...identityPredicates,
+  ].join(",");
+
+  return `and(${classifiedBranch}),and(${legacyBranch})`;
 }
 
 export class SupabaseAuditLogRepository

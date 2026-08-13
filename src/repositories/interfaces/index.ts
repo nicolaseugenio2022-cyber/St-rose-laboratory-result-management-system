@@ -90,6 +90,8 @@ export type AuditLogEntry = {
   performedByUserId: string | null;
   performedByUsername: string | null;
   targetReference: string | null;
+  actorRole?: AuthRole | null;
+  targetRole?: AuthRole | null;
   details: Record<string, unknown> | null;
   occurredAt: string;
 };
@@ -99,6 +101,7 @@ export interface IAuditLogRepository {
 }
 
 export type AuditLogQueryExclusion = {
+  excludeDeveloperInvolved: true;
   performedByUserIds: string[];
   usernames: string[];
 };

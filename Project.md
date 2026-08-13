@@ -52,6 +52,8 @@ Phase C is closed. Preview, Print, and PDF resolve through one authoritative Nat
 
 Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
 
+Milestone 6 security hardening is the active work. Checkpoint 6D-2 is in progress and not complete; see Milestone 6.
+
 ---
 
 # Authority Documents and Sources
@@ -220,22 +222,75 @@ Approved scope:
 
 ## Milestone 6 — Production Hardening
 
+Security hardening is in progress and is tracked as checkpoints 6A–6D.
+
+Implemented and verified:
+
+- Application-owned authentication with irreversible credential storage
+- Canonical username semantics
+- Server-only protected data access; removal of browser-direct database access
+- Developer least-privilege boundary
+- Self-service password recovery based on username and the configured security question
+- Persistent, database-enforced append-only audit logging — schema, read surface, and the
+  Auth/Account and Security-Denial durable writers
+
 Pending:
 
-- Security hardening:
-  - Migration-state preflight and schema provisioning
-  - Application-owned authentication with irreversible credential storage
-  - Canonical username semantics
-  - Server-only protected data access; removal of browser-direct database access
-  - Developer least-privilege boundary
-  - One-time protected Developer bootstrap
-  - Persistent, database-enforced append-only audit logging
-  - Self-service password recovery based on username and the configured security question
+- Migration-state preflight and schema provisioning
+- One-time protected Developer bootstrap — partially implemented; see 6D-2 below
+- Persistent audit writers for the remaining mandated categories: Personnel and Credential events,
+  and Session lifecycle events beyond the automated retention purge
 - Performance validation
 - Accessibility validation
 - Monitoring
 - Deployment validation
 - Client acceptance testing
+
+### Milestone 6D-2 — audit writers and Developer bootstrap
+
+**6D-2 is not complete.** Slices A, B, C and D1 are committed; D2 is designed and frozen but not
+implemented.
+
+- Slice A — durable Developer classification schema and dual-mode read. Complete.
+- Slice B — role-aware audit writers, Auth/Account lifecycle and Security-Denial events, and
+  retirement of the in-memory prototype audit modules. Complete.
+- Slice C — the dual-mode exclusion invariant and creation-path lifecycle parity pinned in
+  verification. Complete.
+- Slice D1 — guarded one-time `bootstrapFirstDeveloper` service primitive, refusing when any
+  Developer account already exists, of any status. Complete.
+- Slice D2 — **outstanding.** Required before 6D-2 can be declared complete: the operator-only
+  bootstrap entry point, the durable Initial Developer bootstrap execution audit event, bounded
+  retry and repair behaviour, environment-only secret handling, and bootstrap-specific
+  verification.
+
+Until D2 lands, a fresh database has no path to its first Developer account, because Developer
+creation otherwise requires an authenticated Developer caller.
+
+### Environment and migration state
+
+`supabase/migrations/20260813120000_audit_developer_classification.sql` was applied manually to the
+live Supabase project through the Supabase SQL Editor rather than by migration tooling, after the
+Audit Logs page failed at runtime against a database that lacked the Slice A columns. The live schema
+therefore contains the migration changes — the audit role columns and the generated
+`developer_involved` column are present and were verified against the running application — even
+though `supabase_migrations.schema_migrations` may not record that migration as applied. Confirm the
+columns and schema state before attempting to re-apply it.
+
+`supabase/migrations/20260809104941_add_completed_report_snapshots.sql` is not applied to that
+environment. It belongs to Completed History, which has not started.
+
+That incident is the concrete driver for the Migration-state preflight and schema provisioning item
+above: every current verifier is source-level or uses in-memory fakes, so an unapplied migration
+cannot be detected before runtime.
+
+### Deferred follow-ups
+
+- Security-Denial coverage for route-level `checkRouteAccess` denials remains deferred while
+  `src/lib/auth-guards.ts` is byte-frozen by M6C verification.
+- A system-wide user-centered UI/UX review is deferred until the required application functionality
+  is complete. Internal and canonical values remain stable in the domain, database, services, audit
+  events, and APIs; end-user wording is a presentation-layer translation only. This is not current
+  milestone work.
 
 ---
 
@@ -483,3 +538,5 @@ Generic rendering infrastructure should not require report-code-specific present
 Phase C is complete. Preview, Print, and PDF resolve through one authoritative Native composition model, verified by automated checkpoints C1–C5 and approved by manual C4, C5.2, and C5.3 review.
 
 Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
+
+The active objective is Milestone 6 security hardening. Checkpoint 6D-2 is in progress: Slices A, B, C and D1 are committed, and Slice D2 (Developer bootstrap completion) remains outstanding.

@@ -240,15 +240,23 @@ function verifyDeveloperDashboardPersistentAudit(): void {
   );
 }
 
-function verifyPrototypeRetention(): void {
+function verifyPrototypeRetirement(): void {
   assert(
-    existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
-    "Option A1 requires audit-log-service.ts to remain"
+    !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
+    "6D-2 requires the audit-log-service.ts prototype to be retired"
   );
   assert(
-    existsSync(path.join(root, "src", "domain", "models", "audit-log-entry.ts")),
-    "Option A1 requires audit-log-entry.ts to remain"
+    !existsSync(path.join(root, "src", "domain", "models", "audit-log-entry.ts")),
+    "6D-2 requires the audit-log-entry.ts prototype model to be retired"
   );
+  for (const relativePath of sourceFiles("src")) {
+    assert(
+      !importedModules(read(relativePath)).some((moduleName) =>
+        /(?:^|\/)(?:audit-log-service|audit-log-entry)$/.test(moduleName)
+      ),
+      `${relativePath} must not import the retired prototype audit module`
+    );
+  }
 }
 
 function verifyAuthGuardsRemainOutside6D(): void {
@@ -268,9 +276,9 @@ verifyReadTimeCanonicalizationAndAppendOnlyUse();
 verifyAuditReaderRoleNarrowing();
 verifyAuditClientBoundary();
 verifyDeveloperDashboardPersistentAudit();
-verifyPrototypeRetention();
+verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 
 process.stdout.write(
-  "M6D verification passed: persistent audit reads, role narrowing, Developer projection, client boundaries, and Option A1 retention verified.\n"
+  "M6D verification passed: persistent audit reads, role narrowing, Developer projection, client boundaries, and prototype retirement verified.\n"
 );

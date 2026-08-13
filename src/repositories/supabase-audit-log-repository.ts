@@ -105,6 +105,8 @@ export class SupabaseAuditLogRepository
       performed_by_user_id: entry.performedByUserId,
       performed_by_username: entry.performedByUsername,
       target_reference: entry.targetReference,
+      actor_role: entry.actorRole,
+      target_role: entry.targetRole,
       details: entry.details,
       occurred_at: entry.occurredAt,
     });

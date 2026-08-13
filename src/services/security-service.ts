@@ -1,7 +1,6 @@
 import { IUserProfile } from "@/domain/models/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { UnauthorizedError, ForbiddenError, ValidationError } from "@/lib/errors";
-import { auditLogService } from "./audit-log-service";
 
 /**
  * Security & Role-Based Access Control (RBAC) Service
@@ -16,16 +15,8 @@ export class SecurityService {
       throw new UnauthorizedError("Authentication required to access laboratory system.");
     }
 
+    // Denial auditing is emitted by server-boundary guards, where caller identity is server-resolved.
     if (userProfile.status !== "Active") {
-      // Audit security access denial
-      auditLogService.logEvent({
-        category: "SecurityDenial",
-        eventType: "DeactivatedAccountAccessAttempt",
-        performedByUserId: userProfile.id,
-        performedByUsername: userProfile.username,
-        details: { status: userProfile.status },
-      });
-
       throw new ForbiddenError("Account is inactive. Access denied.");
     }
 
@@ -38,15 +29,8 @@ export class SecurityService {
   public requireAdmin(userProfile: IUserProfile, operationName: string): void {
     this.validateActiveUser(userProfile);
 
+    // Denial auditing is emitted by server-boundary guards, where caller identity is server-resolved.
     if (userProfile.role !== "Admin") {
-      auditLogService.logEvent({
-        category: "SecurityDenial",
-        eventType: "UnauthorizedAdminAttempt",
-        performedByUserId: userProfile.id,
-        performedByUsername: userProfile.username,
-        details: { attemptedOperation: operationName },
-      });
-
       throw new ForbiddenError(`Operation '${operationName}' requires Admin role.`);
     }
   }

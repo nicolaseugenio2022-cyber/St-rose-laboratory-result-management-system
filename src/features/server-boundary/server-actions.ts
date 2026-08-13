@@ -5,6 +5,7 @@ import "server-only";
 import type { HydratedTemplateSpec } from "@/services/interfaces";
 import { getSession } from "@/lib/session";
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
+import { auditService } from "@/services/audit-service-instance";
 import { reportRegistryService } from "@/services/report-registry-service";
 import { userService } from "@/services/user-service-instance";
 import {
@@ -26,14 +27,51 @@ type OperationalCaller = {
 
 async function requireOperationalCaller(): Promise<OperationalCaller> {
   const session = await getSession();
-  if (!session) throw new Error("Authentication is required.");
+  if (!session) {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "OperationalAccessDenied",
+      actorRole: null,
+      targetRole: null,
+      details: { reasonCode: "unauthenticated" },
+    });
+    throw new Error("Authentication is required.");
+  }
   if (session.mustChangePassword || session.mustSetRecovery) {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "OperationalAccessDenied",
+      actorRole: null,
+      targetRole: null,
+      performedByUserId: session.userId,
+      details: { reasonCode: "first_login_incomplete" },
+    });
     throw new Error("First-login account setup must be completed before accessing laboratory data.");
   }
 
   const profile = await userService.getUserById(session.userId);
-  if (!profile || profile.status !== "Active") throw new Error("Authentication is required.");
+  if (!profile || profile.status !== "Active") {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "OperationalAccessDenied",
+      actorRole: profile?.role ?? null,
+      targetRole: null,
+      performedByUserId: session.userId,
+      performedByUsername: profile?.username ?? null,
+      details: { reasonCode: profile ? "account_inactive" : "unauthenticated" },
+    });
+    throw new Error("Authentication is required.");
+  }
   if (profile.role !== "Admin" && profile.role !== "User") {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "OperationalAccessDenied",
+      actorRole: profile.role,
+      targetRole: null,
+      performedByUserId: profile.id,
+      performedByUsername: profile.username,
+      details: { reasonCode: "role_not_authorized" },
+    });
     throw new Error("This role is not authorized to access patient or report-registry data.");
   }
 

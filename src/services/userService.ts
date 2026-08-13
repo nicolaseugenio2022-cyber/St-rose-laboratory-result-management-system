@@ -614,6 +614,9 @@ export class UserService implements IUserService {
       if (!(error instanceof RecoveryRateLimitError)) throw error;
       await this.recoveryRateLimiter.recordLookup(username, clientIp, false);
       await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        actorRole: null,
+        targetRole: null,
         eventType: "RecoveryLookupAttempted",
         targetReference: username,
         details: {
@@ -624,6 +627,9 @@ export class UserService implements IUserService {
         },
       });
       await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        actorRole: null,
+        targetRole: null,
         eventType: "RecoveryLookupThrottled",
         targetReference: username,
         details: {
@@ -650,6 +656,9 @@ export class UserService implements IUserService {
 
     await this.recoveryRateLimiter.recordLookup(username, clientIp, eligible);
     await this.recoveryAudit.emit({
+      category: "AuthAccount",
+      actorRole: null,
+      targetRole: record?.role ?? null,
       eventType: "RecoveryLookupAttempted",
       targetReference: username,
       details: {
@@ -682,6 +691,9 @@ export class UserService implements IUserService {
     } catch (error) {
       if (!(error instanceof RecoveryRateLimitError)) throw error;
       await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        actorRole: null,
+        targetRole: null,
         eventType: "RecoveryAnswerFailed",
         targetReference: username,
         details: {
@@ -713,6 +725,9 @@ export class UserService implements IUserService {
             ? "recovery_not_configured"
             : "recovery_answer_mismatch";
       await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        actorRole: null,
+        targetRole: record?.role ?? null,
         eventType: "RecoveryAnswerFailed",
         targetReference: username,
         details: {
@@ -725,6 +740,9 @@ export class UserService implements IUserService {
     }
 
     await this.recoveryAudit.emit({
+      category: "AuthAccount",
+      actorRole: null,
+      targetRole: record.role,
       eventType: "RecoveryAnswerVerified",
       targetReference: record.username,
       details: {
@@ -775,6 +793,9 @@ export class UserService implements IUserService {
       succeeded = true;
 
       await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        actorRole: null,
+        targetRole: updated.role,
         eventType: "RecoveryPasswordResetCompleted",
         targetReference: updated.username,
         details: {

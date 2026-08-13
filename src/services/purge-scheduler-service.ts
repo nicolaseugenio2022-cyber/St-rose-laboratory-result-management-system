@@ -1,5 +1,5 @@
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
-import { auditLogService } from "./audit-log-service";
+import { auditService } from "@/services/audit-service-instance";
 
 /**
  * Scheduled Purge & Recovery Service
@@ -21,9 +21,11 @@ export class PurgeSchedulerService {
     const purgedCount = await this.sessionRepository.purgeExpiredSessions();
 
     if (purgedCount > 0) {
-      await auditLogService.logEvent({
+      await auditService.emit({
         category: "SessionReport",
         eventType: "AutomatedRetentionPurgeExecuted",
+        actorRole: null,
+        targetRole: null,
         performedByUserId: runnerUserId,
         performedByUsername: "System Retention Scheduler",
         details: {

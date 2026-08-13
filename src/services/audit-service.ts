@@ -1,9 +1,14 @@
 import "server-only";
 
-// TEMPORARY minimum persistent audit path added for Forgot Password; the existing in-memory
-// src/services/audit-log-service.ts prototype and its UI read path remain until full Milestone 6D.
+// Durable audit write path for persistent security and account events.
 import { randomUUID } from "node:crypto";
-import type { IAuditLogRepository } from "@/repositories/interfaces";
+import type { AuthRole, IAuditLogRepository } from "@/repositories/interfaces";
+
+export type AuditCategory =
+  | "AuthAccount"
+  | "PersonnelCredential"
+  | "SessionReport"
+  | "SecurityDenial";
 
 export type RecoveryAuditEventType =
   | "RecoveryLookupAttempted"
@@ -12,8 +17,11 @@ export type RecoveryAuditEventType =
   | "RecoveryAnswerVerified"
   | "RecoveryPasswordResetCompleted";
 
-export type RecoveryAuditEvent = {
-  eventType: RecoveryAuditEventType;
+export type AuditEvent = {
+  category: AuditCategory;
+  eventType: string;
+  actorRole: AuthRole | null;
+  targetRole: AuthRole | null;
   performedByUserId?: string | null;
   performedByUsername?: string | null;
   targetReference?: string | null;
@@ -38,15 +46,17 @@ function assertDetailsAreStructurallySafe(value: unknown, visited = new WeakSet<
 export class AuditService {
   constructor(private readonly auditLogs: IAuditLogRepository) {}
 
-  async emit(event: RecoveryAuditEvent): Promise<void> {
+  async emit(event: AuditEvent): Promise<void> {
     assertDetailsAreStructurallySafe(event.details);
     await this.auditLogs.append({
       id: randomUUID(),
-      category: "Authentication",
+      category: event.category,
       eventType: event.eventType,
       performedByUserId: event.performedByUserId ?? null,
       performedByUsername: event.performedByUsername ?? null,
       targetReference: event.targetReference ?? null,
+      actorRole: event.actorRole,
+      targetRole: event.targetRole,
       details: event.details ?? null,
       occurredAt: new Date().toISOString(),
     });

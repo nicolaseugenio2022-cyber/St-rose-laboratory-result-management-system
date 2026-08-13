@@ -90,8 +90,8 @@ export type AuditLogEntry = {
   performedByUserId: string | null;
   performedByUsername: string | null;
   targetReference: string | null;
-  actorRole?: AuthRole | null;
-  targetRole?: AuthRole | null;
+  actorRole: AuthRole | null;
+  targetRole: AuthRole | null;
   details: Record<string, unknown> | null;
   occurredAt: string;
 };

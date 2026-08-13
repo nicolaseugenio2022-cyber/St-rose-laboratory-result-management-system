@@ -11,6 +11,7 @@ import type {
   ILoginAttemptRepository,
 } from "@/repositories/interfaces";
 import {
+  DeveloperAlreadyExistsError,
   LastActiveAdminError,
   LastActiveDeveloperError,
   SelfDeactivationError,
@@ -689,9 +690,18 @@ async function verifyCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
   );
   const storedDeveloper = await developerSubject.credentials.findById(developer.id);
 
+  const bootstrapSubject = createSubject([]);
+  const bootstrapped = await bootstrapSubject.service.bootstrapFirstDeveloper({
+    username: "bootstrap-created",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  const storedBootstrapped = await bootstrapSubject.credentials.findById(bootstrapped.id);
+
   for (const [label, stored] of [
     ["createUser", storedOrdinary],
     ["createDeveloperAccount", storedDeveloper],
+    ["bootstrapFirstDeveloper", storedBootstrapped],
   ] as const) {
     assert(stored, `case 27 must persist the account created by ${label}`);
     assert(
@@ -708,6 +718,68 @@ async function verifyCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
     );
     assert(stored.tokenVersion === 1, `case 27 ${label} must start at tokenVersion 1`);
   }
+}
+
+async function verifyBootstrapCreatesFirstDeveloper(): Promise<void> {
+  const { credentials, service } = createSubject([]);
+  const created = await service.bootstrapFirstDeveloper({
+    username: "first-developer",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  const stored = await credentials.findById(created.id);
+  assert(stored?.role === "Developer", "case 28 must create the Developer role");
+  assert(stored.status === "Active", "case 28 must create an Active account");
+  assert(stored.mustChangePassword === false, "case 28 must set mustChangePassword=false");
+  assert(stored.mustSetRecovery === true, "case 28 must set mustSetRecovery=true");
+  assert(stored.securityAnswerHash === null, "case 28 must null securityAnswerHash");
+  assert(stored.tokenVersion === 1, "case 28 must start at tokenVersion 1");
+}
+
+async function verifyBootstrapRefusesWhenDeveloperExists(): Promise<void> {
+  for (const status of ["Active", "Inactive"] as const) {
+    const { credentials, service } = createSubject([
+      credential(DEVELOPER_A, "Developer", status),
+    ]);
+    const before = (await credentials.findAll()).length;
+    const error = await captureError(() =>
+      service.bootstrapFirstDeveloper({
+        username: "second-developer",
+        password: randomUUID(),
+        securityQuestion: SECURITY_QUESTION,
+      })
+    );
+    assert(
+      error instanceof DeveloperAlreadyExistsError,
+      `case 29 must refuse bootstrap when a ${status} Developer exists`
+    );
+    assert(
+      (await credentials.findAll()).length === before,
+      `case 29 must create no account when a ${status} Developer exists`
+    );
+  }
+}
+
+async function verifyRepeatedBootstrapRefuses(): Promise<void> {
+  const { credentials, service } = createSubject([]);
+  await service.bootstrapFirstDeveloper({
+    username: "only-developer",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  const afterFirst = (await credentials.findAll()).length;
+  const error = await captureError(() =>
+    service.bootstrapFirstDeveloper({
+      username: "another-developer",
+      password: randomUUID(),
+      securityQuestion: SECURITY_QUESTION,
+    })
+  );
+  assert(error instanceof DeveloperAlreadyExistsError, "case 30 must refuse a repeat bootstrap");
+  assert(
+    (await credentials.findAll()).length === afterFirst,
+    "case 30 must create no second account"
+  );
 }
 
 async function main(): Promise<void> {
@@ -738,7 +810,10 @@ async function main(): Promise<void> {
   await verifyDeveloperAuthenticationStillSucceeds();
   await verifyAdminInvariantWithDeveloperFilteredCounts();
   await verifyCreationPathsAgreeOnInitialLifecycle();
-  process.stdout.write("Developer boundary verification passed: all 27 cases verified.\n");
+  await verifyBootstrapCreatesFirstDeveloper();
+  await verifyBootstrapRefusesWhenDeveloperExists();
+  await verifyRepeatedBootstrapRefuses();
+  process.stdout.write("Developer boundary verification passed: all 30 cases verified.\n");
 }
 
 void main();

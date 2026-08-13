@@ -66,6 +66,13 @@ export class LastActiveDeveloperError extends Error {
   }
 }
 
+export class DeveloperAlreadyExistsError extends Error {
+  constructor() {
+    super("A Developer account already exists; the one-time bootstrap is closed.");
+    this.name = "DeveloperAlreadyExistsError";
+  }
+}
+
 export class SelfDeactivationError extends Error {
   constructor() {
     super("You cannot deactivate the currently authenticated account.");
@@ -127,6 +134,7 @@ export interface IUserService {
   getUserSummaryVisibleTo(callerRole: AuthRole): Promise<CredentialDirectorySummary>;
   getUserByIdVisibleTo(id: string, callerRole: AuthRole): Promise<User | null>;
   getDeveloperAccounts(callerRole: AuthRole): Promise<User[]>;
+  bootstrapFirstDeveloper(input: CreateDeveloperAccountInput): Promise<User>;
   getUserById(id: string): Promise<User | null>;
   getSecurityQuestionForUser(id: string): Promise<string | null>;
   createUser(input: CreateUserInput): Promise<User>;
@@ -336,6 +344,13 @@ export class UserService implements IUserService {
     callerRole: AuthRole
   ): Promise<User> {
     this.assertDeveloperCaller(callerRole);
+    return this.createAccount({ ...input, role: "Developer" });
+  }
+
+  async bootstrapFirstDeveloper(input: CreateDeveloperAccountInput): Promise<User> {
+    if ((await this.credentialDirectory.countVisibleTo(["Developer"])) !== 0) {
+      throw new DeveloperAlreadyExistsError();
+    }
     return this.createAccount({ ...input, role: "Developer" });
   }
 

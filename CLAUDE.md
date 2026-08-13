@@ -27,9 +27,12 @@ freezing the plan · producing a compact delegation prompt · reviewing the comp
 running the full verification suite · committing once every required gate passes.
 
 **Codex owns:** reading only the frozen scope files and the dependencies those files directly
-require · implementing the approved change · running targeted verification · returning a
-concise delta report. Codex does not rediscover architecture Claude has already supplied,
-does not restate project context, and does not run the historical regression suite.
+require · implementing the approved change · source-level inspection that needs no unavailable
+runtime tooling · returning a concise delta report. Codex does not rediscover architecture Claude
+has already supplied, does not restate project context, and does not run the historical regression
+suite.
+
+Codex currently owns **no** verification execution. See Verification split.
 
 ## Version control
 
@@ -74,6 +77,13 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox workspace-w
 
 Read-only inspection tasks may use `--sandbox read-only`; the model pin still applies.
 
+**After a Codex timeout, prefer a fresh narrowly scoped delegation over `codex exec resume`.**
+A wrapper timeout does not necessarily kill the Codex process: it can survive, hold the
+thread-store writer lock, and make `resume` fail with `already has an active writer`. `resume` also
+rejects `--sandbox`. A fresh `codex exec` scoped to only the remaining work avoids both problems —
+it must restate the constraints, since a new session inherits no context. Check for a stranded
+process before relaunching.
+
 Every `codex exec` prompt must carry:
 
 - The frozen plan verbatim, including its acceptance criteria.
@@ -101,14 +111,34 @@ must never mean a vaguer one.
 
 ### Verification split
 
-**Codex runs** `tsc`, `lint`, and the one verifier tied to the change — enough to catch its own
-implementation errors, no more. It stops after that and reports.
+**Environment constraint — current.** Codex cannot execute `tsx` or `npm` inside its sandbox here.
+Two independent blockers have been observed: `npx tsx` attempts a registry fetch and fails
+(`tsx` is not in `node_modules`), and PowerShell's execution policy blocks `npx.ps1` / `npm.ps1`.
 
-**Claude runs** the full suite: `build`, M6A, M6B, M6C, the Admin invariant verifier, the
-recovery verifier, and C1, C4, C4.2, C5, as applicable to the change.
+Until that capability is explicitly re-verified:
 
-Do not run the same expensive gate in both places without a specific reason. Claude may
-delegate broader verification explicitly when a change warrants it.
+- **Codex runs no verification.** Do not ask Codex to run `npm` or `tsx`. If a prompt names a gate
+  for context, instruct Codex to report plainly that it could not start it — never to install
+  anything, add a dependency, or work around the sandbox.
+- **Claude runs everything**: targeted verifier execution, `tsc`, `lint`, `build`, and the full
+  regression suite — M6A, M6B, M6C, the Developer boundary verifier, the Admin invariant verifier,
+  the recovery verifier, and C1, C4, C4.2, C5, as applicable to the change.
+
+This is an environment constraint, not a reduction in verification rigour. Every gate still runs;
+only the executor changed.
+
+**Never report a Codex gate as passed when Codex could not execute it.** A gate Codex did not run
+is not evidence of anything.
+
+When the sandbox is fixed, targeted `tsc`/`lint`/one-verifier may return to Codex as a fast failure
+signal, and this section must be updated in the same commit that re-verifies the capability.
+
+### Checkpoint cadence for frozen files
+
+For any slice touching a byte-frozen or shape-pinned file, Claude runs the directly relevant
+checkpoint **immediately after that slice**, before downstream UI or verifier work continues.
+Shape-pinned assertions fail one at a time and mask each other, so deferring the checkpoint to the
+end converts one correction round into several.
 
 ## Review contract
 

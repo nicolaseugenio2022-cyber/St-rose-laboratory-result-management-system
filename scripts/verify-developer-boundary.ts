@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   AuthAttemptQuery,
   AuthAttemptRecord,
@@ -151,12 +153,14 @@ function credential(
   role: AuthRole = "User",
   status: AuthStatus = "Active"
 ): AuthCredentialRecord {
+  const passwordHash = randomUUID();
+
   return {
     id,
     username: id,
     role,
     status,
-    passwordHash: `stored-password-hash-${id}`,
+    passwordHash,
     securityQuestion: SECURITY_QUESTION,
     securityAnswerHash: null,
     mustChangePassword: false,
@@ -310,11 +314,12 @@ async function verifyAdminToggleCannotMutateDeveloper(): Promise<void> {
 }
 
 async function verifyOrdinaryCreateRejectsDeveloperRole(): Promise<void> {
+  const initialPassword = randomUUID();
   const { service } = createSubject([]);
   await captureError(() =>
     service.createUser({
       username: "new-developer",
-      password: "initial-secret",
+      password: initialPassword,
       role: "Developer",
       securityQuestion: SECURITY_QUESTION,
     })
@@ -342,11 +347,12 @@ async function verifyOrdinaryDemotionOfDeveloperFailsForEveryRole(): Promise<voi
 }
 
 async function verifyDeveloperCreatesDeveloperWithRequiredFlags(): Promise<void> {
+  const initialPassword = randomUUID();
   const { credentials, service } = createSubject([credential(DEVELOPER_A, "Developer")]);
   const created = await service.createDeveloperAccount(
     {
       username: "developer-b-created",
-      password: "initial-secret",
+      password: initialPassword,
       securityQuestion: SECURITY_QUESTION,
     },
     "Developer"
@@ -376,8 +382,9 @@ async function verifyDeveloperEditsDeveloperUsername(): Promise<void> {
 }
 
 async function verifySecurityQuestionResetInvalidatesRecovery(): Promise<void> {
+  const existingAnswerHash = randomUUID();
   const developerB = credential(DEVELOPER_B, "Developer");
-  developerB.securityAnswerHash = "existing-answer-hash";
+  developerB.securityAnswerHash = existingAnswerHash;
   developerB.tokenVersion = 7;
   const { credentials, service } = createSubject([
     credential(DEVELOPER_A, "Developer"),
@@ -395,6 +402,7 @@ async function verifySecurityQuestionResetInvalidatesRecovery(): Promise<void> {
 }
 
 async function verifyPasswordResetInvalidatesSessionsWithoutFirstLoginFlag(): Promise<void> {
+  const replacementPassword = randomUUID();
   const developerB = credential(DEVELOPER_B, "Developer");
   developerB.tokenVersion = 4;
   const previousHash = developerB.passwordHash;
@@ -404,7 +412,7 @@ async function verifyPasswordResetInvalidatesSessionsWithoutFirstLoginFlag(): Pr
   ]);
   await service.resetDeveloperPassword(
     DEVELOPER_B,
-    { password: "replacement-secret" },
+    { password: replacementPassword },
     "Developer"
   );
   const stored = await credentials.findById(DEVELOPER_B);
@@ -486,6 +494,8 @@ async function verifySelfDeletionPrecedesLastActiveDeveloper(): Promise<void> {
 }
 
 async function verifyDeveloperFlowCannotAlterRoles(): Promise<void> {
+  const initialPassword = randomUUID();
+  const replacementPassword = randomUUID();
   const records = [
     credential(DEVELOPER_A, "Developer"),
     credential(DEVELOPER_B, "Developer"),
@@ -496,7 +506,7 @@ async function verifyDeveloperFlowCannotAlterRoles(): Promise<void> {
   const created = await service.createDeveloperAccount(
     {
       username: "developer-c",
-      password: "initial-secret",
+      password: initialPassword,
       securityQuestion: SECURITY_QUESTION,
       role: "Admin",
     } as CreateDeveloperAccountInput,
@@ -516,7 +526,7 @@ async function verifyDeveloperFlowCannotAlterRoles(): Promise<void> {
   );
   await service.resetDeveloperPassword(
     DEVELOPER_B,
-    { password: "replacement-secret", role: "User" } as ResetDeveloperPasswordInput,
+    { password: replacementPassword, role: "User" } as ResetDeveloperPasswordInput,
     "Developer"
   );
   await service.toggleDeveloperStatus(DEVELOPER_B, DEVELOPER_A, "Developer");
@@ -534,7 +544,7 @@ async function verifyDeveloperFlowCannotAlterRoles(): Promise<void> {
       )
     );
     await captureError(() =>
-      service.resetDeveloperPassword(id, { password: "replacement-secret" }, "Developer")
+      service.resetDeveloperPassword(id, { password: replacementPassword }, "Developer")
     );
     await captureError(() =>
       service.toggleDeveloperStatus(id, DEVELOPER_A, "Developer")
@@ -552,11 +562,10 @@ async function verifyDeveloperFlowCannotAlterRoles(): Promise<void> {
 }
 
 async function verifyDeveloperFlowDoesNotExposeSecrets(): Promise<void> {
-  const passwordHash = "stored-sensitive-password-hash";
-  const answerHash = "stored-sensitive-answer-hash";
-  const initialPassword = "initial-sensitive-password";
-  const resetPassword = "replacement-sensitive-password";
-  const recoveryAnswer = "sensitive-recovery-answer";
+  const passwordHash = randomUUID();
+  const answerHash = randomUUID();
+  const initialPassword = randomUUID();
+  const replacementPassword = randomUUID();
   const developerB = credential(DEVELOPER_B, "Developer");
   developerB.passwordHash = passwordHash;
   developerB.securityAnswerHash = answerHash;
@@ -583,7 +592,7 @@ async function verifyDeveloperFlowDoesNotExposeSecrets(): Promise<void> {
   responses.push(
     await service.resetDeveloperPassword(
       DEVELOPER_B,
-      { password: resetPassword },
+      { password: replacementPassword },
       "Developer"
     )
   );
@@ -620,8 +629,7 @@ async function verifyDeveloperFlowDoesNotExposeSecrets(): Promise<void> {
     passwordHash,
     answerHash,
     initialPassword,
-    resetPassword,
-    recoveryAnswer,
+    replacementPassword,
     replacementHash ?? "",
     createdHash ?? "",
   ].filter(Boolean);
@@ -631,7 +639,7 @@ async function verifyDeveloperFlowDoesNotExposeSecrets(): Promise<void> {
 }
 
 async function verifyDeveloperAuthenticationStillSucceeds(): Promise<void> {
-  const loginPassword = "developer-login-secret";
+  const loginPassword = randomUUID();
   const { service } = createSubject([]);
   const created = await service.createDeveloperAccount(
     {

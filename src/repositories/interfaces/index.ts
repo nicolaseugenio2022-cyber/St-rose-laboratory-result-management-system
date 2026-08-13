@@ -42,6 +42,24 @@ export interface ICredentialRepository {
   delete(id: string): Promise<void>;
 }
 
+export interface ICredentialDirectoryRepository {
+  findVisibleTo(visibleRoles: AuthRole[]): Promise<AuthCredentialRecord[]>;
+  countVisibleTo(visibleRoles: AuthRole[]): Promise<number>;
+  summarizeVisibleTo?(visibleRoles: AuthRole[]): Promise<CredentialDirectorySummary>;
+  findByIdVisibleTo(
+    id: string,
+    visibleRoles: AuthRole[]
+  ): Promise<AuthCredentialRecord | null>;
+  listDeveloperIdentities(): Promise<{ id: string; username: string }[]>;
+}
+
+export interface CredentialDirectorySummary {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  adminUsers: number;
+}
+
 export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset";
 
 export interface AuthAttemptRecord {

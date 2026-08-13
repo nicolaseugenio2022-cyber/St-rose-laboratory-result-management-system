@@ -11,16 +11,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const users = await userService.getUsers();
-  const totalUsers = users.length;
-  const activeUsers = users.filter((user) => user.status === "Active").length;
-  const inactiveUsers = users.filter((user) => user.status !== "Active").length;
-  const adminUsers = users.filter((user) => user.role === "Admin").length;
+  if (!currentUserProfile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
 
-  return NextResponse.json({
-    totalUsers,
-    activeUsers,
-    inactiveUsers,
-    adminUsers,
-  });
+  const summary = await userService.getUserSummaryVisibleTo(currentUserProfile.role);
+
+  return NextResponse.json(summary);
 }

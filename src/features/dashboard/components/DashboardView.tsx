@@ -13,7 +13,9 @@ export interface DashboardViewProps {
 }
 
 export default async function DashboardView({ currentUserProfile }: DashboardViewProps) {
-  const users = await userService.getUsers();
+  const users = await userService.getUsersVisibleTo(
+    currentUserProfile?.role ?? "User"
+  );
   const totalUsers = users.length;
   const activeUsers = users.filter((u) => u.status === "Active").length;
   const inactiveUsers = users.filter((u) => u.status !== "Active").length;

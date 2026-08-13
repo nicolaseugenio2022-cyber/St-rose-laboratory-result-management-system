@@ -189,7 +189,6 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
         initialData={editingUser}
         onSubmit={handleFormSubmit}
         isLoading={isSubmitting}
-        currentUserRole={currentUserRole}
       />
     </div>
   );

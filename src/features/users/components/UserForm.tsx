@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
-import { useForm } from "react-hook-form";
+import React, { useEffect } from "react";
+import { Resolver, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { UserProfile, UserRole } from "@/types/user";
+import { UserProfile } from "@/types/user";
 import {
   createUserSchema,
   updateUserSchema,
@@ -23,10 +23,9 @@ export interface UserFormProps {
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
-  currentUserRole?: UserRole;
 }
 
-export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, currentUserRole }: UserFormProps) {
+export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }: UserFormProps) {
   const isEditing = !!initialData;
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -40,12 +39,14 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
     watch,
     formState: { errors },
   } = useForm<CreateUserFormValues | UpdateUserFormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as unknown as Resolver<
+      CreateUserFormValues | UpdateUserFormValues
+    >,
     defaultValues: isEditing
       ? {
           username: initialData.username,
           password: "",
-          role: initialData.role,
+          role: initialData.role as UpdateUserFormValues["role"],
           status: initialData.status,
         }
       : {
@@ -63,7 +64,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
       reset({
         username: initialData.username,
         password: "",
-        role: initialData.role,
+        role: initialData.role as UpdateUserFormValues["role"],
         status: initialData.status,
       });
     } else {
@@ -77,18 +78,10 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false, c
     }
   }, [initialData, reset]);
 
-  const roleOptions = useMemo(() => {
-    const options = [
-      { label: "Standard User", value: "User" },
-      { label: "Administrator", value: "Admin" },
-    ];
-
-    if (currentUserRole !== "Admin") {
-      options.splice(1, 0, { label: "Developer", value: "Developer" });
-    }
-
-    return options;
-  }, [currentUserRole]);
+  const roleOptions = [
+    { label: "Standard User", value: "User" },
+    { label: "Administrator", value: "Admin" },
+  ];
 
   const statusOptions = [
     { label: "Active", value: "Active" },

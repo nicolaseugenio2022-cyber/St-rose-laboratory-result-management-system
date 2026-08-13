@@ -42,6 +42,13 @@ export const navigationConfig: NavItemConfig[] = [
     requiredRole: ["Admin", "Developer"],
   },
   {
+    title: "Developer Accounts",
+    href: "/developer/accounts",
+    iconName: "Users",
+    description: "Manage Developer accounts and account security",
+    requiredRole: ["Developer"],
+  },
+  {
     title: "Personnel Directory",
     href: "/personnel",
     iconName: "UserCheck",

@@ -7,6 +7,8 @@ import { canonicalizeUsername, isValidCanonicalUsername } from "@/lib/username";
 
 export const userRoleSchema = z.enum(["Admin", "Developer", "User"]);
 
+const ordinaryUserRoleSchema = z.enum(["Admin", "User"]);
+
 export const userStatusSchema = z.enum(["Active", "Inactive"]);
 
 export const usernameSchema = z
@@ -26,7 +28,7 @@ export const createUserSchema = z
       .string()
       .min(6, "Password must be at least 6 characters")
       .max(100, "Password cannot exceed 100 characters"),
-    role: userRoleSchema,
+    role: ordinaryUserRoleSchema,
     securityQuestion: securityQuestionSchema,
     customSecurityQuestion: z.string().optional(),
   })
@@ -51,7 +53,7 @@ export const updateUserSchema = z.object({
     .max(100, "Password cannot exceed 100 characters")
     .optional()
     .or(z.literal("")),
-  role: userRoleSchema,
+  role: ordinaryUserRoleSchema,
   status: userStatusSchema,
 });
 

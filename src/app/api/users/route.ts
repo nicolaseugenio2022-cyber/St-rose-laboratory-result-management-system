@@ -11,13 +11,13 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const users = await userService.getUsers();
-
-  if (currentUserProfile?.role === "Admin") {
-    return NextResponse.json(users.filter((user) => user.role !== "Developer"));
+  if (!currentUserProfile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  return NextResponse.json(users);
+  return NextResponse.json(
+    await userService.getUsersVisibleTo(currentUserProfile.role)
+  );
 }
 
 export async function POST(request: Request) {
@@ -32,10 +32,6 @@ export async function POST(request: Request) {
   const parsed = createUserSchema.safeParse(payload);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
-  }
-
-  if (currentUserProfile?.role === "Admin" && parsed.data.role === "Developer") {
-    return NextResponse.json({ error: "Admins cannot create Developer accounts." }, { status: 403 });
   }
 
   try {

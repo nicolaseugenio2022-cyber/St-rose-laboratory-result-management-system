@@ -6,6 +6,8 @@ import type {
   AuthCredentialRecord,
   AuthRole,
   AuthStatus,
+  CredentialDirectorySummary,
+  ICredentialDirectoryRepository,
   ICredentialRepository,
 } from "@/repositories/interfaces";
 
@@ -103,7 +105,9 @@ function toCredentialUpdates(
   return row;
 }
 
-export class SupabaseCredentialRepository implements ICredentialRepository {
+export class SupabaseCredentialRepository
+  implements ICredentialRepository, ICredentialDirectoryRepository
+{
   async findById(id: string): Promise<AuthCredentialRecord | null> {
     const { data, error } = await supabaseServer
       .from("user_profiles")
@@ -134,6 +138,74 @@ export class SupabaseCredentialRepository implements ICredentialRepository {
     if (error) throw error;
     if (!data) throw new Error("Supabase credential query returned no data.");
     return data.map((row) => mapCredential(row as CredentialRow));
+  }
+
+  async findVisibleTo(visibleRoles: AuthRole[]): Promise<AuthCredentialRecord[]> {
+    const { data, error } = await supabaseServer
+      .from("user_profiles")
+      .select(CREDENTIAL_COLUMNS)
+      .in("role", visibleRoles);
+
+    if (error) throw error;
+    if (!data) throw new Error("Supabase credential query returned no data.");
+    return data.map((row) => mapCredential(row as CredentialRow));
+  }
+
+  async countVisibleTo(visibleRoles: AuthRole[]): Promise<number> {
+    const { count, error } = await supabaseServer
+      .from("user_profiles")
+      .select("id", { count: "exact", head: true })
+      .in("role", visibleRoles);
+
+    if (error) throw error;
+    if (count === null) throw new Error("Supabase credential count returned no data.");
+    return count;
+  }
+
+  async summarizeVisibleTo(visibleRoles: AuthRole[]): Promise<CredentialDirectorySummary> {
+    const { data, error } = await supabaseServer
+      .from("user_profiles")
+      .select("role, status")
+      .in("role", visibleRoles);
+
+    if (error) throw error;
+    if (!data) throw new Error("Supabase credential summary query returned no data.");
+
+    return data.reduce<CredentialDirectorySummary>(
+      (summary, row) => ({
+        totalUsers: summary.totalUsers + 1,
+        activeUsers: summary.activeUsers + (row.status === "Active" ? 1 : 0),
+        inactiveUsers: summary.inactiveUsers + (row.status !== "Active" ? 1 : 0),
+        adminUsers: summary.adminUsers + (row.role === "Admin" ? 1 : 0),
+      }),
+      { totalUsers: 0, activeUsers: 0, inactiveUsers: 0, adminUsers: 0 }
+    );
+  }
+
+  async findByIdVisibleTo(
+    id: string,
+    visibleRoles: AuthRole[]
+  ): Promise<AuthCredentialRecord | null> {
+    const { data, error } = await supabaseServer
+      .from("user_profiles")
+      .select(CREDENTIAL_COLUMNS)
+      .eq("id", id)
+      .in("role", visibleRoles)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? mapCredential(data as CredentialRow) : null;
+  }
+
+  async listDeveloperIdentities(): Promise<{ id: string; username: string }[]> {
+    const { data, error } = await supabaseServer
+      .from("user_profiles")
+      .select("id, username")
+      .in("role", ["Developer"]);
+
+    if (error) throw error;
+    if (!data) throw new Error("Supabase Developer identity query returned no data.");
+    return data.map((row) => ({ id: row.id, username: row.username }));
   }
 
   async create(record: AuthCredentialRecord): Promise<AuthCredentialRecord> {

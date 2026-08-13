@@ -30,4 +30,24 @@ export interface UpdateUserInput {
   status?: UserStatus;
 }
 
+export interface CreateDeveloperAccountInput {
+  username: string;
+  password: string;
+  securityQuestion: string;
+  customSecurityQuestion?: string;
+}
+
+export interface UpdateDeveloperUsernameInput {
+  username: string;
+}
+
+export interface UpdateDeveloperSecurityQuestionInput {
+  securityQuestion: string;
+  customSecurityQuestion?: string;
+}
+
+export interface ResetDeveloperPasswordInput {
+  password: string;
+}
+
 export type UserProfile = User;

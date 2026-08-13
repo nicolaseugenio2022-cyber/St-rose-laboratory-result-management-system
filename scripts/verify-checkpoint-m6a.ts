@@ -54,10 +54,19 @@ const migrationNames = readdirSync(migrationsDirectory)
   .filter((name) => name.endsWith(".sql"))
   .sort();
 const correctionMigrationName = "20260812110000_correct_initial_account_lifecycle.sql";
+const correctionIndex = migrationNames.indexOf(correctionMigrationName);
 assert(
-  migrationNames.at(-1) === correctionMigrationName,
-  "the initial-account-lifecycle correction migration must sort last"
+  correctionIndex !== -1,
+  "the initial-account-lifecycle correction migration must be present"
 );
+// The correction is the final authority on the corrected initial-account lifecycle. Unrelated
+// later migrations are permitted; none may reopen must_change_password.
+for (const name of migrationNames.slice(correctionIndex + 1)) {
+  assert(
+    !/\bmust_change_password\b/i.test(read(path.join("supabase", "migrations", name))),
+    `${name} sorts after the initial-account-lifecycle correction and must not modify must_change_password`
+  );
+}
 const migrationChain = migrationNames
   .map((name) => read(path.join("supabase", "migrations", name)))
   .join("\n");

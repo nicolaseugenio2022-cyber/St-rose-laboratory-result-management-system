@@ -98,6 +98,27 @@ export interface IAuditLogRepository {
   append(entry: AuditLogEntry): Promise<void>;
 }
 
+export type AuditLogQueryExclusion = {
+  performedByUserIds: string[];
+  usernames: string[];
+};
+
+export type AuditLogQueryCriteria = {
+  categories?: string[];
+  eventType?: string;
+  occurredAtFrom?: string;
+  occurredAtTo?: string;
+  search?: string;
+  exclusion?: AuditLogQueryExclusion;
+  limit: number;
+  offset: number;
+};
+
+export interface IAuditLogQueryRepository {
+  query(criteria: AuditLogQueryCriteria): Promise<AuditLogEntry[]>;
+  count(criteria: AuditLogQueryCriteria): Promise<number>;
+}
+
 export interface IPatientReportSessionRepository {
   findById(id: string): Promise<IPatientReportSession | null>;
   findByAccessionNumber(accessionNumber: string): Promise<IPatientReportSession | null>;

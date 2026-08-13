@@ -1,0 +1,10 @@
+import "server-only";
+
+import { SupabaseAuditLogRepository } from "@/repositories/supabase-audit-log-repository";
+import { SupabaseCredentialRepository } from "@/repositories/supabase-credential-repository";
+import { AuditReadService } from "@/services/audit-read-service";
+
+export const auditReadService = new AuditReadService(
+  new SupabaseAuditLogRepository(),
+  new SupabaseCredentialRepository()
+);

@@ -3,6 +3,7 @@ import React from "react";
 import { ArrowRight, Database, Hash, ShieldCheck, ServerCog, Activity, CheckCircle2, AlertTriangle, CircleDot } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import type { IUserProfile } from "@/domain/models/interfaces";
 import { developerDashboardService, DeveloperDashboardData } from "@/services/developer-dashboard-service";
 
 function statusBadge(status: "Healthy" | "Warning" | "Error") {
@@ -25,8 +26,16 @@ function formatMetric(value: number | null) {
   return value === null ? "Unavailable" : value.toLocaleString();
 }
 
-export default async function DeveloperDashboardSection() {
-  const data: DeveloperDashboardData = await developerDashboardService.getDashboardData();
+export interface DeveloperDashboardSectionProps {
+  currentUserProfile: Pick<IUserProfile, "role"> | null;
+}
+
+export default async function DeveloperDashboardSection({
+  currentUserProfile,
+}: DeveloperDashboardSectionProps) {
+  const data: DeveloperDashboardData = await developerDashboardService.getDashboardData(
+    currentUserProfile
+  );
 
   return (
     <section className="space-y-6">
@@ -190,11 +199,11 @@ export default async function DeveloperDashboardSection() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-xs uppercase tracking-wider text-brand-text-muted">
-                          {new Date(log.timestamp).toLocaleString()}
+                          {new Date(log.occurredAt).toLocaleString()}
                         </div>
                         <div className="mt-2 font-semibold text-brand-text">{log.eventType}</div>
                         <div className="text-xs text-brand-text-muted mt-1">
-                          {log.performedByUsername} • {log.category}
+                          {log.performedByUsername ?? "—"} • {log.category}
                         </div>
                       </div>
                       <div className="shrink-0">

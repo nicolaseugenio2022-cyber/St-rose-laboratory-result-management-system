@@ -1,8 +1,14 @@
 import packageJson from "../../package.json";
-import { AuditLogEntryDomain } from "@/domain/models/audit-log-entry";
-import { auditLogService } from "@/services/audit-log-service";
+import type { IUserProfile } from "@/domain/models/interfaces";
 import { userService } from "@/services/user-service-instance";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  toAuditReaderRole,
+  type AuditEventTransport,
+  type AuditPageTransport,
+  type AuditReadCriteria,
+} from "@/services/audit-read-service";
+import { auditReadService } from "@/services/audit-read-service-instance";
 
 export interface SupabaseHealthReport {
   status: "Connected" | "Disconnected";
@@ -22,9 +28,9 @@ export interface SystemHealthStatus {
 export interface DeveloperDashboardData {
   totalUsers: number;
   totalPersonnel: number | null;
-  totalAuditLogs: number;
+  totalAuditLogs: number | null;
   totalLaboratoryResults: number | null;
-  recentActivity: AuditLogEntryDomain[];
+  recentActivity: AuditEventTransport[];
   technicalInfo: {
     appName: string;
     environment: string;
@@ -137,24 +143,36 @@ async function getSupabaseCountsCached(): Promise<{ totalPersonnel: number | nul
 }
 
 export class DeveloperDashboardService {
-  public async getDashboardData(): Promise<DeveloperDashboardData> {
-    const [users, auditLogs, supabaseHealth, supabaseCounts] = await Promise.all([
+  public async getDashboardData(
+    callerProfile: Pick<IUserProfile, "role"> | null
+  ): Promise<DeveloperDashboardData> {
+    const readerRole = toAuditReaderRole(callerProfile?.role);
+    const auditCriteria: AuditReadCriteria = {
+      category: "ALL",
+      limit: 6,
+      offset: 0,
+    };
+    const auditProjectionPromise: Promise<AuditPageTransport | null> = readerRole
+      ? auditReadService.readPage(auditCriteria, readerRole)
+      : Promise.resolve(null);
+
+    const [users, auditPage, supabaseHealth, supabaseCounts] = await Promise.all([
       userService.getUsers(),
-      auditLogService.getLogs(),
+      auditProjectionPromise,
       getSupabaseHealthCached(),
       getSupabaseCountsCached(),
     ]);
 
     const currentAuthStatus = "Authenticated";
     const appHealthy = true;
-    const apiHealthy = Boolean(users && auditLogs);
+    const apiHealthy = Boolean(users && auditPage);
 
     return {
       totalUsers: users.length,
       totalPersonnel: supabaseCounts.totalPersonnel,
-      totalAuditLogs: auditLogs.length,
+      totalAuditLogs: auditPage?.total ?? null,
       totalLaboratoryResults: supabaseCounts.totalLaboratoryResults,
-      recentActivity: auditLogs.slice(0, 6),
+      recentActivity: auditPage?.events ?? [],
       technicalInfo: {
         appName: "St. Rose Diagnostic Laboratory Result Management System",
         environment: process.env.NODE_ENV || "development",

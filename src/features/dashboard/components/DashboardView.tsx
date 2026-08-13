@@ -39,7 +39,7 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
 
       {isDeveloper && (
         <Suspense fallback={<DeveloperDashboardSkeleton />}>
-          <DeveloperDashboardSection />
+          <DeveloperDashboardSection currentUserProfile={currentUserProfile} />
         </Suspense>
       )}
     </div>

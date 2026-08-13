@@ -114,6 +114,13 @@ function verifyRepositoryLevelDeveloperExclusion(): void {
   )?.[0];
   const queryStart = repositorySource.search(/\n\s*async\s+query\s*\(/);
   const countStart = repositorySource.search(/\n\s*async\s+count\s*\(/);
+  const appendStart = repositorySource.search(/\n\s*async\s+append\s*\(/);
+
+  assert(appendStart >= 0, "the audit repository must expose an append method");
+  assert(
+    !/developer_involved/.test(repositorySource.slice(appendStart, queryStart)),
+    "the audit repository must never write the generated developer_involved column"
+  );
 
   assert(exclusionBuilder, "the audit repository must build an exclusion predicate");
   for (const column of [
@@ -126,6 +133,26 @@ function verifyRepositoryLevelDeveloperExclusion(): void {
       `the repository exclusion predicate must reference ${column}`
     );
   }
+  // The classified branch: rows that carry write-time classification are excluded purely by the
+  // generated developer_involved column, never by identity.
+  assert(
+    exclusionBuilder.includes("developer_involved.eq.false"),
+    "the classified branch must exclude Developer-involved rows by the generated column"
+  );
+  assert(
+    /or\(actor_role\.not\.is\.null,target_role\.not\.is\.null\)/.test(exclusionBuilder),
+    "the classified branch must select rows where either role is non-null"
+  );
+  // The legacy branch: pre-classification rows have both roles null and fall back to identity.
+  assert(
+    /["']actor_role\.is\.null["']/.test(exclusionBuilder) &&
+      /["']target_role\.is\.null["']/.test(exclusionBuilder),
+    "the legacy branch must select rows where both roles are null"
+  );
+  assert(
+    /return\s+`and\(\$\{\w+\}\),and\(\$\{\w+\}\)`;/.test(exclusionBuilder),
+    "the exclusion predicate must compose exactly two and(...) branches as a top-level or"
+  );
   assert(
     queryStart >= 0 && countStart > queryStart,
     "the audit repository must expose distinct query and count methods"
@@ -147,6 +174,28 @@ function verifyRepositoryLevelDeveloperExclusion(): void {
       `${exclusionBuilder}\n${queryMethod}\n${countMethod}\n${readServiceSource}`
     ),
     "Developer exclusion must not be implemented with JavaScript array filtering"
+  );
+}
+
+function verifyDeveloperInvolvedIsGeneratedAndStored(): void {
+  const migrationsDirectory = path.join(root, "supabase", "migrations");
+  const defining = readdirSync(migrationsDirectory)
+    .filter((name) => name.endsWith(".sql"))
+    .filter((name) =>
+      /developer_involved/.test(read(path.join("supabase", "migrations", name)))
+    );
+  assert(
+    defining.length === 1,
+    "exactly one migration must define developer_involved"
+  );
+  const source = read(path.join("supabase", "migrations", defining[0]));
+  assert(
+    /developer_involved\s+BOOLEAN\s+GENERATED\s+ALWAYS\s+AS\s*\([\s\S]*?\)\s*STORED/i.test(source),
+    "developer_involved must be a STORED generated column, so classification cannot drift from the roles"
+  );
+  assert(
+    /actor_role\s*=\s*'Developer'/i.test(source) && /target_role\s*=\s*'Developer'/i.test(source),
+    "developer_involved must be generated from both actor_role and target_role"
   );
 }
 
@@ -272,6 +321,7 @@ verifyServerOnlyAuditBoundary();
 verifyAuditActionAuthorization();
 verifyAuditActionInputBounds();
 verifyRepositoryLevelDeveloperExclusion();
+verifyDeveloperInvolvedIsGeneratedAndStored();
 verifyReadTimeCanonicalizationAndAppendOnlyUse();
 verifyAuditReaderRoleNarrowing();
 verifyAuditClientBoundary();
@@ -280,5 +330,5 @@ verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 
 process.stdout.write(
-  "M6D verification passed: persistent audit reads, role narrowing, Developer projection, client boundaries, and prototype retirement verified.\n"
+  "M6D verification passed: persistent audit reads, role narrowing, Developer projection, client boundaries, prototype retirement, and the dual-mode exclusion invariant verified.\n"
 );

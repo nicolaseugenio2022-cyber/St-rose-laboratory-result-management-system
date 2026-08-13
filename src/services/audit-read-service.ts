@@ -114,7 +114,6 @@ export class AuditReadService {
     if (readerRole === "Admin") {
       const developerIdentities = await this.credentialDirectory.listDeveloperIdentities();
       queryCriteria.exclusion = {
-        excludeDeveloperInvolved: true,
         performedByUserIds: [...new Set(developerIdentities.map(({ id }) => id))],
         usernames: [...new Set(developerIdentities.map(({ username }) => username))],
       };

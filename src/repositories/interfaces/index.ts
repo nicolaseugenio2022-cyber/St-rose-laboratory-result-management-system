@@ -101,7 +101,6 @@ export interface IAuditLogRepository {
 }
 
 export type AuditLogQueryExclusion = {
-  excludeDeveloperInvolved: true;
   performedByUserIds: string[];
   usernames: string[];
 };

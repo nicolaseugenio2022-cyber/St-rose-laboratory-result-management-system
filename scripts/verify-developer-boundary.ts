@@ -668,6 +668,48 @@ async function verifyAdminInvariantWithDeveloperFilteredCounts(): Promise<void> 
   assert((await credentials.findById(ADMIN_A))?.status === "Active", "case 26 must leave Admin Active");
 }
 
+async function verifyCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
+  const ordinarySubject = createSubject([]);
+  const ordinary = await ordinarySubject.service.createUser({
+    username: "ordinary-created",
+    password: randomUUID(),
+    role: "User",
+    securityQuestion: SECURITY_QUESTION,
+  });
+  const storedOrdinary = await ordinarySubject.credentials.findById(ordinary.id);
+
+  const developerSubject = createSubject([credential(DEVELOPER_A, "Developer")]);
+  const developer = await developerSubject.service.createDeveloperAccount(
+    {
+      username: "developer-created",
+      password: randomUUID(),
+      securityQuestion: SECURITY_QUESTION,
+    },
+    "Developer"
+  );
+  const storedDeveloper = await developerSubject.credentials.findById(developer.id);
+
+  for (const [label, stored] of [
+    ["createUser", storedOrdinary],
+    ["createDeveloperAccount", storedDeveloper],
+  ] as const) {
+    assert(stored, `case 27 must persist the account created by ${label}`);
+    assert(
+      stored.mustChangePassword === false,
+      `case 27 ${label} must set mustChangePassword=false`
+    );
+    assert(
+      stored.mustSetRecovery === true,
+      `case 27 ${label} must set mustSetRecovery=true`
+    );
+    assert(
+      stored.securityAnswerHash === null,
+      `case 27 ${label} must null securityAnswerHash`
+    );
+    assert(stored.tokenVersion === 1, `case 27 ${label} must start at tokenVersion 1`);
+  }
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -695,7 +737,8 @@ async function main(): Promise<void> {
   await verifyDeveloperFlowDoesNotExposeSecrets();
   await verifyDeveloperAuthenticationStillSucceeds();
   await verifyAdminInvariantWithDeveloperFilteredCounts();
-  process.stdout.write("Developer boundary verification passed: all 26 cases verified.\n");
+  await verifyCreationPathsAgreeOnInitialLifecycle();
+  process.stdout.write("Developer boundary verification passed: all 27 cases verified.\n");
 }
 
 void main();

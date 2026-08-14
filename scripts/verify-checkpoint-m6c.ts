@@ -506,6 +506,7 @@ function verifyUserServiceInvariants(): void {
   const updateUser = /async\s+updateUser\b[\s\S]*?(?=\n\s*async\s+toggleUserStatus\b)/.exec(
     source
   )?.[0];
+  const resetUserPassword = /async\s+resetUserPassword\b[\s\S]*?\n\s*}\n}/.exec(source)?.[0];
   const toggleUserStatus = /async\s+toggleUserStatus\b[\s\S]*?(?=\n\s*async\s+deleteUser\b)/.exec(
     source
   )?.[0];
@@ -558,10 +559,16 @@ function verifyUserServiceInvariants(): void {
     "setFirstLoginRecoveryAnswer must increment tokenVersion"
   );
   assert(
-    /if\s*\(\s*input\.password\s*\)[\s\S]*?updates\.tokenVersion\s*=\s*current\.tokenVersion\s*\+\s*1/.test(
-      updateUser
-    ),
-    "a password change through updateUser must increment tokenVersion"
+    !/(?:input\.password|\bpasswordHash\b|\bpasswordUpdatedAt\b)/.test(updateUser),
+    "updateUser must contain no password handling"
+  );
+  assert(
+    resetUserPassword &&
+      /tokenVersion:\s*current\.tokenVersion\s*\+\s*1/.test(resetUserPassword) &&
+      /passwordHash:\s*await\s+hashPassword\s*\(\s*input\.password\s*\)/.test(
+        resetUserPassword
+      ),
+    "resetUserPassword must hash the privileged replacement and increment tokenVersion"
   );
 
   const countOtherActiveAdmins = /private\s+async\s+countOtherActiveAdmins\b[\s\S]*?(?=\n\s*async\s+getUsers\b)/.exec(

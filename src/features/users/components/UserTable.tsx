@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit2, Power } from "lucide-react";
+import { Edit2, KeyRound, Power } from "lucide-react";
 import { UserProfile } from "@/types/user";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { UserStatusBadge } from "./UserStatusBadge";
 export interface UserTableProps {
   users: UserProfile[];
   onEdit: (user: UserProfile) => void;
+  onResetPassword: (user: UserProfile) => void;
   onToggleStatus: (user: UserProfile) => void;
   onDelete: (user: UserProfile) => void;
   currentUserId: string;
@@ -17,7 +18,7 @@ export interface UserTableProps {
   isLoading?: boolean;
 }
 
-export function UserTable({ users, onEdit, onToggleStatus, onDelete, currentUserId, activeAdminCount, deletingUserId, isLoading = false }: UserTableProps) {
+export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDelete, currentUserId, activeAdminCount, deletingUserId, isLoading = false }: UserTableProps) {
   if (users.length === 0) {
     return (
       <div className="rounded-xl border border-brand-border bg-brand-surface p-12 text-center">
@@ -101,6 +102,18 @@ export function UserTable({ users, onEdit, onToggleStatus, onDelete, currentUser
                     <Edit2 className="h-4 w-4 text-brand-text-muted" />
                     <span className="sr-only">Edit {user.username}</span>
                   </Button>
+                  {user.role !== "Developer" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onResetPassword(user)}
+                      disabled={isLoading}
+                      title="Reset Password"
+                    >
+                      <KeyRound className="h-4 w-4 text-brand-text-muted" />
+                      <span className="sr-only">Reset password for {user.username}</span>
+                    </Button>
+                  )}
                   <Button
                     variant={isActive ? "outline" : "secondary"}
                     size="sm"

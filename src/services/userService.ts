@@ -13,6 +13,7 @@ import {
   CreateDeveloperAccountInput,
   CreateUserInput,
   ResetDeveloperPasswordInput,
+  ResetUserPasswordInput,
   UpdateDeveloperSecurityQuestionInput,
   UpdateDeveloperUsernameInput,
   UpdateUserInput,
@@ -687,11 +688,6 @@ export class UserService implements IUserService {
     }
     if (input.role !== undefined) updates.role = input.role;
     if (input.status !== undefined) updates.status = input.status;
-    if (input.password) {
-      updates.passwordHash = await hashPassword(input.password);
-      updates.passwordUpdatedAt = new Date().toISOString();
-      updates.tokenVersion = current.tokenVersion + 1;
-    }
 
     return toUser(await this.credentials.update(id, updates));
   }
@@ -982,6 +978,26 @@ export class UserService implements IUserService {
     } finally {
       await this.recoveryRateLimiter.recordPasswordReset(current.username, succeeded);
     }
+  }
+
+  async resetUserPassword(
+    id: string,
+    input: ResetUserPasswordInput,
+    callerRole: AuthRole
+  ): Promise<User> {
+    if (callerRole !== "Admin" && callerRole !== "Developer") {
+      throw new Error("Only Admin or Developer may reset ordinary account passwords.");
+    }
+    const current = await this.findOrdinaryMutationTarget(id);
+    const now = new Date().toISOString();
+    return toUser(
+      await this.credentials.update(id, {
+        passwordHash: await hashPassword(input.password),
+        passwordUpdatedAt: now,
+        tokenVersion: current.tokenVersion + 1,
+        updatedAt: now,
+      })
+    );
   }
 
   async changeOwnPassword(

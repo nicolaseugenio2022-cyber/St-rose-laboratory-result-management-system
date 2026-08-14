@@ -45,7 +45,6 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
     defaultValues: isEditing
       ? {
           username: initialData.username,
-          password: "",
           role: initialData.role as UpdateUserFormValues["role"],
           status: initialData.status,
         }
@@ -63,7 +62,6 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
     if (initialData) {
       reset({
         username: initialData.username,
-        password: "",
         role: initialData.role as UpdateUserFormValues["role"],
         status: initialData.status,
       });
@@ -140,13 +138,15 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
         </>
       )}
 
-      <Input
-        label={isEditing ? "New Password (optional)" : "Password"}
-        type="password"
-        placeholder={isEditing ? "Leave blank to keep unchanged" : "At least 6 characters"}
-        error={errors.password?.message}
-        {...register("password")}
-      />
+      {!isEditing && (
+        <Input
+          label="Password"
+          type="password"
+          placeholder="At least 6 characters"
+          error={(errors as { password?: { message?: string } }).password?.message}
+          {...register("password")}
+        />
+      )}
 
       <Select
         label="System Role"

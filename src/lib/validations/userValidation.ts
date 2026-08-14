@@ -47,17 +47,21 @@ export const createUserSchema = z
 
 export const updateUserSchema = z.object({
   username: usernameSchema,
-  password: z
-    .string()
-    .min(6, "New password must be at least 6 characters")
-    .max(100, "Password cannot exceed 100 characters")
-    .optional()
-    .or(z.literal("")),
   role: ordinaryUserRoleSchema,
   status: userStatusSchema,
 });
 
 export const updateUserPayloadSchema = updateUserSchema.partial();
+
+export const resetUserPasswordSchema = z
+  .object({
+    id: z.string().min(1),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .max(100, "Password cannot exceed 100 characters"),
+  })
+  .strict();
 
 export type CreateUserFormValues = z.infer<typeof createUserSchema>;
 export type UpdateUserFormValues = z.infer<typeof updateUserSchema>;

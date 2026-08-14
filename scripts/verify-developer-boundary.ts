@@ -39,6 +39,7 @@ import type {
   ResetDeveloperPasswordInput,
   UpdateDeveloperSecurityQuestionInput,
   UpdateDeveloperUsernameInput,
+  UpdateUserInput,
 } from "@/types/user";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -1885,6 +1886,141 @@ async function verifyFailedPasswordChangeAuditSurvivesRecordFailure(): Promise<v
   );
 }
 
+async function verifyAdminResetsOrdinaryPassword(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(USER_A);
+  initial.passwordHash = randomUUID();
+  initial.securityAnswerHash = randomUUID();
+  initial.securityQuestion = "What city were you born in?";
+  initial.mustChangePassword = true;
+  initial.mustSetRecovery = true;
+  initial.tokenVersion = 7;
+  const { credentials, service } = createSubject([initial]);
+
+  await service.resetUserPassword(
+    initial.id,
+    { password: replacementPassword },
+    "Admin"
+  );
+
+  const stored = await credentials.findById(initial.id);
+  assert(
+    stored !== null &&
+      stored.passwordHash !== initial.passwordHash &&
+      (await verifyPassword(replacementPassword, stored.passwordHash)),
+    "case 65 must replace the ordinary account password hash"
+  );
+  assert(
+    stored.tokenVersion === initial.tokenVersion + 1,
+    "case 65 must increment tokenVersion by exactly one"
+  );
+  assert(
+    stored.securityAnswerHash === initial.securityAnswerHash &&
+      stored.securityQuestion === initial.securityQuestion &&
+      stored.mustChangePassword === initial.mustChangePassword &&
+      stored.mustSetRecovery === initial.mustSetRecovery,
+    "case 65 must preserve recovery and first-login state"
+  );
+}
+
+async function verifyDeveloperResetsOrdinaryPassword(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(USER_A, "Admin");
+  initial.securityAnswerHash = randomUUID();
+  initial.securityQuestion = "What city were you born in?";
+  initial.mustChangePassword = false;
+  initial.mustSetRecovery = true;
+  initial.tokenVersion = 13;
+  const { credentials, service } = createSubject([initial]);
+
+  await service.resetUserPassword(
+    initial.id,
+    { password: replacementPassword },
+    "Developer"
+  );
+
+  const stored = await credentials.findById(initial.id);
+  assert(
+    stored !== null &&
+      stored.passwordHash !== initial.passwordHash &&
+      (await verifyPassword(replacementPassword, stored.passwordHash)),
+    "case 66 must allow a Developer caller to replace an ordinary password hash"
+  );
+  assert(
+    stored.tokenVersion === initial.tokenVersion + 1,
+    "case 66 must increment tokenVersion by exactly one"
+  );
+  assert(
+    stored.securityAnswerHash === initial.securityAnswerHash &&
+      stored.securityQuestion === initial.securityQuestion &&
+      stored.mustChangePassword === initial.mustChangePassword &&
+      stored.mustSetRecovery === initial.mustSetRecovery,
+    "case 66 must preserve recovery and first-login state"
+  );
+}
+
+async function verifyUserCannotResetOrdinaryPassword(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(USER_A);
+  initial.tokenVersion = 17;
+  const { credentials, service } = createSubject([initial]);
+
+  const error = await captureError(() =>
+    service.resetUserPassword(initial.id, { password: replacementPassword }, "User")
+  );
+  const stored = await credentials.findById(initial.id);
+  assert(error instanceof Error, "case 67 must reject a User caller");
+  assert(
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 67 must leave the credential unchanged"
+  );
+}
+
+async function verifyOrdinaryResetRejectsDeveloperTarget(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(DEVELOPER_A, "Developer");
+  initial.tokenVersion = 19;
+  const { credentials, service } = createSubject([initial]);
+
+  let error: unknown = null;
+  try {
+    await service.resetUserPassword(initial.id, { password: replacementPassword }, "Admin");
+  } catch (caught) {
+    error = caught;
+  }
+  const stored = await credentials.findById(initial.id);
+  assert(
+    error instanceof UserNotFoundError,
+    "case 68 must hide and reject a Developer target from Admin"
+  );
+  assert(
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 68 must leave the Developer credential unchanged"
+  );
+}
+
+async function verifyUpdateUserIgnoresPasswordLikeField(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(USER_A);
+  initial.tokenVersion = 23;
+  const { credentials, service } = createSubject([initial]);
+
+  await service.updateUser(
+    initial.id,
+    { password: replacementPassword } as UpdateUserInput,
+    ADMIN_A
+  );
+
+  const stored = await credentials.findById(initial.id);
+  assert(
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 69 must leave passwordHash and tokenVersion untouched"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1950,7 +2086,12 @@ async function main(): Promise<void> {
   await verifyFailedPasswordChangeAuditFailureIsSwallowed();
   await verifyStalePasswordChangeStateIsRejected();
   await verifyFailedPasswordChangeAuditSurvivesRecordFailure();
-  process.stdout.write("Developer boundary verification passed: all 64 cases verified.\n");
+  await verifyAdminResetsOrdinaryPassword();
+  await verifyDeveloperResetsOrdinaryPassword();
+  await verifyUserCannotResetOrdinaryPassword();
+  await verifyOrdinaryResetRejectsDeveloperTarget();
+  await verifyUpdateUserIgnoresPasswordLikeField();
+  process.stdout.write("Developer boundary verification passed: all 69 cases verified.\n");
 }
 
 void main();

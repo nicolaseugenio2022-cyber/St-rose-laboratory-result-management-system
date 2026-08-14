@@ -25,9 +25,12 @@ export interface CreateUserInput {
 
 export interface UpdateUserInput {
   username?: string;
-  password?: string;
   role?: UserRole;
   status?: UserStatus;
+}
+
+export interface ResetUserPasswordInput {
+  password: string;
 }
 
 export interface CreateDeveloperAccountInput {

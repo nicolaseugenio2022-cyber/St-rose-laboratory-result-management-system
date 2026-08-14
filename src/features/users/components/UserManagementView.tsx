@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Search, Users } from "lucide-react";
 import { UserProfile, UserRole } from "@/types/user";
+import { resetUserPasswordAction } from "@/features/server-boundary/user-account-actions";
 import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { UserTable } from "./UserTable";
 import { UserFormModal } from "./UserFormModal";
+import { UserPasswordResetModal } from "./UserPasswordResetModal";
 
 export interface UserManagementViewProps {
   currentUserId: string;
@@ -24,6 +26,8 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserProfile | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const loadUsers = useCallback(async () => {
     const data = await fetchUsers();
@@ -81,6 +85,30 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     } catch (err) {
       console.error("Failed to toggle status:", err);
       window.alert((err as Error)?.message || "Failed to update user status.");
+    }
+  };
+
+  const handleOpenPasswordReset = (user: UserProfile) => {
+    if (user.role === "Developer") return;
+    setResetPasswordUser(user);
+  };
+
+  const handleClosePasswordReset = () => {
+    setResetPasswordUser(null);
+  };
+
+  const handlePasswordReset = async (password: string) => {
+    if (!resetPasswordUser || resetPasswordUser.role === "Developer") return;
+
+    setIsResettingPassword(true);
+    try {
+      await resetUserPasswordAction({
+        id: resetPasswordUser.id,
+        password,
+      });
+      handleClosePasswordReset();
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -175,6 +203,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
       <UserTable
         users={filteredUsers}
         onEdit={handleOpenEdit}
+        onResetPassword={handleOpenPasswordReset}
         onToggleStatus={handleToggleStatus}
         onDelete={handleDeleteUser}
         currentUserId={currentUserId}
@@ -189,6 +218,14 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
         initialData={editingUser}
         onSubmit={handleFormSubmit}
         isLoading={isSubmitting}
+      />
+
+      <UserPasswordResetModal
+        isOpen={resetPasswordUser !== null}
+        targetUser={resetPasswordUser}
+        onClose={handleClosePasswordReset}
+        onSubmit={handlePasswordReset}
+        isLoading={isResettingPassword}
       />
     </div>
   );

@@ -394,8 +394,8 @@ function verifyFirstLoginSecurityAuditWriters(): void {
     "the exhaustion log must not carry the error, credential material, or database detail"
   );
   assert(
-    (source.match(/console\.error\(/g) ?? []).length === 1,
-    "userService must log only the first-login audit exhaustion case"
+    (source.match(/console\.error\(/g) ?? []).length === 2,
+    "userService must log only the first-login audit exhaustion case and the failed-authentication audit failure"
   );
 
   for (const [methodName, blockPattern, eventType] of [
@@ -445,6 +445,108 @@ function verifyFirstLoginSecurityAuditWriters(): void {
   );
 }
 
+function verifyFailedAuthenticationAuditWriter(): void {
+  const source = read("src/services/userService.ts");
+  const helper = /private\s+async\s+emitAuthenticationFailure\b[\s\S]*?(?=\n\s*private\s+async\s+emitFirstLoginSecurityEvent\b)/.exec(
+    source
+  )?.[0];
+
+  assert(
+    helper,
+    "UserService must expose the failed-authentication audit writer so unauthenticated failures reach the durable boundary"
+  );
+  assert(
+    (helper.match(/\.emit\(/g) ?? []).length === 1,
+    "the failed-authentication writer must make exactly one audit emission attempt"
+  );
+  assert(
+    !/setTimeout|FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS|for\s*\(|while\s*\(|retry/i.test(helper),
+    "the unauthenticated failure path must not retry, back off, sleep, or repeat durable writes because that would create an amplification vector"
+  );
+  assert(
+    !/\bthrow\b/.test(helper),
+    "the failed-authentication audit writer must never replace the authentication rejection with an audit failure"
+  );
+  assert(
+    /try\s*\{[\s\S]*?this\.recoveryAudit\.emit\([\s\S]*?\}\s*catch\s*\{/.test(helper),
+    "the throwing recoveryAudit accessor and its emit call must both remain inside the swallowing try/catch block"
+  );
+  assert(
+    /category:\s*"AuthAccount"/.test(helper) &&
+      /eventType:\s*"AuthenticationFailed"/.test(helper),
+    "failed authentication must use the durable AuthAccount AuthenticationFailed classification"
+  );
+  assert(
+    /actorRole:\s*null/.test(helper) &&
+      /performedByUserId:\s*null/.test(helper) &&
+      /performedByUsername:\s*null/.test(helper),
+    "an unauthenticated failure must never name or infer an actor"
+  );
+  assert(
+    helper.includes("targetRole: record?.role ?? null"),
+    "the failed-login target role must come only from the persisted record and remain null for an unknown username"
+  );
+  assert(
+    helper.includes("targetReference: username.slice(0, MAX_USERNAME_LENGTH)"),
+    "attacker-controlled usernames must be bounded before entering the append-only audit table"
+  );
+  assert(
+    (helper.match(/\bdetails\s*:/g) ?? []).length === 1 &&
+      /details:\s*\{\s*outcome\s*\}/.test(helper),
+    "failed-authentication details must contain only the outcome classification"
+  );
+  assert(
+    helper.includes('"unknown_username"') &&
+      helper.includes('"inactive_account"') &&
+      helper.includes('"invalid_password"'),
+    "the writer must distinguish unknown usernames, inactive accounts, and invalid passwords without exposing secrets"
+  );
+  assert(
+    !/clientIp/.test(helper),
+    "client IP must not be duplicated into the permanent failed-authentication audit boundary in this slice"
+  );
+
+  const logCall = /console\.error\([\s\S]*?\);/.exec(helper)?.[0];
+  assert(
+    logCall,
+    "failed-authentication audit persistence failure must use sanitized operational logging"
+  );
+  const logPayload = logCall.replace(/console\.error\(\s*"[^"]*",/, "");
+  assert(
+    /^\s*\{\s*eventType:\s*"AuthenticationFailed",\s*outcome,\s*\}\s*\);$/.test(
+      logPayload
+    ),
+    "the failed-authentication persistence log must carry exactly eventType and outcome"
+  );
+  assert(
+    !/username|userId|clientIp|role|password|hash|answer|token|details|payload|supabase|sql|attempts/i.test(
+      logPayload
+    ),
+    "the failed-authentication persistence log must not expose identity, credential, database, payload, or attempt data"
+  );
+
+  const authenticate = /async\s+authenticate\b[\s\S]*?(?=\n\s*async\s+changeFirstLoginPassword\b)/.exec(
+    source
+  )?.[0];
+  assert(authenticate, "UserService.authenticate must remain present");
+  assert(
+    /await\s+this\.loginRateLimiter\.record\(username,\s*clientIp,\s*authenticated\);\s*if\s*\(!authenticated\)\s*await\s+this\.emitAuthenticationFailure\(username,\s*record\);\s*if\s*\(!record\s*\|\|\s*!authenticated\)\s*throw\s+new\s+InvalidCredentialsError\(\);/.test(
+      authenticate
+    ),
+    "rate limiting stays authoritative and ordered ahead of auditing, and the rejection is unchanged"
+  );
+  assert(
+    /await\s+this\.loginRateLimiter\.assertAllowed\(username,\s*clientIp\)/.test(authenticate),
+    "authenticate must still enforce the login rate limit before credential verification"
+  );
+  assert(
+    authenticate.indexOf("this.emitAuthenticationFailure(") >
+      authenticate.indexOf("this.loginRateLimiter.assertAllowed(") &&
+      !/\b(?:catch|finally)\b/.test(authenticate),
+    "the LoginRateLimitError path must reject before any failed-authentication audit emission"
+  );
+}
+
 function verifyPrototypeRetirement(): void {
   assert(
     !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
@@ -484,6 +586,7 @@ verifyAuditClientBoundary();
 verifyDeveloperDashboardPersistentAudit();
 verifyDeveloperDashboardServerSideProbe();
 verifyFirstLoginSecurityAuditWriters();
+verifyFailedAuthenticationAuditWriter();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 

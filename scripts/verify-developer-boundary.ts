@@ -22,6 +22,7 @@ import type {
 } from "@/repositories/interfaces";
 import {
   DeveloperAlreadyExistsError,
+  InvalidCredentialsError,
   LastActiveAdminError,
   LastActiveDeveloperError,
   SelfDeactivationError,
@@ -158,8 +159,10 @@ class FakeLoginAttemptRepository implements ILoginAttemptRepository {
 class FakeAuditLog {
   readonly entries: AuditLogEntry[] = [];
   failures = 0;
+  public emitCalls = 0;
 
   async emit(event: AuditEvent): Promise<void> {
+    this.emitCalls += 1;
     if (this.failures > 0) {
       this.failures -= 1;
       throw new Error("simulated audit persistence failure");
@@ -1290,6 +1293,170 @@ async function verifyBootstrappedDeveloperRoutesThroughPasswordThenRecovery(): P
   );
 }
 
+async function verifyFailedDeveloperAuthenticationIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(DEVELOPER_A, "Developer")], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate(DEVELOPER_A, "wrong-password")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 48 must reject a failed Developer login with InvalidCredentialsError"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(entries.length === 1, "case 48 must emit exactly one AuthenticationFailed event");
+  const entry = entries[0];
+  assert(entry.category === "AuthAccount", "case 48 must classify the event as AuthAccount");
+  assert(entry.actorRole === null, "case 48 must classify the unauthenticated actor as null");
+  assert(
+    entry.performedByUserId === null && entry.performedByUsername === null,
+    "case 48 must not name or infer a performing user"
+  );
+  assert(
+    entry.targetRole === "Developer",
+    "case 48 must preserve the Developer target role because it makes developer_involved true and hides the event from Admin readers, preserving Developer invisibility"
+  );
+  assert(
+    entry.targetReference === DEVELOPER_A,
+    "case 48 must target the persisted Developer username"
+  );
+  assert(
+    JSON.stringify(entry.details) === JSON.stringify({ outcome: "invalid_password" }),
+    "case 48 details must contain only the invalid_password outcome"
+  );
+  assertNoSensitiveData(
+    entry,
+    ["wrong-password"],
+    "case 48 must never record the attempted password"
+  );
+}
+
+async function verifyFailedAdminAuthenticationIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(ADMIN_A, "Admin")], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate(ADMIN_A, "wrong-password")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 49 must reject a failed Admin login with InvalidCredentialsError"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(entries.length === 1, "case 49 must emit exactly one AuthenticationFailed event");
+  const entry = entries[0];
+  assert(
+    entry.targetRole === "Admin" && entry.actorRole === null,
+    "case 49 must keep the Admin target role and null actor role so developer_involved stays false and the event remains visible to Admin readers"
+  );
+}
+
+async function verifyUnknownUsernameAuthenticationFailureIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate("no-such-user", "irrelevant")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 50 must reject an unknown username with InvalidCredentialsError"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(entries.length === 1, "case 50 must emit exactly one AuthenticationFailed event");
+  const entry = entries[0];
+  assert(
+    entry.targetRole === null &&
+      entry.actorRole === null &&
+      entry.performedByUserId === null &&
+      entry.performedByUsername === null,
+    "case 50 must fabricate no user id or role for an unknown username"
+  );
+  assert(
+    entry.targetReference === "no-such-user",
+    "case 50 must retain the bounded unknown username as the target reference"
+  );
+  assert(
+    JSON.stringify(entry.details) === JSON.stringify({ outcome: "unknown_username" }),
+    "case 50 details must contain only the unknown_username outcome"
+  );
+}
+
+async function verifyInactiveAccountAuthenticationFailureIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(USER_A, "User", "Inactive")], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 51 must reject a deactivated account with InvalidCredentialsError"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(entries.length === 1, "case 51 must emit exactly one AuthenticationFailed event");
+  const entry = entries[0];
+  assert(
+    entry.targetRole === "User",
+    "case 51 must preserve the deactivated account's real User role"
+  );
+  assert(
+    JSON.stringify(entry.details) === JSON.stringify({ outcome: "inactive_account" }),
+    "case 51 details must contain only the inactive_account outcome"
+  );
+}
+
+async function verifyFailedAuthenticationAuditFailureIsSwallowedWithoutRetry(): Promise<void> {
+  const audit = new FakeAuditLog();
+  audit.failures = 1;
+  const subject = createAuditedSubject([credential(USER_A, "User")], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 52 must preserve InvalidCredentialsError when audit persistence fails"
+  );
+  assert(audit.emitCalls === 1, "case 52 must make exactly one audit persistence attempt");
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(
+    entries.length === 0,
+    "case 52 must persist no AuthenticationFailed entry; a retrying writer would have succeeded on a second attempt and produced an entry, so this is the behavioural proof that no retry exists on the attacker-reachable path"
+  );
+}
+
+async function verifySuccessfulAuthenticationEmitsNoFailureEvent(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const loginPassword = randomUUID();
+  const subject = createAuditedSubject([], audit);
+  const created = await subject.service.createDeveloperAccount(
+    {
+      username: "successful-login",
+      password: loginPassword,
+      securityQuestion: SECURITY_QUESTION,
+    },
+    "Developer"
+  );
+
+  const authenticated = await subject.service.authenticate(created.username, loginPassword);
+  assert(
+    authenticated.id === created.id,
+    "case 53 must authenticate the account with the correct password"
+  );
+  const entries = audit.entries.filter((entry) => entry.eventType === "AuthenticationFailed");
+  assert(
+    entries.length === 0,
+    "case 53 must emit no AuthenticationFailed event for a successful login; successful-login auditing belongs to a later slice"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1338,7 +1505,13 @@ async function main(): Promise<void> {
   await verifyFirstLoginAuditFailureIsInvisibleToCaller();
   await verifyBootstrapLifecycleIsNotSelectableThroughInput();
   await verifyBootstrappedDeveloperRoutesThroughPasswordThenRecovery();
-  process.stdout.write("Developer boundary verification passed: all 47 cases verified.\n");
+  await verifyFailedDeveloperAuthenticationIsAudited();
+  await verifyFailedAdminAuthenticationIsAudited();
+  await verifyUnknownUsernameAuthenticationFailureIsAudited();
+  await verifyInactiveAccountAuthenticationFailureIsAudited();
+  await verifyFailedAuthenticationAuditFailureIsSwallowedWithoutRetry();
+  await verifySuccessfulAuthenticationEmitsNoFailureEvent();
+  process.stdout.write("Developer boundary verification passed: all 53 cases verified.\n");
 }
 
 void main();

@@ -18,7 +18,11 @@ import {
   UpdateUserInput,
   User,
 } from "@/types/user";
-import { canonicalizeAndValidateUsername, canonicalizeUsername } from "@/lib/username";
+import {
+  canonicalizeAndValidateUsername,
+  canonicalizeUsername,
+  MAX_USERNAME_LENGTH,
+} from "@/lib/username";
 import {
   hashPassword,
   hashSecurityAnswer,
@@ -246,6 +250,34 @@ export class UserService implements IUserService {
   private assertDeveloperCaller(callerRole: AuthRole): void {
     if (callerRole !== "Developer") {
       throw new Error("Developer account management requires a Developer account.");
+    }
+  }
+
+  private async emitAuthenticationFailure(
+    username: string,
+    record: AuthCredentialRecord | null
+  ): Promise<void> {
+    let outcome: "unknown_username" | "inactive_account" | "invalid_password";
+    if (!record) outcome = "unknown_username";
+    else if (record.status !== "Active") outcome = "inactive_account";
+    else outcome = "invalid_password";
+
+    try {
+      await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        eventType: "AuthenticationFailed",
+        actorRole: null,
+        targetRole: record?.role ?? null,
+        performedByUserId: null,
+        performedByUsername: null,
+        targetReference: username.slice(0, MAX_USERNAME_LENGTH),
+        details: { outcome },
+      });
+    } catch {
+      console.error("Failed-authentication audit persistence failed.", {
+        eventType: "AuthenticationFailed",
+        outcome,
+      });
     }
   }
 
@@ -635,6 +667,7 @@ export class UserService implements IUserService {
       record && record.status === "Active" && (await verifyPassword(password, record.passwordHash))
     );
     await this.loginRateLimiter.record(username, clientIp, authenticated);
+    if (!authenticated) await this.emitAuthenticationFailure(username, record);
     if (!record || !authenticated) throw new InvalidCredentialsError();
     return toUser(record);
   }

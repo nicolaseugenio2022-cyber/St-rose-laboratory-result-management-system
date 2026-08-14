@@ -60,7 +60,7 @@ export interface CredentialDirectorySummary {
   adminUsers: number;
 }
 
-export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset";
+export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset" | "PasswordChange";
 
 export interface AuthAttemptRecord {
   id: string;

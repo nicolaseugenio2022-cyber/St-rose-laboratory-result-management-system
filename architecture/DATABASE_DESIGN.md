@@ -247,7 +247,7 @@ CREATE TABLE auth_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL,
     attempt_kind TEXT NOT NULL CHECK (attempt_kind IN
-        ('Login','RecoveryLookup','RecoveryAnswer','PasswordReset')),
+        ('Login','RecoveryLookup','RecoveryAnswer','PasswordReset','PasswordChange')),
     succeeded BOOLEAN NOT NULL,
     client_ip TEXT,
     attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

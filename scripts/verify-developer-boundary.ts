@@ -8,6 +8,7 @@ import {
 } from "./bootstrap-core";
 
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
+import { hashPassword, verifyPassword } from "@/lib/password";
 import type {
   AuditLogEntry,
   AuditLogQueryCriteria,
@@ -25,6 +26,7 @@ import {
   InvalidCredentialsError,
   LastActiveAdminError,
   LastActiveDeveloperError,
+  PasswordChangeConflictError,
   SelfDeactivationError,
   SelfDeletionError,
   UserNotFoundError,
@@ -47,6 +49,7 @@ class FakeCredentialRepository
   implements ICredentialRepository, ICredentialDirectoryRepository
 {
   updateCalls = 0;
+  rejectNextTokenVersionUpdate = false;
   private readonly records: Map<string, AuthCredentialRecord>;
 
   constructor(records: AuthCredentialRecord[]) {
@@ -122,6 +125,10 @@ class FakeCredentialRepository
     updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>
   ): Promise<AuthCredentialRecord | null> {
     const current = this.records.get(id);
+    if (this.rejectNextTokenVersionUpdate) {
+      this.rejectNextTokenVersionUpdate = false;
+      return null;
+    }
     if (!current || current.tokenVersion !== expectedTokenVersion) return null;
     const updated = { ...current, ...updates };
     this.records.set(id, updated);
@@ -135,8 +142,13 @@ class FakeCredentialRepository
 
 class FakeLoginAttemptRepository implements ILoginAttemptRepository {
   private readonly attempts: AuthAttemptRecord[] = [];
+  recordFailures = 0;
 
   async record(attempt: AuthAttemptRecord): Promise<AuthAttemptRecord> {
+    if (this.recordFailures > 0) {
+      this.recordFailures -= 1;
+      throw new Error("simulated rate-limit record failure");
+    }
     const recorded = { ...attempt };
     this.attempts.push(recorded);
     return { ...recorded };
@@ -239,10 +251,10 @@ function createSubject(records: AuthCredentialRecord[]): {
 
 function createAuditedSubject(
   records: AuthCredentialRecord[],
-  audit: FakeAuditLog
+  audit: FakeAuditLog,
+  attempts = new FakeLoginAttemptRepository()
 ): { credentials: FakeCredentialRepository; service: UserService } {
   const credentials = new FakeCredentialRepository(records);
-  const attempts = new FakeLoginAttemptRepository();
   return {
     credentials,
     service: new UserService(credentials, attempts, audit as unknown as AuditService),
@@ -1571,6 +1583,308 @@ async function verifyFailedAuthenticationEmitsNoSuccessEvent(): Promise<void> {
   );
 }
 
+async function verifySuccessfulDeveloperPasswordChangeIsAudited(): Promise<void> {
+  const currentPassword = randomUUID();
+  const newPassword = randomUUID();
+  const initial = {
+    ...credential(DEVELOPER_A, "Developer"),
+    passwordHash: await hashPassword(currentPassword),
+    securityQuestion: "What is the persisted Developer recovery question?",
+    securityAnswerHash: "persisted-developer-security-answer-hash",
+    mustChangePassword: true,
+    mustSetRecovery: true,
+    tokenVersion: 7,
+  };
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([initial], audit);
+
+  const changed = await subject.service.changeOwnPassword(
+    initial.id,
+    currentPassword,
+    newPassword,
+    "198.51.100.58"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(stored, "case 58 must retain the changed Developer account");
+  assert(
+    changed.tokenVersion === initial.tokenVersion + 1 &&
+      stored.tokenVersion === initial.tokenVersion + 1,
+    "case 58 must increment the Developer tokenVersion by exactly one"
+  );
+  assert(
+    stored.securityAnswerHash === initial.securityAnswerHash &&
+      stored.securityQuestion === initial.securityQuestion &&
+      stored.mustChangePassword === initial.mustChangePassword &&
+      stored.mustSetRecovery === initial.mustSetRecovery,
+    "case 58 must leave the security answer, security question, and both first-login flags unchanged"
+  );
+  assert(
+    stored.passwordHash !== initial.passwordHash &&
+      (await verifyPassword(newPassword, stored.passwordHash)),
+    "case 58 must persist the new Developer password after current-password verification"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AccountPasswordChanged");
+  assert(entries.length === 1, "case 58 must emit exactly one AccountPasswordChanged event");
+  const entry = entries[0];
+  assert(entry.category === "AuthAccount", "case 58 must classify the event as AuthAccount");
+  assert(
+    entry.actorRole === "Developer" && entry.targetRole === "Developer",
+    "case 58 must stamp both roles as Developer, making developer_involved true"
+  );
+  assert(
+    entry.performedByUserId === initial.id &&
+      entry.performedByUsername === initial.username &&
+      entry.targetReference === initial.username,
+    "case 58 must resolve all audit identity from the persisted Developer record"
+  );
+  assert(entry.details === null, "case 58 must persist no password-change details payload");
+  assertNoSensitiveData(
+    entry,
+    [currentPassword, newPassword, initial.passwordHash, initial.securityAnswerHash],
+    "case 58 AccountPasswordChanged event"
+  );
+}
+
+async function verifySuccessfulOrdinaryPasswordChangeIsAudited(): Promise<void> {
+  const currentPassword = randomUUID();
+  const newPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    securityAnswerHash: "persisted-user-security-answer-hash",
+    tokenVersion: 11,
+  };
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([initial], audit);
+
+  const changed = await subject.service.changeOwnPassword(
+    initial.id,
+    currentPassword,
+    newPassword,
+    "198.51.100.59"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(stored, "case 59 must retain the changed ordinary account");
+  assert(
+    changed.tokenVersion === initial.tokenVersion + 1 &&
+      stored.tokenVersion === initial.tokenVersion + 1,
+    "case 59 must increment the ordinary account tokenVersion by exactly one"
+  );
+  assert(
+    stored.securityAnswerHash === initial.securityAnswerHash &&
+      stored.securityQuestion === initial.securityQuestion &&
+      stored.mustChangePassword === initial.mustChangePassword &&
+      stored.mustSetRecovery === initial.mustSetRecovery,
+    "case 59 must leave ordinary-account recovery state and first-login flags unchanged"
+  );
+
+  const entries = audit.entries.filter((entry) => entry.eventType === "AccountPasswordChanged");
+  assert(entries.length === 1, "case 59 must emit exactly one AccountPasswordChanged event");
+  const entry = entries[0];
+  assert(
+    entry.actorRole === "User" && entry.targetRole === "User",
+    "case 59 must stamp both roles as User, leaving developer_involved false"
+  );
+  assert(entry.details === null, "case 59 must persist no password-change details payload");
+  assertNoSensitiveData(
+    entry,
+    [currentPassword, newPassword, initial.passwordHash, initial.securityAnswerHash],
+    "case 59 AccountPasswordChanged event"
+  );
+}
+
+async function verifyWrongCurrentPasswordLeavesCredentialUnchanged(): Promise<void> {
+  const currentPassword = randomUUID();
+  const wrongPassword = randomUUID();
+  const proposedPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    securityAnswerHash: "wrong-password-case-security-answer-hash",
+    tokenVersion: 13,
+  };
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([initial], audit);
+
+  const error = await captureError(() =>
+    subject.service.changeOwnPassword(
+      initial.id,
+      wrongPassword,
+      proposedPassword,
+      "198.51.100.60"
+    )
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 60 must reject a wrong current password with InvalidCredentialsError"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 60 must leave passwordHash and tokenVersion unchanged after a wrong current password"
+  );
+  assert(subject.credentials.updateCalls === 0, "case 60 must perform no credential mutation");
+
+  const entries = audit.entries.filter(
+    (entry) => entry.eventType === "AccountPasswordChangeFailed"
+  );
+  assert(
+    entries.length === 1,
+    "case 60 must emit exactly one AccountPasswordChangeFailed event"
+  );
+  const entry = entries[0];
+  assert(
+    entry.actorRole === "User" &&
+      entry.targetRole === "User" &&
+      entry.performedByUserId === initial.id &&
+      entry.performedByUsername === initial.username &&
+      entry.targetReference === initial.username,
+    "case 60 must derive the failed-change event identity and roles from the persisted account"
+  );
+  assert(entry.details === null, "case 60 must persist no failed-change details payload");
+  assertNoSensitiveData(
+    entry,
+    [
+      currentPassword,
+      wrongPassword,
+      proposedPassword,
+      initial.passwordHash,
+      initial.securityAnswerHash,
+    ],
+    "case 60 AccountPasswordChangeFailed event"
+  );
+}
+
+async function verifySuccessfulPasswordChangeAuditFailureIsSwallowed(): Promise<void> {
+  const currentPassword = randomUUID();
+  const newPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    tokenVersion: 17,
+  };
+  const audit = new FakeAuditLog();
+  audit.failures = 1;
+  const subject = createAuditedSubject([initial], audit);
+
+  const changed = await subject.service.changeOwnPassword(
+    initial.id,
+    currentPassword,
+    newPassword,
+    null
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(
+    changed.tokenVersion === initial.tokenVersion + 1 &&
+      stored?.tokenVersion === initial.tokenVersion + 1 &&
+      stored.passwordHash !== initial.passwordHash,
+    "case 61 must preserve the successful password-change outcome when audit persistence fails"
+  );
+  assert(audit.emitCalls === 1, "case 61 must make exactly one audit persistence attempt");
+  assert(
+    audit.entries.filter((entry) => entry.eventType === "AccountPasswordChanged").length === 0,
+    "case 61 must not retry the failed AccountPasswordChanged audit write"
+  );
+}
+
+async function verifyFailedPasswordChangeAuditFailureIsSwallowed(): Promise<void> {
+  const currentPassword = randomUUID();
+  const wrongPassword = randomUUID();
+  const proposedPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    tokenVersion: 19,
+  };
+  const audit = new FakeAuditLog();
+  audit.failures = 1;
+  const subject = createAuditedSubject([initial], audit);
+
+  const error = await captureError(() =>
+    subject.service.changeOwnPassword(initial.id, wrongPassword, proposedPassword, null)
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 62 must preserve InvalidCredentialsError when failed-change audit persistence fails"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 62 must preserve the rejected password-change outcome when audit persistence fails"
+  );
+  assert(audit.emitCalls === 1, "case 62 must make exactly one audit persistence attempt");
+  assert(
+    audit.entries.filter((entry) => entry.eventType === "AccountPasswordChangeFailed").length === 0,
+    "case 62 must not retry the failed AccountPasswordChangeFailed audit write"
+  );
+}
+
+async function verifyStalePasswordChangeStateIsRejected(): Promise<void> {
+  const currentPassword = randomUUID();
+  const newPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    tokenVersion: 23,
+  };
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([initial], audit);
+  subject.credentials.rejectNextTokenVersionUpdate = true;
+
+  const error = await captureError(() =>
+    subject.service.changeOwnPassword(initial.id, currentPassword, newPassword, "198.51.100.63")
+  );
+  assert(
+    error instanceof PasswordChangeConflictError,
+    "case 63 must reject a stale expected token version with PasswordChangeConflictError"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(
+    stored?.passwordHash === initial.passwordHash && stored.tokenVersion === initial.tokenVersion,
+    "case 63 must leave passwordHash and tokenVersion unchanged after a guarded-update conflict"
+  );
+  assert(
+    audit.entries.filter((entry) => entry.eventType === "AccountPasswordChanged").length === 0,
+    "case 63 must emit no AccountPasswordChanged event after a guarded-update conflict"
+  );
+}
+
+async function verifyFailedPasswordChangeAuditSurvivesRecordFailure(): Promise<void> {
+  const currentPassword = randomUUID();
+  const wrongPassword = randomUUID();
+  const proposedPassword = randomUUID();
+  const initial = {
+    ...credential(USER_A, "User"),
+    passwordHash: await hashPassword(currentPassword),
+    tokenVersion: 29,
+  };
+  const audit = new FakeAuditLog();
+  const attempts = new FakeLoginAttemptRepository();
+  attempts.recordFailures = 1;
+  const subject = createAuditedSubject([initial], audit, attempts);
+
+  const error = await captureError(() =>
+    subject.service.changeOwnPassword(initial.id, wrongPassword, proposedPassword, "198.51.100.64")
+  );
+  assert(
+    error instanceof Error && error.message === "simulated rate-limit record failure",
+    "case 64 must surface the rate-limit record failure after handling the wrong current password"
+  );
+  const stored = await subject.credentials.findById(initial.id);
+  assert(
+    stored?.passwordHash === initial.passwordHash && stored.tokenVersion === initial.tokenVersion,
+    "case 64 must perform no password mutation when rate-limit recording throws after a mismatch"
+  );
+  assert(subject.credentials.updateCalls === 0, "case 64 must make no unguarded mutation call");
+  assert(
+    audit.entries.filter((entry) => entry.eventType === "AccountPasswordChangeFailed").length === 1,
+    "case 64 must emit exactly one AccountPasswordChangeFailed before rate-limit recording throws"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1629,7 +1943,14 @@ async function main(): Promise<void> {
   await verifySuccessfulOrdinaryAuthenticationIsAudited();
   await verifySuccessfulAuthenticationAuditFailureIsSwallowedWithoutRetry();
   await verifyFailedAuthenticationEmitsNoSuccessEvent();
-  process.stdout.write("Developer boundary verification passed: all 57 cases verified.\n");
+  await verifySuccessfulDeveloperPasswordChangeIsAudited();
+  await verifySuccessfulOrdinaryPasswordChangeIsAudited();
+  await verifyWrongCurrentPasswordLeavesCredentialUnchanged();
+  await verifySuccessfulPasswordChangeAuditFailureIsSwallowed();
+  await verifyFailedPasswordChangeAuditFailureIsSwallowed();
+  await verifyStalePasswordChangeStateIsRejected();
+  await verifyFailedPasswordChangeAuditSurvivesRecordFailure();
+  process.stdout.write("Developer boundary verification passed: all 64 cases verified.\n");
 }
 
 void main();

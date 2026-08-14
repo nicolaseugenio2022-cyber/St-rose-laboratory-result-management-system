@@ -31,6 +31,7 @@ import {
   verifySecurityAnswer,
 } from "@/lib/password";
 import { LoginRateLimiter } from "@/lib/login-rate-limit";
+import { PasswordChangeRateLimiter } from "@/lib/password-change-rate-limit";
 import {
   RecoveryRateLimitError,
   RecoveryRateLimiter,
@@ -125,6 +126,13 @@ export class RecoveryResetConflictError extends Error {
   }
 }
 
+export class PasswordChangeConflictError extends Error {
+  constructor() {
+    super("The password change state is no longer valid.");
+    this.name = "PasswordChangeConflictError";
+  }
+}
+
 export type RecoveryChallengeResult =
   | {
       eligible: true;
@@ -172,6 +180,12 @@ export interface IUserService {
     expectedTokenVersion: number,
     newPassword: string
   ): Promise<RecoveryPasswordResetResult>;
+  changeOwnPassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+    clientIp?: string | null
+  ): Promise<User>;
 }
 
 function toUser(record: AuthCredentialRecord): User {
@@ -216,6 +230,7 @@ function visibleRolesFor(callerRole: AuthRole): AuthRole[] {
 export class UserService implements IUserService {
   private readonly loginRateLimiter: LoginRateLimiter;
   private readonly recoveryRateLimiter: RecoveryRateLimiter;
+  private readonly passwordChangeRateLimiter: PasswordChangeRateLimiter;
 
   constructor(
     private readonly credentials: ICredentialRepository,
@@ -224,6 +239,7 @@ export class UserService implements IUserService {
   ) {
     this.loginRateLimiter = new LoginRateLimiter(attempts);
     this.recoveryRateLimiter = new RecoveryRateLimiter(attempts);
+    this.passwordChangeRateLimiter = new PasswordChangeRateLimiter(attempts);
   }
 
   private get recoveryAudit(): AuditService {
@@ -250,6 +266,44 @@ export class UserService implements IUserService {
   private assertDeveloperCaller(callerRole: AuthRole): void {
     if (callerRole !== "Developer") {
       throw new Error("Developer account management requires a Developer account.");
+    }
+  }
+
+  private async emitPasswordChanged(account: AuthCredentialRecord): Promise<void> {
+    try {
+      await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        eventType: "AccountPasswordChanged",
+        actorRole: account.role,
+        targetRole: account.role,
+        performedByUserId: account.id,
+        performedByUsername: account.username,
+        targetReference: account.username,
+        details: null,
+      });
+    } catch {
+      console.error("Account security audit persistence failed.", {
+        eventType: "AccountPasswordChanged",
+      });
+    }
+  }
+
+  private async emitPasswordChangeFailed(account: AuthCredentialRecord): Promise<void> {
+    try {
+      await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        eventType: "AccountPasswordChangeFailed",
+        actorRole: account.role,
+        targetRole: account.role,
+        performedByUserId: account.id,
+        performedByUsername: account.username,
+        targetReference: account.username,
+        details: null,
+      });
+    } catch {
+      console.error("Account security audit rejection persistence failed.", {
+        eventType: "AccountPasswordChangeFailed",
+      });
     }
   }
 
@@ -927,6 +981,38 @@ export class UserService implements IUserService {
       return { userId: updated.id, tokenVersion: updated.tokenVersion };
     } finally {
       await this.recoveryRateLimiter.recordPasswordReset(current.username, succeeded);
+    }
+  }
+
+  async changeOwnPassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+    clientIp: string | null = null
+  ): Promise<User> {
+    const current = await this.credentials.findById(id);
+    if (!current) throw new UserNotFoundError(id);
+    if (current.status !== "Active") throw new InvalidCredentialsError();
+
+    await this.passwordChangeRateLimiter.assertAllowed(current.username, clientIp);
+    const verified = await verifyPassword(currentPassword, current.passwordHash);
+    try {
+      if (!verified) {
+        await this.emitPasswordChangeFailed(current);
+        throw new InvalidCredentialsError();
+      }
+      const now = new Date().toISOString();
+      const updated = await this.credentials.updateIfTokenVersion(id, current.tokenVersion, {
+        passwordHash: await hashPassword(newPassword),
+        tokenVersion: current.tokenVersion + 1,
+        passwordUpdatedAt: now,
+        updatedAt: now,
+      });
+      if (!updated) throw new PasswordChangeConflictError();
+      await this.emitPasswordChanged(updated);
+      return toUser(updated);
+    } finally {
+      await this.passwordChangeRateLimiter.record(current.username, clientIp, verified);
     }
   }
 }

@@ -267,13 +267,31 @@ function verifyRenamedContractsOnly(): void {
     );
   }
 
-  for (const name of ["AuthRole", "AuthStatus", "AuthAttemptKind"]) {
+  for (const name of ["AuthRole", "AuthStatus"]) {
     assert(
       normalizeContract(contractBlock(current, "type", name)) ===
         normalizeContract(contractBlock(baseline, "type", name)),
       `${name} must retain its Milestone 6B shape`
     );
   }
+
+  // F3 re-baseline, authorized 2026-08-14: AuthAttemptKind gains exactly one value,
+  // "PasswordChange", giving the authenticated current-password proof its own rate-limit domain.
+  // It remains frozen at that approved shape; this is a re-baseline, never an exemption.
+  const APPROVED_AUTH_ATTEMPT_KIND =
+    'export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset" | "PasswordChange";';
+  const MILESTONE_6B_AUTH_ATTEMPT_KIND =
+    'export type AuthAttemptKind = "Login" | "RecoveryLookup" | "RecoveryAnswer" | "PasswordReset";';
+  assert(
+    normalizeContract(contractBlock(current, "type", "AuthAttemptKind")) ===
+      normalizeContract(APPROVED_AUTH_ATTEMPT_KIND),
+    "AuthAttemptKind must retain its approved post-F3 shape: the Milestone 6B union plus PasswordChange, and nothing else"
+  );
+  assert(
+    normalizeContract(contractBlock(baseline, "type", "AuthAttemptKind")) ===
+      normalizeContract(MILESTONE_6B_AUTH_ATTEMPT_KIND),
+    "the committed Milestone 6B AuthAttemptKind baseline must itself remain unchanged, so the F3 re-baseline provably adds exactly one value"
+  );
 
   const credentialContract = contractBlock(current, "interface", "ICredentialRepository");
   const baselineCredentialContract = contractBlock(

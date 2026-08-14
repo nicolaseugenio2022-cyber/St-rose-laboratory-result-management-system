@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -169,6 +169,34 @@ const authAttempts = extractCreateTable(securitySchemaSql, "auth_attempts");
 assert(/\battempt_kind\s+TEXT\s+NOT\s+NULL\s+CHECK/i.test(authAttempts), "auth_attempts must include its constrained attempt kind");
 assert(/\battempted_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i.test(authAttempts), "auth_attempts must timestamp attempts");
 assert(/CREATE\s+INDEX\s+idx_auth_attempts_username_time\s+ON\s+auth_attempts\s*\(\s*username\s*,\s*attempted_at\s+DESC\s*\)\s*;/i.test(securitySchemaSql), "auth_attempts must have the username/time index");
+
+const passwordChangeMigrationName = "20260814120000_add_password_change_attempt_kind.sql";
+const passwordChangeMigrationPath = path.join("supabase", "migrations", passwordChangeMigrationName);
+assert(
+  existsSync(path.join(root, passwordChangeMigrationPath)),
+  "the PasswordChange attempt-kind migration must be present"
+);
+const passwordChangeMigrationSql = read(passwordChangeMigrationPath);
+const expectedPasswordChangeMigrationSql = `ALTER TABLE auth_attempts DROP CONSTRAINT IF EXISTS auth_attempts_attempt_kind_check;
+ALTER TABLE auth_attempts ADD CONSTRAINT auth_attempts_attempt_kind_check
+    CHECK (attempt_kind IN ('Login','RecoveryLookup','RecoveryAnswer','PasswordReset','PasswordChange'));`;
+assert(
+  passwordChangeMigrationSql.trim() === expectedPasswordChangeMigrationSql,
+  "the PasswordChange attempt-kind migration must contain exactly the approved two ALTER statements"
+);
+assert(
+  (passwordChangeMigrationSql.match(/\bALTER\s+TABLE\b/gi) ?? []).length === 2,
+  "the PasswordChange attempt-kind migration must contain exactly two ALTER TABLE statements"
+);
+const passwordChangeCheck = /CHECK\s*\(\s*attempt_kind\s+IN\s*\(([^)]*)\)\s*\)/i.exec(
+  passwordChangeMigrationSql
+);
+assert(passwordChangeCheck, "the PasswordChange attempt-kind migration must include the widened CHECK");
+assert(
+  JSON.stringify(quotedValues(passwordChangeCheck[1])) ===
+    JSON.stringify(["Login", "RecoveryLookup", "RecoveryAnswer", "PasswordReset", "PasswordChange"]),
+  "the widened attempt-kind CHECK must list all five approved kinds including PasswordChange"
+);
 
 extractCreateTable(securitySchemaSql, "audit_logs");
 assert(/REVOKE\s+UPDATE\s*,\s*DELETE\s+ON\s+audit_logs\s+FROM\s+PUBLIC\s*;/i.test(securitySchemaSql), "audit_logs UPDATE and DELETE must be revoked from PUBLIC");

@@ -394,8 +394,8 @@ function verifyFirstLoginSecurityAuditWriters(): void {
     "the exhaustion log must not carry the error, credential material, or database detail"
   );
   assert(
-    (source.match(/console\.error\(/g) ?? []).length === 3,
-    "userService must log only the first-login audit exhaustion case, the failed-authentication audit failure, and the successful-authentication audit failure"
+    (source.match(/console\.error\(/g) ?? []).length === 5,
+    "userService must log only the first-login audit exhaustion case, the failed-authentication audit failure, the successful-authentication audit failure, and the two password-change audit failures"
   );
 
   for (const [methodName, blockPattern, eventType] of [
@@ -635,6 +635,235 @@ function verifyAuthenticationSuccessAuditWriter(): void {
   );
 }
 
+function verifyPasswordChangeAuditWriters(): void {
+  const source = read("src/services/userService.ts");
+  const writerSpecs = [
+    {
+      methodName: "emitPasswordChanged",
+      eventType: "AccountPasswordChanged",
+      pattern:
+        /private\s+async\s+emitPasswordChanged\b[\s\S]*?(?=\n\s*private\s+async\s+emitPasswordChangeFailed\b)/,
+    },
+    {
+      methodName: "emitPasswordChangeFailed",
+      eventType: "AccountPasswordChangeFailed",
+      pattern:
+        /private\s+async\s+emitPasswordChangeFailed\b[\s\S]*?(?=\n\s*private\s+async\s+emitAuthenticationSuccess\b)/,
+    },
+  ] as const;
+
+  for (const { methodName, eventType, pattern } of writerSpecs) {
+    const helper = pattern.exec(source)?.[0];
+    assert(helper, `UserService must expose ${methodName} in the pinned writer order`);
+    assert(
+      (helper.match(/\.emit\(/g) ?? []).length === 1,
+      `${methodName} must make exactly one audit emission attempt`
+    );
+    assert(
+      !/setTimeout|FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS|for\s*\(|while\s*\(|retry|backoff|sleep/i.test(
+        helper
+      ),
+      `${methodName} must not retry, back off, sleep, or repeat durable writes`
+    );
+    assert(
+      !/\bthrow\b/.test(helper),
+      `${methodName} must never throw, so audit failure cannot change the password-change outcome`
+    );
+    assert(
+      /try\s*\{[\s\S]*?this\.recoveryAudit\.emit\([\s\S]*?\}\s*catch\s*\{/.test(helper),
+      `${methodName} must wrap both the throwing recoveryAudit accessor and emit call in a swallowing try/catch`
+    );
+    assert(
+      /category:\s*"AuthAccount"/.test(helper) &&
+        new RegExp(`eventType:\\s*"${eventType}"`).test(helper),
+      `${methodName} must emit the fixed AuthAccount ${eventType} classification`
+    );
+    assert(
+      /actorRole:\s*account\.role/.test(helper) && /targetRole:\s*account\.role/.test(helper),
+      `${methodName} must derive both roles from the persisted account record`
+    );
+    assert(
+      /performedByUserId:\s*account\.id/.test(helper) &&
+        /performedByUsername:\s*account\.username/.test(helper) &&
+        /targetReference:\s*account\.username/.test(helper),
+      `${methodName} must derive all audit identity from the persisted account record`
+    );
+    assert(
+      !/\b(?:input|session|current|record)\b/.test(helper),
+      `${methodName} must not derive identity from input, session state, or a different record`
+    );
+    assert(
+      (helper.match(/\bdetails\s*:/g) ?? []).length === 1 && /details:\s*null/.test(helper),
+      `${methodName} must persist details null with no credential or contextual payload`
+    );
+    assert(
+      !/clientIp/.test(helper),
+      `${methodName} must not place client IP in the permanent audit event or log`
+    );
+
+    const logCall = /console\.error\([\s\S]*?\);/.exec(helper)?.[0];
+    assert(logCall, `${methodName} must use sanitized operational logging on audit failure`);
+    const logPayload = logCall
+      .replace(/console\.error\(\s*"[^"]*",/, "")
+      .replace(/\s*\);\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    assert(
+      logPayload === `{ eventType: "${eventType}", }`,
+      `${methodName} log payload must contain only its fixed event type`
+    );
+    assert(
+      !/username|userId|role|password|hash|answer|token|details|payload|supabase|sql|clientIp|error/i.test(
+        logPayload.replace(eventType, "")
+      ),
+      `${methodName} log payload must not expose errors, identity, credentials, database details, payloads, or client IP`
+    );
+  }
+
+  const limiter = read("src/lib/password-change-rate-limit.ts");
+  assert(
+    /import\s*\{\s*LOGIN_RATE_LIMIT_POLICY\s*\}\s*from\s*"@\/lib\/login-rate-limit"/.test(
+      limiter
+    ),
+    "PasswordChangeRateLimiter must reuse the frozen login rate-limit policy"
+  );
+  assert(
+    /class\s+PasswordChangeRateLimitError[\s\S]*?public\s+readonly\s+retryAfterMs:\s*number/.test(
+      limiter
+    ),
+    "PasswordChangeRateLimitError must carry retryAfterMs"
+  );
+  assert(
+    (limiter.match(/attemptKind:\s*"PasswordChange"/g) ?? []).length === 3 &&
+      !/PasswordReset/.test(limiter),
+    "PasswordChangeRateLimiter must query and record only the PasswordChange attempt kind, never PasswordReset"
+  );
+  assert(
+    /function\s+consecutiveFailures\b/.test(limiter) && /function\s+retryAfterFor\b/.test(limiter),
+    "PasswordChangeRateLimiter must independently implement consecutive-failure cooldown semantics"
+  );
+
+  const method = /async\s+changeOwnPassword\b[\s\S]*?(?=\n})/.exec(source)?.[0];
+  assert(method, "UserService.changeOwnPassword must be present at the end of the class");
+  assert(
+    source.lastIndexOf("async changeOwnPassword(") >
+      source.lastIndexOf("async resetPasswordAfterRecovery("),
+    "changeOwnPassword must remain after resetPasswordAfterRecovery"
+  );
+  assert(
+    /const\s+current\s*=\s*await\s+this\.credentials\.findById\(id\);\s*if\s*\(!current\)\s*throw\s+new\s+UserNotFoundError\(id\);\s*if\s*\(current\.status\s*!==\s*"Active"\)\s*throw\s+new\s+InvalidCredentialsError\(\);/.test(
+      method
+    ),
+    "changeOwnPassword must resolve the persisted session-verified id and reject missing or inactive accounts before rate limiting"
+  );
+  assert(
+    /const\s+verified\s*=\s*await\s+verifyPassword\(currentPassword,\s*current\.passwordHash\);/.test(
+      method
+    ),
+    "changeOwnPassword must verify the supplied current password against the persisted password hash"
+  );
+  assert(
+    /export\s+class\s+PasswordChangeConflictError\s+extends\s+Error\s*\{\s*constructor\(\)\s*\{\s*super\("The password change state is no longer valid\."\);\s*this\.name\s*=\s*"PasswordChangeConflictError";\s*\}\s*\}/.test(
+      source
+    ),
+    "PasswordChangeConflictError must be exported with the fixed credential-free error shape"
+  );
+  const guardedUpdateIndex = method.indexOf("this.credentials.updateIfTokenVersion(");
+  const unguardedUpdateIndex = method.indexOf("this.credentials.update(");
+  assert(
+    guardedUpdateIndex !== -1 && unguardedUpdateIndex === -1,
+    "changeOwnPassword must use updateIfTokenVersion and must not use the unguarded credentials.update primitive"
+  );
+  assert(
+    /const\s+updated\s*=\s*await\s+this\.credentials\.updateIfTokenVersion\(\s*id,\s*current\.tokenVersion,\s*\{[\s\S]*?tokenVersion:\s*current\.tokenVersion\s*\+\s*1[\s\S]*?\}\s*\);/.test(
+      method
+    ),
+    "changeOwnPassword must compare against persisted current.tokenVersion and write current.tokenVersion + 1"
+  );
+  assert(
+    /if\s*\(\s*!updated\s*\)\s*throw\s+new\s+PasswordChangeConflictError\(\);/.test(method),
+    "changeOwnPassword must throw PasswordChangeConflictError when the guarded update returns null"
+  );
+  assert(
+    /await\s+this\.emitPasswordChangeFailed\(current\);/.test(method),
+    "changeOwnPassword must emit AccountPasswordChangeFailed from the persisted record on password mismatch"
+  );
+  assert(
+    /await\s+this\.emitPasswordChanged\(updated\);/.test(method),
+    "changeOwnPassword must emit AccountPasswordChanged from the persisted updated record on success"
+  );
+
+  const allowedIndex = method.indexOf("this.passwordChangeRateLimiter.assertAllowed(");
+  const verifyIndex = method.indexOf("verifyPassword(currentPassword, current.passwordHash)");
+  const recordIndex = method.indexOf("this.passwordChangeRateLimiter.record(");
+  const failureEmitIndex = method.indexOf("this.emitPasswordChangeFailed(current)");
+  const failureThrowIndex = method.indexOf("throw new InvalidCredentialsError();", verifyIndex);
+  const conflictGuardIndex = method.indexOf("if (!updated) throw new PasswordChangeConflictError();");
+  const successEmitIndex = method.indexOf("this.emitPasswordChanged(updated)");
+  const returnIndex = method.indexOf("return toUser(updated);");
+  assert(
+    allowedIndex !== -1 && allowedIndex < verifyIndex,
+    "changeOwnPassword must call assertAllowed before current-password verification"
+  );
+  assert(
+    verifyIndex !== -1 && recordIndex > verifyIndex,
+    "changeOwnPassword must record the PasswordChange result only after current-password verification"
+  );
+  assert(
+    /finally\s*\{\s*await\s+this\.passwordChangeRateLimiter\.record\(current\.username,\s*clientIp,\s*verified\);\s*\}/.test(
+      method
+    ),
+    "changeOwnPassword must record the PasswordChange result inside finally"
+  );
+  assert(
+    failureEmitIndex > verifyIndex && failureThrowIndex > failureEmitIndex,
+    "changeOwnPassword must audit a wrong current password before preserving InvalidCredentialsError"
+  );
+  assert(
+    guardedUpdateIndex > failureThrowIndex &&
+      conflictGuardIndex > guardedUpdateIndex &&
+      successEmitIndex > conflictGuardIndex &&
+      returnIndex > successEmitIndex &&
+      (method.match(/this\.emitPasswordChanged\(updated\)/g) ?? []).length === 1,
+    "changeOwnPassword must emit success only after the guarded update succeeds, then return the updated user"
+  );
+  assert(
+    !/securityAnswerHash|securityQuestion|verifySecurityAnswer|mustChangePassword|mustSetRecovery/.test(
+      method
+    ),
+    "changeOwnPassword must not consult or mutate recovery data or first-login flags"
+  );
+  assert(
+    !/PasswordReset/.test(method),
+    "changeOwnPassword must never enter the recovery PasswordReset rate-limit domain"
+  );
+
+  const action = read("src/features/auth/accountActions.ts");
+  assert(
+    /^"use server";\n\nimport "server-only";/.test(action),
+    "the password-change action must remain server-only"
+  );
+  assert(
+    /const\s+session\s*=\s*await\s+getSession\(\);\s*if\s*\(!session\)\s*redirect\("\/login"\)/.test(
+      action
+    ),
+    "the password-change action must require a verified session"
+  );
+  assert(
+    /userService\.changeOwnPassword\(\s*session\.userId,/.test(action) &&
+      !/formData\.get\(\s*["'](?:userId|id|username)["']\s*\)/.test(action),
+    "the acting account must resolve only from session.userId, never form input"
+  );
+  assert(
+    /await\s+createSession\(user,\s*session\.rememberMe\)/.test(action),
+    "the initiating device must receive a replacement session preserving rememberMe"
+  );
+  assert(
+    /x-forwarded-for/.test(action) && /x-real-ip/.test(action),
+    "the password-change action must derive client IP through the established header precedence"
+  );
+}
+
 function verifyPrototypeRetirement(): void {
   assert(
     !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
@@ -676,6 +905,7 @@ verifyDeveloperDashboardServerSideProbe();
 verifyFirstLoginSecurityAuditWriters();
 verifyFailedAuthenticationAuditWriter();
 verifyAuthenticationSuccessAuditWriter();
+verifyPasswordChangeAuditWriters();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 

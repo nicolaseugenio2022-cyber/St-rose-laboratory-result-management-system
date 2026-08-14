@@ -151,6 +151,14 @@ graph LR
 - **Recovery**: Username and security-question based. No email or phone recovery exists.
 - **Decoupling Rule**: `user_profiles` maintains **zero connection** to `personnel`.
 
+## 5.2 Password Management Operations
+
+Three distinct password operations exist. They carry different actors, different proofs, and different authorization semantics, and they are never collapsed into a general account edit.
+
+- **Authenticated self-service password change** *(approved 2026-08-14)*: the authenticated account changes its own password by supplying the current password, a new password, and a confirmation. The current password is the re-authentication proof for this sensitive operation and is verified server-side; the security question is **not** used. Available to `User`, `Admin`, and `Developer` alike. The acting account is resolved from the verified session and the persisted account record, never from request input, and the operation targets only that account. On success `token_version` increments — invalidating sessions issued to other devices — and the initiating session is re-issued carrying the new value.
+- **Forgot-password recovery** *(unchanged)*: username, then the configured security-question challenge, then the answer, then a new password and confirmation. Anti-enumeration behaviour, recovery rate limiting, and staged `token_version` binding are preserved. The configured security question and its answer are retained after a successful reset; recovering a password does not clear them.
+- **Privileged password reset** *(clarified)*: an authorized `Admin` or `Developer` resets another account's password. Authorization derives solely from the actor's persisted role and the account-management policies in §6. The target's security answer is **never** required — it belongs to the account owner for self-service recovery, and is not an administrator authorization factor. `Admin` has no ability to view or reset `Developer` accounts, per §6.4.
+
 ---
 
 # 6. Authorization Model & Completed Report Authorization
@@ -307,6 +315,18 @@ Security-relevant operations across the system must be logged to an append-only 
    - Unauthorized access attempts to administrative routes (`/users`, `/personnel`)
    - Failed authentication attempts
    - Direct signature asset access denials
+
+## 10.2 Additional Approved Audit Events
+
+The events in this section were approved on 2026-08-14 as project requirements **additional to §10.1**. They were not part of the original §10.1 mandate and must not be cited as such. The §10.1 obligations for failed authentication attempts and for account lockout activation and release are unaffected by this section and remain §10.1 requirements.
+
+1. **Authentication Session Events**:
+   - Successful authentication
+   - Explicit user-initiated logout
+
+Explicit logout means an authenticated account deliberately invoking the logout action. Passive session loss is **not** a logout and is never recorded as one: a missing, expired, malformed, or rejected session cookie, a `token_version` mismatch, and an account-deactivation rejection all fall outside this event.
+
+These events follow the same classification and visibility rules as §10.1 events. Actor and target roles are resolved from the persisted account record, never from client input, and Developer-involved events remain visible to `Developer` readers and hidden from `Admin` readers.
 
 ## 10.5 Accepted Residual Risk — Recovery Question Disclosure
 

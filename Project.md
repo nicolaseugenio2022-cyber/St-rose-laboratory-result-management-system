@@ -240,6 +240,12 @@ Pending:
 - One-time protected Developer bootstrap — partially implemented; see 6D-2 below
 - Persistent audit writers for the remaining mandated categories: Personnel and Credential events,
   and Session lifecycle events beyond the automated retention purge
+- Authentication and session auditing: failed authentication attempts and account lockout
+  activation and release (SECURITY_MODEL §10.1), plus successful authentication and explicit
+  user-initiated logout (SECURITY_MODEL §10.2, approved 2026-08-14)
+- Authenticated self-service password change for User, Admin, and Developer, requiring the current
+  password rather than the security question (SECURITY_MODEL §5.2, approved 2026-08-14)
+- Separation of privileged password reset from general account editing
 - Performance validation
 - Accessibility validation
 - Monitoring

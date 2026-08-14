@@ -9,7 +9,8 @@
     "lint": "next lint",
     "verify:admin-invariants": "npx tsx --conditions=react-server scripts/verify-admin-invariants.ts",
     "verify:recovery-flow": "npx tsx --conditions=react-server scripts/verify-recovery-flow.ts",
-    "provision:prototype-accounts": "npx tsx --conditions=react-server --env-file=.env.local scripts/migrate-prototype-accounts.ts"
+    "provision:prototype-accounts": "npx tsx --conditions=react-server --env-file=.env.local scripts/migrate-prototype-accounts.ts",
+    "bootstrap:first-developer": "npx tsx --conditions=react-server --env-file=.env.local scripts/bootstrap-first-developer.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

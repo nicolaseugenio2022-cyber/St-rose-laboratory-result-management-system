@@ -830,6 +830,64 @@ function verifyPrototypeMigration(): void {
   );
 }
 
+function verifyDeveloperBootstrapScript(): void {
+  const cli = read("scripts/bootstrap-first-developer.ts");
+  const core = read("scripts/bootstrap-core.ts");
+
+  assert(
+    /process\.env\[(?:BOOTSTRAP_ENV|REPAIR_ENV)\]/.test(cli) && !/process\.argv/.test(cli),
+    "the Developer bootstrap CLI must take its input only from the process environment"
+  );
+  assert(
+    !/process\.argv/.test(core),
+    "the Developer bootstrap core must not read process.argv"
+  );
+  assert(
+    !/(?:console\.(?:log|info|warn|error)|process\.(?:stdout|stderr)\.write)[^\n]*(?:temporaryPassword|passwordHash|password|securityAnswerHash|answer|token)/i.test(
+      `${cli}\n${core}`
+    ),
+    "the Developer bootstrap must never print credential values"
+  );
+  assert(
+    /PREDEFINED_SECURITY_QUESTIONS/.test(cli) &&
+      /CUSTOM_SECURITY_QUESTION/.test(cli) &&
+      /unapproved predefined security question/.test(cli) &&
+      /non-empty custom security question/.test(cli),
+    "the Developer bootstrap must require a valid explicit security question"
+  );
+  assert(
+    !/(?:securityAnswer|recoveryAnswer|hashSecurityAnswer|normalizeSecurityAnswer)/i.test(
+      `${cli}\n${core}`
+    ),
+    "the Developer bootstrap must never accept, derive, or generate a recovery answer"
+  );
+  assert(
+    /targetRole:\s*["']Developer["']/.test(core) && /actorRole:\s*null/.test(core),
+    "the bootstrap audit event must classify the operator as no role and the target as Developer"
+  );
+  assert(
+    !/\.\s*delete\s*\(/.test(core),
+    "the Developer bootstrap must never delete a credential to compensate for an audit failure"
+  );
+  assert(
+    /canonicalizeAndValidateUsername/.test(core) &&
+      /DuplicateUsernameError/.test(core),
+    "the Developer bootstrap must translate known username failures into operator refusals"
+  );
+  assert(
+    /Developer bootstrap failed without printing credential details\./.test(cli),
+    "the Developer bootstrap CLI must retain its generic fallback for unknown errors"
+  );
+
+  for (const relativePath of sourceFiles("src")) {
+    assert(
+      !/bootstrapFirstDeveloper/.test(read(relativePath)) ||
+        relativePath === path.join("src", "services", "userService.ts"),
+      `${relativePath} must not reference the Developer bootstrap; it is operator-only`
+    );
+  }
+}
+
 function verifyDeletedAdapters(): void {
   assert(
     !existsSync(path.join(root, "src", "repositories", "file-auth-credential-repository.ts")),
@@ -856,8 +914,9 @@ verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();
 verifyOwnershipMigration();
 verifyPrototypeMigration();
+verifyDeveloperBootstrapScript();
 verifyDeletedAdapters();
 
 process.stdout.write(
-  "M6C verification passed: server-only Supabase persistence, targeted authentication invariants, ownership enforcement, and prototype provisioning verified.\n"
+  "M6C verification passed: server-only Supabase persistence, targeted authentication invariants, ownership enforcement, prototype provisioning, and operator-only Developer bootstrap verified.\n"
 );

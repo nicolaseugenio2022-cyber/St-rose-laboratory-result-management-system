@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  BootstrapRefusedError,
+  BOOTSTRAP_EVENT_TYPE,
+  runBootstrap,
+  runBootstrapAuditRepair,
+} from "./bootstrap-core";
+
 import type {
+  AuditLogEntry,
+  AuditLogQueryCriteria,
   AuthAttemptQuery,
   AuthAttemptRecord,
   AuthCredentialRecord,
@@ -19,6 +28,7 @@ import {
   UserNotFoundError,
   UserService,
 } from "@/services/userService";
+import type { AuditEvent } from "@/services/audit-service";
 import type {
   CreateDeveloperAccountInput,
   ResetDeveloperPasswordInput,
@@ -141,6 +151,44 @@ class FakeLoginAttemptRepository implements ILoginAttemptRepository {
   }
 }
 
+class FakeAuditLog {
+  readonly entries: AuditLogEntry[] = [];
+  failures = 0;
+
+  async emit(event: AuditEvent): Promise<void> {
+    if (this.failures > 0) {
+      this.failures -= 1;
+      throw new Error("simulated audit persistence failure");
+    }
+    this.entries.push({
+      id: randomUUID(),
+      category: event.category,
+      eventType: event.eventType,
+      performedByUserId: event.performedByUserId ?? null,
+      performedByUsername: event.performedByUsername ?? null,
+      targetReference: event.targetReference ?? null,
+      actorRole: event.actorRole,
+      targetRole: event.targetRole,
+      details: event.details ?? null,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  private matching(criteria: AuditLogQueryCriteria): AuditLogEntry[] {
+    return this.entries.filter(
+      (entry) => !criteria.eventType || entry.eventType === criteria.eventType
+    );
+  }
+
+  async query(criteria: AuditLogQueryCriteria): Promise<AuditLogEntry[]> {
+    return this.matching(criteria).slice(criteria.offset, criteria.offset + criteria.limit);
+  }
+
+  async count(criteria: AuditLogQueryCriteria): Promise<number> {
+    return this.matching(criteria).length;
+  }
+}
+
 const ADMIN_A = "admin-a";
 const USER_A = "user-a";
 const DEVELOPER_A = "developer-a";
@@ -180,6 +228,16 @@ function createSubject(records: AuthCredentialRecord[]): {
   const credentials = new FakeCredentialRepository(records);
   const attempts = new FakeLoginAttemptRepository();
   return { credentials, service: new UserService(credentials, attempts) };
+}
+
+function bootstrapDeps(subject: ReturnType<typeof createSubject>, audit: FakeAuditLog) {
+  return {
+    userService: subject.service,
+    credentialDirectory: subject.credentials,
+    auditLogs: audit,
+    auditService: audit,
+    sleep: async () => {},
+  };
 }
 
 async function captureError(operation: () => Promise<unknown>): Promise<unknown> {
@@ -782,6 +840,256 @@ async function verifyRepeatedBootstrapRefuses(): Promise<void> {
   );
 }
 
+async function verifyBootstrapEmitsDurableAuditEvent(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  const outcome = await runBootstrap(bootstrapDeps(subject, audit), {
+    username: "bootstrap-audit",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  assert(outcome.status === "created", "case 31 must report the Developer as created");
+  assert(audit.entries.length === 1, "case 31 must emit exactly one durable audit event");
+  const entry = audit.entries[0];
+  assert(entry.eventType === BOOTSTRAP_EVENT_TYPE, "case 31 must use the bootstrap event type");
+  assert(entry.category === "AuthAccount", "case 31 must classify the event as AuthAccount");
+  assert(entry.actorRole === null, "case 31 must classify the operator as having no role");
+  assert(entry.targetRole === "Developer", "case 31 must classify the target as Developer");
+  assert(entry.performedByUserId === null, "case 31 must have no performing user id");
+  assert(entry.performedByUsername === null, "case 31 must have no performing username");
+  assert(entry.targetReference === outcome.username, "case 31 must target the created username");
+  assert(entry.details?.targetUserId === outcome.userId, "case 31 must target the created user id");
+}
+
+async function verifyBootstrapRetriesTransientAuditFailure(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  audit.failures = 2;
+
+  const outcome = await runBootstrap(bootstrapDeps(subject, audit), {
+    username: "bootstrap-retry",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  assert(outcome.status === "created", "case 32 must report the Developer as created");
+  assert(audit.entries.length === 1, "case 32 must record exactly one event after retrying");
+}
+
+async function verifyBootstrapAuditFailureRetainsAccount(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  audit.failures = 99;
+
+  const outcome = await runBootstrap(bootstrapDeps(subject, audit), {
+    username: "bootstrap-audit-failure",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  assert(
+    outcome.status === "created-audit-failed",
+    "case 33 must report exhausted audit retries"
+  );
+  assert(audit.entries.length === 0, "case 33 must record no audit event");
+  assert(
+    await subject.credentials.findById(outcome.userId),
+    "case 33 must retain the created credential"
+  );
+  assert(
+    (await subject.credentials.findAll()).length === 1,
+    "case 33 must not delete the created account"
+  );
+}
+
+async function verifyBootstrapAuditRepairTargetsPersistedDeveloper(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  const deps = bootstrapDeps(subject, audit);
+  audit.failures = 99;
+  const outcome = await runBootstrap(deps, {
+    username: "bootstrap-repair",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  assert(
+    outcome.status === "created-audit-failed",
+    "case 34 setup must retain the Developer after audit failure"
+  );
+
+  audit.failures = 0;
+  await runBootstrapAuditRepair(deps, outcome.username);
+  assert(audit.entries.length === 1, "case 34 must emit exactly one repaired event");
+  const entry = audit.entries[0];
+  assert(entry.targetRole === "Developer", "case 34 must classify the target as Developer");
+  assert(
+    entry.details?.targetUserId === outcome.userId,
+    "case 34 must target the exact persisted Developer"
+  );
+
+  const error = await captureError(() => runBootstrapAuditRepair(deps, outcome.username));
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 34 must refuse repair when the bootstrap event already exists"
+  );
+}
+
+async function verifyBootstrapAuditRepairIgnoresUnrelatedEvent(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  const deps = bootstrapDeps(subject, audit);
+  audit.failures = 99;
+  const outcome = await runBootstrap(deps, {
+    username: "bootstrap-unrelated-audit",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  assert(
+    outcome.status === "created-audit-failed",
+    "case 35 setup must retain the Developer after audit failure"
+  );
+
+  audit.entries.push({
+    id: randomUUID(),
+    category: "AuthAccount",
+    eventType: BOOTSTRAP_EVENT_TYPE,
+    performedByUserId: null,
+    performedByUsername: null,
+    targetReference: "someone-else",
+    actorRole: null,
+    targetRole: "Developer",
+    details: { targetUserId: "different-id" },
+    occurredAt: new Date().toISOString(),
+  });
+  audit.failures = 0;
+
+  await runBootstrapAuditRepair(deps, outcome.username);
+  assert(audit.entries.length === 2, "case 35 must not let an unrelated row block repair");
+
+  const error = await captureError(() =>
+    runBootstrapAuditRepair(deps, "not-the-developer")
+  );
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 35 must refuse repair for a different username"
+  );
+}
+
+async function verifyBootstrapAuditRepairMatchesRenamedDeveloperById(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  const deps = bootstrapDeps(subject, audit);
+
+  audit.failures = 99;
+  const outcome = await runBootstrap(deps, {
+    username: "bootstrap-rename",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+  assert(
+    outcome.status === "created-audit-failed",
+    "case 36 setup must retain the Developer after audit failure"
+  );
+
+  audit.failures = 0;
+  await runBootstrapAuditRepair(deps, outcome.username);
+  assert(audit.entries.length === 1, "case 36 setup must record the repaired event once");
+  assert(
+    audit.entries[0].targetReference === "bootstrap-rename",
+    "case 36 setup must record the original username in targetReference"
+  );
+
+  // Rename the Developer. targetReference on the existing audit row is now stale; only
+  // details.targetUserId still identifies this account.
+  await subject.service.updateDeveloperUsername(
+    outcome.userId,
+    { username: "bootstrap-renamed" },
+    "Developer"
+  );
+
+  const error = await captureError(() =>
+    runBootstrapAuditRepair(deps, "bootstrap-renamed")
+  );
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 36 must refuse repair by persisted user id even after the username changed"
+  );
+  assert(
+    audit.entries.length === 1,
+    "case 36 must not emit a duplicate bootstrap event after a username change"
+  );
+}
+
+async function verifyBootstrapAuditRepairRequiresSingleDeveloper(): Promise<void> {
+  const subject = createSubject([
+    credential(DEVELOPER_A, "Developer"),
+    credential(DEVELOPER_B, "Developer"),
+  ]);
+  const audit = new FakeAuditLog();
+  const deps = bootstrapDeps(subject, audit);
+
+  const error = await captureError(() => runBootstrapAuditRepair(deps, DEVELOPER_A));
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 37 must refuse repair when more than one Developer exists"
+  );
+  assert(
+    audit.entries.length === 0,
+    "case 37 must emit no audit event when repair is refused"
+  );
+}
+
+async function verifyBootstrapRefusesNonCanonicalUsername(): Promise<void> {
+  const subject = createSubject([]);
+  const audit = new FakeAuditLog();
+  const error = await captureError(() =>
+    runBootstrap(bootstrapDeps(subject, audit), {
+      username: "Invalid Username!",
+      password: randomUUID(),
+      securityQuestion: SECURITY_QUESTION,
+    })
+  );
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 38 must refuse a non-canonical username as an operator refusal"
+  );
+  assert(
+    !(error as Error).message.includes("Invalid Username!"),
+    "case 38 refusal must not echo the supplied username"
+  );
+  assert(
+    (await subject.credentials.findAll()).length === 0,
+    "case 38 must create no account"
+  );
+  assert(audit.entries.length === 0, "case 38 must emit no audit event");
+}
+
+async function verifyBootstrapRefusesDuplicateUsername(): Promise<void> {
+  const subject = createSubject([credential(USER_A)]);
+  const audit = new FakeAuditLog();
+  const error = await captureError(() =>
+    runBootstrap(bootstrapDeps(subject, audit), {
+      username: USER_A,
+      password: randomUUID(),
+      securityQuestion: SECURITY_QUESTION,
+    })
+  );
+  assert(
+    error instanceof BootstrapRefusedError,
+    "case 39 must refuse a duplicate username as an operator refusal"
+  );
+  assert(
+    !(error as Error).message.includes(USER_A),
+    "case 39 refusal must not echo the supplied username"
+  );
+  assert(
+    (await subject.credentials.findAll()).length === 1,
+    "case 39 must create no additional account"
+  );
+  assert(audit.entries.length === 0, "case 39 must emit no audit event");
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -813,7 +1121,16 @@ async function main(): Promise<void> {
   await verifyBootstrapCreatesFirstDeveloper();
   await verifyBootstrapRefusesWhenDeveloperExists();
   await verifyRepeatedBootstrapRefuses();
-  process.stdout.write("Developer boundary verification passed: all 30 cases verified.\n");
+  await verifyBootstrapEmitsDurableAuditEvent();
+  await verifyBootstrapRetriesTransientAuditFailure();
+  await verifyBootstrapAuditFailureRetainsAccount();
+  await verifyBootstrapAuditRepairTargetsPersistedDeveloper();
+  await verifyBootstrapAuditRepairIgnoresUnrelatedEvent();
+  await verifyBootstrapAuditRepairMatchesRenamedDeveloperById();
+  await verifyBootstrapAuditRepairRequiresSingleDeveloper();
+  await verifyBootstrapRefusesNonCanonicalUsername();
+  await verifyBootstrapRefusesDuplicateUsername();
+  process.stdout.write("Developer boundary verification passed: all 39 cases verified.\n");
 }
 
 void main();

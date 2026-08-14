@@ -15,30 +15,29 @@ Read at session start; treat as authoritative and never restate or override:
 
 ## Roles
 
-- **Claude** — planner, orchestrator, independent reviewer, and sole executor of verification.
-  Not the implementer, save for the surgical exception below.
-- **Codex CLI** (`codex exec`) — the primary implementer; writes essentially all application code.
+- **Claude** — planner, authority interpreter, scope freezer, and decision gate. Not the
+  implementer, save for the surgical exception below, and not the routine re-verifier.
+- **Codex Implementer** (`codex exec`) — primary implementer **and** primary deterministic verifier.
+- **Codex Reviewer** — a fresh read-only session, at high-risk boundaries only. See Independent review.
 - **User** — approves plans and any material change to an approved plan.
 
-Operating principle: **think deeply once → implement narrowly → verify intelligently → full-check once.**
+Operating principle: **one reasoning owner per stage.** Never two agents independently solving the
+same problem, reading the same diff, or running the same gate.
 
-The split exists to eliminate duplicated reasoning, duplicated repository reading, and
-duplicated verification — not to hit a token quota. Review rigour is unchanged. Some checkpoints
-consume more Claude tokens, others more Codex tokens. That is expected and is never a target.
+**Claude owns, normally only these:** Git preflight and repository integrity · selective authority
+interpretation · requirement clarification and user-decision gates · scope and security freeze ·
+one minimal Codex contract · generating the bounded diff/patch when independent review is required ·
+final Git integrity, status, and frozen-boundary verification · adjudicating findings, evidence
+contradictions, and residual risk · committing only after every required gate passes **and** the
+user has authorized that commit.
 
-**Claude owns:** architecture and scope reconciliation · authority-file interpretation ·
-security and authorization reasoning · freezing the plan and its slices · producing a compact
-delegation prompt · reviewing the complete diff · running all verification · judging whether the
-acceptance criteria actually passed · naming residual risks · committing only after every required
-gate passes **and** the user has authorized that commit.
+**Codex Implementer owns:** implementation investigation within the frozen scope · the code change ·
+Levels A, B, C and D (see Verification ladder) · mutation proofs with byte-verified restore ·
+frozen-file integrity by supplied SHA-256 where Git is unavailable · a concise structured report. It does
+not rediscover architecture Claude supplied and does not restate project context.
 
-**Codex owns:** reading only the frozen scope files and the dependencies those files directly
-require · implementing the approved change · source-level inspection that needs no unavailable
-runtime tooling · returning a concise delta report. Codex does not rediscover architecture Claude
-has already supplied, does not restate project context, and does not run the historical regression
-suite.
-
-Codex currently owns **no** verification execution. See Verification split.
+**Claude does not** re-investigate Codex's implementation, rerun a gate Codex executed successfully,
+rebuild mutation harnesses, or narrate implementation. See Review contract for when Claude reads code.
 
 **Surgical exception.** Claude may implement directly only when *all* hold: the change is trivial
 and tightly bounded; the correct form is already established by the frozen plan; no new
@@ -146,14 +145,21 @@ GOAL               the one outcome this slice must produce
 FILES IN SCOPE     named paths
 EXACT CHANGES      the frozen change, precisely enough to implement without redesign
 PINNED INVARIANTS  the applicable invariants, stated inline by Claude
+FROZEN HASHES      expected SHA-256 for frozen files Codex must self-check (Git is unavailable to it)
+REQUIRED GATES     the Level B/C/D suite for this slice, by name
 DO NOT TOUCH       AGENTS.md, Project.md; frozen files; out-of-scope areas
-STOP CONDITION     implement only this; no verification commands; no commit or push;
-                   leave everything in the working tree; return a delta-only report
+STOP CONDITION     implement and verify only this; no commit or push; leave everything in the
+                   working tree; return the structured report below
 ```
 
 Acceptance criteria and pinned invariants are carried **verbatim**; surrounding narrative is not.
-Codex runs no verification, so a prompt never names a command for Codex to execute — if a gate
-matters as context, say Claude will run it.
+
+Codex returns exactly this, with no tool-call narration: **1** files changed · **2** implementation
+result · **3** verification clusters with PASS/FAIL · **4** mutations, each with invariant, intended
+assertion, assertion that actually fired, and restore hash · **5** frozen-file and authority
+integrity by supplied SHA-256 · **6** every path it created or modified, including temporary files
+(Claude verifies repository state through Git) · **7** unresolved findings or decisions · **8**
+elapsed time and approximate usage.
 
 ### Prompt economy
 
@@ -165,37 +171,43 @@ conclusions, so Codex does not repeat that work:
 - State the relevant invariants inline. Omit invariants the change cannot touch.
 - Name the files in scope. Codex may open additional files only when an import or call path
   directly requires it.
-- Require a delta-only report: changed files, results, deviations. Not a restatement of the
-  frozen plan.
+- Require the structured report above and nothing more — no restatement of the frozen plan, no
+  tool-call narration.
 
 Scope discipline, hard stops, and the clean-tree requirement are unchanged. A shorter prompt
 must never mean a vaguer one.
 
 ### Verification split
 
-**Codex may run Level A only** — targeted verifier scripts, via
+**Codex runs every deterministic gate**, using these proven direct-`node` invocations. Never `npm`
+or `npx` — the PowerShell execution policy blocks their shims.
 
 ```
+node node_modules/typescript/bin/tsc --noEmit
+node node_modules/next/dist/bin/next lint
+node node_modules/next/dist/bin/next build
 node node_modules/tsx/dist/cli.mjs --conditions=react-server scripts/<name>.ts
 ```
 
-Without that flag the scripts fail on the `server-only` import. Codex must never install anything,
-add or change a dependency, or work around the sandbox; when a command cannot start it says so
-plainly and stops.
+`--conditions=react-server` is required or the verifiers fail on the `server-only` import. Codex
+must never install anything, add or change a dependency, or work around the sandbox; when a command
+cannot start it says so plainly and stops.
 
-**`tsc`, `lint`, `build`, and anything reached through `npm run` or `npx` stay Claude's** — still
-blocked by the PowerShell execution policy. Do not delegate them, and do not assume a direct-`node`
-equivalent works until a probe proves it. Widening this capability requires a fresh probe, recorded
-here in the same change.
+Verifier menu, **each as applicable** — M6A, M6B, M6C, M6D, the Developer boundary verifier, the
+Admin invariant verifier, the recovery verifier, C1, C4, C4.2, C5. A menu, not a mandatory sequence.
+Claude names the required suite in the contract from the checkpoint's actual risk and scope, and
+that selection must fully cover the candidate change.
 
-**Claude runs Levels B, C, and D**, plus every gate Codex did not actually execute. Candidates,
-**each as applicable** — M6A, M6B, M6C, M6D, the Developer boundary verifier, the Admin invariant
-verifier, the recovery verifier, C1, C4, C4.2, C5. This is a menu, not a mandatory sequence: no
-checkpoint is obliged to rerun every historical verifier. Claude selects the required suite from the
-checkpoint's actual risk and scope, and that selection must fully cover the candidate change.
+**Git stays Claude's.** Codex's sandbox runs as a different Windows principal, so Git refuses the
+repository as dubiously owned. Codex therefore cannot verify working-tree cleanliness, untracked
+files, diff scope, or frozen-file integrity against Git objects — Claude owns all of it. **Never add
+a `safe.directory` exception or otherwise weaken Git's ownership protection to work around this.**
+Where Codex needs a self-check, Claude supplies expected SHA-256 hashes in the contract and Codex
+verifies them with `fs` and `crypto`.
 
 **Never report a Codex gate as passed when Codex could not execute it.** A gate Codex did not run
-is not evidence of anything.
+is not evidence of anything. Widening Codex capability requires a fresh probe, recorded here in the
+same change.
 
 ### Verification ladder
 
@@ -203,8 +215,10 @@ Targeted implementation checks → affected verifier/checkpoint → required ris
 proof → restored candidate → one final complete gate. Run the smallest check capable of catching
 what the current step could plausibly break.
 
-- **A — during implementation.** One targeted verifier script as a fast failure signal — Codex's,
-  per Verification split. Skipped when it cannot run, never silently reassigned.
+**Codex runs A, B, C and D.** Claude runs only a required gate Codex could not execute — that gate
+alone, never the suite again.
+
+- **A — during implementation.** One targeted verifier script as a fast failure signal.
 - **B — stable candidate.** Once the diff stops changing, run only the verifiers whose assertions
   the diff can actually reach, plus `tsc`. Illustrative, not a matrix: shape-pinned or M6C surface
   → M6C · Developer authorization or invisibility → Developer boundary verifier · Admin account
@@ -244,27 +258,23 @@ invariants covered in order to reduce execution count.**
 - **A mutation must not alter any construct an earlier assertion counts or shape-matches**, or it
   trips that assertion first and the intended one is never reached. If masking surfaces anyway, add
   only the minimum extra mutation isolating the masked assertion.
-- **Capture full stderr on the first execution** and confirm each mutation trips the *intended*
-  assertion by message, not merely that some assertion failed.
+- **Capture full stderr on the first execution.** Record for every mutation: the invariant tested ·
+  the intended assertion message · the message that **actually** fired · the restore hash result.
+  **If the wrong assertion fires the mutation is not proof** — isolate and rerun it.
 - **One verifier per mutation** unless two prove genuinely distinct guarantees, such as a textual
   pin and a behavioural outcome.
 - **Restore only from a byte-verified backup and confirm the restored tree by hash.** Never use
-  `git checkout --` to undo a perturbation.
+  `git checkout --` to undo a perturbation. Claude confirms restoration independently through Git
+  during postflight.
 
 ## Review contract
 
-Never rely on Codex's summary. Independently check, every time:
+Claude's review is **repository integrity plus adjudication**, not a second code review. Never rely
+on Codex's summary for these; check them independently, every time:
 
 - `git status` — unexpected or untracked files.
-- `git diff` against the recorded baseline — every hunk.
-- Every hunk read, in surrounding context, at a depth set by the file's **role, not its size**.
-  **Deep** — authentication · authorization · session and token handling · password and recovery
-  logic · repositories and query filters · mutation services · server actions · persistence
-  boundaries · migrations · verifier assertions · anything touching a frozen invariant. A two-line
-  change in these is still deep.
-  **Lighter structural** — loading states, wrappers, static labels, uncomplicated presentational
-  components, unless a defect or security boundary points there. No untracked new file is
-  classified without first being opened.
+- `git diff --stat` against the recorded baseline — nothing outside the frozen scope.
+- Frozen-file integrity by hash against the baseline commit.
 - **Scan coverage must equal the candidate tree.** Any repository-wide credential, security, or
   compliance scan used for sign-off must cover tracked modifications, new tracked files, **and new
   untracked in-scope files**. Plain `git grep` and `git diff` see only tracked content: use
@@ -273,39 +283,54 @@ Never rely on Codex's summary. Independently check, every time:
   examined.
 - `AGENTS.md` and `Project.md` untouched (check both `Project.md` and `PROJECT.md`; same file on Windows).
 - No invented requirements, fields, rules, or styling; nothing beyond plan scope.
-- Each acceptance criterion, individually, against the implementation itself — not against Codex's claim about it.
-- Any modified `scripts/verify-checkpoint-*.ts` read in full. A passing test Codex edited proves nothing until its assertions are read.
+- Every acceptance criterion accounted for by evidence — Codex's, and the reviewer's where one was required.
 - **Delegation identity** — read the actual session rollout, do not assume the flags took effect:
   `ls -t ~/.codex/sessions/*/*/*/rollout-*.jsonl | head -1`, confirm it is the delegation just run
   (`"originator":"codex_exec"`, correct `cwd`), then extract `"model"` and `"reasoning_effort"`.
-  Report both in the review, and whether they matched **gpt-5.6-sol / high**.
+  Report both, and whether they matched **gpt-5.6-sol / high**.
 
-The checks above are the review and are never skipped. They are reading, not execution.
+**Claude does not routinely deep-read the diff.** When a slice requires a fresh Codex Reviewer, that
+reviewer performs the code review; Claude repeating it is the duplicated reasoning v2 exists to
+remove. Claude deep-reads code only when the reviewer raises a finding · implementer and reviewer
+evidence conflict · a new security or authority decision is required · or a publication rule demands
+Claude inspection. On a low-risk slice with no reviewer, Claude reads the diff hunks of
+security-critical files and of any modified verifier — a weakened existing assertion is invisible to
+mutation proof.
+
+### Independent review
+
+No automatic reviewer. For an ordinary low or medium-risk slice, Codex implementation plus its
+deterministic verification is sufficient; Claude reviews the evidence summary and does not redo it.
+
+A **fresh read-only Codex Reviewer is required** when the slice touches authentication or
+authorization · Developer isolation · credential or secret handling · audit confidentiality or
+visibility · privacy or sensitive-data handling · RLS or security policy · migrations, schema, or
+security configuration · destructive or live-database work · a frozen security boundary · or when
+implementation evidence contains an unresolved contradiction. It is also mandatory at a publication
+boundary.
+
+Because Codex cannot run Git, **Claude generates and supplies the bounded diff or patch.** The
+reviewer receives only the frozen contract · that diff · relevant authority pointers · the
+verification summary · expected frozen-file hashes where relevant. Never unrelated repository
+context.
+
+The reviewer independently reviews security-critical production hunks and verifier changes against
+the contract and authority, and **reports findings only**. It does not reimplement and does not
+rerun the deterministic suite; one focused verifier rerun is allowed solely to resolve a specific
+finding. Independent review is reasoning review, never deterministic-suite duplication.
 
 ### Running verification
 
-The full suite is Claude's responsibility, run once, after the diff review. Codex's targeted
-verifier results are a fast failure signal, not a substitute — do not re-run them merely to
-duplicate evidence, and do not treat their absence as a pass.
+**If Codex executed a required gate successfully, Claude does not rerun it merely for independent
+confirmation.** If Codex could not execute one required gate, Claude runs that gate alone — never
+the suite again.
 
-Accept Codex's targeted results at face value only for the gates it actually ran and reported.
-Re-run one of those gates when:
+Re-run a gate Codex reported only when Codex was interrupted, timed out, or failed · its evidence is
+missing, partial, or unattributable to this run · or its report conflicts with the diff or with
+reviewer findings. State which reason applied; when none does, say the evidence was accepted.
 
-- Codex was interrupted, timed out, or failed.
-- Its evidence is missing, partial, or unattributable to this run.
-- Its report conflicts with the actual diff.
-- A verification script itself changed — validate it by running it.
-- Something in the implementation looks suspicious and running is the cheapest way to settle it.
-
-State which reason applied. When none does, say the targeted evidence was accepted and why that
-was sound.
-
-A gate that Codex never ran is not evidence of anything. Claude runs it.
-
-After the last slice and the diff review, run the required suite **once**. Do not repeat an
-expensive gate without a concrete reason. When a correction invalidates something a passing gate
-covered, rerun only the invalidated gate plus whatever final confidence check the change warrants.
-Sign-off still requires valid, current evidence for every required gate.
+Sign-off requires valid, current evidence for every required gate. When a correction invalidates
+something a passing gate covered, rerun only the invalidated gate.
 
 ### Reporting
 

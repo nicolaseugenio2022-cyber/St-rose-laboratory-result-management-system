@@ -394,8 +394,8 @@ function verifyFirstLoginSecurityAuditWriters(): void {
     "the exhaustion log must not carry the error, credential material, or database detail"
   );
   assert(
-    (source.match(/console\.error\(/g) ?? []).length === 2,
-    "userService must log only the first-login audit exhaustion case and the failed-authentication audit failure"
+    (source.match(/console\.error\(/g) ?? []).length === 3,
+    "userService must log only the first-login audit exhaustion case, the failed-authentication audit failure, and the successful-authentication audit failure"
   );
 
   for (const [methodName, blockPattern, eventType] of [
@@ -547,6 +547,94 @@ function verifyFailedAuthenticationAuditWriter(): void {
   );
 }
 
+function verifyAuthenticationSuccessAuditWriter(): void {
+  const source = read("src/services/userService.ts");
+  const helper = /private\s+async\s+emitAuthenticationSuccess\b[\s\S]*?(?=\n\s*private\s+async\s+emitAuthenticationFailure\b)/.exec(
+    source
+  )?.[0];
+
+  assert(
+    helper,
+    "UserService must expose the successful-authentication audit writer immediately before the failure writer"
+  );
+  assert(
+    (helper.match(/\.emit\(/g) ?? []).length === 1,
+    "the successful-authentication writer must make exactly one audit emission attempt"
+  );
+  assert(
+    !/setTimeout|FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS|for\s*\(|while\s*\(|retry/i.test(helper),
+    "the successful-authentication path must not retry, back off, sleep, or repeat durable writes"
+  );
+  assert(
+    !/\bthrow\b/.test(helper),
+    "a failed audit write must never fail a login made with correct credentials"
+  );
+  assert(
+    /try\s*\{[\s\S]*?this\.recoveryAudit\.emit\([\s\S]*?\}\s*catch\s*\{/.test(helper),
+    "the throwing recoveryAudit accessor and its emit call must both remain inside the swallowing try/catch block"
+  );
+  assert(
+    /category:\s*"AuthAccount"/.test(helper) &&
+      /eventType:\s*"AuthenticationSucceeded"/.test(helper),
+    "successful authentication must use the durable AuthAccount AuthenticationSucceeded classification"
+  );
+  assert(
+    /actorRole:\s*record\.role/.test(helper) && /targetRole:\s*record\.role/.test(helper),
+    "successful authentication proves identity, so both roles must come from the persisted record"
+  );
+  assert(
+    /performedByUserId:\s*record\.id/.test(helper) &&
+      /performedByUsername:\s*record\.username/.test(helper) &&
+      /targetReference:\s*record\.username/.test(helper),
+    "successful-authentication identity must come from the persisted record, never caller input"
+  );
+  assert(
+    /details:\s*null/.test(helper),
+    "successful-authentication identity already has dedicated columns and must not be duplicated in append-only details"
+  );
+  assert(
+    !/clientIp/.test(helper),
+    "successful-authentication auditing must not imply unavailable client-IP provenance"
+  );
+
+  const logCall = /console\.error\([\s\S]*?\);/.exec(helper)?.[0];
+  assert(
+    logCall,
+    "successful-authentication audit persistence failure must use sanitized operational logging"
+  );
+  const logPayload = logCall
+    .replace(/console\.error\(\s*"[^"]*",/, "")
+    .replace(/\s*\);\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  assert(
+    logPayload === '{ eventType: "AuthenticationSucceeded", }',
+    "the successful-authentication persistence log payload must contain exactly the fixed event type"
+  );
+  assert(
+    !/username|userId|role|password|hash|answer|token|details|payload|supabase|sql|clientIp/i.test(
+      logPayload
+    ),
+    "the successful-authentication persistence log must not expose identity, credential, database, payload, or client-IP data"
+  );
+
+  const authenticate = /async\s+authenticate\b[\s\S]*?(?=\n\s*async\s+changeFirstLoginPassword\b)/.exec(
+    source
+  )?.[0];
+  assert(authenticate, "UserService.authenticate must remain present");
+  const rejectionIndex = authenticate.indexOf("throw new InvalidCredentialsError();");
+  const successEmitIndex = authenticate.indexOf(
+    "await this.emitAuthenticationSuccess(record);"
+  );
+  const returnIndex = authenticate.indexOf("return toUser(record);");
+  assert(
+    rejectionIndex !== -1 &&
+      successEmitIndex > rejectionIndex &&
+      returnIndex > successEmitIndex,
+    "successful-authentication auditing must run after rejection and before return so rejected logins can never emit success"
+  );
+}
+
 function verifyPrototypeRetirement(): void {
   assert(
     !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
@@ -587,6 +675,7 @@ verifyDeveloperDashboardPersistentAudit();
 verifyDeveloperDashboardServerSideProbe();
 verifyFirstLoginSecurityAuditWriters();
 verifyFailedAuthenticationAuditWriter();
+verifyAuthenticationSuccessAuditWriter();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 

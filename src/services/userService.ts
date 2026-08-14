@@ -253,6 +253,25 @@ export class UserService implements IUserService {
     }
   }
 
+  private async emitAuthenticationSuccess(record: AuthCredentialRecord): Promise<void> {
+    try {
+      await this.recoveryAudit.emit({
+        category: "AuthAccount",
+        eventType: "AuthenticationSucceeded",
+        actorRole: record.role,
+        targetRole: record.role,
+        performedByUserId: record.id,
+        performedByUsername: record.username,
+        targetReference: record.username,
+        details: null,
+      });
+    } catch {
+      console.error("Successful-authentication audit persistence failed.", {
+        eventType: "AuthenticationSucceeded",
+      });
+    }
+  }
+
   private async emitAuthenticationFailure(
     username: string,
     record: AuthCredentialRecord | null
@@ -669,6 +688,7 @@ export class UserService implements IUserService {
     await this.loginRateLimiter.record(username, clientIp, authenticated);
     if (!authenticated) await this.emitAuthenticationFailure(username, record);
     if (!record || !authenticated) throw new InvalidCredentialsError();
+    await this.emitAuthenticationSuccess(record);
     return toUser(record);
   }
 

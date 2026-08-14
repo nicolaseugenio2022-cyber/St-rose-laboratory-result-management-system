@@ -1457,6 +1457,120 @@ async function verifySuccessfulAuthenticationEmitsNoFailureEvent(): Promise<void
   );
 }
 
+async function verifySuccessfulDeveloperAuthenticationIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const loginPassword = randomUUID();
+  const subject = createAuditedSubject([], audit);
+  const created = await subject.service.createDeveloperAccount(
+    {
+      username: "audited-developer-login",
+      password: loginPassword,
+      securityQuestion: SECURITY_QUESTION,
+    },
+    "Developer"
+  );
+
+  const authenticated = await subject.service.authenticate(created.username, loginPassword);
+  assert(
+    authenticated.id === created.id,
+    "case 54 must authenticate the Developer account with the correct password"
+  );
+  const entries = audit.entries.filter(
+    (e) => e.eventType === "AuthenticationSucceeded"
+  );
+  assert(entries.length === 1, "case 54 must emit exactly one AuthenticationSucceeded event");
+  const entry = entries[0];
+  assert(entry.category === "AuthAccount", "case 54 must classify the event as AuthAccount");
+  assert(
+    entry.actorRole === "Developer" && entry.targetRole === "Developer",
+    "case 54 must stamp both roles as Developer, making developer_involved true so the event is hidden from Admin readers"
+  );
+  assert(
+    entry.performedByUserId === created.id &&
+      entry.targetReference === created.username,
+    "case 54 must resolve the actor id and target reference from the created Developer account"
+  );
+  assert(entry.details === null, "case 54 must persist no extra details payload");
+}
+
+async function verifySuccessfulOrdinaryAuthenticationIsAudited(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const loginPassword = randomUUID();
+  const subject = createAuditedSubject([], audit);
+  const created = await subject.service.createUser({
+    username: "audited-ordinary-login",
+    password: loginPassword,
+    role: "User",
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  const authenticated = await subject.service.authenticate(created.username, loginPassword);
+  assert(
+    authenticated.id === created.id,
+    "case 55 must authenticate the ordinary account with the correct password"
+  );
+  const entries = audit.entries.filter(
+    (e) => e.eventType === "AuthenticationSucceeded"
+  );
+  assert(entries.length === 1, "case 55 must emit exactly one AuthenticationSucceeded event");
+  const entry = entries[0];
+  assert(
+    entry.actorRole === "User" && entry.targetRole === "User",
+    "case 55 must stamp both roles as User, leaving developer_involved false so the event stays visible to Admin readers"
+  );
+}
+
+async function verifySuccessfulAuthenticationAuditFailureIsSwallowedWithoutRetry(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const loginPassword = randomUUID();
+  const subject = createAuditedSubject([], audit);
+  const created = await subject.service.createUser({
+    username: "successful-audit-failure",
+    password: loginPassword,
+    role: "User",
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  audit.failures = 1;
+  const emitCallsBeforeAuthentication = audit.emitCalls;
+  const authenticated = await subject.service.authenticate(created.username, loginPassword);
+  assert(
+    authenticated.id === created.id,
+    "case 56 must still succeed and return the account when success-audit persistence fails"
+  );
+  assert(
+    audit.emitCalls === emitCallsBeforeAuthentication + 1,
+    "case 56 must make exactly one successful-authentication audit persistence attempt"
+  );
+  const entries = audit.entries.filter(
+    (e) => e.eventType === "AuthenticationSucceeded"
+  );
+  assert(
+    entries.length === 0,
+    "case 56 must persist no AuthenticationSucceeded entry; a retrying writer would have succeeded on a second attempt and produced an entry, so this is the behavioural proof that no retry exists"
+  );
+}
+
+async function verifyFailedAuthenticationEmitsNoSuccessEvent(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(USER_A, "User")], audit);
+
+  const error = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 57 must reject the wrong password with InvalidCredentialsError"
+  );
+  const entries = audit.entries.filter(
+    (e) => e.eventType === "AuthenticationSucceeded"
+  );
+  assert(
+    entries.length === 0,
+    "case 57 must emit no AuthenticationSucceeded event for a failed login"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1511,7 +1625,11 @@ async function main(): Promise<void> {
   await verifyInactiveAccountAuthenticationFailureIsAudited();
   await verifyFailedAuthenticationAuditFailureIsSwallowedWithoutRetry();
   await verifySuccessfulAuthenticationEmitsNoFailureEvent();
-  process.stdout.write("Developer boundary verification passed: all 53 cases verified.\n");
+  await verifySuccessfulDeveloperAuthenticationIsAudited();
+  await verifySuccessfulOrdinaryAuthenticationIsAudited();
+  await verifySuccessfulAuthenticationAuditFailureIsSwallowedWithoutRetry();
+  await verifyFailedAuthenticationEmitsNoSuccessEvent();
+  process.stdout.write("Developer boundary verification passed: all 57 cases verified.\n");
 }
 
 void main();

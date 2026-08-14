@@ -7,6 +7,7 @@ import {
   runBootstrapAuditRepair,
 } from "./bootstrap-core";
 
+import { firstLoginRedirectPath } from "@/lib/first-login-gate";
 import type {
   AuditLogEntry,
   AuditLogQueryCriteria,
@@ -31,6 +32,7 @@ import {
 import type { AuditEvent, AuditService } from "@/services/audit-service";
 import type {
   CreateDeveloperAccountInput,
+  CreateUserInput,
   ResetDeveloperPasswordInput,
   UpdateDeveloperSecurityQuestionInput,
   UpdateDeveloperUsernameInput,
@@ -741,7 +743,7 @@ async function verifyAdminInvariantWithDeveloperFilteredCounts(): Promise<void> 
   assert((await credentials.findById(ADMIN_A))?.status === "Active", "case 26 must leave Admin Active");
 }
 
-async function verifyCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
+async function verifyOrdinaryCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
   const ordinarySubject = createSubject([]);
   const ordinary = await ordinarySubject.service.createUser({
     username: "ordinary-created",
@@ -762,18 +764,9 @@ async function verifyCreationPathsAgreeOnInitialLifecycle(): Promise<void> {
   );
   const storedDeveloper = await developerSubject.credentials.findById(developer.id);
 
-  const bootstrapSubject = createSubject([]);
-  const bootstrapped = await bootstrapSubject.service.bootstrapFirstDeveloper({
-    username: "bootstrap-created",
-    password: randomUUID(),
-    securityQuestion: SECURITY_QUESTION,
-  });
-  const storedBootstrapped = await bootstrapSubject.credentials.findById(bootstrapped.id);
-
   for (const [label, stored] of [
     ["createUser", storedOrdinary],
     ["createDeveloperAccount", storedDeveloper],
-    ["bootstrapFirstDeveloper", storedBootstrapped],
   ] as const) {
     assert(stored, `case 27 must persist the account created by ${label}`);
     assert(
@@ -802,7 +795,10 @@ async function verifyBootstrapCreatesFirstDeveloper(): Promise<void> {
   const stored = await credentials.findById(created.id);
   assert(stored?.role === "Developer", "case 28 must create the Developer role");
   assert(stored.status === "Active", "case 28 must create an Active account");
-  assert(stored.mustChangePassword === false, "case 28 must set mustChangePassword=false");
+  assert(
+    stored.mustChangePassword === true,
+    "case 28 bootstrap must set mustChangePassword=true, the SECURITY_MODEL 6.5 exception that stops the operator's temporary credential persisting"
+  );
   assert(stored.mustSetRecovery === true, "case 28 must set mustSetRecovery=true");
   assert(stored.securityAnswerHash === null, "case 28 must null securityAnswerHash");
   assert(stored.tokenVersion === 1, "case 28 must start at tokenVersion 1");
@@ -1222,6 +1218,78 @@ async function verifyFirstLoginAuditFailureIsInvisibleToCaller(): Promise<void> 
   );
 }
 
+async function verifyBootstrapLifecycleIsNotSelectableThroughInput(): Promise<void> {
+  const ordinarySubject = createSubject([]);
+  const ordinary = await ordinarySubject.service.createUser({
+    username: "input-forced-user",
+    password: randomUUID(),
+    role: "User",
+    securityQuestion: SECURITY_QUESTION,
+    mustChangePassword: true,
+  } as unknown as CreateUserInput);
+  const storedOrdinary = await ordinarySubject.credentials.findById(ordinary.id);
+  assert(
+    storedOrdinary?.mustChangePassword === false,
+    "case 46 must ignore a mustChangePassword flag smuggled through ordinary user input"
+  );
+
+  const developerSubject = createSubject([credential(DEVELOPER_A, "Developer")]);
+  const developer = await developerSubject.service.createDeveloperAccount(
+    {
+      username: "input-forced-developer",
+      password: randomUUID(),
+      securityQuestion: SECURITY_QUESTION,
+      mustChangePassword: true,
+    } as unknown as CreateDeveloperAccountInput,
+    "Developer"
+  );
+  const storedDeveloper = await developerSubject.credentials.findById(developer.id);
+  assert(
+    storedDeveloper?.mustChangePassword === false,
+    "case 46 must ignore a mustChangePassword flag smuggled through Developer creation input"
+  );
+}
+
+async function verifyBootstrappedDeveloperRoutesThroughPasswordThenRecovery(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const { credentials, service } = createAuditedSubject([], audit);
+  const created = await service.bootstrapFirstDeveloper({
+    username: "routing-first-developer",
+    password: randomUUID(),
+    securityQuestion: SECURITY_QUESTION,
+  });
+
+  // Mirrors destinationFor() in authActions.ts, which is byte-frozen and module-private.
+  const destinationFor = (flags: { mustChangePassword: boolean; mustSetRecovery: boolean }) =>
+    flags.mustChangePassword || flags.mustSetRecovery ? firstLoginRedirectPath(flags) : "/dashboard";
+
+  assert(
+    destinationFor(created) === "/first-login/password",
+    "case 47 must route the bootstrapped Developer to the password-change step first"
+  );
+
+  const afterPassword = await service.changeFirstLoginPassword(created.id, randomUUID());
+  assert(
+    afterPassword.mustChangePassword === false && afterPassword.mustSetRecovery === true,
+    "case 47 must clear mustChangePassword and still require recovery setup"
+  );
+  assert(
+    destinationFor(afterPassword) === "/first-login/recovery",
+    "case 47 must route to recovery setup after the password change"
+  );
+
+  const afterRecovery = await service.setFirstLoginRecoveryAnswer(created.id, "an answer");
+  assert(
+    destinationFor(afterRecovery) === "/dashboard",
+    "case 47 must reach the dashboard once both first-login steps are complete"
+  );
+  const stored = await credentials.findById(created.id);
+  assert(
+    stored?.mustChangePassword === false && stored.mustSetRecovery === false,
+    "case 47 must persist both first-login completions"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1249,7 +1317,7 @@ async function main(): Promise<void> {
   await verifyDeveloperFlowDoesNotExposeSecrets();
   await verifyDeveloperAuthenticationStillSucceeds();
   await verifyAdminInvariantWithDeveloperFilteredCounts();
-  await verifyCreationPathsAgreeOnInitialLifecycle();
+  await verifyOrdinaryCreationPathsAgreeOnInitialLifecycle();
   await verifyBootstrapCreatesFirstDeveloper();
   await verifyBootstrapRefusesWhenDeveloperExists();
   await verifyRepeatedBootstrapRefuses();
@@ -1268,7 +1336,9 @@ async function main(): Promise<void> {
   await verifyFirstLoginAuditRetriesTransientFailure();
   await verifyFirstLoginAuditExhaustionKeepsMutation();
   await verifyFirstLoginAuditFailureIsInvisibleToCaller();
-  process.stdout.write("Developer boundary verification passed: all 45 cases verified.\n");
+  await verifyBootstrapLifecycleIsNotSelectableThroughInput();
+  await verifyBootstrappedDeveloperRoutesThroughPasswordThenRecovery();
+  process.stdout.write("Developer boundary verification passed: all 47 cases verified.\n");
 }
 
 void main();

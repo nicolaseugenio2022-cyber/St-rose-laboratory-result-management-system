@@ -40,6 +40,17 @@ import {
 
 const FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS = [250, 1000];
 
+type InitialAccountLifecycle = { mustChangePassword: boolean };
+
+// An Admin-assigned password IS the account password, so ordinary creation never forces a change.
+const ORDINARY_ACCOUNT_LIFECYCLE: InitialAccountLifecycle = { mustChangePassword: false };
+
+// SECURITY_MODEL.md 6.5: the one-time operator bootstrap supplies a TEMPORARY credential that must
+// not persist, so the first Developer must change it at first login. This override is deliberately
+// a parameter of the private creation helper and never a field of any input type, so it cannot be
+// selected through client, form, or caller-supplied account data.
+const BOOTSTRAP_ACCOUNT_LIFECYCLE: InitialAccountLifecycle = { mustChangePassword: true };
+
 export class DuplicateUsernameError extends Error {
   constructor(public username: string) {
     super(`Username "${username}" is already in use by another account.`);
@@ -288,7 +299,8 @@ export class UserService implements IUserService {
   }
 
   private async createAccount(
-    input: CreateUserInput | (CreateDeveloperAccountInput & { role: "Developer" })
+    input: CreateUserInput | (CreateDeveloperAccountInput & { role: "Developer" }),
+    lifecycle: InitialAccountLifecycle = ORDINARY_ACCOUNT_LIFECYCLE
   ): Promise<User> {
     const username = canonicalizeAndValidateUsername(input.username);
     if (!username) throw new Error("Username does not match the canonical username rule.");
@@ -303,7 +315,7 @@ export class UserService implements IUserService {
       passwordHash: await hashPassword(input.password),
       securityQuestion: validatedSecurityQuestion(input),
       securityAnswerHash: null,
-      mustChangePassword: false,
+      mustChangePassword: lifecycle.mustChangePassword,
       mustSetRecovery: true,
       tokenVersion: 1,
       passwordUpdatedAt: now,
@@ -390,7 +402,7 @@ export class UserService implements IUserService {
     if ((await this.credentialDirectory.countVisibleTo(["Developer"])) !== 0) {
       throw new DeveloperAlreadyExistsError();
     }
-    return this.createAccount({ ...input, role: "Developer" });
+    return this.createAccount({ ...input, role: "Developer" }, BOOTSTRAP_ACCOUNT_LIFECYCLE);
   }
 
   async updateDeveloperUsername(

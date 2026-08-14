@@ -289,6 +289,50 @@ function verifyDeveloperDashboardPersistentAudit(): void {
   );
 }
 
+// Regression guard for the Developer dashboard monitoring defect found during 6D-2 live
+// acceptance. The health probe queried a protected table through the browser/anon Supabase
+// client, whose privileges on that table were removed, so a completed HTTP 401 authorization
+// refusal was presented to the operator as a connectivity outage.
+function verifyDeveloperDashboardServerSideProbe(): void {
+  const source = read("src/services/developer-dashboard-service.ts");
+  const modules = importedModules(source);
+
+  assert(
+    !modules.some((moduleName) => /(?:^|\/)lib\/supabase\/client$/.test(moduleName)),
+    "the Developer Dashboard service must not reach protected tables through the browser Supabase client"
+  );
+  assert(
+    modules.some((moduleName) => /(?:^|\/)lib\/supabase\/server$/.test(moduleName)),
+    "the Developer Dashboard service must reach the database through the server-only Supabase client"
+  );
+  assert(
+    /^import ["']server-only["'];$/m.test(source),
+    "the Developer Dashboard service imports the privileged Supabase client and must import server-only"
+  );
+  assert(
+    !/\bsupabase\s*\./.test(source),
+    "the Developer Dashboard service must issue no query through the browser Supabase client binding"
+  );
+  assert(
+    /export type SupabaseHealthStatus\s*=\s*"Connected"\s*\|\s*"Degraded"\s*\|\s*"Unreachable"/.test(
+      source
+    ),
+    "the Supabase health report must distinguish a degraded response from an unreachable database"
+  );
+  assert(
+    /reachable\s*\?\s*"Degraded"\s*:\s*"Unreachable"/.test(source),
+    "a Supabase error must be classified as Degraded when the database responded and Unreachable only when it did not"
+  );
+  assert(
+    !/lastSuccessfulAt/.test(source),
+    "the health report must not advertise a last-successful timestamp that is never persisted"
+  );
+  assert(
+    !/error\s*\??\.\s*(?:message|details|hint|code)/.test(source),
+    "the operator-facing health message must not carry raw database error text"
+  );
+}
+
 function verifyPrototypeRetirement(): void {
   assert(
     !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
@@ -326,6 +370,7 @@ verifyReadTimeCanonicalizationAndAppendOnlyUse();
 verifyAuditReaderRoleNarrowing();
 verifyAuditClientBoundary();
 verifyDeveloperDashboardPersistentAudit();
+verifyDeveloperDashboardServerSideProbe();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 

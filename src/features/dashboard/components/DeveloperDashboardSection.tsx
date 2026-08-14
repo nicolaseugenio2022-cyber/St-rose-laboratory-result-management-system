@@ -15,10 +15,7 @@ function statusBadge(status: "Healthy" | "Warning" | "Error") {
   return <Badge variant={variants[status]}>{status}</Badge>;
 }
 
-function humanizeTimestamp(timestamp?: string | null) {
-  if (!timestamp) {
-    return "Never recorded";
-  }
+function humanizeTimestamp(timestamp: string) {
   return new Date(timestamp).toLocaleString();
 }
 
@@ -65,7 +62,7 @@ export default async function DeveloperDashboardSection({
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-sm text-brand-text-muted">Connection</span>
-                {statusBadge(data.supabaseHealth.connected ? "Healthy" : "Error")}
+                {statusBadge(data.systemHealth.database)}
               </div>
               <div className="grid grid-cols-1 gap-3 text-sm text-brand-text-muted">
                 <div className="flex items-center justify-between">
@@ -77,8 +74,8 @@ export default async function DeveloperDashboardSection({
                   <span className="font-semibold text-brand-text">{data.supabaseHealth.responseTimeMs ?? "N/A"} ms</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Last successful</span>
-                  <span className="font-semibold text-brand-text">{humanizeTimestamp(data.supabaseHealth.lastSuccessfulAt)}</span>
+                  <span>Last checked</span>
+                  <span className="font-semibold text-brand-text">{humanizeTimestamp(data.supabaseHealth.checkedAt)}</span>
                 </div>
               </div>
               <p className="text-xs text-brand-text-muted leading-relaxed">{data.supabaseHealth.message}</p>

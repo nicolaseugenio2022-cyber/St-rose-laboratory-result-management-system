@@ -1,7 +1,9 @@
+import "server-only";
+
 import packageJson from "../../package.json";
 import type { IUserProfile } from "@/domain/models/interfaces";
 import { userService } from "@/services/user-service-instance";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { supabaseServer } from "@/lib/supabase/server";
 import {
   toAuditReaderRole,
   type AuditEventTransport,
@@ -10,11 +12,13 @@ import {
 } from "@/services/audit-read-service";
 import { auditReadService } from "@/services/audit-read-service-instance";
 
+export type SupabaseHealthStatus = "Connected" | "Degraded" | "Unreachable";
+
 export interface SupabaseHealthReport {
-  status: "Connected" | "Disconnected";
+  status: SupabaseHealthStatus;
   connected: boolean;
   responseTimeMs?: number;
-  lastSuccessfulAt?: string | null;
+  checkedAt: string;
   message: string;
 }
 
@@ -51,13 +55,20 @@ const HEALTH_CACHE_TTL = 30_000; // 30 seconds
 let healthCache: { data: SupabaseHealthReport; fetchedAt: number } | null = null;
 let countsCache: { data: { totalPersonnel: number | null; totalLaboratoryResults: number | null }; fetchedAt: number } | null = null;
 
+const CONNECTED_MESSAGE = "Supabase connection successful.";
+const DEGRADED_MESSAGE = "Supabase responded, but the health check query did not succeed.";
+const UNREACHABLE_MESSAGE = "Unable to reach the Supabase database.";
+
 async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
   const start = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const { error } = await supabase
+    // `status` is 0 only when the request never completed (transport failure or abort). Any
+    // completed PostgREST response carries its real HTTP status, including authorization
+    // refusals, which prove the database was reached and must not read as an outage.
+    const { error, status } = await supabaseServer
       .from("patient_report_sessions")
       .select("id", { head: true, count: "exact" })
       .limit(1)
@@ -65,14 +76,18 @@ async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
 
     clearTimeout(timeout);
     const responseTimeMs = Date.now() - start;
+    const reachable = status > 0;
+    const checkedAt = new Date().toISOString();
 
     if (error) {
       return {
-        status: "Disconnected",
-        connected: false,
+        status: reachable ? "Degraded" : "Unreachable",
+        connected: reachable,
         responseTimeMs,
-        lastSuccessfulAt: null,
-        message: "Unable to reach Supabase database.",
+        checkedAt,
+        // Fixed operator-facing text only. Database error codes, hints, details, and messages
+        // are internal and must never reach the UI.
+        message: reachable ? DEGRADED_MESSAGE : UNREACHABLE_MESSAGE,
       };
     }
 
@@ -80,17 +95,17 @@ async function getSupabaseHealth(): Promise<SupabaseHealthReport> {
       status: "Connected",
       connected: true,
       responseTimeMs,
-      lastSuccessfulAt: new Date().toISOString(),
-      message: "Supabase connection successful.",
+      checkedAt,
+      message: CONNECTED_MESSAGE,
     };
   } catch {
     clearTimeout(timeout);
     return {
-      status: "Disconnected",
+      status: "Unreachable",
       connected: false,
       responseTimeMs: undefined,
-      lastSuccessfulAt: null,
-      message: "Unable to reach Supabase database.",
+      checkedAt: new Date().toISOString(),
+      message: UNREACHABLE_MESSAGE,
     };
   }
 }
@@ -101,8 +116,8 @@ async function getSupabaseCounts(): Promise<{ totalPersonnel: number | null; tot
 
   try {
     const [personnelResponse, totalLaboratoryResultsResponse] = await Promise.all([
-      supabase.from("report_signatories").select("personnel_id").abortSignal(controller.signal),
-      supabase.from("laboratory_results").select("id", { head: true, count: "exact" }).abortSignal(controller.signal),
+      supabaseServer.from("report_signatories").select("personnel_id").abortSignal(controller.signal),
+      supabaseServer.from("laboratory_results").select("id", { head: true, count: "exact" }).abortSignal(controller.signal),
     ]);
 
     clearTimeout(timeout);
@@ -186,7 +201,10 @@ export class DeveloperDashboardService {
       supabaseHealth,
       systemHealth: {
         application: mapStatus(appHealthy),
-        database: mapStatus(supabaseHealth.connected, true),
+        database: mapStatus(
+          supabaseHealth.status === "Connected",
+          supabaseHealth.status === "Degraded"
+        ),
         authentication: mapStatus(true),
         api: mapStatus(apiHealthy, true),
       },

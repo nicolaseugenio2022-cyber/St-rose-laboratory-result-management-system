@@ -28,7 +28,7 @@ import {
   UserNotFoundError,
   UserService,
 } from "@/services/userService";
-import type { AuditEvent } from "@/services/audit-service";
+import type { AuditEvent, AuditService } from "@/services/audit-service";
 import type {
   CreateDeveloperAccountInput,
   ResetDeveloperPasswordInput,
@@ -43,6 +43,7 @@ function assert(condition: unknown, message: string): asserts condition {
 class FakeCredentialRepository
   implements ICredentialRepository, ICredentialDirectoryRepository
 {
+  updateCalls = 0;
   private readonly records: Map<string, AuthCredentialRecord>;
 
   constructor(records: AuthCredentialRecord[]) {
@@ -104,6 +105,7 @@ class FakeCredentialRepository
     id: string,
     updates: Partial<Omit<AuthCredentialRecord, "id" | "createdAt">>
   ): Promise<AuthCredentialRecord> {
+    this.updateCalls += 1;
     const current = this.records.get(id);
     if (!current) throw new Error(`Credential ${id} was not found.`);
     const updated = { ...current, ...updates };
@@ -228,6 +230,18 @@ function createSubject(records: AuthCredentialRecord[]): {
   const credentials = new FakeCredentialRepository(records);
   const attempts = new FakeLoginAttemptRepository();
   return { credentials, service: new UserService(credentials, attempts) };
+}
+
+function createAuditedSubject(
+  records: AuthCredentialRecord[],
+  audit: FakeAuditLog
+): { credentials: FakeCredentialRepository; service: UserService } {
+  const credentials = new FakeCredentialRepository(records);
+  const attempts = new FakeLoginAttemptRepository();
+  return {
+    credentials,
+    service: new UserService(credentials, attempts, audit as unknown as AuditService),
+  };
 }
 
 function bootstrapDeps(subject: ReturnType<typeof createSubject>, audit: FakeAuditLog) {
@@ -1090,6 +1104,124 @@ async function verifyBootstrapRefusesDuplicateUsername(): Promise<void> {
   assert(audit.entries.length === 0, "case 39 must emit no audit event");
 }
 
+async function verifyDeveloperFirstLoginRecoveryIsDeveloperClassified(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(DEVELOPER_A, "Developer")], audit);
+  await subject.service.setFirstLoginRecoveryAnswer(DEVELOPER_A, "a childhood school");
+  assert(audit.entries.length === 1, "case 40 must emit exactly one first-login audit event");
+  const entry = audit.entries[0];
+  assert(
+    entry.eventType === "FirstLoginRecoveryConfigured",
+    "case 40 must emit FirstLoginRecoveryConfigured"
+  );
+  assert(entry.category === "AuthAccount", "case 40 must classify the event as AuthAccount");
+  assert(
+    entry.actorRole === "Developer" && entry.targetRole === "Developer",
+    "case 40 must stamp both roles Developer so the generated column marks it Developer-involved"
+  );
+  assert(
+    entry.performedByUserId === DEVELOPER_A && entry.targetReference === DEVELOPER_A,
+    "case 40 identity must come from the persisted Developer record"
+  );
+  assertNoSensitiveData(
+    entry,
+    ["a childhood school"],
+    "case 40 must not record the recovery answer"
+  );
+}
+
+async function verifyDeveloperFirstLoginPasswordIsDeveloperClassified(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(DEVELOPER_A, "Developer")], audit);
+  await subject.service.changeFirstLoginPassword(DEVELOPER_A, "a-new-passphrase");
+  assert(audit.entries.length === 1, "case 41 must emit exactly one first-login audit event");
+  const entry = audit.entries[0];
+  assert(
+    entry.eventType === "FirstLoginPasswordChanged",
+    "case 41 must emit FirstLoginPasswordChanged"
+  );
+  assert(
+    entry.actorRole === "Developer" && entry.targetRole === "Developer",
+    "case 41 must stamp both roles Developer"
+  );
+  assertNoSensitiveData(entry, ["a-new-passphrase"], "case 41 must not record the new password");
+}
+
+async function verifyAdminFirstLoginIsNotDeveloperInvolved(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject([credential(ADMIN_A, "Admin")], audit);
+  await subject.service.setFirstLoginRecoveryAnswer(ADMIN_A, "an answer");
+  const entry = audit.entries[0];
+  assert(
+    entry.eventType === "FirstLoginRecoveryConfigured",
+    "case 42 must emit FirstLoginRecoveryConfigured"
+  );
+  assert(
+    entry.actorRole === "Admin" && entry.targetRole === "Admin",
+    "case 42 must stamp both roles Admin, leaving developer_involved false so the event stays visible to Admin readers"
+  );
+}
+
+async function verifyFirstLoginAuditRetriesTransientFailure(): Promise<void> {
+  const audit = new FakeAuditLog();
+  audit.failures = 2;
+  const subject = createAuditedSubject([credential(USER_A, "User")], audit);
+  await subject.service.setFirstLoginRecoveryAnswer(USER_A, "an answer");
+  assert(
+    audit.entries.length === 1,
+    "case 43 must persist the event once the bounded retry succeeds"
+  );
+  assert(
+    subject.credentials.updateCalls === 1,
+    "case 43 must not repeat the credential mutation while retrying the audit write"
+  );
+}
+
+async function verifyFirstLoginAuditExhaustionKeepsMutation(): Promise<void> {
+  const audit = new FakeAuditLog();
+  audit.failures = 3;
+  const subject = createAuditedSubject([credential(USER_A, "User")], audit);
+
+  const user = await subject.service.setFirstLoginRecoveryAnswer(USER_A, "an answer");
+
+  assert(audit.entries.length === 0, "case 44 must exhaust every bounded audit retry");
+  assert(
+    subject.credentials.updateCalls === 1,
+    "case 44 must perform the credential mutation exactly once, with no repeat and no compensation"
+  );
+  assert(
+    user.mustSetRecovery === false && user.tokenVersion === 2,
+    "case 44 must return the successfully updated user so session refresh and redirect continue"
+  );
+  const persisted = await subject.credentials.findById(USER_A);
+  assert(
+    persisted !== null &&
+      persisted.mustSetRecovery === false &&
+      persisted.securityAnswerHash !== null &&
+      persisted.tokenVersion === 2,
+    "case 44 must leave the credential mutation authoritative, with no rollback"
+  );
+}
+
+async function verifyFirstLoginAuditFailureIsInvisibleToCaller(): Promise<void> {
+  const succeeding = new FakeAuditLog();
+  const healthy = createAuditedSubject([credential(USER_A, "User")], succeeding);
+  const fromSuccess = await healthy.service.setFirstLoginRecoveryAnswer(USER_A, "an answer");
+
+  const failing = new FakeAuditLog();
+  failing.failures = 3;
+  const degraded = createAuditedSubject([credential(USER_A, "User")], failing);
+  const fromFailure = await degraded.service.setFirstLoginRecoveryAnswer(USER_A, "an answer");
+
+  assert(
+    fromSuccess.id === fromFailure.id &&
+      fromSuccess.mustSetRecovery === fromFailure.mustSetRecovery &&
+      fromSuccess.tokenVersion === fromFailure.tokenVersion &&
+      fromSuccess.status === fromFailure.status,
+    "case 45 must return the same successful user whether or not audit persistence succeeded"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -1130,7 +1262,13 @@ async function main(): Promise<void> {
   await verifyBootstrapAuditRepairRequiresSingleDeveloper();
   await verifyBootstrapRefusesNonCanonicalUsername();
   await verifyBootstrapRefusesDuplicateUsername();
-  process.stdout.write("Developer boundary verification passed: all 39 cases verified.\n");
+  await verifyDeveloperFirstLoginRecoveryIsDeveloperClassified();
+  await verifyDeveloperFirstLoginPasswordIsDeveloperClassified();
+  await verifyAdminFirstLoginIsNotDeveloperInvolved();
+  await verifyFirstLoginAuditRetriesTransientFailure();
+  await verifyFirstLoginAuditExhaustionKeepsMutation();
+  await verifyFirstLoginAuditFailureIsInvisibleToCaller();
+  process.stdout.write("Developer boundary verification passed: all 45 cases verified.\n");
 }
 
 void main();

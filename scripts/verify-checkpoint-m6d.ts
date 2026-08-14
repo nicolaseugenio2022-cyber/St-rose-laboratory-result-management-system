@@ -333,6 +333,118 @@ function verifyDeveloperDashboardServerSideProbe(): void {
   );
 }
 
+// Slice E closes an omitted Slice B requirement: the two first-login self-service security
+// mutations committed credential changes with no durable AuthAccount audit event. The writers
+// live in UserService because src/features/auth/authActions.ts is byte-frozen against Milestone
+// 6B and its bare `catch` would report a completed security operation to the user as a failure.
+function verifyFirstLoginSecurityAuditWriters(): void {
+  const source = read("src/services/userService.ts");
+
+  assert(
+    /const FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS = \[250, 1000\];/.test(source),
+    "the first-login audit retry budget must remain bounded and pinned"
+  );
+
+  const helper = /private\s+async\s+emitFirstLoginSecurityEvent\b[\s\S]*?(?=\n\s*private\s+async\s+findOrdinaryMutationTarget\b)/.exec(
+    source
+  )?.[0];
+  assert(helper, "UserService must expose the private first-login audit writer");
+
+  assert(
+    /attempt\s*<=\s*FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS\.length/.test(helper),
+    "the first-login audit writer must bound its retries by the pinned delay list"
+  );
+  assert(
+    !/\bthrow\b/.test(helper),
+    "the first-login audit writer must never throw, so a completed credential mutation is never reported as failed"
+  );
+  assert(
+    /category:\s*"AuthAccount"/.test(helper),
+    "first-login security events must be classified as AuthAccount"
+  );
+  assert(
+    /actorRole:\s*account\.role/.test(helper) && /targetRole:\s*account\.role/.test(helper),
+    "a self-service first-login event must stamp both roles from the persisted account record"
+  );
+  assert(
+    /performedByUserId:\s*account\.id/.test(helper) &&
+      /performedByUsername:\s*account\.username/.test(helper) &&
+      /targetReference:\s*account\.username/.test(helper),
+    "first-login event identity must come from the persisted account record"
+  );
+  assert(
+    !/\bcurrent\b/.test(helper) && !/\bsession\b/.test(helper) && !/\binput\b/.test(helper),
+    "the first-login audit writer must not read identity from the pre-update record, the session, or input"
+  );
+  assert(
+    /details:\s*\{\s*targetUserId:\s*account\.id,\s*selfService:\s*true\s*\}/.test(helper),
+    "first-login event details must carry only the target user id and the self-service marker"
+  );
+
+  const logCall = /console\.error\([\s\S]*?\);/.exec(helper)?.[0];
+  assert(logCall, "retry exhaustion must be recorded through sanitized operational logging");
+  assert(
+    /\{\s*userId:\s*account\.id,\s*eventType,\s*attempts:\s*attempt \+ 1\s*\}/.test(logCall),
+    "the exhaustion log must carry exactly userId, eventType, and attempts"
+  );
+  assert(
+    !/error|username|password|hash|answer|token|details|payload|supabase|sql/i.test(
+      logCall.replace(/console\.error\(\s*"[^"]*",/, "")
+    ),
+    "the exhaustion log must not carry the error, credential material, or database detail"
+  );
+  assert(
+    (source.match(/console\.error\(/g) ?? []).length === 1,
+    "userService must log only the first-login audit exhaustion case"
+  );
+
+  for (const [methodName, blockPattern, eventType] of [
+    [
+      "changeFirstLoginPassword",
+      /async\s+changeFirstLoginPassword\b[\s\S]*?(?=\n\s*async\s+setFirstLoginRecoveryAnswer\b)/,
+      "FirstLoginPasswordChanged",
+    ],
+    [
+      "setFirstLoginRecoveryAnswer",
+      /async\s+setFirstLoginRecoveryAnswer\b[\s\S]*?(?=\n\s*async\s+getRecoveryChallenge\b)/,
+      "FirstLoginRecoveryConfigured",
+    ],
+  ] as const) {
+    const block = blockPattern.exec(source)?.[0];
+    assert(block, `${methodName} must be present`);
+    assert(
+      (block.match(/this\.credentials\.update\(/g) ?? []).length === 1,
+      `${methodName} must perform exactly one credential mutation`
+    );
+    assert(
+      /const\s+updated\s*=\s*await\s+this\.credentials\.update\(/.test(block),
+      `${methodName} must bind the persisted post-update record`
+    );
+    const updateIndex = block.indexOf("this.credentials.update(");
+    const emitIndex = block.indexOf("this.emitFirstLoginSecurityEvent(");
+    assert(emitIndex !== -1, `${methodName} must emit a durable first-login audit event`);
+    assert(
+      emitIndex > updateIndex,
+      `${methodName} must emit only after the credential mutation has succeeded`
+    );
+    assert(
+      new RegExp(
+        `await this\\.emitFirstLoginSecurityEvent\\(\\s*"${eventType}",\\s*updated\\s*\\)`
+      ).test(block),
+      `${methodName} must emit ${eventType} using the record returned by the mutation`
+    );
+    assert(
+      /return toUser\(updated\);/.test(block),
+      `${methodName} must return the persisted post-mutation record`
+    );
+  }
+
+  assert(
+    (source.match(/this\.emitFirstLoginSecurityEvent\(/g) ?? []).length === 2,
+    "the first-login audit writer must be called by exactly the two first-login mutations"
+  );
+}
+
 function verifyPrototypeRetirement(): void {
   assert(
     !existsSync(path.join(root, "src", "services", "audit-log-service.ts")),
@@ -371,6 +483,7 @@ verifyAuditReaderRoleNarrowing();
 verifyAuditClientBoundary();
 verifyDeveloperDashboardPersistentAudit();
 verifyDeveloperDashboardServerSideProbe();
+verifyFirstLoginSecurityAuditWriters();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();
 

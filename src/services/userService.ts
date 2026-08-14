@@ -38,6 +38,8 @@ import {
   resolveSecurityQuestion,
 } from "@/config/security-questions";
 
+const FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS = [250, 1000];
+
 export class DuplicateUsernameError extends Error {
   constructor(public username: string) {
     super(`Username "${username}" is already in use by another account.`);
@@ -233,6 +235,43 @@ export class UserService implements IUserService {
   private assertDeveloperCaller(callerRole: AuthRole): void {
     if (callerRole !== "Developer") {
       throw new Error("Developer account management requires a Developer account.");
+    }
+  }
+
+  private async emitFirstLoginSecurityEvent(
+    eventType: "FirstLoginRecoveryConfigured" | "FirstLoginPasswordChanged",
+    account: AuthCredentialRecord
+  ): Promise<void> {
+    for (let attempt = 0; attempt <= FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        await this.recoveryAudit.emit({
+          category: "AuthAccount",
+          eventType,
+          actorRole: account.role,
+          targetRole: account.role,
+          performedByUserId: account.id,
+          performedByUsername: account.username,
+          targetReference: account.username,
+          details: { targetUserId: account.id, selfService: true },
+        });
+        return;
+      } catch {
+        if (attempt === FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS.length) {
+          // The credential mutation is already authoritative and is never undone or repeated.
+          // This must never rethrow: the caller in authActions.ts has a bare `catch` that would
+          // report the completed security operation to the user as a failure. Log sanitized
+          // operational metadata only — never the error, the audit payload, the username,
+          // credential material, or any database detail.
+          console.error(
+            "First-login security audit persistence failed after bounded retries.",
+            { userId: account.id, eventType, attempts: attempt + 1 }
+          );
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, FIRST_LOGIN_AUDIT_RETRY_DELAYS_MS[attempt]);
+        });
+      }
     }
   }
 
@@ -592,28 +631,28 @@ export class UserService implements IUserService {
     const current = await this.credentials.findById(id);
     if (!current) throw new UserNotFoundError(id);
     const now = new Date().toISOString();
-    return toUser(
-      await this.credentials.update(id, {
-        passwordHash: await hashPassword(password),
-        mustChangePassword: false,
-        tokenVersion: current.tokenVersion + 1,
-        passwordUpdatedAt: now,
-        updatedAt: now,
-      })
-    );
+    const updated = await this.credentials.update(id, {
+      passwordHash: await hashPassword(password),
+      mustChangePassword: false,
+      tokenVersion: current.tokenVersion + 1,
+      passwordUpdatedAt: now,
+      updatedAt: now,
+    });
+    await this.emitFirstLoginSecurityEvent("FirstLoginPasswordChanged", updated);
+    return toUser(updated);
   }
 
   async setFirstLoginRecoveryAnswer(id: string, answer: string): Promise<User> {
     const current = await this.credentials.findById(id);
     if (!current) throw new UserNotFoundError(id);
-    return toUser(
-      await this.credentials.update(id, {
-        securityAnswerHash: await hashSecurityAnswer(answer),
-        mustSetRecovery: false,
-        tokenVersion: current.tokenVersion + 1,
-        updatedAt: new Date().toISOString(),
-      })
-    );
+    const updated = await this.credentials.update(id, {
+      securityAnswerHash: await hashSecurityAnswer(answer),
+      mustSetRecovery: false,
+      tokenVersion: current.tokenVersion + 1,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.emitFirstLoginSecurityEvent("FirstLoginRecoveryConfigured", updated);
+    return toUser(updated);
   }
 
   async getRecoveryChallenge(

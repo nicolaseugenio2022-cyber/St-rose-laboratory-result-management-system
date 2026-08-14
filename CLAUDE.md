@@ -134,7 +134,9 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox workspace-w
 Read-only tasks may use `--sandbox read-only`; the model pin still applies and reasoning effort is
 never lowered as an optimization. **`< /dev/null`, or the platform-safe EOF equivalent, is mandatory
 on every non-interactive invocation** — implementation, continuation, probe, reviewer, correction.
-Prefer a temp-file prompt packet over inlining multi-KB prompts.
+**Write any large prompt to a temp file first and invoke Codex with a short command that reads it**
+(`"$(cat <file>)"`), rather than embedding a large heredoc in the same invocation — inlining multi-KB
+prompts adds command-scanning and approval overhead for no benefit.
 
 **Diagnose from evidence.** If explicit stdin closure cannot be confirmed, check blocked stdin first.
 If stdin was already explicitly closed, do not diagnose it again — distinguish genuine stall, wrapper
@@ -156,6 +158,14 @@ surviving process holds the writer lock, making `resume` fail with `already has 
 contract. Send only: the defect · the allowed files · the required edit class · evidence already
 accepted · invalidated gates · outstanding gates. Do not reconsider architecture unless the defect
 requires it.
+
+**Never evade a textual verifier.** A semantically equivalent syntax change made only to satisfy,
+bypass, or dodge a textual assertion is prohibited — disguising a call while preserving the same
+semantic operation defeats the assertion without changing the risk. When correct code conflicts with
+a verifier's assumption, **stop and report the conflict**. Then fix it at the real boundary: decide
+whether the implementation's placement or design is wrong, or the verifier's logic is, and correct
+that. Never weaken a security assertion merely to make a candidate pass, and preserve exact-equality
+and negative assertions wherever they encode an approved security boundary.
 
 Every implementation prompt uses these headings and normally nothing else:
 
@@ -244,6 +254,18 @@ Do not run the full suite before Level C; Level D re-covers it. A second Level D
 only when something changes afterwards: executable production code, acceptance-relevant verifier
 logic, security configuration, shared build or runtime configuration, or an artifact whose project
 rules explicitly invalidate the prior gate. Documentation-only changes do not re-trigger it.
+
+**The candidate is locked once Level D begins.** No candidate file may be modified while Level D
+evidence is being established, or after it passes. The lock is released only by **aborting and
+reopening Level D**: make the correction, invalidate the evidence reachable from that edit, establish
+a **new** candidate hash set, and run the invalidated verification. Only then is Level D current
+again. **Deterministic PASS evidence applies solely to the exact hashed candidate it verified.**
+
+**Hash handshake.** Record SHA-256 for every changed candidate file immediately before Level D and
+recompute immediately after, requiring exact equality. Codex reports the verified hash set; Claude
+compares it against the actual working tree before accepting the evidence. Hashes identify *which*
+candidate was verified — they never substitute for Claude's Git status and diff-scope checks, which
+remain Claude-owned.
 
 **Frozen files keep a stricter cadence.** For any slice touching a byte-frozen or shape-pinned file,
 run the directly relevant checkpoint **immediately after that slice**, before downstream UI or
@@ -336,6 +358,13 @@ Verifier-only *additions* may be omitted when **both** hold: they weaken or remo
 assertion, **and** valid mutation or behavioural evidence already proves the protection they claim.
 "It is only an addition" is not by itself sufficient.
 
+**Minimal means smallest self-sufficient, not fewest lines.** Two things must always travel with the
+hunks: the closest **same-layer precedent** — a service change carries the service precedent, an
+action the action precedent, a verifier the verifier precedent, since a precedent from another layer
+does not let a reviewer judge whether the code mirrors it — and, for any extracted verifier
+assertion, the **guard that gives it meaning**. An assertion shown without its presence or shape
+guard reads as weaker than it is and invites false findings.
+
 **Reviewer contract.** READ the supplied packet, the named authority and invariants, running the
 minimum read-only commands needed to read them. DO NOT implement, modify, mutate, rerun A/B/C/D,
 investigate unrelated areas, or re-litigate authorized decisions. RETURN blocking findings,
@@ -372,6 +401,12 @@ PASS/FAIL, mutation invariant, intended and actual assertion, restore hash, outs
 never any secret or credential material.
 
 Sign-off requires valid, current evidence for every required gate.
+
+**Live acceptance.** Before any live write, enumerate every field and invariant the post-write script
+will assert, and capture a baseline for **each one**. Never assert "unchanged" on a field that was not
+captured. If more live actions occurred than expected, reconstruct the actual sequence from
+authoritative evidence — the audit trail — before calling anything a defect; an incomplete baseline or
+a wrong assumption about write count produces false failures, not findings.
 
 ### Reporting
 

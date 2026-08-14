@@ -54,6 +54,14 @@ recorded in the review as Claude-authored.
 Neither Claude nor Codex may commit or push unless the user explicitly requests it.
 All work stays in the working tree for review.
 
+**Authorized `main` publication boundary**, in order: verify the candidate · review the exact diff
+and staged set · create the approved implementation commit(s) · **stop for explicit `PROJECT.md`
+synchronization authorization** unless already given for this publication, since `AGENTS.md` forbids
+modifying `PROJECT.md` automatically · synchronize `PROJECT.md` to the actual committed state,
+including completed progress, deferred work, known gaps, and handoff context · review it against the
+repository and Git history · commit the documentation synchronization · push only approved commits ·
+observe exact-commit CI · verify local `HEAD` against `origin/main`.
+
 ## Workflow
 
 1. **Inspect** — read the relevant source and authority files before planning.
@@ -79,12 +87,18 @@ implementation exposes an assumption never actually established · a security-se
 warrants it · an authority file changes on disk · or a new session begins. Otherwise continue from
 the freeze.
 
-**Slice at artifact boundaries, from the start.** Prefer several small delegations over one large
-one that risks the ten-minute foreground wall. A common shape is repository/service/domain, then
-page/UI, then integration/verifier/wiring — a guideline, not a required three. Use one slice when
-the change is small; never split a cohesive change just to produce slices. Each slice must have a
-single unambiguous completion boundary. The two-round automatic correction limit applies **per
-slice**; re-slicing work to obtain a fresh correction budget is a hard stop.
+**Slice by cohesion and risk, never by line count.** Prefer one delegation when the work is a
+single cohesive reasoning unit with shared invariants and a bounded context packet. Split when
+responsibilities are independently understandable · different security boundaries are involved ·
+separate investigations need materially different context · combining would produce an oversized
+prompt or excessive Codex reasoning · independent rollback and verification would be safer · or
+the combined slice would risk the ten-minute foreground wall. Changed-line count is an informal
+signal only and is never an authority rule. Each slice must have a single unambiguous completion
+boundary. The two-round automatic correction limit applies **per slice**; re-slicing work to
+obtain a fresh correction budget is a hard stop.
+
+When one delegation covers both production and verifier changes, the prompt must name the existing
+assertions that the production change will invalidate, and state how they are to be repaired.
 
 ## Hard stops — ask the user
 
@@ -159,45 +173,83 @@ must never mean a vaguer one.
 
 ### Verification split
 
-**Environment constraint — current.** Codex cannot execute `tsx` or `npm` inside its sandbox here.
-Two independent blockers have been observed: `npx tsx` attempts a registry fetch and fails
-(`tsx` is not in `node_modules`), and PowerShell's execution policy blocks `npx.ps1` / `npm.ps1`.
+**Codex may run Level A only** — targeted verifier scripts, via
 
-Until that capability is explicitly re-verified:
+```
+node node_modules/tsx/dist/cli.mjs --conditions=react-server scripts/<name>.ts
+```
 
-- **Codex runs no verification.** Do not ask Codex to run `npm` or `tsx`. If a prompt names a gate
-  for context, instruct Codex to report plainly that it could not start it — never to install
-  anything, add a dependency, or work around the sandbox.
-- **Claude runs everything**: targeted verifier execution, `tsc`, `lint`, `build`, and the
-  regression gates the change actually puts at risk. Candidates, **each as applicable** — M6A, M6B,
-  M6C, M6D, the Developer boundary verifier, the Admin invariant verifier, the recovery verifier,
-  C1, C4, C4.2, C5. This is a menu, not a mandatory sequence: no checkpoint is obliged to rerun
-  every historical verifier. Claude selects the required suite from the checkpoint's actual risk and
-  scope, and that selection must fully cover the candidate change.
+Without that flag the scripts fail on the `server-only` import. Codex must never install anything,
+add or change a dependency, or work around the sandbox; when a command cannot start it says so
+plainly and stops.
 
-This is an environment constraint, not a reduction in verification rigour. Every gate the change
-requires still runs; only the executor changed.
+**`tsc`, `lint`, `build`, and anything reached through `npm run` or `npx` stay Claude's** — still
+blocked by the PowerShell execution policy. Do not delegate them, and do not assume a direct-`node`
+equivalent works until a probe proves it. Widening this capability requires a fresh probe, recorded
+here in the same change.
+
+**Claude runs Levels B, C, and D**, plus every gate Codex did not actually execute. Candidates,
+**each as applicable** — M6A, M6B, M6C, M6D, the Developer boundary verifier, the Admin invariant
+verifier, the recovery verifier, C1, C4, C4.2, C5. This is a menu, not a mandatory sequence: no
+checkpoint is obliged to rerun every historical verifier. Claude selects the required suite from the
+checkpoint's actual risk and scope, and that selection must fully cover the candidate change.
 
 **Never report a Codex gate as passed when Codex could not execute it.** A gate Codex did not run
 is not evidence of anything.
 
-When the sandbox is fixed, targeted `tsc`/`lint`/one-verifier may return to Codex as a fast failure
-signal, and this section must be updated in the same commit that re-verifies the capability.
+### Verification ladder
 
-### Intermediate verification — risk-based
+Targeted implementation checks → affected verifier/checkpoint → required risk-based adversarial
+proof → restored candidate → one final complete gate. Run the smallest check capable of catching
+what the current step could plausibly break.
 
-Do not run the regression suite after every slice. After a slice Claude runs the **smallest check
-capable of catching the regression that slice could plausibly cause**. Illustrative, not a matrix:
-shape-pinned or M6C surface → M6C · Developer authorization or invisibility → Developer boundary
-verifier · Admin account invariants → Admin invariant verifier · recovery or authentication →
-recovery verifier plus the relevant auth checkpoint · UI-only → `tsc` and `lint` · security-sensitive
-query projection → the relevant verifier plus source review. When two checks are plausible, run the
-broader one.
+- **A — during implementation.** One targeted verifier script as a fast failure signal — Codex's,
+  per Verification split. Skipped when it cannot run, never silently reassigned.
+- **B — stable candidate.** Once the diff stops changing, run only the verifiers whose assertions
+  the diff can actually reach, plus `tsc`. Illustrative, not a matrix: shape-pinned or M6C surface
+  → M6C · Developer authorization or invisibility → Developer boundary verifier · Admin account
+  invariants → Admin invariant verifier · recovery or authentication → recovery verifier plus the
+  relevant auth checkpoint · UI-only → `tsc` and `lint` · security-sensitive query projection →
+  the relevant verifier plus source review. When two checks are plausible, run the broader one.
+- **C — adversarial.** Risk-based mutation proof (below), against the candidate tree.
+- **D — final gate.** After the candidate and verifier tree are stable and every temporary
+  perturbation is restored, run the complete required suite **once**, including `lint` and `build`.
+
+Do not run the full suite before Level C; Level D re-covers it. A second Level D run is required
+only when something changes afterwards: executable production code, acceptance-relevant verifier
+logic, security configuration, shared build or runtime configuration, or an artifact whose project
+rules explicitly invalidate the prior gate. Documentation-only changes do not re-trigger it.
 
 **Frozen files keep a stricter cadence.** For any slice touching a byte-frozen or shape-pinned file,
 run the directly relevant checkpoint **immediately after that slice**, before downstream UI or
 verifier work continues. Shape-pinned assertions fail one at a time and mask each other, so
 deferring converts one correction round into several.
+
+### Adversarial verification — risk-based
+
+Mutation proof — *prove the assertion bites* — is **required** when any of these holds: a new
+security-critical assertion was added and no existing behavioural failure demonstrates it can fail ·
+the assertion could pass because of fixture shape, ordering, masking, or an over-broad predicate ·
+the verifier is itself part of the security boundary being changed · that verifier has previously
+shown a false-positive or masking risk.
+
+**Not** required when an existing behavioural test already fails for the prohibited condition and
+passes for the correct one · the assertion duplicates an invariant already independently proven ·
+the change is not security-critical · or the mutation would only prove a framework, type, or lint
+rule enforced elsewhere.
+
+One representative mutation per security invariant, not one per assertion. **Never reduce the set of
+invariants covered in order to reduce execution count.**
+
+- **A mutation must not alter any construct an earlier assertion counts or shape-matches**, or it
+  trips that assertion first and the intended one is never reached. If masking surfaces anyway, add
+  only the minimum extra mutation isolating the masked assertion.
+- **Capture full stderr on the first execution** and confirm each mutation trips the *intended*
+  assertion by message, not merely that some assertion failed.
+- **One verifier per mutation** unless two prove genuinely distinct guarantees, such as a textual
+  pin and a behavioural outcome.
+- **Restore only from a byte-verified backup and confirm the restored tree by hash.** Never use
+  `git checkout --` to undo a perturbation.
 
 ## Review contract
 
@@ -233,8 +285,8 @@ The checks above are the review and are never skipped. They are reading, not exe
 ### Running verification
 
 The full suite is Claude's responsibility, run once, after the diff review. Codex's targeted
-`tsc`/`lint`/verifier results are a fast failure signal, not a substitute — do not re-run them
-merely to duplicate evidence, and do not treat their absence as a pass.
+verifier results are a fast failure signal, not a substitute — do not re-run them merely to
+duplicate evidence, and do not treat their absence as a pass.
 
 Accept Codex's targeted results at face value only for the gates it actually ran and reported.
 Re-run one of those gates when:

@@ -14,6 +14,10 @@ function read(relativePath: string): string {
   return readFileSync(path.join(root, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
+function normalizedSha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 function sourceFiles(directory: string): string[] {
   const absoluteDirectory = path.join(root, directory);
   return readdirSync(absoluteDirectory, { withFileTypes: true }).flatMap((entry) => {
@@ -341,12 +345,12 @@ function verifyBehaviouralFreeze(): void {
   }
 
   const APPROVED_AUTH_ACTIONS_SHA256 =
-    "3a1b55040beadf61e0bbb840b9abbbc186a4ab6d830a64c90874a0350a31bbae";
+    "982bc087ba1214ac91e2109bc91cb59083ae4713290539bc8cfbe077e1aa04c6";
+  // Persistent repository pins normalize line endings for portability; transient local candidate hashes may use raw bytes because they do not outlive the verification session.
   assert(
-    createHash("sha256")
-      .update(readFileSync(path.join(root, "src/features/auth/authActions.ts")))
-      .digest("hex") === APPROVED_AUTH_ACTIONS_SHA256,
-    "authActions.ts must match its approved post-F5 content exactly"
+    normalizedSha256(read("src/features/auth/authActions.ts")) ===
+      APPROVED_AUTH_ACTIONS_SHA256,
+    "authActions.ts must remain byte-for-byte unchanged apart from line endings"
   );
 
   for (const relativePath of ["src/lib/login-rate-limit.ts"]) {
@@ -369,10 +373,9 @@ function verifyBehaviouralFreeze(): void {
   const APPROVED_LOGIN_RATE_LIMIT_SHA256 =
     "46f04f208fd6aa52962ae68fc02ce0af650decafd50c5870130473375f247bb1";
   assert(
-    createHash("sha256")
-      .update(readFileSync(path.join(root, "src/lib/login-rate-limit.ts")))
-      .digest("hex") === APPROVED_LOGIN_RATE_LIMIT_SHA256,
-    "login-rate-limit.ts must match its approved post-F6 content exactly"
+    normalizedSha256(read("src/lib/login-rate-limit.ts")) ===
+      APPROVED_LOGIN_RATE_LIMIT_SHA256,
+    "login-rate-limit.ts must remain byte-for-byte unchanged apart from line endings"
   );
 }
 

@@ -83,6 +83,10 @@ observe exact-commit CI · verify local `HEAD` against `origin/main`.
 6. **Review** — independently inspect the repository (see Review contract). Codex's summary is evidence, never proof.
 7. **Correct** — a mistake lying entirely inside the frozen plan may be sent back to Codex without asking. Maximum **2** automatic correction rounds; review again after each. Once exhausted, stop and report.
 8. **Declare** — report completion only after independently verifying every acceptance criterion.
+   A slice adding a user-facing capability names the entry point that actually reaches it, or records
+   explicitly that it remains unreachable — type checks, lint, build and every verifier pass happily
+   on code nothing calls. Acceptance deferred to a later slice becomes a named milestone-blocking
+   item, carried until closed; bound to an unscheduled slice it silently becomes a milestone gap.
 
 **The frozen checkpoint is the working authority for its own slices.** The expensive reading and
 reconciliation happen once, at planning. Do not reread unchanged authority files or rederive the
@@ -267,6 +271,14 @@ compares it against the actual working tree before accepting the evidence. Hashe
 candidate was verified — they never substitute for Claude's Git status and diff-scope checks, which
 remain Claude-owned.
 
+**A persistent pin is not a candidate hash.** A hash committed to the repository — a freeze pin, a
+baseline constant — must be checkout- and platform-invariant, so normalize pure representation
+differences such as CRLF and LF before hashing and preserve exact-content equality in every other
+respect. Never relax such a pin into a semantic, structural, or substring check. Transient candidate
+hashes may hash raw bytes, because they are produced and consumed against the same bytes and never
+outlive the session. A raw-byte persistent pin passes on the machine that minted it and fails on
+every other checkout, so nothing local detects it.
+
 **Frozen files keep a stricter cadence.** For any slice touching a byte-frozen or shape-pinned file,
 run the directly relevant checkpoint **immediately after that slice**, before downstream UI or
 verifier work continues. Shape-pinned assertions fail one at a time and mask each other, so
@@ -402,6 +414,11 @@ never any secret or credential material.
 
 Sign-off requires valid, current evidence for every required gate.
 
+**A probe earns trust from a negative control.** A read-only diagnostic is not authoritative until it
+has been shown capable of surfacing the absent or error condition it claims to detect. Run the
+control first; an absent-case probe that cannot report absence reports nothing, and its reassuring
+result is worse than no result.
+
 **Live acceptance.** Before any live write, enumerate every field and invariant the post-write script
 will assert, and capture a baseline for **each one**. Never assert "unchanged" on a field that was not
 captured. If more live actions occurred than expected, reconstruct the actual sequence from
@@ -431,3 +448,8 @@ Next:            <next slice>
 
 Expand for security findings, failed gates, architecture conflicts, scope changes, and decisions
 needing the user. Give the full checkpoint summary once, at completion.
+
+Brevity is a property of the report, never of the work. Compact reporting trims restatement and
+redundancy only; it never reduces reasoning effort, verification depth, independent review, required
+gates, candidate integrity checks, or live acceptance, and never thins the closeout and publication
+evidence.

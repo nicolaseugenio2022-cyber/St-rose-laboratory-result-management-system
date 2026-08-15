@@ -52,7 +52,7 @@ Phase C is closed. Preview, Print, and PDF resolve through one authoritative Nat
 
 Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
 
-Milestone 6 security hardening is the active work. Checkpoint 6D-2 is in progress and not complete; see Milestone 6.
+Milestone 6 security hardening is the active work. Checkpoint 6D-2 is complete; see Milestone 6.
 
 ---
 
@@ -237,15 +237,11 @@ Implemented and verified:
 Pending:
 
 - Migration-state preflight and schema provisioning
-- One-time protected Developer bootstrap — partially implemented; see 6D-2 below
 - Persistent audit writers for the remaining mandated categories: Personnel and Credential events,
   and Session lifecycle events beyond the automated retention purge
-- Authentication and session auditing: failed authentication attempts and account lockout
-  activation and release (SECURITY_MODEL §10.1), plus successful authentication and explicit
-  user-initiated logout (SECURITY_MODEL §10.2, approved 2026-08-14)
-- Authenticated self-service password change for User, Admin, and Developer, requiring the current
-  password rather than the security question (SECURITY_MODEL §5.2, approved 2026-08-14)
-- Separation of privileged password reset from general account editing
+- Audit delivery durability: every authentication audit writer appends its event separately from the
+  operation it records and swallows a failed append, so an event can be lost. Accepted 2026-08-15 as
+  a project-wide residual, to be addressed across all writers at once rather than per event.
 - Performance validation
 - Accessibility validation
 - Monitoring
@@ -254,8 +250,9 @@ Pending:
 
 ### Milestone 6D-2 — audit writers and Developer bootstrap
 
-**6D-2 is not complete.** Slices A, B, C and D1 are committed; D2 is designed and frozen but not
-implemented.
+**6D-2 is complete**, declared 2026-08-15 after reconciliation against Git history and the governing
+authority. Every slice below is committed, and each F-slice carries live acceptance against the live
+Supabase project in addition to its offline gates.
 
 - Slice A — durable Developer classification schema and dual-mode read. Complete.
 - Slice B — role-aware audit writers, Auth/Account lifecycle and Security-Denial events, and
@@ -264,13 +261,32 @@ implemented.
   verification. Complete.
 - Slice D1 — guarded one-time `bootstrapFirstDeveloper` service primitive, refusing when any
   Developer account already exists, of any status. Complete.
-- Slice D2 — **outstanding.** Required before 6D-2 can be declared complete: the operator-only
-  bootstrap entry point, the durable Initial Developer bootstrap execution audit event, bounded
-  retry and repair behaviour, environment-only secret handling, and bootstrap-specific
-  verification.
+- Slice D2 — operator-only Developer bootstrap entry point, the durable Initial Developer bootstrap
+  execution audit event, bounded retry and repair behaviour, and environment-only secret handling.
+  Complete. A fresh database now has a path to its first Developer account.
+- Slice E — durable audit for first-login security mutations. Complete.
+- F0 — SECURITY_MODEL §5.2 and §10.2 requirements recorded ahead of implementation. Complete.
+- F1 — durable audit for failed authentication attempts (§10.1). Complete.
+- F2 — audit for successful authentication (§10.2). Complete.
+- F3 — authenticated self-service password change requiring the current password rather than the
+  security question (§5.2). Complete.
+- F4 — privileged password reset separated from general account editing (§5.2). Complete.
+- F5 — durable audit for explicit user-initiated logout (§10.2). Complete.
+- F6 — durable audit for account lockout activation and release (§10.1), backed by the
+  `account_lockouts` table whose partial unique index on open lockouts makes activation exactly-once.
+  Complete.
 
-Until D2 lands, a fresh database has no path to its first Developer account, because Developer
-creation otherwise requires an authenticated Developer caller.
+With F1, F2, F5 and F6 committed, the authentication and session audit set mandated by §10.1 and
+approved under §10.2 is fully implemented.
+
+**Closeout gap, found and closed 2026-08-15.** Reconciliation found that F3 had shipped as service,
+action and audit with no entry point: `changeOwnPasswordAction` had zero callers, so §5.2 was
+implemented but not deliverable, and F3's successful-path live acceptance could not be closed. A
+narrow UI-only closeout slice added a Change Password control in the application header, available to
+User, Admin and Developer, and one controlled live change then closed the deferred acceptance —
+exactly one `AccountPasswordChanged`, the guarded compare-and-set succeeding, `token_version`
+incrementing exactly once, the initiating session remaining usable, and recovery and lifecycle state
+unchanged.
 
 ### Environment and migration state
 
@@ -281,6 +297,15 @@ therefore contains the migration changes — the audit role columns and the gene
 `developer_involved` column are present and were verified against the running application — even
 though `supabase_migrations.schema_migrations` may not record that migration as applied. Confirm the
 columns and schema state before attempting to re-apply it.
+
+`supabase/migrations/20260815120000_add_account_lockouts.sql` was likewise applied manually through
+the Supabase SQL Editor on 2026-08-15, and deliberately so. Preflight established that a broad
+migration runner would first replay `20260813120000`, which uses `ADD COLUMN` without `IF NOT EXISTS`
+and would fail on the columns already present, and would also apply the unrelated pending
+`20260809104941` as collateral. Table, columns, the partial unique index, RLS, the absence of
+policies, and the absence of `anon`/`authenticated` grants were each verified by query afterwards.
+Applying it also required confirming no account was inside an active lockout at cutover, since a
+lockout already running when the table appears produces no release event.
 
 `supabase/migrations/20260809104941_add_completed_report_snapshots.sql` is not applied to that
 environment. It belongs to Completed History, which has not started.
@@ -297,6 +322,13 @@ cannot be detected before runtime.
   is complete. Internal and canonical values remain stable in the domain, database, services, audit
   events, and APIs; end-user wording is a presentation-layer translation only. This is not current
   milestone work.
+- Deferred UI/UX polish, tracked separately from functional and security completion and blocking
+  neither: the login cooldown message should convey the remaining wait from the authoritative server
+  retry state without revealing whether the username or the network dimension caused it; and the
+  Change Password modal blocks every dismissal route while a submission is in flight, so that a
+  committed password change can never be silently hidden, which leaves a user on a request that never
+  settles waiting until they navigate or reload. Both belong to the same in-flight and blocked-state
+  pass; neither is a functional or security defect.
 
 ---
 
@@ -545,4 +577,6 @@ Phase C is complete. Preview, Print, and PDF resolve through one authoritative N
 
 Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
 
-The active objective is Milestone 6 security hardening. Checkpoint 6D-2 is in progress: Slices A, B, C and D1 are committed, and Slice D2 (Developer bootstrap completion) remains outstanding.
+The active objective is Milestone 6 security hardening. Checkpoint 6D-2 is complete as of 2026-08-15: Slices A through E, F0 through F6, and the F3 closeout-gap entry point are committed and live-accepted, and the persistent freeze pins were made checkout- and platform-invariant so verification passes on an LF checkout such as CI.
+
+The next planned application work after publication is the remaining Milestone 6 Pending list — migration-state preflight and schema provisioning, the outstanding Personnel/Credential and Session-lifecycle audit writers, and audit delivery durability — followed by performance, accessibility, monitoring, and deployment validation. Milestone 5 (Drafts and History, including Completed History) remains unstarted. Deferred UI/UX polish is tracked separately and gates nothing.

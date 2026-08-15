@@ -245,9 +245,48 @@ assert(invalidDraft.status === "Draft", "incomplete or invalid reports remain va
 const repositorySource = readFileSync(join(process.cwd(), "src/repositories/supabase-session-repository.ts"), "utf8");
 const migrationSource = readFileSync(join(process.cwd(), "supabase/migrations/20260809104941_add_completed_report_snapshots.sql"), "utf8");
 const evaluationMigrationSource = readFileSync(join(process.cwd(), "supabase/migrations/20260809140000_expand_evaluation_outcomes.sql"), "utf8");
+const completionTransactionMigrationSource = readFileSync(join(process.cwd(), "supabase/migrations/20260815140000_complete_session_transaction.sql"), "utf8");
+const completeSessionSource = repositorySource.slice(
+  repositorySource.indexOf("  async completeSession("),
+  repositorySource.indexOf("  async replaceSession(")
+);
 assert(repositorySource.includes("encoding_data: report.encodingData") && repositorySource.includes("completed_snapshot: session.completedSnapshot"), "draft encoding data and completed snapshots are wired to persistence");
 assert(repositorySource.includes("raw_result_value") && repositorySource.includes("formatted_result_value") && repositorySource.includes("computation_metadata"), "raw, formatted, and computation evidence are persisted and restored");
 assert(migrationSource.includes("completed_snapshot JSONB") && migrationSource.includes("encoding_data JSONB") && migrationSource.includes("'Invalid'"), "additive migration supports frozen JSONB snapshots, draft encoding metadata, and invalid draft outcomes");
 assert(evaluationMigrationSource.includes("'Low'") && evaluationMigrationSource.includes("'High'") && evaluationMigrationSource.includes("'Entered'") && evaluationMigrationSource.includes("'Abnormal'"), "additive evaluation migration permits new outcomes while retaining legacy compatibility");
+assert(/CREATE OR REPLACE FUNCTION\s+complete_patient_report_session\s*\(payload jsonb\)[\s\S]*?SECURITY INVOKER/i.test(completionTransactionMigrationSource), "completion transaction function uses SECURITY INVOKER");
+assert(/SECURITY INVOKER\s+SET search_path = public, pg_temp/i.test(completionTransactionMigrationSource), "completion transaction function pins its search_path");
+const executeRevocation = completionTransactionMigrationSource.match(/REVOKE EXECUTE ON FUNCTION\s+complete_patient_report_session\s*\(jsonb\)\s+FROM\s+[^;]+;/i)?.[0] || "";
+assert(/\bPUBLIC\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from PUBLIC");
+assert(/\banon\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from anon");
+assert(/\bauthenticated\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from authenticated");
+const functionPrivilegeGrants = Array.from(completionTransactionMigrationSource.matchAll(/GRANT\s+(EXECUTE|ALL(?:\s+PRIVILEGES)?)\s+ON\s+FUNCTION\s+(?:public\.)?complete_patient_report_session\s*\(jsonb\)\s+TO\s+([^;]+);/gi));
+assert(functionPrivilegeGrants.length === 1 && functionPrivilegeGrants[0][1].toUpperCase() === "EXECUTE" && functionPrivilegeGrants[0][2].trim().toLowerCase() === "service_role", "completion transaction function grants EXECUTE strictly to service_role");
+assert(!functionPrivilegeGrants.some((grant) => /\b(?:PUBLIC|anon|authenticated)\b/i.test(grant[2])), "completion transaction function never grants EXECUTE to PUBLIC, anon, or authenticated");
+assert(completionTransactionMigrationSource.includes("target_session_id uuid := (payload -> 'session' ->> 'id')::uuid") && completionTransactionMigrationSource.includes("target_report_id := (report_payload ->> 'id')::uuid") && !completionTransactionMigrationSource.includes("report_payload ->> 'session_id'") && !completionTransactionMigrationSource.includes("result_payload ->> 'report_id'") && !completionTransactionMigrationSource.includes("signatory_payload ->> 'report_id'"), "completion transaction derives report and child parent keys from payload nesting");
+const reportUpsertSource = completionTransactionMigrationSource.slice(
+  completionTransactionMigrationSource.indexOf("INSERT INTO laboratory_reports"),
+  completionTransactionMigrationSource.indexOf("FOR result_payload IN")
+);
+const resultUpsertSource = completionTransactionMigrationSource.slice(
+  completionTransactionMigrationSource.indexOf("INSERT INTO laboratory_results"),
+  completionTransactionMigrationSource.indexOf("END IF;", completionTransactionMigrationSource.indexOf("INSERT INTO laboratory_results"))
+);
+assert(/ON CONFLICT\s*\(id\)\s*DO UPDATE SET[\s\S]*WHERE laboratory_reports\.session_id = target_session_id;/i.test(reportUpsertSource), "report upsert guards the locked conflicting row's session ownership");
+assert(/ON CONFLICT\s*\(id\)\s*DO UPDATE SET[\s\S]*WHERE laboratory_results\.report_id = target_report_id;/i.test(resultUpsertSource), "result upsert guards the locked conflicting row's report ownership");
+for (const writeCountName of ["written_session_count", "written_report_count", "written_result_count", "written_signatory_count"]) {
+  const shortfallAssertion = new RegExp(`GET DIAGNOSTICS ${writeCountName} = ROW_COUNT;\\s*IF ${writeCountName} < 1 THEN\\s*RAISE EXCEPTION [^;]+;\\s*END IF;`, "i");
+  assert(shortfallAssertion.test(completionTransactionMigrationSource), `completion transaction raises on a ${writeCountName.replace("written_", "").replace("_count", "")} write shortfall`);
+}
+assert(/GROUP BY \(report_element ->> 'id'\)::uuid\s+HAVING count\(\*\) > 1[\s\S]*duplicate report id/i.test(completionTransactionMigrationSource), "completion transaction rejects duplicate report ids");
+assert(/GROUP BY \(result_element ->> 'id'\)::uuid\s+HAVING count\(\*\) > 1[\s\S]*duplicate result id/i.test(completionTransactionMigrationSource), "completion transaction rejects duplicate result ids across report nesting");
+assert(completionTransactionMigrationSource.includes("result_payload -> 'result_value' <> 'null'::jsonb") && completionTransactionMigrationSource.includes("result_payload -> 'result_value' <> '\"\"'::jsonb") && completionTransactionMigrationSource.includes("result_payload -> 'result_value' <> '0'::jsonb") && completionTransactionMigrationSource.includes("result_payload -> 'result_value' <> 'false'::jsonb"), "completion transaction mirrors repository truthiness filtering for result values");
+const completionRpcIndex = completeSessionSource.indexOf('rpc("complete_patient_report_session"');
+assert(completionRpcIndex >= 0, "completeSession invokes the completion transaction RPC");
+assert(/const \{ error \} = await supabaseServer\.rpc\("complete_patient_report_session", \{ payload \}\);\s*if \(error\) throw error;/.test(completeSessionSource), "completeSession throws completion transaction RPC errors");
+assert(!["patient_report_sessions", "laboratory_reports", "laboratory_results", "report_signatories"].some((table) => completeSessionSource.includes(`.from("${table}")`)), "completeSession contains no direct session, report, result, or signatory table write");
+assert(completeSessionSource.indexOf("this.requireCaller()") >= 0 && completeSessionSource.indexOf("this.requireCaller()") < completionRpcIndex, "completeSession requires its caller before the completion transaction RPC");
+assert(completeSessionSource.indexOf("this.assertExistingSessionOwnership(session.id)") >= 0 && completeSessionSource.indexOf("this.assertExistingSessionOwnership(session.id)") < completionRpcIndex, "completeSession verifies existing session ownership before the completion transaction RPC");
+assert(completeSessionSource.indexOf("autoSuggestionLearningService.learnSuggestionsFromSessionDemographics") > completionRpcIndex, "completeSession learns auto-suggestions only after the completion transaction RPC");
 
 console.log("=== ALL CHECKPOINT B5 VERIFICATION TESTS PASSED ===");

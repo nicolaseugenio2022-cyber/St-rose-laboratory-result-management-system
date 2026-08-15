@@ -170,7 +170,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     const caller = this.requireCaller();
     await this.assertExistingSessionOwnership(session.id);
 
-    const { error: sessionError } = await supabaseServer.from("patient_report_sessions").upsert({
+    const payload = {
+      session: {
         id: session.id,
         accession_number: session.accessionNumber,
         status: "Completed",
@@ -180,27 +181,17 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         completed_at: session.completedAt,
         expires_at: session.expiresAt,
         completed_snapshot: session.completedSnapshot || null,
-      });
-    if (sessionError) throw sessionError;
-
-    for (const report of session.reports) {
-      const { error: reportError } = await supabaseServer.from("laboratory_reports").upsert({
+      },
+      reports: session.reports.map((report) => ({
           id: report.id,
-          session_id: session.id,
           template_code: report.templateCode,
           template_title: report.templateTitle,
           renderer_family: report.rendererFamily,
           reagent_kit_info: report.reagentKitInfo || null,
           remarks: report.remarks || null,
           encoding_data: report.encodingData || null,
-        });
-      if (reportError) throw reportError;
-
-      for (const res of report.results) {
-        if (res.resultValue) {
-          const { error: resultError } = await supabaseServer.from("laboratory_results").upsert({
+          results: report.results.filter((res) => res.resultValue).map((res) => ({
               id: res.id,
-              report_id: report.id,
               parameter_code: res.parameterCode,
               parameter_name: res.parameterName,
               result_value: res.resultValue,
@@ -211,14 +202,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
               reference_rule_snapshot: res.referenceRuleSnapshot || null,
               computation_metadata: res.computationMetadata || null,
               display_order: res.displayOrder,
-            });
-          if (resultError) throw resultError;
-        }
-      }
-
-      for (const sig of report.signatories) {
-        const { error: signatoryError } = await supabaseServer.from("report_signatories").upsert({
-            report_id: report.id,
+            })),
+          signatories: report.signatories.map((sig) => ({
             personnel_id: sig.personnelId,
             role: sig.role,
             printed_full_name: sig.printedFullName,
@@ -226,10 +211,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
             printed_prc_license_number: sig.printedPrcLicenseNumber,
             signature_image_url: sig.signatureImageUrl || null,
             display_order: sig.displayOrder,
-          });
-        if (signatoryError) throw signatoryError;
-      }
-    }
+          })),
+        })),
+    };
+
+    const { error } = await supabaseServer.rpc("complete_patient_report_session", { payload });
+    if (error) throw error;
 
     await autoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
 

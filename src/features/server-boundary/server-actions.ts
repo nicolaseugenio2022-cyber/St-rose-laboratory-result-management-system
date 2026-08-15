@@ -3,8 +3,10 @@
 import "server-only";
 
 import type { HydratedTemplateSpec } from "@/services/interfaces";
+import type { IPersonnel } from "@/domain/models/interfaces";
 import { getSession } from "@/lib/session";
 import { supabaseServer } from "@/lib/supabase/server";
+import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
 import { auditService } from "@/services/audit-service-instance";
 import { reportRegistryService } from "@/services/report-registry-service";
@@ -118,6 +120,12 @@ export async function allocateAccessionNumberAction(): Promise<string> {
   const { data, error } = await supabaseServer.rpc("allocate_accession_number");
   if (error) throw error;
   return data;
+}
+
+export async function listActivePersonnelAction(): Promise<IPersonnel[]> {
+  await requireOperationalCaller();
+  const repository = new SupabasePersonnelRepository();
+  return repository.findAllActive();
 }
 
 export async function listRegistryTemplatesAction(

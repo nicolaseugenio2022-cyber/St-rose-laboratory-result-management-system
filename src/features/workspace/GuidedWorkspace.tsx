@@ -15,6 +15,7 @@ import {
   allocateAccessionNumberAction,
   completeSessionAction,
   getRegistryTemplateAction,
+  listActivePersonnelAction,
   listRegistryTemplatesAction,
   saveDraftAction,
 } from "@/features/server-boundary/server-actions";
@@ -52,47 +53,7 @@ export function GuidedWorkspace() {
     });
   });
 
-  const [availablePersonnel] = useState<IPersonnel[]>([
-    {
-      id: "p-01",
-      firstName: "PAULO ANTONIO E.",
-      lastName: "CLEMENTE",
-      middleInitial: "",
-      credentials: "MD, DPSP",
-      prcLicenseNumber: "113927",
-      role: "Pathologist",
-      signatureImageUrl: "/pathologist-signature.png",
-      isActive: true,
-      createdAt: "",
-      updatedAt: "",
-    },
-    {
-      id: "mt-01",
-      firstName: "SANDRA ANNE P.",
-      lastName: "GROSPE",
-      middleInitial: "",
-      credentials: "RMT, MLS(ASCPi)",
-      prcLicenseNumber: "0124239",
-      role: "MedicalTechnologist",
-      signatureImageUrl: "", // Text only per Official Signature Rule
-      isActive: true,
-      createdAt: "",
-      updatedAt: "",
-    },
-    {
-      id: "mt-02",
-      firstName: "LOVERNA MARI M.",
-      lastName: "CASTILLO",
-      middleInitial: "",
-      credentials: "RMT",
-      prcLicenseNumber: "0135199",
-      role: "MedicalTechnologist",
-      signatureImageUrl: "",
-      isActive: true,
-      createdAt: "",
-      updatedAt: "",
-    },
-  ]);
+  const [availablePersonnel, setAvailablePersonnel] = useState<IPersonnel[]>([]);
 
   const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>([]);
 
@@ -152,6 +113,16 @@ export function GuidedWorkspace() {
       }
     }
     loadTemplates();
+  }, []);
+
+  useEffect(() => {
+    listActivePersonnelAction()
+      .then(setAvailablePersonnel)
+      .catch((error: unknown) => {
+        setValidationError(
+          error instanceof Error ? error.message : "Active personnel could not be loaded."
+        );
+      });
   }, []);
 
   // Load hydrated spec whenever activeTemplateCode changes

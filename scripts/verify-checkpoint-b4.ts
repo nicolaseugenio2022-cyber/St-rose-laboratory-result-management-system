@@ -64,11 +64,24 @@ assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\baut
 
 const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/features/workspace/GuidedWorkspace.tsx"), "utf8");
 assert(!guidedWorkspaceSource.includes("AccessionNumberGenerator.generate"), "GuidedWorkspace no longer generates accession numbers client-side");
+assert(!guidedWorkspaceSource.includes("p-01"), "GuidedWorkspace contains no hardcoded placeholder personnel id");
+assert(!/(?:const|let|var)\s+(?:\[\s*)?availablePersonnel(?:\s*,[^\]]*)?\]?\s*=\s*(?:useState<[^>]+>\s*\()?\s*\[\s*\{[\s\S]*/.test(guidedWorkspaceSource), "GuidedWorkspace contains no literal availablePersonnel array of personnel objects");
 const serverActionsSource = readFileSync(join(process.cwd(), "src/features/server-boundary/server-actions.ts"), "utf8");
 const allocationActionBody = serverActionsSource.match(/export async function allocateAccessionNumberAction\(\): Promise<string>\s*\{([\s\S]*?)\n\}/)?.[1] || "";
 const authorizationIndex = allocationActionBody.indexOf("requireOperationalCaller()");
 const allocationRpcIndex = allocationActionBody.indexOf('supabaseServer.rpc("allocate_accession_number")');
 assert(authorizationIndex >= 0 && allocationRpcIndex > authorizationIndex, "allocateAccessionNumberAction authorizes the operational caller before its allocation rpc");
+const listActivePersonnelActionBody = serverActionsSource.match(/export async function listActivePersonnelAction\(\): Promise<IPersonnel\[\]>\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+const personnelAuthorizationIndex = listActivePersonnelActionBody.indexOf("requireOperationalCaller()");
+const personnelReadIndex = listActivePersonnelActionBody.indexOf("findAllActive()");
+assert(personnelAuthorizationIndex >= 0 && personnelReadIndex > personnelAuthorizationIndex, "listActivePersonnelAction authorizes the operational caller before reading personnel");
+
+const personnelRepositorySource = readFileSync(join(process.cwd(), "src/repositories/supabase-personnel-repository.ts"), "utf8");
+assert(/import\s+["']server-only["'];/.test(personnelRepositorySource), "SupabasePersonnelRepository imports server-only");
+assert(/class\s+SupabasePersonnelRepository\s+implements\s+IPersonnelRepository/.test(personnelRepositorySource), "SupabasePersonnelRepository implements the pinned IPersonnelRepository contract");
+const findAllActiveBody = personnelRepositorySource.match(/async findAllActive\(\): Promise<IPersonnel\[\]>\s*\{([\s\S]*?)\n\s*\}/)?.[1] || "";
+assert(/\.eq\(["']is_active["'],\s*true\)/.test(findAllActiveBody), "SupabasePersonnelRepository findAllActive filters is_active = true");
+assert(!/\b(?:SupabaseClient|Postgrest(?:Client|Builder|FilterBuilder|TransformBuilder)|Database)\b/.test(personnelRepositorySource), "SupabasePersonnelRepository introduces no concrete Supabase type outside the established repository pattern");
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuidGenerationDefinition = ReportDefinitionRegistry.getDefinition("CBC")!;

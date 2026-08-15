@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
-import { AccessionNumberGenerator } from "@/domain/services/accession-number-generator";
 import { IPersonnel, ILaboratoryReport } from "@/domain/models/interfaces";
 import { PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
@@ -13,6 +12,7 @@ import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import {
+  allocateAccessionNumberAction,
   completeSessionAction,
   getRegistryTemplateAction,
   listRegistryTemplatesAction,
@@ -31,10 +31,11 @@ import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 
 export function GuidedWorkspace() {
+  const accessionAllocationStarted = useRef(false);
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
       id: crypto.randomUUID(),
-      accessionNumber: AccessionNumberGenerator.generate(1),
+      accessionNumber: "",
       demographics: {
         fullName: "",
         age: 0,
@@ -105,6 +106,24 @@ export function GuidedWorkspace() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (accessionAllocationStarted.current) return;
+    accessionAllocationStarted.current = true;
+
+    allocateAccessionNumberAction()
+      .then((accessionNumber) => {
+        setSession((previous) => new PatientReportSessionAggregate({
+          ...previous,
+          accessionNumber,
+        }));
+      })
+      .catch((error: unknown) => {
+        setValidationError(
+          error instanceof Error ? error.message : "The accession number could not be allocated."
+        );
+      });
+  }, []);
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {

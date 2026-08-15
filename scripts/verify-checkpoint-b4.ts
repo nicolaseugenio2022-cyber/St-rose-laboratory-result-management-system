@@ -35,6 +35,41 @@ const build = (code: string, existingReport?: LaboratoryReportDomain, legacyRequ
 
 console.log("=== CHECKPOINT B4 VERIFICATION STARTED ===");
 
+const accessionMigrationSource = readFileSync(join(process.cwd(), "supabase/migrations/20260815160000_accession_allocation.sql"), "utf8");
+const accessionMigrationCompact = accessionMigrationSource.replace(/\s+/g, " ");
+const sequenceTableDefinition = accessionMigrationSource.match(/CREATE TABLE IF NOT EXISTS accession_sequences\s*\(([\s\S]*?)\);/i)?.[1] || "";
+const accessionAllocatorSource = accessionMigrationSource.match(/CREATE OR REPLACE FUNCTION allocate_accession_number\(\)[\s\S]*?\$\$;/i)?.[0] || "";
+const accessionSeedSource = accessionMigrationSource.match(/INSERT INTO accession_sequences\s*\(year_key,\s*next_seq\)\s*SELECT[\s\S]*?ON CONFLICT\s*\(year_key\)\s*DO UPDATE[\s\S]*?;/i)?.[0] || "";
+const accessionSeedCompact = accessionSeedSource.replace(/\s+/g, " ");
+assert(/\byear_key\s+INTEGER\s+PRIMARY\s+KEY\b/i.test(sequenceTableDefinition), "accession sequence table is keyed by Manila calendar year_key");
+assert(!/\bdate\b|\bdate_key\b|\bday_key\b/i.test(sequenceTableDefinition), "accession sequence table contains no date-keyed column");
+assert(!/\bSELECT\b[\s\S]*?\bFROM\s+accession_sequences\b/i.test(accessionMigrationSource), "accession allocation has no SELECT-before-write read-then-write path");
+assert(!/\b(?:MAX|COUNT)\s*\(/i.test(accessionAllocatorSource), "accession allocation does not use MAX or COUNT");
+assert(/INSERT INTO accession_sequences \(year_key, next_seq\) VALUES \(v_year, 1\) ON CONFLICT \(year_key\) DO UPDATE SET next_seq = accession_sequences\.next_seq \+ 1 RETURNING next_seq INTO v_seq;/i.test(accessionMigrationCompact), "accession allocation uses one atomic yearly ON CONFLICT UPDATE RETURNING statement");
+assert(/v_day\s*:=\s*\(timezone\('Asia\/Manila',\s*now\(\)\)\)::date/i.test(accessionMigrationSource), "accession allocation derives the Manila day once from server-side now()");
+assert(/v_year\s*:=\s*extract\(year from v_day\)::int/i.test(accessionMigrationSource), "accession allocation derives year_key from the same Manila day");
+assert(!/\bCURRENT_DATE\b/i.test(accessionMigrationSource), "accession allocation never uses CURRENT_DATE");
+assert(/CASE\s+WHEN\s+length\(v_seq::text\)\s*>=\s*4\s+THEN\s+v_seq::text\s+ELSE\s+lpad\(v_seq::text,\s*4,\s*'0'\)\s+END/i.test(accessionMigrationSource), "accession suffix uses an explicit non-truncating minimum-width length guard");
+assert(!/RETURN\s+'SR-'[\s\S]*?\|\|\s*lpad\(v_seq::text,\s*4,\s*'0'\)\s*;/i.test(accessionMigrationSource), "a bare unconditional four-character lpad is not the accession suffix formatter");
+assert(/INSERT INTO accession_sequences \(year_key, next_seq\) SELECT y, m FROM \( SELECT substring\(accession_number from 4 for 4\)::int AS y, MAX\(substring\(accession_number from 13\)::int\) AS m FROM patient_report_sessions WHERE accession_number ~ '\^SR-\\d\{8\}-\\d\+\$' GROUP BY 1 \) s/i.test(accessionSeedCompact), "accession sequence seed derives persisted yearly maxima through an anchored SR-YYYYMMDD-digits regex filter");
+assert(/ON CONFLICT \(year_key\) DO UPDATE SET next_seq = GREATEST\(accession_sequences\.next_seq, EXCLUDED\.next_seq\);/i.test(accessionSeedCompact), "accession sequence seed upserts with GREATEST and can never lower an existing counter");
+assert(/ALTER TABLE accession_sequences ENABLE ROW LEVEL SECURITY;/i.test(accessionMigrationCompact), "accession sequence table has row-level security enabled");
+assert(/REVOKE ALL ON accession_sequences FROM PUBLIC;/i.test(accessionMigrationCompact), "accession sequence table privileges are revoked from PUBLIC");
+assert(/REVOKE ALL ON accession_sequences FROM [^;]*\banon\b/i.test(accessionMigrationSource), "accession sequence table privileges are explicitly revoked from anon");
+assert(/REVOKE ALL ON accession_sequences FROM [^;]*\bauthenticated\b/i.test(accessionMigrationSource), "accession sequence table privileges are explicitly revoked from authenticated");
+assert(/GRANT SELECT, INSERT, UPDATE ON accession_sequences TO service_role;/i.test(accessionMigrationCompact), "accession sequence table grants only allocator-required operations to service_role");
+assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bPUBLIC\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from PUBLIC");
+assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\banon\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from anon");
+assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bauthenticated\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from authenticated");
+
+const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/features/workspace/GuidedWorkspace.tsx"), "utf8");
+assert(!guidedWorkspaceSource.includes("AccessionNumberGenerator.generate"), "GuidedWorkspace no longer generates accession numbers client-side");
+const serverActionsSource = readFileSync(join(process.cwd(), "src/features/server-boundary/server-actions.ts"), "utf8");
+const allocationActionBody = serverActionsSource.match(/export async function allocateAccessionNumberAction\(\): Promise<string>\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+const authorizationIndex = allocationActionBody.indexOf("requireOperationalCaller()");
+const allocationRpcIndex = allocationActionBody.indexOf('supabaseServer.rpc("allocate_accession_number")');
+assert(authorizationIndex >= 0 && allocationRpcIndex > authorizationIndex, "allocateAccessionNumberAction authorizes the operational caller before its allocation rpc");
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuidGenerationDefinition = ReportDefinitionRegistry.getDefinition("CBC")!;
 const generatedReport = buildEncodingReport({

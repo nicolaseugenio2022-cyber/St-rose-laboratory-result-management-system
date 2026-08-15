@@ -4,6 +4,7 @@ import "server-only";
 
 import type { HydratedTemplateSpec } from "@/services/interfaces";
 import { getSession } from "@/lib/session";
+import { supabaseServer } from "@/lib/supabase/server";
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
 import { auditService } from "@/services/audit-service-instance";
 import { reportRegistryService } from "@/services/report-registry-service";
@@ -110,6 +111,13 @@ export async function completeSessionAction(
   const repository = new SupabasePatientReportSessionRepository(caller);
   const completed = await repository.completeSession(fromSessionTransport(transport));
   return toSessionTransport(completed);
+}
+
+export async function allocateAccessionNumberAction(): Promise<string> {
+  await requireOperationalCaller();
+  const { data, error } = await supabaseServer.rpc("allocate_accession_number");
+  if (error) throw error;
+  return data;
 }
 
 export async function listRegistryTemplatesAction(

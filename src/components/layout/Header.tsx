@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, LogOut } from "lucide-react";
+import { Menu, LogOut, KeyRound } from "lucide-react";
 import { navigationConfig } from "@/config/navigation";
+import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 
 export interface HeaderProps {
   onMenuToggle: () => void;
@@ -11,6 +12,7 @@ export interface HeaderProps {
 
 export function Header({ onMenuToggle }: HeaderProps) {
   const pathname = usePathname();
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Match route title dynamically from navigationConfig
   const currentNav = navigationConfig.find(
@@ -44,6 +46,14 @@ export function Header({ onMenuToggle }: HeaderProps) {
             System Ready
           </span>
           <button
+            onClick={() => setIsChangePasswordOpen(true)}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
+            aria-label="Change Password"
+          >
+            <KeyRound className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline-block">Change Password</span>
+          </button>
+          <button
             onClick={() => {
               import("@/features/auth/authActions").then((m) => m.logoutAction());
             }}
@@ -55,6 +65,10 @@ export function Header({ onMenuToggle }: HeaderProps) {
           </button>
         </div>
       </div>
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </header>
   );
 }

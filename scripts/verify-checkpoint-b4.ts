@@ -35,6 +35,38 @@ const build = (code: string, existingReport?: LaboratoryReportDomain, legacyRequ
 
 console.log("=== CHECKPOINT B4 VERIFICATION STARTED ===");
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuidGenerationDefinition = ReportDefinitionRegistry.getDefinition("CBC")!;
+const generatedReport = buildEncodingReport({
+  definition: uuidGenerationDefinition,
+  sessionId: crypto.randomUUID(),
+  reportId: crypto.randomUUID(),
+  rendererFamily: uuidGenerationDefinition.rendererFamily as RendererFamily,
+  signatories: [],
+});
+assert(uuidPattern.test(generatedReport.id) && generatedReport.results.length > 0 && generatedReport.results.every((result) => uuidPattern.test(result.id)), "new Encoding report and results use RFC-4122 UUID ids");
+
+const reuseFixtureReportId = "fixture-report-id-that-is-not-a-uuid";
+const reuseFixtureResultIds = generatedReport.results.map((_, index) => `fixture-result-${index + 1}-that-is-not-a-uuid`);
+const reuseFixtureReport = new LaboratoryReportDomain({
+  ...generatedReport,
+  id: reuseFixtureReportId,
+  results: generatedReport.results.map((result, index) => new LaboratoryResultDomain({
+    ...result,
+    id: reuseFixtureResultIds[index],
+    reportId: reuseFixtureReportId,
+  })),
+});
+const reusedReport = buildEncodingReport({
+  definition: uuidGenerationDefinition,
+  sessionId: "different-session-id",
+  reportId: "different-report-id",
+  rendererFamily: uuidGenerationDefinition.rendererFamily as RendererFamily,
+  signatories: [],
+  existingReport: reuseFixtureReport,
+});
+assert(reusedReport.id === reuseFixtureReportId && reusedReport.results.length === reuseFixtureResultIds.length && reusedReport.results.every((result, index) => result.id === reuseFixtureResultIds[index]), "existing report and result fixture ids are reused unchanged");
+
 assert(ReportDefinitionRegistry.getRegisteredTemplateCodes().length === 17, "all 17 report definitions are registered");
 const expectedEvaluationMatrix: Record<string, Record<string, number>> = {
   CHEM_8: { NumericAutomatic: 6 }, HDL_LDL: { NumericAutomatic: 8 }, CHEM_10: { NumericAutomatic: 10 },

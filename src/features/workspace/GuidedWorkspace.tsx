@@ -33,7 +33,7 @@ import { initializeNewSessionAddress } from "./encoding/new-session-demographics
 export function GuidedWorkspace() {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
-      id: `sess-${Date.now()}`,
+      id: crypto.randomUUID(),
       accessionNumber: AccessionNumberGenerator.generate(1),
       demographics: {
         fullName: "",
@@ -165,7 +165,7 @@ export function GuidedWorkspace() {
           const encodingReport = buildEncodingReport({
             definition,
             sessionId: prevSession.id,
-            reportId: existingReport?.id || `rep-${spec.template.templateCode}-${Date.now()}`,
+            reportId: existingReport?.id || crypto.randomUUID(),
             rendererFamily: spec.template.rendererFamily,
             signatories: defaultSignatories,
             existingReport,

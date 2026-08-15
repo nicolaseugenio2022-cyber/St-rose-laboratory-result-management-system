@@ -84,7 +84,7 @@ function buildInitialResults(
         : parameter.defaultValue || "";
 
       return new LaboratoryResultDomain({
-        id: legacyResult?.id || `res-${reportId}-${parameter.parameterCode}`,
+        id: legacyResult?.id || crypto.randomUUID(),
         reportId,
         parameterCode: parameter.parameterCode,
         parameterName: parameter.parameterName,
@@ -131,7 +131,7 @@ function buildRepeatableFindings(
   if (legacyOtherFinding && firstCategory && !(result[firstCategory]?.length > 0)) {
     result[firstCategory] = [
       {
-        id: legacyOtherFinding.id || `legacy-${firstCategory}-1`,
+        id: legacyOtherFinding.id || crypto.randomUUID(),
         category: firstCategory,
         value: legacyOtherFinding.resultValue,
         displayOrder: 1,

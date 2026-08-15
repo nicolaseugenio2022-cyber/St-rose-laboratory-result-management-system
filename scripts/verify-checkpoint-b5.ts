@@ -6,7 +6,7 @@ import { buildEncodingReport, applyEncodingResultValue, applyParameterSelection 
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
 import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import { ValidationError, DomainInvariantError } from "../src/lib/errors";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { cloneAndFreezeSnapshot } from "../src/domain/completion/completed-snapshot";
 
@@ -244,6 +244,72 @@ assert(invalidDraft.status === "Draft", "incomplete or invalid reports remain va
 
 const readNormalizedSource = (relativePath: string) =>
   readFileSync(join(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
+const stripSqlComments = (source: string) => {
+  let result = "";
+  let state: "code" | "string" | "line-comment" | "block-comment" = "code";
+  let blockCommentDepth = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (state === "string") {
+      result += character;
+      if (character === "'" && nextCharacter === "'") {
+        result += nextCharacter;
+        index += 1;
+      } else if (character === "'") {
+        state = "code";
+      }
+      continue;
+    }
+
+    if (state === "line-comment") {
+      if (character === "\n") {
+        result += character;
+        state = "code";
+      } else {
+        result += " ";
+      }
+      continue;
+    }
+
+    if (state === "block-comment") {
+      if (character === "/" && nextCharacter === "*") {
+        result += "  ";
+        index += 1;
+        blockCommentDepth += 1;
+      } else if (character === "*" && nextCharacter === "/") {
+        result += "  ";
+        index += 1;
+        blockCommentDepth -= 1;
+        if (blockCommentDepth === 0) state = "code";
+      } else {
+        result += character === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (character === "'") {
+      result += character;
+      state = "string";
+    } else if (character === "-" && nextCharacter === "-") {
+      result += "  ";
+      index += 1;
+      state = "line-comment";
+    } else if (character === "/" && nextCharacter === "*") {
+      result += "  ";
+      index += 1;
+      state = "block-comment";
+      blockCommentDepth = 1;
+    } else {
+      result += character;
+    }
+  }
+
+  return result;
+};
+const readNormalizedSqlSource = (relativePath: string) => stripSqlComments(readNormalizedSource(relativePath));
 const liveCodeIndexOf = (source: string, occurrence: string) => {
   let index = source.indexOf(occurrence);
   while (index >= 0) {
@@ -257,19 +323,65 @@ const liveCodeIndexOf = (source: string, occurrence: string) => {
   return -1;
 };
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
-const migrationSource = readNormalizedSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
-const evaluationMigrationSource = readNormalizedSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
-const completionTransactionMigrationSource = readNormalizedSource("supabase/migrations/20260815180000_atomic_accession_assignment.sql");
-const functionDefinitionSource = (functionName: string) => {
-  const start = completionTransactionMigrationSource.indexOf(`CREATE OR REPLACE FUNCTION ${functionName}`);
-  if (start < 0) return "";
-  const end = completionTransactionMigrationSource.indexOf("$function$;", start);
-  return end < 0 ? "" : completionTransactionMigrationSource.slice(start, end + "$function$;".length);
+const migrationSource = readNormalizedSqlSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
+const evaluationMigrationSource = readNormalizedSqlSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
+const timestampedMigrationSources = readdirSync(join(process.cwd(), "supabase/migrations"))
+  .filter((fileName) => /^\d{14}_.+\.sql$/.test(fileName))
+  .sort((left, right) => left.localeCompare(right))
+  .map((fileName) => ({
+    fileName,
+    source: readNormalizedSqlSource(`supabase/migrations/${fileName}`),
+  }));
+const resolveFunctionDefinition = (functionName: string) => {
+  let newestDefinition: { migration: (typeof timestampedMigrationSources)[number]; start: number } | null = null;
+  const definitionStartPattern = new RegExp(`CREATE OR REPLACE FUNCTION\\s+(?:public\\.)?${functionName}\\s*\\(`, "gi");
+
+  for (const migration of timestampedMigrationSources) {
+    for (const match of migration.source.matchAll(definitionStartPattern)) {
+      newestDefinition = { migration, start: match.index };
+    }
+  }
+
+  if (!newestDefinition) return { definitionSource: "", migrationSource: "", migrationFileName: "" };
+
+  const { migration, start } = newestDefinition;
+  const laterDefinitionMatch = /CREATE OR REPLACE FUNCTION\s+(?:public\.)?[A-Za-z_][A-Za-z0-9_]*\s*\(/i.exec(
+    migration.source.slice(start + 1)
+  );
+  const definitionBoundary = laterDefinitionMatch
+    ? start + 1 + laterDefinitionMatch.index
+    : migration.source.length;
+  const candidateSource = migration.source.slice(start, definitionBoundary);
+  const bodyStartMatch = /\bAS\s+(\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/i.exec(candidateSource);
+  if (!bodyStartMatch) {
+    throw new Error(
+      `FUNCTION RESOLUTION FAILED: ${functionName} has no AS dollar-quote tag in supabase/migrations/${migration.fileName}`
+    );
+  }
+
+  const dollarQuoteTag = bodyStartMatch[1];
+  const bodyStart = start + bodyStartMatch.index + bodyStartMatch[0].length;
+  const terminator = `${dollarQuoteTag};`;
+  const end = migration.source.indexOf(terminator, bodyStart);
+  if (end < 0 || end >= definitionBoundary) {
+    throw new Error(
+      `FUNCTION RESOLUTION FAILED: ${functionName} has an unterminated definition in supabase/migrations/${migration.fileName}`
+    );
+  }
+
+  return {
+    definitionSource: migration.source.slice(start, end + terminator.length),
+    migrationSource: migration.source,
+    migrationFileName: migration.fileName,
+  };
 };
+const functionDefinitionSource = (functionName: string) => resolveFunctionDefinition(functionName).definitionSource;
 const resolveAccessionFunctionSource = functionDefinitionSource("resolve_session_accession_number");
 const reportTreeFunctionSource = functionDefinitionSource("persist_session_report_tree");
 const saveDraftFunctionSource = functionDefinitionSource("save_draft_session");
 const completionFunctionSource = functionDefinitionSource("complete_patient_report_session");
+const retentionFunctionSource = functionDefinitionSource("assert_session_within_retention");
+const completionFunctionMigrationSource = resolveFunctionDefinition("complete_patient_report_session").migrationSource;
 const getRecentSessionsSource = repositorySource.slice(
   repositorySource.indexOf("  async getRecentSessions("),
   repositorySource.indexOf("  async saveDraft(")
@@ -286,19 +398,19 @@ assert(repositorySource.includes("encoding_data: report.encodingData") && reposi
 assert(repositorySource.includes("raw_result_value") && repositorySource.includes("formatted_result_value") && repositorySource.includes("computation_metadata"), "raw, formatted, and computation evidence are persisted and restored");
 assert(migrationSource.includes("completed_snapshot JSONB") && migrationSource.includes("encoding_data JSONB") && migrationSource.includes("'Invalid'"), "additive migration supports frozen JSONB snapshots, draft encoding metadata, and invalid draft outcomes");
 assert(evaluationMigrationSource.includes("'Low'") && evaluationMigrationSource.includes("'High'") && evaluationMigrationSource.includes("'Entered'") && evaluationMigrationSource.includes("'Abnormal'"), "additive evaluation migration permits new outcomes while retaining legacy compatibility");
-assert(/CREATE OR REPLACE FUNCTION\s+complete_patient_report_session\s*\(payload jsonb\)[\s\S]*?SECURITY INVOKER/i.test(completionTransactionMigrationSource), "completion transaction function uses SECURITY INVOKER");
+assert(/CREATE OR REPLACE FUNCTION\s+complete_patient_report_session\s*\(payload jsonb\)[\s\S]*?SECURITY INVOKER/i.test(completionFunctionSource), "completion transaction function uses SECURITY INVOKER");
 assert(/SECURITY INVOKER\s+SET search_path = public, pg_temp/i.test(completionFunctionSource), "completion transaction function pins its search_path");
-const executeRevocation = completionTransactionMigrationSource.match(/REVOKE EXECUTE ON FUNCTION\s+complete_patient_report_session\s*\(jsonb\)\s+FROM\s+[^;]+;/i)?.[0] || "";
+const executeRevocation = completionFunctionMigrationSource.match(/REVOKE EXECUTE ON FUNCTION\s+complete_patient_report_session\s*\(jsonb\)\s+FROM\s+[^;]+;/i)?.[0] || "";
 assert(/\bPUBLIC\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from PUBLIC");
 assert(/\banon\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from anon");
 assert(/\bauthenticated\b/.test(executeRevocation), "completion transaction function revokes EXECUTE from authenticated");
-const functionPrivilegeGrants = Array.from(completionTransactionMigrationSource.matchAll(/GRANT\s+(EXECUTE|ALL(?:\s+PRIVILEGES)?)\s+ON\s+FUNCTION\s+(?:public\.)?complete_patient_report_session\s*\(jsonb\)\s+TO\s+([^;]+);/gi));
+const functionPrivilegeGrants = Array.from(completionFunctionMigrationSource.matchAll(/GRANT\s+(EXECUTE|ALL(?:\s+PRIVILEGES)?)\s+ON\s+FUNCTION\s+(?:public\.)?complete_patient_report_session\s*\(jsonb\)\s+TO\s+([^;]+);/gi));
 assert(functionPrivilegeGrants.length === 1 && functionPrivilegeGrants[0][1].toUpperCase() === "EXECUTE" && functionPrivilegeGrants[0][2].trim().toLowerCase() === "service_role", "completion transaction function grants EXECUTE strictly to service_role");
 assert(!functionPrivilegeGrants.some((grant) => /\b(?:PUBLIC|anon|authenticated)\b/i.test(grant[2])), "completion transaction function never grants EXECUTE to PUBLIC, anon, or authenticated");
-assert(completionTransactionMigrationSource.includes("target_session_id uuid := (payload -> 'session' ->> 'id')::uuid") && completionTransactionMigrationSource.includes("target_report_id := (report_payload ->> 'id')::uuid") && !completionTransactionMigrationSource.includes("report_payload ->> 'session_id'") && !completionTransactionMigrationSource.includes("result_payload ->> 'report_id'") && !completionTransactionMigrationSource.includes("signatory_payload ->> 'report_id'"), "completion transaction derives report and child parent keys from payload nesting");
-const reportUpsertSource = completionTransactionMigrationSource.slice(
-  completionTransactionMigrationSource.indexOf("INSERT INTO laboratory_reports", completionTransactionMigrationSource.indexOf("CREATE OR REPLACE FUNCTION persist_session_report_tree")),
-  completionTransactionMigrationSource.indexOf("FOR result_payload IN", completionTransactionMigrationSource.indexOf("CREATE OR REPLACE FUNCTION persist_session_report_tree"))
+assert(completionFunctionSource.includes("target_session_id uuid := (payload -> 'session' ->> 'id')::uuid") && reportTreeFunctionSource.includes("target_report_id := (report_payload ->> 'id')::uuid") && !reportTreeFunctionSource.includes("report_payload ->> 'session_id'") && !reportTreeFunctionSource.includes("result_payload ->> 'report_id'") && !reportTreeFunctionSource.includes("signatory_payload ->> 'report_id'"), "completion transaction derives report and child parent keys from payload nesting");
+const reportUpsertSource = reportTreeFunctionSource.slice(
+  reportTreeFunctionSource.indexOf("INSERT INTO laboratory_reports"),
+  reportTreeFunctionSource.indexOf("FOR result_payload IN")
 );
 const resultUpsertSource = reportTreeFunctionSource.slice(
   reportTreeFunctionSource.indexOf("INSERT INTO laboratory_results"),
@@ -339,23 +451,37 @@ assert(completionSessionConflictUpdateSource.length > 0 && !/\baccession_number\
 assert(!saveDraftSource.includes("accession_number") && !saveDraftSource.includes("session.accessionNumber") && !completeSessionSource.includes("accession_number") && !completeSessionSource.includes("session.accessionNumber"), "repository write payloads never submit or reference a client accession number");
 const saveDraftAccessionResolutions = saveDraftFunctionSource.match(/v_accession\s*:=\s*resolve_session_accession_number\(target_session_id\);/g) || [];
 const completionAccessionResolutions = completionFunctionSource.match(/v_accession\s*:=\s*resolve_session_accession_number\(target_session_id\);/g) || [];
-assert(saveDraftAccessionResolutions.length === 1 && completionAccessionResolutions.length === 1 && !saveDraftFunctionSource.includes("allocate_accession_number") && !completionFunctionSource.includes("allocate_accession_number") && !completionTransactionMigrationSource.includes("payload -> 'session' ->> 'accession_number'"), "both persistence functions resolve accession server-side and never read a client accession value");
+assert(saveDraftAccessionResolutions.length === 1 && completionAccessionResolutions.length === 1 && !saveDraftFunctionSource.includes("allocate_accession_number") && !completionFunctionSource.includes("allocate_accession_number") && !saveDraftFunctionSource.includes("payload -> 'session' ->> 'accession_number'") && !completionFunctionSource.includes("payload -> 'session' ->> 'accession_number'"), "both persistence functions resolve accession server-side and never read a client accession value");
 const advisoryLockIndex = resolveAccessionFunctionSource.indexOf("PERFORM pg_advisory_xact_lock(hashtextextended(target_session_id::text, 0));");
 const accessionLookupIndex = resolveAccessionFunctionSource.indexOf("SELECT accession_number");
 const nullAllocationBranch = resolveAccessionFunctionSource.match(/IF v_accession IS NULL THEN([\s\S]*?)END IF;/i)?.[1] || "";
 assert(advisoryLockIndex >= 0 && accessionLookupIndex > advisoryLockIndex && (resolveAccessionFunctionSource.match(/allocate_accession_number\(\)/g) || []).length === 1 && nullAllocationBranch.includes("v_accession := allocate_accession_number();"), "accession resolution locks before lookup and allocates only on the null branch");
 assert(/PERFORM persist_session_report_tree\(\s*target_session_id,\s*COALESCE\(payload -> 'reports', '\[\]'::jsonb\),\s*false,\s*false\s*\);/i.test(saveDraftFunctionSource) && /PERFORM persist_session_report_tree\(\s*target_session_id,\s*COALESCE\(payload -> 'reports', '\[\]'::jsonb\),\s*true,\s*true\s*\);/i.test(completionFunctionSource), "draft and completion delegate child writes with their exact filtering and signatory switches");
 function assertServiceRoleOnlyFunction(functionName: string, signaturePattern: string, label: string): void {
-  const functionSource = functionDefinitionSource(functionName);
+  const { definitionSource: functionSource, migrationSource: authoritativeMigrationSource } = resolveFunctionDefinition(functionName);
   assert(/LANGUAGE plpgsql\s+SECURITY INVOKER\s+SET search_path = public, pg_temp/i.test(functionSource), `${label} is SECURITY INVOKER with a pinned search_path`);
-  const revocation = completionTransactionMigrationSource.match(new RegExp(`REVOKE EXECUTE ON FUNCTION\\s+${functionName}\\s*\\(${signaturePattern}\\)\\s+FROM\\s+([^;]+);`, "i"))?.[1] || "";
+  const revocation = authoritativeMigrationSource.match(new RegExp(`REVOKE EXECUTE ON FUNCTION\\s+${functionName}\\s*\\(${signaturePattern}\\)\\s+FROM\\s+([^;]+);`, "i"))?.[1] || "";
   assert(/\bPUBLIC\b/.test(revocation) && /\banon\b/.test(revocation) && /\bauthenticated\b/.test(revocation), `${label} revokes EXECUTE from PUBLIC, anon, and authenticated`);
-  const grants = Array.from(completionTransactionMigrationSource.matchAll(new RegExp(`GRANT\\s+(EXECUTE|ALL(?:\\s+PRIVILEGES)?)\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${functionName}\\s*\\(${signaturePattern}\\)\\s+TO\\s+([^;]+);`, "gi")));
+  const grants = Array.from(authoritativeMigrationSource.matchAll(new RegExp(`GRANT\\s+(EXECUTE|ALL(?:\\s+PRIVILEGES)?)\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${functionName}\\s*\\(${signaturePattern}\\)\\s+TO\\s+([^;]+);`, "gi")));
   assert(grants.length === 1 && grants[0][1].toUpperCase() === "EXECUTE" && grants[0][2].trim().toLowerCase() === "service_role", `${label} grants EXECUTE exactly once and only to service_role`);
 }
 assertServiceRoleOnlyFunction("resolve_session_accession_number", "uuid", "accession resolution function");
 assertServiceRoleOnlyFunction("persist_session_report_tree", "uuid,\\s*jsonb,\\s*boolean,\\s*boolean", "report-tree persistence function");
 assertServiceRoleOnlyFunction("save_draft_session", "jsonb", "draft transaction function");
+assert(retentionFunctionSource.length > 0, "retention helper exists");
+assertServiceRoleOnlyFunction("assert_session_within_retention", "uuid", "retention helper");
+assert(/expires_at\s*<\s*now\(\)/i.test(retentionFunctionSource) && !/clock_timestamp\s*\(\)/i.test(retentionFunctionSource), "retention helper uses transaction-stable now() and never clock_timestamp()");
+assert(/expires_at\s+IS\s+NOT\s+NULL/i.test(retentionFunctionSource), "retention helper treats a NULL expires_at as non-expiring");
+for (const [label, functionSource] of [
+  ["save_draft_session", saveDraftFunctionSource],
+  ["complete_patient_report_session", completionFunctionSource],
+] as const) {
+  const retentionCheckIndex = liveCodeIndexOf(functionSource, "PERFORM assert_session_within_retention(target_session_id);");
+  const accessionResolutionIndex = liveCodeIndexOf(functionSource, "resolve_session_accession_number(");
+  const sessionInsertIndex = liveCodeIndexOf(functionSource, "INSERT INTO patient_report_sessions");
+  assert(retentionCheckIndex >= 0, `${label} performs the authoritative retention check`);
+  assert(retentionCheckIndex < accessionResolutionIndex && retentionCheckIndex < sessionInsertIndex, `${label} performs the retention check before accession resolution and the first session insert`);
+}
 const draftRpcIndex = saveDraftSource.indexOf('rpc("save_draft_session"');
 assert(draftRpcIndex >= 0 && /const \{ data, error \} = await supabaseServer\.rpc\("save_draft_session", \{ payload \}\);\s*if \(error\) throw error;/.test(saveDraftSource), "saveDraft invokes the draft transaction RPC and throws its errors");
 assert(!["patient_report_sessions", "laboratory_reports", "laboratory_results"].some((table) => saveDraftSource.includes(`.from("${table}")`)), "saveDraft contains no direct session, report, or result table write");

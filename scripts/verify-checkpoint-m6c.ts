@@ -14,6 +14,19 @@ function read(relativePath: string): string {
   return readFileSync(path.join(root, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
+function liveCodeIndexOf(source: string, occurrence: string): number {
+  let index = source.indexOf(occurrence);
+  while (index >= 0) {
+    const lineStart = source.lastIndexOf("\n", index - 1) + 1;
+    const linePrefix = source.slice(lineStart, index);
+    const blockCommentStart = source.lastIndexOf("/*", index);
+    const blockCommentEnd = source.lastIndexOf("*/", index);
+    if (!linePrefix.includes("//") && blockCommentStart <= blockCommentEnd) return index;
+    index = source.indexOf(occurrence, index + occurrence.length);
+  }
+  return -1;
+}
+
 function normalizedSha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -566,6 +579,18 @@ function verifyAdminInvariantApi(): void {
   );
 }
 
+function verifyPurgeAuthorization(): void {
+  const source = read("src/app/api/purge/route.ts");
+  const adminGuardIndex = liveCodeIndexOf(source, 'assertAdminAccess(user, "Purge expired sessions")');
+  const purgeServiceIndex = source.indexOf("purgeSchedulerService.executeScheduledPurge(user.id)");
+  assert(
+    /import\s*\{\s*assertAdminAccess\s*,\s*getCurrentUserProfile\s*\}\s*from\s*["']@\/lib\/auth-guards["']/.test(source) &&
+      adminGuardIndex >= 0 &&
+      purgeServiceIndex > adminGuardIndex,
+    "the purge route must require Admin authorization before executing the purge service"
+  );
+}
+
 function verifyCredentialVisibilityControls(): void {
   const firstLoginSource = read("src/features/auth/components/FirstLoginForm.tsx");
   assert(
@@ -863,6 +888,7 @@ verifyRenamedContractsOnly();
 verifyBehaviouralFreeze();
 verifyUserServiceInvariants();
 verifyAdminInvariantApi();
+verifyPurgeAuthorization();
 verifyCredentialVisibilityControls();
 verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();

@@ -244,6 +244,18 @@ assert(invalidDraft.status === "Draft", "incomplete or invalid reports remain va
 
 const readNormalizedSource = (relativePath: string) =>
   readFileSync(join(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
+const liveCodeIndexOf = (source: string, occurrence: string) => {
+  let index = source.indexOf(occurrence);
+  while (index >= 0) {
+    const lineStart = source.lastIndexOf("\n", index - 1) + 1;
+    const linePrefix = source.slice(lineStart, index);
+    const blockCommentStart = source.lastIndexOf("/*", index);
+    const blockCommentEnd = source.lastIndexOf("*/", index);
+    if (!linePrefix.includes("//") && blockCommentStart <= blockCommentEnd) return index;
+    index = source.indexOf(occurrence, index + occurrence.length);
+  }
+  return -1;
+};
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
 const migrationSource = readNormalizedSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
 const evaluationMigrationSource = readNormalizedSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
@@ -258,6 +270,10 @@ const resolveAccessionFunctionSource = functionDefinitionSource("resolve_session
 const reportTreeFunctionSource = functionDefinitionSource("persist_session_report_tree");
 const saveDraftFunctionSource = functionDefinitionSource("save_draft_session");
 const completionFunctionSource = functionDefinitionSource("complete_patient_report_session");
+const getRecentSessionsSource = repositorySource.slice(
+  repositorySource.indexOf("  async getRecentSessions("),
+  repositorySource.indexOf("  async saveDraft(")
+);
 const saveDraftSource = repositorySource.slice(
   repositorySource.indexOf("  async saveDraft("),
   repositorySource.indexOf("  async completeSession(")
@@ -308,6 +324,16 @@ const sessionConflictUpdateSource = (functionSource: string) =>
   functionSource.match(/INSERT INTO patient_report_sessions\s*\([\s\S]*?ON CONFLICT\s*\(id\)\s*DO UPDATE SET([\s\S]*?);/i)?.[1] || "";
 const saveDraftSessionConflictUpdateSource = sessionConflictUpdateSource(saveDraftFunctionSource);
 const completionSessionConflictUpdateSource = sessionConflictUpdateSource(completionFunctionSource);
+const retentionPredicateIndex = liveCodeIndexOf(
+  getRecentSessionsSource,
+  '.or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`)'
+);
+assert(
+  /const retentionTimestamp = new Date\(\)\.toISOString\(\);/.test(getRecentSessionsSource) &&
+    retentionPredicateIndex >= 0,
+  "getRecentSessions applies the retention predicate in the database query"
+);
+assert(!/\.filter\s*\(/.test(getRecentSessionsSource), "getRecentSessions does not perform retention exclusion in JavaScript");
 assert(saveDraftSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(saveDraftSessionConflictUpdateSource), "save_draft_session keeps accession_number out of its session conflict update");
 assert(completionSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(completionSessionConflictUpdateSource), "complete_patient_report_session keeps accession_number out of its session conflict update");
 assert(!saveDraftSource.includes("accession_number") && !saveDraftSource.includes("session.accessionNumber") && !completeSessionSource.includes("accession_number") && !completeSessionSource.includes("session.accessionNumber"), "repository write payloads never submit or reference a client accession number");
@@ -335,13 +361,18 @@ assert(draftRpcIndex >= 0 && /const \{ data, error \} = await supabaseServer\.rp
 assert(!["patient_report_sessions", "laboratory_reports", "laboratory_results"].some((table) => saveDraftSource.includes(`.from("${table}")`)), "saveDraft contains no direct session, report, or result table write");
 const draftCallerIndex = saveDraftSource.indexOf("this.requireCaller()");
 const draftOwnershipIndex = saveDraftSource.indexOf("this.assertExistingSessionOwnership(session.id)");
+const draftRetentionIndex = liveCodeIndexOf(saveDraftSource, "this.assertSessionWithinRetention(session.id)");
 assert(draftCallerIndex >= 0 && draftOwnershipIndex > draftCallerIndex && draftRpcIndex > draftOwnershipIndex, "saveDraft requires its caller and verifies ownership before the draft transaction RPC");
+assert(draftRetentionIndex > draftOwnershipIndex && draftRpcIndex > draftRetentionIndex, "saveDraft rejects expired completed sessions after ownership verification and before the draft transaction RPC");
 const completionRpcIndex = completeSessionSource.indexOf('rpc("complete_patient_report_session"');
 assert(completionRpcIndex >= 0, "completeSession invokes the completion transaction RPC");
 assert(/const \{ data, error \} = await supabaseServer\.rpc\("complete_patient_report_session", \{ payload \}\);\s*if \(error\) throw error;/.test(completeSessionSource), "completeSession throws completion transaction RPC errors");
 assert(!["patient_report_sessions", "laboratory_reports", "laboratory_results", "report_signatories"].some((table) => completeSessionSource.includes(`.from("${table}")`)), "completeSession contains no direct session, report, result, or signatory table write");
 assert(completeSessionSource.indexOf("this.requireCaller()") >= 0 && completeSessionSource.indexOf("this.requireCaller()") < completionRpcIndex, "completeSession requires its caller before the completion transaction RPC");
-assert(completeSessionSource.indexOf("this.assertExistingSessionOwnership(session.id)") >= 0 && completeSessionSource.indexOf("this.assertExistingSessionOwnership(session.id)") < completionRpcIndex, "completeSession verifies existing session ownership before the completion transaction RPC");
+const completionOwnershipIndex = completeSessionSource.indexOf("this.assertExistingSessionOwnership(session.id)");
+const completionRetentionIndex = liveCodeIndexOf(completeSessionSource, "this.assertSessionWithinRetention(session.id)");
+assert(completionOwnershipIndex >= 0 && completionOwnershipIndex < completionRpcIndex, "completeSession verifies existing session ownership before the completion transaction RPC");
+assert(completionRetentionIndex > completionOwnershipIndex && completionRpcIndex > completionRetentionIndex, "completeSession rejects expired completed sessions after ownership verification and before the completion transaction RPC");
 assert(completeSessionSource.indexOf("autoSuggestionLearningService.learnSuggestionsFromSessionDemographics") > completionRpcIndex, "completeSession learns auto-suggestions only after the completion transaction RPC");
 
 console.log("=== ALL CHECKPOINT B5 VERIFICATION TESTS PASSED ===");

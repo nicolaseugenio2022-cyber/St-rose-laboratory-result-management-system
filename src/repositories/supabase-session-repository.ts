@@ -17,6 +17,11 @@ type SessionOwnershipRow = {
   created_by_user_id: string;
 };
 
+type SessionRetentionRow = {
+  status: string;
+  expires_at: string | null;
+};
+
 export class SupabasePatientReportSessionRepository implements IPatientReportSessionRepository {
   constructor(private readonly caller?: SessionRepositoryCaller) {}
 
@@ -45,6 +50,28 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     if (error) throw error;
     if (data && (data as SessionOwnershipRow).created_by_user_id !== caller.userId) {
       throw new Error("Session ownership validation failed.");
+    }
+  }
+
+  private async assertSessionWithinRetention(id: string): Promise<void> {
+    const { data, error } = await supabaseServer
+      .from("patient_report_sessions")
+      .select("status, expires_at")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) {
+      const row = data as SessionRetentionRow;
+      if (
+        row.status === "Completed" &&
+        row.expires_at !== null &&
+        new Date(row.expires_at).getTime() < Date.now()
+      ) {
+        throw new Error(
+          "The session has passed its 30-day retention window and is permanently immutable."
+        );
+      }
     }
   }
 
@@ -92,6 +119,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async getRecentSessions(limit = 50): Promise<PatientReportSessionAggregate[]> {
+    const retentionTimestamp = new Date().toISOString();
     const { data, error } = await this.applyDraftOwnershipScope(
       supabaseServer
         .from("patient_report_sessions")
@@ -105,7 +133,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         `)
         .order("created_at", { ascending: false })
         .limit(limit)
-    );
+    ).or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`);
 
     if (error) throw error;
     if (!data) throw new Error("Supabase session history query returned no data.");
@@ -115,6 +143,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   async saveDraft(session: IPatientReportSession): Promise<IPatientReportSession> {
     const caller = this.requireCaller();
     await this.assertExistingSessionOwnership(session.id);
+    await this.assertSessionWithinRetention(session.id);
 
     const payload = {
       session: {
@@ -160,6 +189,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
 
     const caller = this.requireCaller();
     await this.assertExistingSessionOwnership(session.id);
+    await this.assertSessionWithinRetention(session.id);
 
     const payload = {
       session: {

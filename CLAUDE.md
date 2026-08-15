@@ -136,8 +136,9 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox workspace-w
 ```
 
 Read-only tasks may use `--sandbox read-only`; the model pin still applies and reasoning effort is
-never lowered as an optimization. **`< /dev/null`, or the platform-safe EOF equivalent, is mandatory
-on every non-interactive invocation** — implementation, continuation, probe, reviewer, correction.
+never lowered as an optimization or as rate-limit relief. **`< /dev/null`, or the platform-safe EOF
+equivalent, is mandatory on every non-interactive invocation** — implementation, continuation, probe,
+reviewer, correction.
 **Write any large prompt to a temp file first and invoke Codex with a short command that reads it**
 (`"$(cat <file>)"`), rather than embedding a large heredoc in the same invocation — inlining multi-KB
 prompts adds command-scanning and approval overhead for no benefit.
@@ -149,6 +150,13 @@ timeout, environment or process failure, and implementation failure from the evi
 failure**: the process often survives and keeps working, so establish whether it is alive and
 progressing before acting. Never automatically kill it, restart the slice, or rerun completed work.
 Tool and environment failures never consume correction rounds.
+
+**One delegation at a time.** Run a single `codex exec` unless genuinely independent tasks justify
+parallelism, and state what makes them independent. On a 429 or other rate-limit response, do not
+retry immediately and do not launch a parallel or replacement delegation to route around it: preserve
+the current candidate and evidence untouched, back off, then retry **the same task** after the
+cooldown. A rate limit is an environment failure under the rule above, and never a reason to drop a
+required gate or thin a mutation set.
 
 **Do not put a predicted-long job behind a foreground wall.** Run it in the background, or split at a
 stable boundary — implementation plus A/B, then C/D against that exact unchanged candidate.

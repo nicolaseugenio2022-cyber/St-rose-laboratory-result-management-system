@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parseRecentSessionsInput } from "../src/features/server-boundary/action-inputs";
@@ -407,7 +408,6 @@ function verifyApprovedImportDifferencesOnly(
 
 function verifyBehaviouralFreeze(): void {
   for (const relativePath of [
-    "src/features/auth/authActions.ts",
     "src/lib/auth-guards.ts",
     "src/lib/password.ts",
     "src/lib/username.ts",
@@ -419,6 +419,15 @@ function verifyBehaviouralFreeze(): void {
       `${relativePath} must have no logic change from Milestone 6B`
     );
   }
+
+  const APPROVED_AUTH_ACTIONS_SHA256 =
+    "3a1b55040beadf61e0bbb840b9abbbc186a4ab6d830a64c90874a0350a31bbae";
+  assert(
+    createHash("sha256")
+      .update(readFileSync(path.join(root, "src/features/auth/authActions.ts")))
+      .digest("hex") === APPROVED_AUTH_ACTIONS_SHA256,
+    "authActions.ts must match its approved post-F5 content exactly"
+  );
 
   for (const relativePath of ["src/lib/login-rate-limit.ts"]) {
     const current = read(relativePath);

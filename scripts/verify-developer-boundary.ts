@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 import {
   BootstrapRefusedError,
@@ -7,8 +8,10 @@ import {
   runBootstrapAuditRepair,
 } from "./bootstrap-core";
 
+import { emitLogoutAuditForSession } from "@/features/auth/logout-audit";
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import type { SessionPayload } from "@/lib/session-codec";
 import type {
   AuditLogEntry,
   AuditLogQueryCriteria,
@@ -307,6 +310,17 @@ function assertNoSensitiveData(value: unknown, secrets: string[], message: strin
       `${message} must not expose sensitive input or stored material`
     );
   }
+}
+
+function sessionFor(userId: string): SessionPayload {
+  return {
+    userId,
+    tokenVersion: 99,
+    mustChangePassword: false,
+    mustSetRecovery: false,
+    rememberMe: false,
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
 }
 
 async function verifyAdminListExcludesDevelopers(): Promise<void> {
@@ -2021,6 +2035,238 @@ async function verifyUpdateUserIgnoresPasswordLikeField(): Promise<void> {
   );
 }
 
+async function verifyDeveloperLogoutUsesPersistedIdentity(): Promise<void> {
+  const persisted = {
+    ...credential(DEVELOPER_A, "Developer"),
+    username: "persisted-developer-logout",
+  };
+  const audit = new FakeAuditLog();
+  const lookupIds: string[] = [];
+  const sessionUserId = "session-developer-id";
+  const spoofedSession = {
+    ...sessionFor(sessionUserId),
+    role: "Admin" as AuthRole,
+    username: "session-supplied-identity",
+  };
+
+  await emitLogoutAuditForSession(spoofedSession, {
+    getUserById: async (userId) => {
+      lookupIds.push(userId);
+      return persisted;
+    },
+    emit: (event) => audit.emit(event),
+  });
+
+  assert(
+    lookupIds.length === 1 && lookupIds[0] === sessionUserId,
+    "case 70 must re-read the persisted Developer account exactly once by session userId"
+  );
+  const entries = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLoggedOut"
+  );
+  assert(entries.length === 1, "case 70 must emit exactly one AuthenticationLoggedOut event");
+  const entry = entries[0];
+  assert(entry.category === "AuthAccount", "case 70 must classify the event as AuthAccount");
+  assert(
+    entry.actorRole === "Developer" && entry.targetRole === "Developer",
+    "case 70 must stamp both roles as Developer, making developer_involved true so Admin readers cannot see the event"
+  );
+  assert(
+    entry.performedByUserId === persisted.id &&
+      entry.performedByUsername === persisted.username &&
+      entry.targetReference === persisted.username,
+    "case 70 must derive every audit identity field from the persisted Developer record"
+  );
+  assert(entry.details === null, "case 70 must persist no extra details payload");
+}
+
+async function verifyOrdinaryLogoutUsesPersistedRole(): Promise<void> {
+  const persisted = {
+    ...credential(USER_A, "User"),
+    username: "persisted-ordinary-logout",
+  };
+  const audit = new FakeAuditLog();
+  const spoofedSession = {
+    ...sessionFor(persisted.id),
+    role: "Developer" as AuthRole,
+    username: "spoofed-developer-session",
+  };
+
+  await emitLogoutAuditForSession(spoofedSession, {
+    getUserById: async () => persisted,
+    emit: (event) => audit.emit(event),
+  });
+
+  const entries = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLoggedOut"
+  );
+  assert(entries.length === 1, "case 71 must emit exactly one AuthenticationLoggedOut event");
+  const entry = entries[0];
+  assert(
+    entry.actorRole === persisted.role && entry.targetRole === persisted.role,
+    "case 71 must stamp both roles from the persisted ordinary account"
+  );
+  assert(
+    entry.performedByUserId === persisted.id &&
+      entry.performedByUsername === persisted.username &&
+      entry.targetReference === persisted.username,
+    "case 71 must derive every audit identity field from the persisted ordinary account"
+  );
+}
+
+async function verifyNullSessionEmitsNoLogout(): Promise<void> {
+  let lookupCalls = 0;
+  const audit = new FakeAuditLog();
+
+  await emitLogoutAuditForSession(null, {
+    getUserById: async () => {
+      lookupCalls += 1;
+      return credential(USER_A);
+    },
+    emit: (event) => audit.emit(event),
+  });
+
+  assert(lookupCalls === 0, "case 72 must not resolve an account for a null session");
+  assert(audit.emitCalls === 0, "case 72 must emit nothing for passive session loss");
+}
+
+async function verifyMissingLogoutAccountEmitsNothing(): Promise<void> {
+  let lookupCalls = 0;
+  const audit = new FakeAuditLog();
+
+  await emitLogoutAuditForSession(sessionFor("removed-account"), {
+    getUserById: async () => {
+      lookupCalls += 1;
+      return null;
+    },
+    emit: (event) => audit.emit(event),
+  });
+
+  assert(lookupCalls === 1, "case 73 must attempt exactly one persisted-account re-read");
+  assert(audit.emitCalls === 0, "case 73 must emit nothing when the account no longer resolves");
+}
+
+async function verifyLogoutAuditFailureIsSwallowedWithoutRetry(): Promise<void> {
+  const persisted = credential(USER_A, "User");
+  const audit = new FakeAuditLog();
+  audit.failures = 1;
+  const consoleErrors: unknown[][] = [];
+  const originalConsoleError = console.error;
+  let logoutCompleted = false;
+  let logoutError: unknown = null;
+
+  try {
+    console.error = (...values: unknown[]) => {
+      consoleErrors.push(values);
+    };
+    try {
+      await emitLogoutAuditForSession(sessionFor(persisted.id), {
+        getUserById: async () => persisted,
+        emit: (event) => audit.emit(event),
+      });
+      logoutCompleted = true;
+    } catch (error) {
+      logoutError = error;
+    }
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert(
+    logoutCompleted && logoutError === null,
+    "case 74 must allow logout completion after audit persistence fails"
+  );
+  assert(audit.emitCalls === 1, "case 74 must make exactly one logout audit persistence attempt");
+  assert(
+    audit.entries.every((entry) => entry.eventType !== "AuthenticationLoggedOut"),
+    "case 74 must not retry the failed AuthenticationLoggedOut persistence attempt"
+  );
+  assert(consoleErrors.length === 1, "case 74 must make exactly one sanitized console.error call");
+  assert(
+    consoleErrors[0].length === 2 &&
+      JSON.stringify(consoleErrors[0][1]) ===
+        JSON.stringify({ eventType: "AuthenticationLoggedOut" }),
+    "case 74 console.error metadata must carry only the AuthenticationLoggedOut eventType"
+  );
+}
+
+async function verifyLogoutAccountLookupFailureIsSwallowed(): Promise<void> {
+  const audit = new FakeAuditLog();
+  const consoleErrors: unknown[][] = [];
+  const originalConsoleError = console.error;
+  let lookupCalls = 0;
+  let logoutCompleted = false;
+  let logoutError: unknown = null;
+
+  try {
+    console.error = (...values: unknown[]) => {
+      consoleErrors.push(values);
+    };
+    try {
+      await emitLogoutAuditForSession(sessionFor(USER_A), {
+        getUserById: async () => {
+          lookupCalls += 1;
+          throw new Error("injected persisted-account lookup failure");
+        },
+        emit: (event) => audit.emit(event),
+      });
+      logoutCompleted = true;
+    } catch (error) {
+      logoutError = error;
+    }
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert(
+    logoutCompleted && logoutError === null,
+    "case 75 must allow logout completion after the persisted-account lookup rejects"
+  );
+  assert(lookupCalls === 1, "case 75 must attempt the persisted-account lookup exactly once");
+  assert(audit.emitCalls === 0, "case 75 must not emit without a resolved persisted account");
+  assert(consoleErrors.length === 1, "case 75 must make exactly one sanitized console.error call");
+  assert(
+    consoleErrors[0].length === 2 &&
+      JSON.stringify(consoleErrors[0][1]) ===
+        JSON.stringify({ eventType: "AuthenticationLoggedOut" }),
+    "case 75 console.error metadata must carry only the AuthenticationLoggedOut eventType"
+  );
+}
+
+function verifyAuthActionsExportsOnlyApprovedSurface(): void {
+  const source = readFileSync(
+    new URL("../src/features/auth/authActions.ts", import.meta.url),
+    "utf8"
+  );
+  const exportedNames = new Set<string>();
+
+  for (const match of source.matchAll(
+    /\bexport\s+(?:declare\s+)?(?:async\s+)?(?:function|type|interface|class|const|let|var|enum)\s+([A-Za-z_$][\w$]*)/g
+  )) {
+    exportedNames.add(match[1]);
+  }
+  for (const match of source.matchAll(/\bexport\s*\{([^}]+)\}/g)) {
+    for (const specifier of match[1].split(",")) {
+      const name = /\bas\s+([A-Za-z_$][\w$]*)\s*$/.exec(specifier.trim())?.[1] ??
+        specifier.trim().split(/\s+/)[0];
+      if (name) exportedNames.add(name);
+    }
+  }
+
+  const approved = [
+    "AuthActionResult",
+    "changeFirstLoginPasswordAction",
+    "loginAction",
+    "logoutAction",
+    "setFirstLoginRecoveryAnswerAction",
+  ];
+  assert(
+    !/\bexport\s+(?:default|\*)/.test(source) &&
+      JSON.stringify([...exportedNames].sort()) === JSON.stringify(approved),
+    "case 76 authActions.ts must export exactly the five approved pre-F5 names and nothing else"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -2091,7 +2337,14 @@ async function main(): Promise<void> {
   await verifyUserCannotResetOrdinaryPassword();
   await verifyOrdinaryResetRejectsDeveloperTarget();
   await verifyUpdateUserIgnoresPasswordLikeField();
-  process.stdout.write("Developer boundary verification passed: all 69 cases verified.\n");
+  await verifyDeveloperLogoutUsesPersistedIdentity();
+  await verifyOrdinaryLogoutUsesPersistedRole();
+  await verifyNullSessionEmitsNoLogout();
+  await verifyMissingLogoutAccountEmitsNothing();
+  await verifyLogoutAuditFailureIsSwallowedWithoutRetry();
+  await verifyLogoutAccountLookupFailureIsSwallowed();
+  verifyAuthActionsExportsOnlyApprovedSurface();
+  process.stdout.write("Developer boundary verification passed: all 76 cases verified.\n");
 }
 
 void main();

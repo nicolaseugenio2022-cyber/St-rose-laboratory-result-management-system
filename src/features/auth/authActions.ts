@@ -7,6 +7,8 @@ import { LoginRateLimitError } from "@/lib/login-rate-limit";
 import { normalizeSecurityAnswer } from "@/lib/password";
 import { createSession, deleteSession, getSession } from "@/lib/session";
 import { canonicalizeUsername } from "@/lib/username";
+import { emitLogoutAuditForSession } from "@/features/auth/logout-audit";
+import { auditService } from "@/services/audit-service-instance";
 import { userService } from "@/services/user-service-instance";
 
 export type AuthActionResult = {
@@ -113,6 +115,17 @@ export async function setFirstLoginRecoveryAnswerAction(
 }
 
 export async function logoutAction() {
+  try {
+    const session = await getSession();
+    await emitLogoutAuditForSession(session, {
+      getUserById: (userId) => userService.getUserById(userId),
+      emit: (event) => auditService.emit(event),
+    });
+  } catch {
+    console.error("Logout audit persistence failed.", {
+      eventType: "AuthenticationLoggedOut",
+    });
+  }
   await deleteSession();
   redirect("/login");
 }

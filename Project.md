@@ -220,6 +220,46 @@ Approved scope:
 - Draft autosave with accidental-refresh protection
 - Completed History persistence and system-wide visibility within the retention policy
 
+### Accession workflow — atomic first assignment
+
+**Complete**, committed 2026-08-15. Opening the workspace previously consumed an accession number:
+`GuidedWorkspace` allocated one from a server action in a mount effect, so merely visiting
+`/workspace` advanced the yearly counter, and abandoning the page without saving burned that number
+permanently. Accession numbers are the laboratory's external record identifier, and gaps caused by
+allocation-on-open are indistinguishable from a lost or destroyed report.
+
+Allocation now occurs only during the first successful persisted write.
+`resolve_session_accession_number` takes a transaction-scoped advisory lock on the session id, reads
+the existing accession, and calls `allocate_accession_number` only on the null branch, so concurrent
+first writes for one session cannot both allocate. The whole Save Draft tree — accession, session
+row, reports and results — commits or rolls back together, because a child-row failure after a
+successful session insert would otherwise report Save Draft failure to the user while the accession
+had already been consumed. The child writer is extracted into `persist_session_report_tree` and
+shared verbatim by both persistence paths, which differ only in whether empty result values are
+filtered and whether signatories are written; the ownership predicates, row-count shortfall
+assertions and duplicate-id rejection therefore exist in one copy and cannot drift apart. The
+accession is absent from the `ON CONFLICT DO UPDATE SET` list of both functions and from both
+repository payloads, so no payload can overwrite it once assigned. The existing yearly Manila
+allocator, its table and its privilege envelope are unchanged.
+
+`IPatientReportSession.accessionNumber` is `string | null`, and an unassigned session displays
+"Not assigned" in the workspace. The resolved render model deliberately keeps
+`accessionNumber: string`, coalescing null to an empty field, so no user-interface wording can enter
+the report template. While the accession is null, PDF export and the in-app Print control are
+disabled and the report-page container is suppressed under `@media print` with a print-only notice
+in its place. Neither Live Preview nor a print attempt allocates anything.
+
+Verification: `tsc`, B4, B5, C1, M6C, lint and build pass, with nine mutations each firing their
+intended assertion under byte-verified restore, and two independent read-only reviews returning no
+blocking findings. Live acceptance passed **50 of 50 checks** against the live Supabase project:
+first Save Draft allocated exactly once; re-saving and then completing that same session both reused
+the assigned number without allocating; direct completion of a never-saved session allocated inside
+the completion transaction; and a report carrying a `template_code` absent from `report_templates`
+failed with `23503`, leaving no session, report or result rows with the allocator counter unchanged,
+against a differential control whose only difference was a valid template code. Every pre-existing
+row was compared column by column and was unchanged, and opening a workspace without saving consumed
+nothing.
+
 ## Milestone 6 — Production Hardening
 
 Security hardening is in progress and is tracked as checkpoints 6A–6D.
@@ -327,6 +367,27 @@ That incident is the concrete driver for the Migration-state preflight and schem
 above: every current verifier is source-level or uses in-memory fakes, so an unapplied migration
 cannot be detected before runtime.
 
+`supabase/migrations/20260815180000_atomic_accession_assignment.sql` was applied manually through the
+Supabase SQL Editor on 2026-08-15, as a single submission so that its `DROP FUNCTION` and the
+re-`GRANT` stay in one transaction. It was first applied to the **wrong Supabase project**, and that
+was detected before any acceptance ran: the application's PostgREST reported the new functions absent
+while the editor's catalog showed them present, and the editor's database was then shown to lack
+`accession_sequences` entirely. The correct project was confirmed by fingerprint before re-applying —
+`accession_sequences` present at `2026 → 6`, exactly three sessions `SR-20260815-0001`, `-0005` and
+`-0006`, `allocate_accession_number` present, and `save_draft_session` absent. Two operational facts
+follow. A dashboard project ref alone is not proof of the target database, because a preview branch
+reuses it; only a data fingerprint is. And PostgREST's schema cache took roughly forty seconds to
+expose the new functions after `notify pgrst, 'reload schema'`, so absence immediately after applying
+is not evidence that a migration failed.
+
+The other project still holds `save_draft_session`, `resolve_session_accession_number`,
+`persist_session_report_tree` and a `text`-returning `complete_patient_report_session` against a
+database that has neither `accession_sequences` nor `allocate_accession_number`, so those functions
+would fail at runtime there. Cleaning that up is outstanding and requires identifying what that
+project is. Live acceptance also left two synthetic sessions in the correct project,
+`SR-20260815-0007` and `SR-20260815-0008`, deliberately retained pending a cleanup decision; deleting
+them would not roll the allocator back, by design.
+
 ### Deferred follow-ups
 
 - Security-Denial coverage for route-level `checkRouteAccess` denials remains deferred while
@@ -342,6 +403,36 @@ cannot be detected before runtime.
   committed password change can never be silently hidden, which leaves a user on a request that never
   settles waiting until they navigate or reload. Both belong to the same in-flight and blocked-state
   pass; neither is a functional or security defect.
+- Workspace resilience, approved 2026-08-15 as the next workspace slice and carrying two items. First,
+  accidental-refresh recovery of unsaved workspace input — demographics, selected examinations,
+  entered result values, requesting-physician and request fields, signatory selections and remarks.
+  The mechanism is settled: tab-scoped `sessionStorage`, explicitly not `localStorage`, since a shared
+  laboratory workstation would otherwise retain patient data on disk after the user leaves. It must be
+  scoped by client-session UUID and discarded on mismatch, carry a short TTL, restore only into the
+  matching unsaved workspace, and clear on successful Save Draft, on completion or finish, on an
+  explicit clear or new workspace, and on logout. It must never store an accession, authentication
+  material or secrets; recovered work stays "Not assigned"; and recovery performs no server write and
+  allocates nothing. The residual is accepted: Chrome writes `sessionStorage` to disk for tab restore,
+  so exposure is reduced rather than eliminated. This realises the Milestone 5 scope item "Draft
+  autosave with accidental-refresh protection". Second, encoding-mode print suppression — while the
+  accession is unassigned, browser-native Ctrl+P from the data-entry workspace must not print the
+  workspace form and should show only the save-before-printing notice.
+- Encoding-mode Ctrl+P currently prints the data-entry workspace while the accession is unassigned.
+  This is a scope gap in the accession slice's frozen amendment rather than a defect in what was
+  built: the print guard was scoped to the report canvas, which `GuidedWorkspace` mounts only in
+  preview mode, so the encoding form was never inside it. The printed form carries no accession,
+  letterhead or signatories and cannot pass as an official result, but it does carry patient data.
+  Accepted 2026-08-15 as follow-up rather than extending an exhausted correction cycle, and scheduled
+  into the workspace-resilience slice above.
+- Preview-mode Ctrl+P behaviour for an unassigned session remains **manually unverified**. Its
+  correctness rests on code review and the B4 assertions with their supporting mutations, not on a
+  visual check. Close it with one manual observation: an unassigned session must print only the
+  notice, and an assigned session must print normally.
+- Concurrent first-write ownership transfer: both persistence functions set
+  `created_by_user_id = EXCLUDED.created_by_user_id`, so a concurrent first write could reassign
+  ownership of a session. Verified as **pre-existing at the baseline commit** and unchanged by the
+  accession slice, which is why it was not actioned there. It needs its own hardening slice and a
+  decision on the intended ownership semantics.
 
 ---
 

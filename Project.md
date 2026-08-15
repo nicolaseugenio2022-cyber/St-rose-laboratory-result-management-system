@@ -260,6 +260,70 @@ against a differential control whose only difference was a valid template code. 
 row was compared column by column and was unchanged, and opening a workspace without saving consumed
 nothing.
 
+### Retention expiry enforcement
+
+**Complete**, committed 2026-08-15 as two layers. ADR-006 states that once `expires_at` has passed a
+completed report cannot be reopened, edited or replaced, and that completed reports are retrievable
+system-wide only within the retention policy; `SECURITY_MODEL.md` repeats both rules and its access
+matrix denies editing an expired report to every role. None of it was enforced.
+`securityService.canEditSession` implemented the rule correctly and had **zero callers**, so an
+expired session stayed visible in History and stayed writable through both persistence paths. Type
+checks, lint and build all passed on a guarantee nothing reached.
+
+**Layer one — application enforcement.** `getRecentSessions`, the only History read path, carries a
+retention predicate in the database query rather than a filter applied afterwards, so no transport or
+client can bypass it. A repository guard rejects an expired completed session before either
+persistence RPC, placed after the existing ownership check. It guards `saveDraft` as well as
+`completeSession`, because ADR-006 forbids an expired report being reopened, edited **or** replaced
+and a draft-save landing on an expired completed row edits an expired clinical record;
+`replaceSession` is covered through its delegation to completion. `POST /api/purge`, which previously
+accepted any authenticated profile for a destructive delete, now requires Admin through the existing
+`assertAdminAccess`. A non-Admin currently receives HTTP 500 rather than 403 because that guard
+throws inside the route's pre-existing catch; the authorization boundary holds because the throw
+precedes the purge call, and the status code is recorded below as a correctness and monitoring
+defect, not a security one.
+
+**Layer two — atomic in-transaction enforcement.** Independent review found a time-of-check/
+time-of-use gap in layer one: the guard performs its own `SELECT` and the mutation happens in a
+separate RPC, so a session live at the check can expire before the write lands. That gap was
+explicitly **not** accepted as a residual. `assert_session_within_retention` now raises inside the
+transaction, and both `save_draft_session` and `complete_patient_report_session` `PERFORM` it as the
+first statement after `BEGIN` — before accession resolution, therefore before any allocation, and
+before every `INSERT`. The mechanism is `now()`, which returns the transaction start timestamp and is
+fixed for the transaction's duration, so the check and the write share one instant and cannot be
+separated. `clock_timestamp()` advances mid-transaction and would rebuild the same race; it is
+prohibited and that prohibition carries its own assertion and mutation. The repository pre-check
+deliberately remains as defence in depth and as the earlier, clearer user-facing denial. The database
+is now the authority.
+
+Verification across both layers: `tsc`, B4, B5, C1, M6C, the Developer boundary verifier at 85/85,
+lint and build pass. Eight mutations proved the assertions bite, each restored byte-for-byte from a
+backup outside the repository. Two of them are worth recording because they exposed verifiers that
+were passing for the wrong reason: assertions matched **commented-out** code, because the live-code
+helper recognised `//` and `/* */` but not the SQL line comment `--`; and B5 resolved every SQL
+function pin from one migration file, so once a later migration superseded two of those functions the
+pins would have kept asserting against dead definitions. Migration sources are now stripped of SQL
+comments once at read time, and each function resolves to its last definition across all timestamped
+migrations, failing closed when the newest is unterminated rather than silently using an older one.
+
+Live acceptance: **13 of 13** checks for layer one and **20 of 20** for layer two, against the live
+Supabase project, using synthetic session `SR-20260815-0008` with its `expires_at` temporarily
+backdated under explicit authorization and restored afterwards. Layer two was exercised by calling
+`save_draft_session` and `complete_patient_report_session` **directly through `service_role`**,
+deliberately bypassing the repository pre-check, since routing through it would prove nothing about
+the database; both raised inside the transaction and wrote nothing. Negative controls passed in both
+rounds: a live completed session, a Draft with a null retention anchor, and a non-existent session id
+are all accepted, and the session is accepted again once its original `expires_at` is restored, so
+the guard neither over-blocks nor blocks first persistence. No accession was allocated, no child row
+changed, and the destructive purge path was never executed.
+
+**Expected `updated_at` drift.** `trg_patient_report_sessions_updated_at` is a `BEFORE UPDATE`
+trigger that rewrites `updated_at` on every write, so the authorized backdate-and-restore cycles
+moved it and it cannot be restored — restoring fires the trigger again. On `SR-20260815-0008` it
+drifted three times across the two acceptance rounds. Every other column was verified byte-identical
+to its captured baseline. This is an acknowledged artifact of the authorized test mutation, not a
+residual change of intent, and no claim of byte-identical restoration is made for that column.
+
 ## Milestone 6 — Production Hardening
 
 Security hardening is in progress and is tracked as checkpoints 6A–6D.
@@ -388,6 +452,14 @@ project is. Live acceptance also left two synthetic sessions in the correct proj
 `SR-20260815-0007` and `SR-20260815-0008`, deliberately retained pending a cleanup decision; deleting
 them would not roll the allocator back, by design.
 
+`supabase/migrations/20260815200000_atomic_expiry_enforcement.sql` was applied manually through the
+Supabase SQL Editor on 2026-08-15, after a fingerprint confirmed the correct project. Unlike the two
+migrations above it contains **no `DROP`**: both persistence functions are replaced in place with
+unchanged signatures, so there is no window in which a function is absent and no precondition about
+in-flight completions. No `notify pgrst, 'reload schema'` was needed either, because no RPC signature
+changed and the new helper is never called through PostgREST, so the schema-cache propagation delay
+recorded above did not apply.
+
 ### Deferred follow-ups
 
 - Security-Denial coverage for route-level `checkRouteAccess` denials remains deferred while
@@ -428,6 +500,19 @@ them would not roll the allocator back, by design.
   correctness rests on code review and the B4 assertions with their supporting mutations, not on a
   visual check. Close it with one manual observation: an unassigned session must print only the
   notice, and an assigned session must print normally.
+- `POST /api/purge` returns HTTP 500 rather than 403 to a non-Admin caller, because `assertAdminAccess`
+  throws inside the route's pre-existing catch. The authorization boundary is intact — the throw
+  precedes the purge call and was mutation-proved — so this is a correctness, monitoring and client-
+  experience defect rather than a security one. Fixing it means reshaping the route's error handling,
+  which was deliberately out of scope for the slice that added the guard.
+- `findById` and `findByAccessionNumber` still return expired completed sessions when addressed
+  directly. History no longer surfaces them, so there is no route to them through the interface, but
+  direct retrieval by id or accession remains open. Knowingly recorded rather than fixed, to keep the
+  expiry slice narrow; note the write paths are guarded regardless, so an expired session retrieved
+  this way still cannot be edited.
+- `findActiveCompletedSessions` inherits the History retention filter through its delegation to
+  `getRecentSessions`. It has no callers, and the inherited behaviour matches both its own name and
+  ADR-006's visibility rule, so it is recorded rather than changed.
 - Concurrent first-write ownership transfer: both persistence functions set
   `created_by_user_id = EXCLUDED.created_by_user_id`, so a concurrent first write could reassign
   ownership of a session. Verified as **pre-existing at the baseline commit** and unchanged by the

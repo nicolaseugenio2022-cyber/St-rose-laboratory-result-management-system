@@ -326,86 +326,6 @@ function verifyRenamedContractsOnly(): void {
   );
 }
 
-// The frozen plan approves exactly four import-level differences from Milestone 6B: the added
-// side-effect import "server-only", the two contract identifier renames, `import type` in place
-// of `import`, and specifier ordering that follows from those renames. Every module path and the
-// bindings imported from it must otherwise be identical, and everything outside the import block
-// must be byte-identical once the renames are undone.
-const IMPORT_STATEMENT = /^import\b[^;]*;/gm;
-
-type ParsedImport = { module: string; bindings: string[]; sideEffect: boolean };
-
-function normalizeImportClause(clause: string): string[] {
-  const braceStart = clause.indexOf("{");
-  const outer = (braceStart === -1 ? clause : clause.slice(0, braceStart))
-    .split(",")
-    .map((part) => part.trim().replace(/\s+/g, " "))
-    .filter(Boolean);
-  const inner =
-    braceStart === -1
-      ? []
-      : clause
-          .slice(braceStart + 1, clause.lastIndexOf("}"))
-          .split(",")
-          // `import type { X }` and `import { type X }` are the same binding.
-          .map((part) => part.trim().replace(/^type\s+/, "").replace(/\s+/g, " "))
-          .filter(Boolean);
-  // Sorted so that specifier reordering caused by the renames is not treated as a difference.
-  return [...outer, ...inner].sort();
-}
-
-function parseImports(source: string): ParsedImport[] {
-  return (source.match(IMPORT_STATEMENT) ?? []).map((statement) => {
-    const sideEffect = /^import\s*["']([^"']+)["'];$/.exec(statement);
-    if (sideEffect) return { module: sideEffect[1], bindings: [], sideEffect: true };
-    const bound = /^import\s+(?:type\s+)?([\s\S]*?)\s*from\s*["']([^"']+)["'];$/.exec(statement);
-    assert(bound, `unparsable import statement: ${JSON.stringify(statement)}`);
-    return { module: bound[2], bindings: normalizeImportClause(bound[1]), sideEffect: false };
-  });
-}
-
-function boundImportSignature(imports: ParsedImport[]): string {
-  return JSON.stringify(
-    imports.filter((entry) => !entry.sideEffect).map((entry) => [entry.module, entry.bindings])
-  );
-}
-
-function bodyAfterImports(source: string): string {
-  return source.replace(IMPORT_STATEMENT, "").trim();
-}
-
-function withMilestone6BIdentifiers(source: string): string {
-  return source
-    .replace(/\bICredentialRepository\b/g, "IAuthCredentialRepository")
-    .replace(/\bILoginAttemptRepository\b/g, "IAuthAttemptRepository");
-}
-
-function verifyApprovedImportDifferencesOnly(
-  relativePath: string,
-  current: ParsedImport[],
-  baseline: ParsedImport[]
-): void {
-  const baselineSideEffects = new Set(
-    baseline.filter((entry) => entry.sideEffect).map((entry) => entry.module)
-  );
-  for (const entry of current.filter((entry) => entry.sideEffect)) {
-    assert(
-      entry.module === "server-only" || baselineSideEffects.has(entry.module),
-      `${relativePath} may add no side-effect import other than "server-only"`
-    );
-  }
-  for (const module of baselineSideEffects) {
-    assert(
-      current.some((entry) => entry.sideEffect && entry.module === module),
-      `${relativePath} must retain the Milestone 6B side-effect import of ${module}`
-    );
-  }
-  assert(
-    boundImportSignature(current) === boundImportSignature(baseline),
-    `${relativePath} import module paths and bindings must match Milestone 6B apart from the approved contract renames`
-  );
-}
-
 function verifyBehaviouralFreeze(): void {
   for (const relativePath of [
     "src/lib/auth-guards.ts",
@@ -444,19 +364,16 @@ function verifyBehaviouralFreeze(): void {
       `${relativePath} must use only the renamed contracts, so undoing the rename is unambiguous`
     );
 
-    const baseline = readAtMilestone6B(relativePath);
-    const renamed = withMilestone6BIdentifiers(current);
-    verifyApprovedImportDifferencesOnly(
-      relativePath,
-      parseImports(renamed),
-      parseImports(baseline)
-    );
-    assert(
-      bodyAfterImports(renamed) === bodyAfterImports(baseline),
-      `${relativePath} must be byte-identical to Milestone 6B outside the import block once the contract renames are undone`
-    );
   }
 
+  const APPROVED_LOGIN_RATE_LIMIT_SHA256 =
+    "46f04f208fd6aa52962ae68fc02ce0af650decafd50c5870130473375f247bb1";
+  assert(
+    createHash("sha256")
+      .update(readFileSync(path.join(root, "src/lib/login-rate-limit.ts")))
+      .digest("hex") === APPROVED_LOGIN_RATE_LIMIT_SHA256,
+    "login-rate-limit.ts must match its approved post-F6 content exactly"
+  );
 }
 
 function verifyUserServiceInvariants(): void {

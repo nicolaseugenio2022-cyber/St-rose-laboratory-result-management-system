@@ -10,6 +10,15 @@ import {
 
 import { emitLogoutAuditForSession } from "@/features/auth/logout-audit";
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
+import {
+  LOGIN_RATE_LIMIT_POLICY,
+  LoginRateLimitError,
+  LoginRateLimiter,
+} from "@/lib/login-rate-limit";
+import {
+  emitLockoutActivated,
+  emitLockoutReleased,
+} from "@/lib/lockout-audit";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import type { SessionPayload } from "@/lib/session-codec";
 import type {
@@ -22,7 +31,10 @@ import type {
   AuthStatus,
   ICredentialDirectoryRepository,
   ICredentialRepository,
+  ILockoutRepository,
   ILoginAttemptRepository,
+  LockoutRecord,
+  OpenLockoutInput,
 } from "@/repositories/interfaces";
 import {
   DeveloperAlreadyExistsError,
@@ -36,6 +48,7 @@ import {
   UserService,
 } from "@/services/userService";
 import type { AuditEvent, AuditService } from "@/services/audit-service";
+import { AuditReadService } from "@/services/audit-read-service";
 import type {
   CreateDeveloperAccountInput,
   CreateUserInput,
@@ -147,13 +160,27 @@ class FakeCredentialRepository
 class FakeLoginAttemptRepository implements ILoginAttemptRepository {
   private readonly attempts: AuthAttemptRecord[] = [];
   recordFailures = 0;
+  recordedAttemptLagMs = 0;
+
+  get recordCount(): number {
+    return this.attempts.length;
+  }
+
+  snapshot(): AuthAttemptRecord[] {
+    return this.attempts.map((attempt) => ({ ...attempt }));
+  }
 
   async record(attempt: AuthAttemptRecord): Promise<AuthAttemptRecord> {
     if (this.recordFailures > 0) {
       this.recordFailures -= 1;
       throw new Error("simulated rate-limit record failure");
     }
-    const recorded = { ...attempt };
+    const recorded = {
+      ...attempt,
+      attemptedAt: new Date(
+        new Date(attempt.attemptedAt).getTime() - this.recordedAttemptLagMs
+      ).toISOString(),
+    };
     this.attempts.push(recorded);
     return { ...recorded };
   }
@@ -198,9 +225,24 @@ class FakeAuditLog {
   }
 
   private matching(criteria: AuditLogQueryCriteria): AuditLogEntry[] {
-    return this.entries.filter(
-      (entry) => !criteria.eventType || entry.eventType === criteria.eventType
-    );
+    return this.entries.filter((entry) => {
+      if (criteria.categories && !criteria.categories.includes(entry.category)) return false;
+      if (criteria.eventType && entry.eventType !== criteria.eventType) return false;
+      if (!criteria.exclusion) return true;
+
+      if (entry.actorRole !== null || entry.targetRole !== null) {
+        return entry.actorRole !== "Developer" && entry.targetRole !== "Developer";
+      }
+
+      return (
+        !entry.performedByUserId ||
+        !criteria.exclusion.performedByUserIds.includes(entry.performedByUserId)
+      ) &&
+        (!entry.performedByUsername ||
+          !criteria.exclusion.usernames.includes(entry.performedByUsername)) &&
+        (!entry.targetReference ||
+          !criteria.exclusion.usernames.includes(entry.targetReference));
+    });
   }
 
   async query(criteria: AuditLogQueryCriteria): Promise<AuditLogEntry[]> {
@@ -244,6 +286,24 @@ function credential(
   };
 }
 
+function lockoutRecord(
+  username: string,
+  expiresAt: string,
+  releasedAt: string | null = null,
+  failureCount = LOGIN_RATE_LIMIT_POLICY.lockoutFailureCount
+): LockoutRecord {
+  return {
+    id: randomUUID(),
+    username,
+    lockedAt: new Date(
+      new Date(expiresAt).getTime() - LOGIN_RATE_LIMIT_POLICY.lockoutMs
+    ).toISOString(),
+    expiresAt,
+    releasedAt,
+    failureCount,
+  };
+}
+
 function createSubject(records: AuthCredentialRecord[]): {
   credentials: FakeCredentialRepository;
   service: UserService;
@@ -256,12 +316,113 @@ function createSubject(records: AuthCredentialRecord[]): {
 function createAuditedSubject(
   records: AuthCredentialRecord[],
   audit: FakeAuditLog,
-  attempts = new FakeLoginAttemptRepository()
+  attempts = new FakeLoginAttemptRepository(),
+  lockouts?: FakeLockoutRepository
 ): { credentials: FakeCredentialRepository; service: UserService } {
   const credentials = new FakeCredentialRepository(records);
   return {
     credentials,
-    service: new UserService(credentials, attempts, audit as unknown as AuditService),
+    service: new UserService(
+      credentials,
+      attempts,
+      audit as unknown as AuditService,
+      lockouts
+    ),
+  };
+}
+
+async function seedFailedLoginAttempts(
+  attempts: FakeLoginAttemptRepository,
+  username: string,
+  minutesAgo: number[]
+): Promise<void> {
+  const now = Date.now();
+  for (const offset of minutesAgo) {
+    await attempts.record({
+      id: randomUUID(),
+      username,
+      attemptKind: "Login",
+      succeeded: false,
+      clientIp: null,
+      attemptedAt: new Date(now - offset * 60 * 1000).toISOString(),
+    });
+  }
+}
+
+class FakeLockoutRepository implements ILockoutRepository {
+  private readonly records: LockoutRecord[] = [];
+  readonly openInputs: OpenLockoutInput[] = [];
+  openCalls = 0;
+  openConflicts = 0;
+  releaseCalls = 0;
+  openFailures = 0;
+  releaseFailures = 0;
+
+  constructor(records: LockoutRecord[] = []) {
+    for (const record of records) {
+      if (
+        record.releasedAt === null &&
+        this.records.some(
+          (existing) => existing.username === record.username && existing.releasedAt === null
+        )
+      ) {
+        throw new Error(`Duplicate open lockout for ${record.username}.`);
+      }
+      this.records.push({ ...record });
+    }
+  }
+
+  async openLockout(input: OpenLockoutInput): Promise<LockoutRecord | null> {
+    this.openCalls += 1;
+    this.openInputs.push({ ...input });
+    if (this.openFailures > 0) {
+      this.openFailures -= 1;
+      throw new Error("simulated lockout insert failure");
+    }
+
+    const hasOpenLockout = this.records.some(
+      (record) => record.username === input.username && record.releasedAt === null
+    );
+    if (hasOpenLockout) {
+      this.openConflicts += 1;
+      return null;
+    }
+
+    const opened = { ...input, releasedAt: null };
+    this.records.push(opened);
+    return { ...opened };
+  }
+
+  async releaseExpiredLockout(
+    username: string,
+    now: string
+  ): Promise<LockoutRecord | null> {
+    this.releaseCalls += 1;
+    if (this.releaseFailures > 0) {
+      this.releaseFailures -= 1;
+      throw new Error("simulated lockout release failure");
+    }
+
+    const nowMs = new Date(now).getTime();
+    const currentIndex = this.records.findIndex(
+      (record) =>
+        record.username === username &&
+        record.releasedAt === null &&
+        new Date(record.expiresAt).getTime() <= nowMs
+    );
+    if (currentIndex < 0) return null;
+    const current = this.records[currentIndex];
+    const released = { ...current, releasedAt: now };
+    this.records[currentIndex] = released;
+    return { ...released };
+  }
+}
+
+function lockoutReadCriteria() {
+  return {
+    category: "AuthAccount" as const,
+    limit: 100,
+    offset: 0,
   };
 }
 
@@ -2267,6 +2428,420 @@ function verifyAuthActionsExportsOnlyApprovedSurface(): void {
   );
 }
 
+async function verifyDeveloperLockoutsRespectReaderVisibility(): Promise<void> {
+  const persisted = credential(DEVELOPER_A, "Developer");
+  const credentials = new FakeCredentialRepository([persisted]);
+  const audit = new FakeAuditLog();
+  const dependencies = {
+    findByUsername: (username: string) => credentials.findByUsername(username),
+    emit: (event: AuditEvent) => audit.emit(event),
+  };
+  const lockoutExpiresAt = new Date(Date.now() + LOGIN_RATE_LIMIT_POLICY.lockoutMs).toISOString();
+  const activated = lockoutRecord(persisted.username, lockoutExpiresAt);
+  const released = { ...activated, releasedAt: new Date().toISOString() };
+
+  await emitLockoutActivated(activated, dependencies);
+  await emitLockoutReleased(released, dependencies);
+
+  const reader = new AuditReadService(audit, credentials);
+  const developerPage = await reader.readPage(lockoutReadCriteria(), "Developer");
+  const adminPage = await reader.readPage(lockoutReadCriteria(), "Admin");
+  assert(
+    developerPage.events.length === 2 && developerPage.total === 2,
+    "case 77 must expose both Developer-account lockout transitions to a Developer reader with query/count parity"
+  );
+  assert(
+    adminPage.events.length === 0 && adminPage.total === 0,
+    "case 77 must exclude both Developer-account lockout transitions from an Admin reader with query/count parity"
+  );
+  assert(
+    developerPage.events.every(
+      (entry) => entry.actorRole === null && entry.targetRole === "Developer"
+    ),
+    "case 77 must classify both lockout transitions from the persisted Developer target role"
+  );
+}
+
+async function verifyOrdinaryLockoutsRemainVisibleToBothReaders(): Promise<void> {
+  const admin = credential(ADMIN_A, "Admin");
+  const user = credential(USER_A, "User");
+  const credentials = new FakeCredentialRepository([admin, user]);
+  const audit = new FakeAuditLog();
+  const dependencies = {
+    findByUsername: (username: string) => credentials.findByUsername(username),
+    emit: (event: AuditEvent) => audit.emit(event),
+  };
+  const lockoutExpiresAt = new Date(Date.now() + LOGIN_RATE_LIMIT_POLICY.lockoutMs).toISOString();
+
+  await emitLockoutActivated(lockoutRecord(admin.username, lockoutExpiresAt), dependencies);
+  await emitLockoutReleased(
+    lockoutRecord(user.username, lockoutExpiresAt, new Date().toISOString()),
+    dependencies
+  );
+
+  const reader = new AuditReadService(audit, credentials);
+  for (const readerRole of ["Admin", "Developer"] as const) {
+    const page = await reader.readPage(lockoutReadCriteria(), readerRole);
+    assert(
+      page.events.length === 2 && page.total === 2,
+      `case 78 must expose Admin- and User-account lockouts to the ${readerRole} reader with query/count parity`
+    );
+    assert(
+      page.events.some((entry) => entry.targetRole === "Admin") &&
+        page.events.some((entry) => entry.targetRole === "User"),
+      `case 78 must preserve both ordinary persisted target roles for the ${readerRole} reader`
+    );
+  }
+}
+
+async function verifyUnknownUsernameLockoutsStayUnresolved(): Promise<void> {
+  const unknownUsername = "unknown-lockout-account";
+  const credentials = new FakeCredentialRepository([]);
+  const audit = new FakeAuditLog();
+  const dependencies = {
+    findByUsername: (username: string) => credentials.findByUsername(username),
+    emit: (event: AuditEvent) => audit.emit(event),
+  };
+  const lockoutExpiresAt = new Date(Date.now() + LOGIN_RATE_LIMIT_POLICY.lockoutMs).toISOString();
+
+  await emitLockoutActivated(lockoutRecord(unknownUsername, lockoutExpiresAt), dependencies);
+  await emitLockoutReleased(
+    lockoutRecord(unknownUsername, lockoutExpiresAt, new Date().toISOString()),
+    dependencies
+  );
+
+  assert(audit.entries.length === 2, "case 79 must emit both unknown-username lockout transitions");
+  assert(
+    audit.entries.every(
+      (entry) =>
+        entry.actorRole === null &&
+        entry.targetRole === null &&
+        entry.performedByUserId === null &&
+        entry.performedByUsername === null &&
+        entry.targetReference === unknownUsername
+    ),
+    "case 79 must fabricate no identity or role for an unknown username"
+  );
+  assert(
+    audit.entries.every(
+      (entry) => !entry.details || !("accountExists" in entry.details || "outcome" in entry.details)
+    ),
+    "case 79 lockout details must not reveal whether the username resolves to an account"
+  );
+}
+
+async function verifyLockoutActivationFiresOnlyAtThreshold(): Promise<void> {
+  const attempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(attempts, USER_A, [10, 9, 8, 7, 6]);
+  const persistedAttemptLagMs = 2 * 60 * 1000;
+  attempts.recordedAttemptLagMs = persistedAttemptLagMs;
+  const audit = new FakeAuditLog();
+  const lockouts = new FakeLockoutRepository();
+  const subject = createAuditedSubject(
+    [credential(USER_A, "User")],
+    audit,
+    attempts,
+    lockouts
+  );
+
+  const thresholdError = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    thresholdError instanceof InvalidCredentialsError,
+    "case 80 threshold attempt must retain the generic invalid-credentials rejection"
+  );
+  const recordCountAtActivation = attempts.recordCount;
+  const blockedError = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    blockedError instanceof LoginRateLimitError,
+    "case 80 subsequent locked request must retain the authoritative LoginRateLimitError"
+  );
+  assert(
+    attempts.recordCount === recordCountAtActivation,
+    "case 80 blocked requests must not write another attempt row"
+  );
+  assert(
+    lockouts.openCalls === 1 && lockouts.openConflicts === 0,
+    "case 80 must open exactly one persisted lockout at the threshold"
+  );
+
+  const activations = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLockoutActivated"
+  );
+  assert(
+    activations.length === 1,
+    "case 80 must emit activation exactly once at the failure threshold and never for a blocked request"
+  );
+  const latestFailure = attempts
+    .snapshot()
+    .filter((attempt) => attempt.username === USER_A && !attempt.succeeded)
+    .sort((left, right) => right.attemptedAt.localeCompare(left.attemptedAt))[0];
+  const expectedLockoutExpiresAt = new Date(
+    new Date(latestFailure.attemptedAt).getTime() + LOGIN_RATE_LIMIT_POLICY.lockoutMs
+  ).toISOString();
+  assert(
+    new Date(lockouts.openInputs[0].lockedAt).getTime() -
+      new Date(latestFailure.attemptedAt).getTime() >=
+      persistedAttemptLagMs,
+    "case 80 latest failure must be separated from activation by the deterministic two-minute fixture lag"
+  );
+  assert(
+    JSON.stringify(activations[0].details) ===
+      JSON.stringify({
+        failureCount: LOGIN_RATE_LIMIT_POLICY.lockoutFailureCount,
+        lockoutExpiresAt: expectedLockoutExpiresAt,
+      }),
+    "case 80 activation details must contain only the threshold count and an independently computed expiry"
+  );
+}
+
+async function verifyLockoutReleaseFiresOnlyOnce(): Promise<void> {
+  const attempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(attempts, USER_A, [21, 20, 19, 18, 17, 16]);
+  const audit = new FakeAuditLog();
+  const expiredAt = new Date(Date.now() - 60 * 1000).toISOString();
+  const lockouts = new FakeLockoutRepository([lockoutRecord(USER_A, expiredAt)]);
+  const subject = createAuditedSubject(
+    [credential(USER_A, "User")],
+    audit,
+    attempts,
+    lockouts
+  );
+
+  const firstError = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    firstError instanceof InvalidCredentialsError,
+    "case 81 released attempt must retain the generic invalid-credentials rejection"
+  );
+  const releasesAfterFirstAttempt = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLockoutReleased"
+  ).length;
+  const secondError = await captureError(() =>
+    subject.service.authenticate(USER_A, "wrong-password")
+  );
+  assert(
+    secondError instanceof InvalidCredentialsError,
+    "case 81 second post-release attempt must retain the generic invalid-credentials rejection"
+  );
+
+  const releases = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLockoutReleased"
+  );
+  assert(
+    releasesAfterFirstAttempt === 1 && releases.length === 1,
+    "case 81 must emit release exactly once and emit no second release on the following allowed attempt"
+  );
+  assert(
+    lockouts.releaseCalls === 2,
+    "case 81 must prove idempotency by executing the guarded release twice"
+  );
+  assert(
+    attempts.recordCount === 8,
+    "case 81 both post-expiry authentication attempts must still be recorded"
+  );
+}
+
+async function verifyLockoutDetailsContainNoSensitiveMaterial(): Promise<void> {
+  const persisted = credential(USER_A, "User");
+  const audit = new FakeAuditLog();
+  const activationAttempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(activationAttempts, persisted.username, [10, 9, 8, 7, 6]);
+  const activationLockouts = new FakeLockoutRepository();
+  const activationSubject = createAuditedSubject(
+    [persisted],
+    audit,
+    activationAttempts,
+    activationLockouts
+  );
+  const activationError = await captureError(() =>
+    activationSubject.service.authenticate(
+      persisted.username,
+      "case-82-wrong-password",
+      "203.0.113.82"
+    )
+  );
+  assert(
+    activationError instanceof InvalidCredentialsError && activationLockouts.openCalls === 1,
+    "case 82 must drive activation through the persisted lockout transition"
+  );
+
+  const releaseAttempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(releaseAttempts, persisted.username, [21, 20, 19, 18, 17, 16]);
+  const releaseLockouts = new FakeLockoutRepository([
+    lockoutRecord(persisted.username, new Date(Date.now() - 60 * 1000).toISOString()),
+  ]);
+  const releaseSubject = createAuditedSubject(
+    [persisted],
+    audit,
+    releaseAttempts,
+    releaseLockouts
+  );
+  const releaseError = await captureError(() =>
+    releaseSubject.service.authenticate(
+      persisted.username,
+      "case-82-wrong-password",
+      "203.0.113.82"
+    )
+  );
+  assert(
+    releaseError instanceof InvalidCredentialsError && releaseLockouts.releaseCalls === 1,
+    "case 82 must drive release through the persisted guarded update"
+  );
+
+  const lockoutEntries = audit.entries.filter((entry) =>
+    ["AuthenticationLockoutActivated", "AuthenticationLockoutReleased"].includes(
+      entry.eventType
+    )
+  );
+  assert(lockoutEntries.length === 2, "case 82 must inspect both lockout event details objects");
+  assert(
+    JSON.stringify(Object.keys(lockoutEntries[0].details ?? {}).sort()) ===
+      JSON.stringify(["failureCount", "lockoutExpiresAt"]) &&
+      JSON.stringify(Object.keys(lockoutEntries[1].details ?? {}).sort()) ===
+        JSON.stringify(["lockoutExpiresAt"]),
+    "case 82 details must contain only the approved transition metadata"
+  );
+  assert(
+    lockoutEntries.every(
+      (entry) => !/clientIp|pass(?:word)?|answer|hash|secret|token|cookie/i.test(
+        JSON.stringify(entry.details)
+      )
+    ),
+    "case 82 neither lockout event may persist a client IP or credential-material key"
+  );
+  assertNoSensitiveData(
+    lockoutEntries,
+    [persisted.passwordHash, "case-82-wrong-password", "203.0.113.82"],
+    "case 82 lockout auditing"
+  );
+}
+
+async function verifyConcurrentLockoutActivationEmitsOnce(): Promise<void> {
+  const attempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(attempts, USER_A, [10, 9, 8, 7, 6]);
+  const persistedAttemptLagMs = 2 * 60 * 1000;
+  attempts.recordedAttemptLagMs = persistedAttemptLagMs;
+  const credentials = new FakeCredentialRepository([credential(USER_A, "User")]);
+  const lockouts = new FakeLockoutRepository();
+  const audit = new FakeAuditLog();
+  const limiter = new LoginRateLimiter(attempts, {
+    repository: lockouts,
+    findByUsername: (username) => credentials.findByUsername(username),
+    emit: (event) => audit.emit(event),
+  });
+
+  await Promise.all([
+    limiter.record(USER_A, null, false),
+    limiter.record(USER_A, null, false),
+  ]);
+
+  const activations = audit.entries.filter(
+    (entry) => entry.eventType === "AuthenticationLockoutActivated"
+  );
+  assert(
+    lockouts.openCalls === 2 && lockouts.openConflicts === 1,
+    "case 83 concurrent activation attempts must reach the partial-unique-index model and return null to exactly one caller"
+  );
+  assert(
+    activations.length === 1,
+    "case 83 the null openLockout result must emit nothing, leaving exactly one activation event"
+  );
+  const latestAttemptAt = attempts
+    .snapshot()
+    .sort((left, right) => right.attemptedAt.localeCompare(left.attemptedAt))[0].attemptedAt;
+  const expectedLockoutExpiresAt = new Date(
+    new Date(latestAttemptAt).getTime() + LOGIN_RATE_LIMIT_POLICY.lockoutMs
+  ).toISOString();
+  assert(
+    lockouts.openInputs.every(
+      (input) =>
+        new Date(input.lockedAt).getTime() - new Date(latestAttemptAt).getTime() >=
+        persistedAttemptLagMs
+    ),
+    "case 83 latest failure must be separated from every activation by the deterministic two-minute fixture lag"
+  );
+  assert(
+    JSON.stringify(activations[0].details) ===
+      JSON.stringify({ failureCount: 7, lockoutExpiresAt: expectedLockoutExpiresAt }),
+    "case 83 concurrent activation must preserve the independently computed latest-failure expiry"
+  );
+}
+
+async function verifyNullLockoutReleaseEmitsNothing(): Promise<void> {
+  const attempts = new FakeLoginAttemptRepository();
+  const credentials = new FakeCredentialRepository([credential(USER_A, "User")]);
+  const lockouts = new FakeLockoutRepository();
+  const audit = new FakeAuditLog();
+  const limiter = new LoginRateLimiter(attempts, {
+    repository: lockouts,
+    findByUsername: (username) => credentials.findByUsername(username),
+    emit: (event) => audit.emit(event),
+  });
+
+  await limiter.assertAllowed(USER_A, null);
+
+  assert(
+    lockouts.releaseCalls === 1,
+    "case 84 must execute the guarded release when authoritative enforcement allows the request"
+  );
+  assert(
+    audit.entries.length === 0 && audit.emitCalls === 0,
+    "case 84 a null releaseExpiredLockout result must emit nothing"
+  );
+}
+
+async function verifyLockoutStoreFailureDoesNotAlterAuthentication(): Promise<void> {
+  const attempts = new FakeLoginAttemptRepository();
+  await seedFailedLoginAttempts(attempts, USER_A, [10, 9, 8, 7, 6]);
+  const lockouts = new FakeLockoutRepository();
+  lockouts.openFailures = 1;
+  const audit = new FakeAuditLog();
+  const subject = createAuditedSubject(
+    [credential(USER_A, "User")],
+    audit,
+    attempts,
+    lockouts
+  );
+  const consoleErrors: unknown[][] = [];
+  const originalConsoleError = console.error;
+  let error: unknown;
+
+  try {
+    console.error = (...values: unknown[]) => {
+      consoleErrors.push(values);
+    };
+    error = await captureError(() =>
+      subject.service.authenticate(USER_A, "case-85-wrong-password")
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert(
+    error instanceof InvalidCredentialsError,
+    "case 85 a lockout-store failure must preserve the generic failed-authentication outcome"
+  );
+  assert(
+    lockouts.openCalls === 1 &&
+      audit.entries.every(
+        (entry) => entry.eventType !== "AuthenticationLockoutActivated"
+      ),
+    "case 85 a failed openLockout must not fabricate an activation event"
+  );
+  assert(
+    consoleErrors.length === 1 &&
+      consoleErrors[0].length === 2 &&
+      JSON.stringify(consoleErrors[0][1]) ===
+        JSON.stringify({ eventType: "AuthenticationLockoutActivated" }),
+    "case 85 lockout-store failure logging must contain only the fixed activation eventType"
+  );
+}
+
 async function main(): Promise<void> {
   await verifyAdminListExcludesDevelopers();
   await verifyDeveloperListIncludesDevelopers();
@@ -2344,7 +2919,16 @@ async function main(): Promise<void> {
   await verifyLogoutAuditFailureIsSwallowedWithoutRetry();
   await verifyLogoutAccountLookupFailureIsSwallowed();
   verifyAuthActionsExportsOnlyApprovedSurface();
-  process.stdout.write("Developer boundary verification passed: all 76 cases verified.\n");
+  await verifyDeveloperLockoutsRespectReaderVisibility();
+  await verifyOrdinaryLockoutsRemainVisibleToBothReaders();
+  await verifyUnknownUsernameLockoutsStayUnresolved();
+  await verifyLockoutActivationFiresOnlyAtThreshold();
+  await verifyLockoutReleaseFiresOnlyOnce();
+  await verifyLockoutDetailsContainNoSensitiveMaterial();
+  await verifyConcurrentLockoutActivationEmitsOnce();
+  await verifyNullLockoutReleaseEmitsNothing();
+  await verifyLockoutStoreFailureDoesNotAlterAuthentication();
+  process.stdout.write("Developer boundary verification passed: all 85 cases verified.\n");
 }
 
 void main();

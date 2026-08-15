@@ -83,6 +83,32 @@ export interface ILoginAttemptRepository {
   findAttempts(query: AuthAttemptQuery): Promise<AuthAttemptRecord[]>;
 }
 
+export type LockoutRecord = {
+  id: string;
+  username: string;
+  lockedAt: string;
+  expiresAt: string;
+  releasedAt: string | null;
+  failureCount: number;
+};
+
+export type OpenLockoutInput = {
+  id: string;
+  username: string;
+  lockedAt: string;
+  expiresAt: string;
+  failureCount: number;
+};
+
+export interface ILockoutRepository {
+  // Inserts a new open lockout. Returns the created record, or null when an open lockout
+  // for this username already exists. Never throws on that conflict.
+  openLockout(input: OpenLockoutInput): Promise<LockoutRecord | null>;
+  // Atomically closes the open, already-expired lockout for this username. Returns the
+  // released record, or null when there was nothing to release.
+  releaseExpiredLockout(username: string, now: string): Promise<LockoutRecord | null>;
+}
+
 export type AuditLogEntry = {
   id: string;
   category: string;

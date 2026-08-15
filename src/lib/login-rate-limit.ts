@@ -1,5 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type { AuthAttemptRecord, ILoginAttemptRepository } from "@/repositories/interfaces";
+import {
+  emitLockoutActivated,
+  emitLockoutReleased,
+  type LockoutAuditDependencies,
+} from "@/lib/lockout-audit";
+import type {
+  AuthAttemptRecord,
+  ILockoutRepository,
+  ILoginAttemptRepository,
+} from "@/repositories/interfaces";
+
+type LockoutDependencies = LockoutAuditDependencies & {
+  repository: ILockoutRepository;
+};
 
 export const LOGIN_RATE_LIMIT_POLICY = {
   windowMs: 15 * 60 * 1000,
@@ -39,7 +52,10 @@ function retryAfterFor(attempts: AuthAttemptRecord[], now: number): number {
 }
 
 export class LoginRateLimiter {
-  constructor(private readonly attempts: ILoginAttemptRepository) {}
+  constructor(
+    private readonly attempts: ILoginAttemptRepository,
+    private readonly lockouts?: LockoutDependencies
+  ) {}
 
   async assertAllowed(username: string, clientIp: string | null): Promise<void> {
     const now = Date.now();
@@ -53,6 +69,19 @@ export class LoginRateLimiter {
     const histories = await Promise.all(queries);
     const retryAfterMs = Math.max(...histories.map((history) => retryAfterFor(history, now)));
     if (retryAfterMs > 0) throw new LoginRateLimitError(retryAfterMs);
+
+    if (!this.lockouts) return;
+    try {
+      const released = await this.lockouts.repository.releaseExpiredLockout(
+        username,
+        new Date(now).toISOString()
+      );
+      if (released) await emitLockoutReleased(released, this.lockouts);
+    } catch {
+      console.error("Lockout-release audit detection failed.", {
+        eventType: "AuthenticationLockoutReleased",
+      });
+    }
   }
 
   async record(username: string, clientIp: string | null, succeeded: boolean): Promise<void> {
@@ -64,5 +93,34 @@ export class LoginRateLimiter {
       clientIp,
       attemptedAt: new Date().toISOString(),
     });
+
+    if (succeeded || !this.lockouts) return;
+    try {
+      const now = Date.now();
+      const since = new Date(now - LOGIN_RATE_LIMIT_POLICY.windowMs).toISOString();
+      const history = await this.attempts.findAttempts({
+        attemptKind: "Login",
+        username,
+        since,
+      });
+      const failures = consecutiveFailures(history);
+      if (failures.length >= LOGIN_RATE_LIMIT_POLICY.lockoutFailureCount) {
+        const latestFailureAt = new Date(failures[0].attemptedAt).getTime();
+        const opened = await this.lockouts.repository.openLockout({
+          id: randomUUID(),
+          username,
+          lockedAt: new Date(now).toISOString(),
+          expiresAt: new Date(
+            latestFailureAt + LOGIN_RATE_LIMIT_POLICY.lockoutMs
+          ).toISOString(),
+          failureCount: failures.length,
+        });
+        if (opened) await emitLockoutActivated(opened, this.lockouts);
+      }
+    } catch {
+      console.error("Lockout-activation audit detection failed.", {
+        eventType: "AuthenticationLockoutActivated",
+      });
+    }
   }
 }

@@ -54,6 +54,105 @@ function verifyRepositoryContracts(): void {
   );
 }
 
+function verifyPersistedLockoutConcurrencyConstructs(): void {
+  const migrationSource = read(
+    "supabase/migrations/20260815120000_add_account_lockouts.sql"
+  );
+  const tableDefinition =
+    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?account_lockouts\s*\(([\s\S]*?)\)\s*;/i.exec(
+      migrationSource
+    )?.[1];
+
+  assert(tableDefinition, "the account_lockouts migration must create the lockout table");
+  assert(
+    /(?:^|,)\s*released_at\s+TIMESTAMPTZ\b/im.test(tableDefinition),
+    "the account_lockouts table must retain its released_at column"
+  );
+  assert(
+    /(?:^|,)\s*expires_at\s+TIMESTAMPTZ\b/im.test(tableDefinition),
+    "the account_lockouts table must retain its expires_at column"
+  );
+  assert(
+    /CREATE\s+UNIQUE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?idx_account_lockouts_open_username\s+ON\s+account_lockouts\s*\(\s*username\s*\)\s+WHERE\s+released_at\s+IS\s+NULL\s*;/i.test(
+      migrationSource
+    ),
+    "the open-lockout index must be UNIQUE on username alone and partial on released_at IS NULL"
+  );
+  assert(
+    /ALTER\s+TABLE\s+account_lockouts\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i.test(
+      migrationSource
+    ),
+    "account_lockouts must have ROW LEVEL SECURITY enabled"
+  );
+  assert(
+    !migrationSource
+      .split(";")
+      .some(
+        (statement) =>
+          /\bGRANT\b/i.test(statement) && /\b(?:anon|authenticated)\b/i.test(statement)
+      ),
+    "the account_lockouts migration must grant nothing to anon or authenticated"
+  );
+
+  const repositorySource = read("src/repositories/supabase-lockout-repository.ts");
+  const openLockout =
+    /async\s+openLockout\b[\s\S]*?(?=\n\s*async\s+releaseExpiredLockout\b)/.exec(
+      repositorySource
+    )?.[0];
+  const releaseExpiredLockout =
+    /async\s+releaseExpiredLockout\b[\s\S]*?(?=\n})/.exec(repositorySource)?.[0];
+
+  assert(openLockout, "SupabaseLockoutRepository.openLockout must remain present");
+  assert(
+    releaseExpiredLockout,
+    "SupabaseLockoutRepository.releaseExpiredLockout must remain present"
+  );
+  assert(
+    /\.is\s*\(\s*["']released_at["']\s*,\s*null\s*\)/.test(releaseExpiredLockout),
+    "releaseExpiredLockout must guard the update with released_at IS NULL"
+  );
+  assert(
+    /\.lte\s*\(\s*["']expires_at["']\s*,\s*now\s*\)/.test(releaseExpiredLockout),
+    "releaseExpiredLockout must guard the update with expires_at <= now"
+  );
+
+  const insertIndex = openLockout.search(/\.insert\s*\(/);
+  assert(insertIndex >= 0, "openLockout must perform its atomic insert");
+  const beforeInsert = openLockout.slice(0, insertIndex);
+  assert(
+    !/\.select\s*\(/.test(beforeInsert),
+    "openLockout must not SELECT before its insert"
+  );
+  assert(
+    !/\.(?:maybeSingle|single)\s*\(/.test(beforeInsert),
+    "openLockout must not use maybeSingle or single as a pre-insert read check"
+  );
+
+  const uniqueConflictIndex = openLockout.search(/error\?\.code\s*===\s*["']23505["']/);
+  const genericErrorThrowIndex = openLockout.search(
+    /if\s*\(\s*error\s*\)\s*(?:\{\s*)?throw\b/
+  );
+  assert(
+    /if\s*\(\s*error\?\.code\s*===\s*["']23505["']\s*\)\s*(?:\{\s*)?return\s+null\s*;?/.test(
+      openLockout
+    ),
+    "openLockout must return null for a 23505 unique violation"
+  );
+  assert(
+    uniqueConflictIndex >= 0 && genericErrorThrowIndex > uniqueConflictIndex,
+    "openLockout must handle 23505 before its generic error throw"
+  );
+
+  const updateIndex = releaseExpiredLockout.search(/\.update\s*\(/);
+  assert(updateIndex >= 0, "releaseExpiredLockout must perform its guarded update");
+  assert(
+    !/\.(?:select|maybeSingle|single)\s*\(/.test(
+      releaseExpiredLockout.slice(0, updateIndex)
+    ),
+    "releaseExpiredLockout must not use a read-then-write pre-check"
+  );
+}
+
 function verifyServerOnlyAuditBoundary(): void {
   for (const relativePath of [
     "src/services/audit-read-service.ts",
@@ -635,6 +734,181 @@ function verifyAuthenticationSuccessAuditWriter(): void {
   );
 }
 
+function verifyLockoutAuditWriter(): void {
+  const writerSource = read("src/lib/lockout-audit.ts");
+  const limiterSource = read("src/lib/login-rate-limit.ts");
+  const activated = /export\s+async\s+function\s+emitLockoutActivated\b[\s\S]*?(?=\nexport\s+async\s+function\s+emitLockoutReleased\b)/.exec(
+    writerSource
+  )?.[0];
+  const released = /export\s+async\s+function\s+emitLockoutReleased\b[\s\S]*$/.exec(
+    writerSource
+  )?.[0];
+
+  assert(activated, "the lockout-activation audit emitter must be exported");
+  assert(released, "the lockout-release audit emitter must be exported");
+  const activatedParameters = /emitLockoutActivated\s*\(([\s\S]*?)\)\s*:\s*Promise<void>/.exec(
+    activated
+  )?.[1];
+  const releasedParameters = /emitLockoutReleased\s*\(([\s\S]*?)\)\s*:\s*Promise<void>/.exec(
+    released
+  )?.[1];
+  assert(
+    activatedParameters &&
+      releasedParameters &&
+      !/\b(?:actorRole|targetRole|role)\s*:/.test(activatedParameters) &&
+      !/\b(?:actorRole|targetRole|role)\s*:/.test(releasedParameters),
+    "lockout emitter parameters must accept no caller-supplied actor or target role"
+  );
+
+  const writers = [
+    {
+      body: activated,
+      eventType: "AuthenticationLockoutActivated",
+      detailsPattern: /details:\s*\{\s*failureCount,\s*lockoutExpiresAt\s*\}/,
+      persistedDetailsPattern:
+        /const\s*\{\s*username,\s*failureCount,\s*expiresAt:\s*lockoutExpiresAt\s*\}\s*=\s*lockout/,
+    },
+    {
+      body: released,
+      eventType: "AuthenticationLockoutReleased",
+      detailsPattern: /details:\s*\{\s*lockoutExpiresAt\s*\}/,
+      persistedDetailsPattern:
+        /const\s*\{\s*username,\s*expiresAt:\s*lockoutExpiresAt\s*\}\s*=\s*lockout/,
+    },
+  ] as const;
+
+  for (const { body, eventType, detailsPattern, persistedDetailsPattern } of writers) {
+    assert(
+      /try\s*\{[\s\S]*?dependencies\.findByUsername\(username\)[\s\S]*?dependencies\.emit\([\s\S]*?\}\s*catch\s*\{/.test(
+        body
+      ),
+      `${eventType} must contain its account lookup and durable emission in its own swallowing try/catch`
+    );
+    assert(
+      !/\bthrow\b/.test(body),
+      `${eventType} must never rethrow an audit persistence failure`
+    );
+    assert(
+      /category:\s*"AuthAccount"/.test(body) &&
+        new RegExp(`eventType:\\s*"${eventType}"`).test(body),
+      `${eventType} must use the durable AuthAccount classification`
+    );
+    assert(
+      /actorRole:\s*null/.test(body) &&
+        /performedByUserId:\s*null/.test(body) &&
+        /performedByUsername:\s*null/.test(body),
+      `${eventType} must not fabricate an authenticated actor`
+    );
+    assert(
+      /targetRole:\s*record\?\.role\s*\?\?\s*null/.test(body) &&
+        /const\s+record\s*=\s*await\s+dependencies\.findByUsername\(username\)/.test(body),
+      `${eventType} targetRole must be resolved only from the persisted account record`
+    );
+    assert(
+      /targetReference:\s*username\.slice\(0,\s*MAX_USERNAME_LENGTH\)/.test(body),
+      `${eventType} must bound the canonical username like the failed-authentication writer`
+    );
+    assert(
+      detailsPattern.test(body) && persistedDetailsPattern.test(body),
+      `${eventType} must emit exactly its approved lockout details fields from the persisted LockoutRecord`
+    );
+    const details = /details:\s*\{[^}]*\}/.exec(body)?.[0];
+    assert(details, `${eventType} must contain a details object`);
+    assert(
+      !/clientIp|pass(?:word)?|answer|hash|secret|token|cookie/i.test(details),
+      `${eventType} details must contain no client IP or credential-material key`
+    );
+
+    const logCall = /console\.error\([\s\S]*?\);/.exec(body)?.[0];
+    assert(logCall, `${eventType} persistence failure must use sanitized operational logging`);
+    const logPayload = logCall
+      .replace(/console\.error\(\s*"[^"]*",/, "")
+      .replace(/\s*\);\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    assert(
+      logPayload === `{ eventType: "${eventType}", }`,
+      `${eventType} console.error metadata must contain exactly the fixed eventType key`
+    );
+  }
+
+  assert(
+    /if\s*\(\s*failures\.length\s*>=\s*LOGIN_RATE_LIMIT_POLICY\.lockoutFailureCount\s*\)/.test(
+      limiterSource
+    ) &&
+      !/failures\.length\s*===\s*LOGIN_RATE_LIMIT_POLICY\.lockoutFailureCount/.test(
+        limiterSource
+      ),
+    "lockout activation must use >= against lockoutFailureCount, never strict equality"
+  );
+  assert(
+    !/mostRecentLockoutStreak|widerSince|widerHistory|hasAttemptAtOrAfterExpiry/.test(
+      limiterSource
+    ),
+    "the dead attempt-history lockout reconstruction constructs must remain absent"
+  );
+
+  const assertAllowed = /async\s+assertAllowed\b[\s\S]*?(?=\n\s*async\s+record\b)/.exec(
+    limiterSource
+  )?.[0];
+  assert(assertAllowed, "LoginRateLimiter.assertAllowed must remain present");
+  assert(
+    /const\s+since\s*=\s*new\s+Date\(now\s*-\s*LOGIN_RATE_LIMIT_POLICY\.windowMs\)\.toISOString\(\)/.test(
+      assertAllowed
+    ) &&
+      /findAttempts\(\{\s*attemptKind:\s*"Login",\s*username,\s*since\s*\}\)/.test(
+        assertAllowed
+      ),
+    "the enforcement query must retain the unwidened windowMs since value"
+  );
+  assert(
+    /const\s+retryAfterMs\s*=\s*Math\.max\(\.\.\.histories\.map\(\(history\)\s*=>\s*retryAfterFor\(history,\s*now\)\)\);/.test(
+      assertAllowed
+    ) &&
+      /if\s*\(retryAfterMs\s*>\s*0\)\s*throw\s+new\s+LoginRateLimitError\(retryAfterMs\);/.test(
+        assertAllowed
+      ) &&
+      (assertAllowed.match(/this\.attempts\.findAttempts\(/g) ?? []).length === 2,
+    "the enforcement queries, retry calculation, and LoginRateLimitError throw must remain unchanged"
+  );
+  const rejectionIndex = assertAllowed.indexOf(
+    "if (retryAfterMs > 0) throw new LoginRateLimitError(retryAfterMs);"
+  );
+  const releaseIndex = assertAllowed.indexOf(
+    "this.lockouts.repository.releaseExpiredLockout("
+  );
+  const releaseEmitIndex = assertAllowed.indexOf(
+    "if (released) await emitLockoutReleased(released, this.lockouts);"
+  );
+  assert(
+    rejectionIndex !== -1 &&
+      releaseIndex > rejectionIndex &&
+      releaseEmitIndex > releaseIndex &&
+      /const\s+released\s*=\s*await\s+this\.lockouts\.repository\.releaseExpiredLockout\(\s*username,\s*new\s+Date\(now\)\.toISOString\(\)\s*\);/.test(
+        assertAllowed
+      ),
+    "lockout release must occur only after authoritative rejection cannot fire and emit only for a non-null guarded update result"
+  );
+
+  const record = /async\s+record\b[\s\S]*?(?=\n})/.exec(limiterSource)?.[0];
+  assert(record, "LoginRateLimiter.record must remain present");
+  assert(
+    /const\s+opened\s*=\s*await\s+this\.lockouts\.repository\.openLockout\(\{[\s\S]*?\}\);/.test(
+      record
+    ) &&
+      /if\s*\(opened\)\s*await\s+emitLockoutActivated\(opened,\s*this\.lockouts\);/.test(
+        record
+      ),
+    "lockout activation must emit only for a non-null atomic openLockout result"
+  );
+  assert(
+    !/\b(?:findOpenLockout|getOpenLockout|selectLockout|readLockout)\b|\.from\(\s*["']account_lockouts["']\s*\)|\.select\s*\(/.test(
+      limiterSource
+    ),
+    "LoginRateLimiter must never SELECT lockout state before its atomic transition writes"
+  );
+}
+
 function verifyPasswordChangeAuditWriters(): void {
   const source = read("src/services/userService.ts");
   const writerSpecs = [
@@ -892,6 +1166,7 @@ function verifyAuthGuardsRemainOutside6D(): void {
 }
 
 verifyRepositoryContracts();
+verifyPersistedLockoutConcurrencyConstructs();
 verifyServerOnlyAuditBoundary();
 verifyAuditActionAuthorization();
 verifyAuditActionInputBounds();
@@ -905,6 +1180,7 @@ verifyDeveloperDashboardServerSideProbe();
 verifyFirstLoginSecurityAuditWriters();
 verifyFailedAuthenticationAuditWriter();
 verifyAuthenticationSuccessAuditWriter();
+verifyLockoutAuditWriter();
 verifyPasswordChangeAuditWriters();
 verifyPrototypeRetirement();
 verifyAuthGuardsRemainOutside6D();

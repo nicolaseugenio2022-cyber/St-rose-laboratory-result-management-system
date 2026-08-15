@@ -7,6 +7,7 @@ import type {
   CredentialDirectorySummary,
   ICredentialDirectoryRepository,
   ICredentialRepository,
+  ILockoutRepository,
   ILoginAttemptRepository,
 } from "@/repositories/interfaces";
 import {
@@ -236,9 +237,17 @@ export class UserService implements IUserService {
   constructor(
     private readonly credentials: ICredentialRepository,
     attempts: ILoginAttemptRepository,
-    private readonly auditService?: AuditService
+    private readonly auditService?: AuditService,
+    private readonly lockouts?: ILockoutRepository
   ) {
-    this.loginRateLimiter = new LoginRateLimiter(attempts);
+    this.loginRateLimiter = new LoginRateLimiter(
+      attempts,
+      this.auditService && this.lockouts && {
+        repository: this.lockouts,
+        findByUsername: (username) => this.credentials.findByUsername(username),
+        emit: (event) => this.auditService!.emit(event),
+      }
+    );
     this.recoveryRateLimiter = new RecoveryRateLimiter(attempts);
     this.passwordChangeRateLimiter = new PasswordChangeRateLimiter(attempts);
   }

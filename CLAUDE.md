@@ -123,7 +123,8 @@ resolved by reading, never by asking. Escalate genuine product, UX, security, or
 - The work belongs to a later milestone or checkpoint, or is an unrelated improvement.
 - The working tree is dirty at freeze time.
 - Correction rounds are exhausted.
-- The Codex session's actual model or reasoning effort does not match gpt-5.6-sol / high.
+- The Codex session's actual model or reasoning effort does not match gpt-5.6-sol and the effort tier
+  the contract selected.
 
 ## Delegation contract
 
@@ -132,8 +133,19 @@ config — `~/.codex/config.toml` can change between delegations without the pla
 prompt, or the review noticing:
 
 ```
-codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox workspace-write "<prompt>" < /dev/null
+codex exec -m gpt-5.6-sol -c model_reasoning_effort="high"  --sandbox workspace-write "<prompt>" < /dev/null
+codex exec -m gpt-5.6-sol -c model_reasoning_effort="xhigh" --sandbox workspace-write "<prompt>" < /dev/null
 ```
+
+**Effort tier.** `high` is the default: implementation, UI work, routine repository changes,
+straightforward CRUD, deterministic verification. Use `xhigh` for high-risk backend and database
+work — transactional migrations, auth or authorization, RLS and security policy, concurrency and race
+handling, retention and expiry invariants, destructive database paths, complex state transitions such
+as Replacement Mode, and any schema or security change where a mistake is costly. Effort and rigour
+are independent dials: `high` never buys a reduction in verification depth, mutation coverage,
+independent review, or any security gate. **Never interrupt a running delegation to change its
+effort** — let it finish under its frozen contract and evidence chain, and apply the new tier to the
+next qualifying delegation.
 
 Read-only tasks may use `--sandbox read-only`; the model pin still applies and reasoning effort is
 never lowered as an optimization or as rate-limit relief. **`< /dev/null`, or the platform-safe EOF
@@ -346,7 +358,9 @@ on Codex's summary for these; check them independently, every time:
 - **Delegation identity** — read the actual session rollout, do not assume the flags took effect:
   `ls -t ~/.codex/sessions/*/*/*/rollout-*.jsonl | head -1`, confirm it is the delegation just run
   (`"originator":"codex_exec"`, correct `cwd`), then extract `"model"` and `"reasoning_effort"`.
-  Report both, and whether they matched **gpt-5.6-sol / high**.
+  Report both, and whether they matched **gpt-5.6-sol** and the **effort tier this slice's contract
+  selected**. This is a hard gate, not an observation: a silent downgrade is invisible in the output
+  and would otherwise let high-risk work pass at a lower tier than the contract required.
 
 **Claude does not routinely deep-read the diff.** Where a slice requires a fresh Codex Reviewer, that
 reviewer performs the code review. Claude deep-reads only when the reviewer raises a finding ·

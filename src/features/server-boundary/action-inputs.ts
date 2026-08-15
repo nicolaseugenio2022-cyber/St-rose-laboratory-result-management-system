@@ -67,7 +67,7 @@ const laboratoryReportSchema = z.object({
 
 const patientReportSessionSchema = z.object({
   id: z.string().min(1),
-  accessionNumber: z.string().min(1),
+  accessionNumber: z.string().min(1).nullable(),
   status: z.enum(["Draft", "Completed"]),
   demographics: z.record(z.string(), z.unknown()),
   reports: z.array(laboratoryReportSchema),

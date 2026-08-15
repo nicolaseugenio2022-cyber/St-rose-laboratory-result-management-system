@@ -116,34 +116,23 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     const caller = this.requireCaller();
     await this.assertExistingSessionOwnership(session.id);
 
-    const { error: sessionError } = await supabaseServer.from("patient_report_sessions").upsert({
+    const payload = {
+      session: {
         id: session.id,
-        accession_number: session.accessionNumber,
-        status: "Draft",
         demographics: session.demographics,
         created_by_user_id: caller.userId,
         created_at: session.createdAt || new Date().toISOString(),
-        expires_at: null,
-      });
-    if (sessionError) throw sessionError;
-
-    for (const report of session.reports) {
-      const { error: reportError } = await supabaseServer.from("laboratory_reports").upsert({
+      },
+      reports: session.reports.map((report) => ({
           id: report.id,
-          session_id: session.id,
           template_code: report.templateCode,
           template_title: report.templateTitle,
           renderer_family: report.rendererFamily,
           reagent_kit_info: report.reagentKitInfo || null,
           remarks: report.remarks || null,
           encoding_data: report.encodingData || null,
-        });
-      if (reportError) throw reportError;
-
-      for (const res of report.results) {
-        const { error: resultError } = await supabaseServer.from("laboratory_results").upsert({
+          results: report.results.map((res) => ({
             id: res.id,
-            report_id: report.id,
             parameter_code: res.parameterCode,
             parameter_name: res.parameterName,
             result_value: res.resultValue || "",
@@ -154,12 +143,14 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
             reference_rule_snapshot: res.referenceRuleSnapshot || null,
             computation_metadata: res.computationMetadata || null,
             display_order: res.displayOrder,
-          });
-        if (resultError) throw resultError;
-      }
-    }
+          })),
+        })),
+    };
 
-    return session;
+    const { data, error } = await supabaseServer.rpc("save_draft_session", { payload });
+    if (error) throw error;
+
+    return this.withAssignedAccession(session, data as string);
   }
 
   async completeSession(session: IPatientReportSession): Promise<IPatientReportSession> {
@@ -173,7 +164,6 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     const payload = {
       session: {
         id: session.id,
-        accession_number: session.accessionNumber,
         status: "Completed",
         demographics: session.demographics,
         created_by_user_id: caller.userId,
@@ -215,12 +205,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         })),
     };
 
-    const { error } = await supabaseServer.rpc("complete_patient_report_session", { payload });
+    const { data, error } = await supabaseServer.rpc("complete_patient_report_session", { payload });
     if (error) throw error;
 
     await autoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
 
-    return session;
+    return this.withAssignedAccession(session, data as string);
   }
 
   async replaceSession(session: IPatientReportSession): Promise<IPatientReportSession> {
@@ -238,6 +228,21 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     if (error) throw error;
     if (!data) throw new Error("Supabase expired-session purge returned no data.");
     return data.length;
+  }
+
+  private withAssignedAccession(
+    session: IPatientReportSession,
+    accessionNumber: string
+  ): PatientReportSessionAggregate {
+    return new PatientReportSessionAggregate({
+      ...session,
+      accessionNumber,
+      reports: session.reports.map((report) =>
+        report instanceof LaboratoryReportDomain
+          ? report
+          : new LaboratoryReportDomain(report)
+      ),
+    });
   }
 
   private mapToAggregate(raw: Record<string, unknown>): PatientReportSessionAggregate {
@@ -284,7 +289,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
 
     return new PatientReportSessionAggregate({
       id: String(raw.id || ""),
-      accessionNumber: String(raw.accession_number || ""),
+      accessionNumber: raw.accession_number == null ? null : String(raw.accession_number),
       status: raw.status as PatientReportSessionAggregate["status"],
       demographics: raw.demographics as PatientReportSessionAggregate["demographics"],
       reports,

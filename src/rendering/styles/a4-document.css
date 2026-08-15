@@ -23,6 +23,10 @@
     display: none !important;
   }
 
+  /* Prevent browser-native printing before an accession is assigned. */
+  [data-accession-unassigned="true"] { display: none !important; }
+  [data-unassigned-print-notice="true"] { display: block !important; }
+
 }
 
 /* Screen Preview Simulation Target */

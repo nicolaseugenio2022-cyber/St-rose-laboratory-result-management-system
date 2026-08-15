@@ -358,7 +358,7 @@ export function resolveDraftSessionRenderModel(
     : undefined;
   return deepCloneAndFreeze({
     origin: "Draft",
-    accessionNumber: session.accessionNumber,
+    accessionNumber: session.accessionNumber ?? "",
     completedAt: null,
     snapshotVersion: null,
     logoSource: CANONICAL_REPORT_LOGO_SOURCE,
@@ -440,13 +440,13 @@ export function resolveSessionRenderModel(
   definitions: RenderDefinitionSource = DEFAULT_DEFINITIONS
 ): ResolvedSessionRenderModel {
   if (session.completedSnapshot) {
-    return resolveCompletedSessionRenderModel(session.completedSnapshot, definitions, { accessionNumber: session.accessionNumber });
+    return resolveCompletedSessionRenderModel(session.completedSnapshot, definitions, { accessionNumber: session.accessionNumber ?? undefined });
   }
   if (session.status !== "Completed") return resolveDraftSessionRenderModel(session, definitions);
   const reports = session.reports.map((report) => legacyCompletedReport(report, requireDefinition(definitions, report.templateCode), session.demographics));
   return deepCloneAndFreeze({
     origin: "Completed",
-    accessionNumber: session.accessionNumber,
+    accessionNumber: session.accessionNumber ?? "",
     completedAt: session.completedAt || null,
     snapshotVersion: null,
     logoSource: CANONICAL_REPORT_LOGO_SOURCE,

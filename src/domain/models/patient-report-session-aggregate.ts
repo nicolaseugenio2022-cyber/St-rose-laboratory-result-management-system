@@ -17,7 +17,7 @@ export interface SignatoryRequirementsLookup {
 
 export class PatientReportSessionAggregate implements IPatientReportSession {
   public readonly id: string;
-  public readonly accessionNumber: string;
+  public readonly accessionNumber: string | null;
   public status: SessionStatus;
   public demographics: PatientDemographics;
   public reports: LaboratoryReportDomain[];
@@ -28,7 +28,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
 
   constructor(props: {
     id: string;
-    accessionNumber: string;
+    accessionNumber: string | null;
     status?: SessionStatus;
     demographics: PatientDemographics;
     reports: LaboratoryReportDomain[];

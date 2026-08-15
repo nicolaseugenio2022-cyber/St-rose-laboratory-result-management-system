@@ -123,7 +123,7 @@ export interface ILaboratoryReport {
 
 export interface IPatientReportSession {
   id: string;
-  accessionNumber: string;
+  accessionNumber: string | null;
   status: SessionStatus;
   demographics: PatientDemographics;
   reports: ILaboratoryReport[];

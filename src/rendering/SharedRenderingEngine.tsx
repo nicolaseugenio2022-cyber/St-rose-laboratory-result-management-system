@@ -26,20 +26,24 @@ export function SharedRenderingEngine({
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
   const resolvedSession = useMemo(() => resolveSessionRenderModel(session), [session]);
+  const isAccessionAssigned = session.accessionNumber !== null;
 
   // Handle Browser Print Target
   const handlePrint = () => {
+    if (!isAccessionAssigned) return;
     window.print();
   };
 
   // Handle Native PDF export from the resolved session composition.
   const handleExportPDF = () => {
+    if (!isAccessionAssigned) return;
     if (isExportingPDF) return;
     setPdfProgress(10);
     setIsExportingPDF(true);
   };
 
   useEffect(() => {
+    if (!isAccessionAssigned) return;
     if (!isExportingPDF) return;
     let cancelled = false;
     async function runExport() {
@@ -71,7 +75,7 @@ export function SharedRenderingEngine({
     return () => {
       cancelled = true;
     };
-  }, [isExportingPDF, resolvedSession]);
+  }, [isAccessionAssigned, isExportingPDF, resolvedSession]);
 
   // Helper to render individual report
   const renderReportPage = (report: ILaboratoryReport, index: number, isLastPage: boolean) => {
@@ -143,6 +147,8 @@ export function SharedRenderingEngine({
           <button
             type="button"
             onClick={handlePrint}
+            disabled={!isAccessionAssigned}
+            title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before printing"}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-blue-700 transition-colors shadow-xs"
           >
             <Printer className="h-3.5 w-3.5" />
@@ -152,7 +158,8 @@ export function SharedRenderingEngine({
           <button
             type="button"
             onClick={handleExportPDF}
-            disabled={isExportingPDF}
+            disabled={isExportingPDF || !isAccessionAssigned}
+            title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before exporting"}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs disabled:opacity-50"
           >
             {isExportingPDF ? (
@@ -194,9 +201,13 @@ export function SharedRenderingEngine({
       )}
 
       {/* Render Pages Container */}
+      {!isAccessionAssigned ? (
+        <div data-unassigned-print-notice="true" className="hidden">Save the session before printing.</div>
+      ) : null}
       <div
         ref={pagesContainerRef}
         data-live-preview-viewport="true"
+        data-accession-unassigned={isAccessionAssigned ? undefined : "true"}
         className="w-full max-h-[calc(100dvh-16rem)] overflow-auto bg-slate-100/60 rounded-xl border border-slate-200"
       >
         <div

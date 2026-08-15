@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
@@ -12,7 +12,6 @@ import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import {
-  allocateAccessionNumberAction,
   completeSessionAction,
   getRegistryTemplateAction,
   listActivePersonnelAction,
@@ -32,11 +31,10 @@ import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 
 export function GuidedWorkspace() {
-  const accessionAllocationStarted = useRef(false);
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
       id: crypto.randomUUID(),
-      accessionNumber: "",
+      accessionNumber: null,
       demographics: {
         fullName: "",
         age: 0,
@@ -67,24 +65,6 @@ export function GuidedWorkspace() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (accessionAllocationStarted.current) return;
-    accessionAllocationStarted.current = true;
-
-    allocateAccessionNumberAction()
-      .then((accessionNumber) => {
-        setSession((previous) => new PatientReportSessionAggregate({
-          ...previous,
-          accessionNumber,
-        }));
-      })
-      .catch((error: unknown) => {
-        setValidationError(
-          error instanceof Error ? error.message : "The accession number could not be allocated."
-        );
-      });
-  }, []);
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
@@ -351,8 +331,8 @@ export function GuidedWorkspace() {
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-[11px] font-bold font-mono bg-blue-100 text-blue-800 rounded">
-                  {session.accessionNumber}
+                <span className="px-2 py-0.5 text-[11px] font-bold font-mono bg-blue-100 text-blue-800 rounded" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
+                  {session.accessionNumber ?? "Not assigned"}
                 </span>
                 <span
                   className={`px-2 py-0.5 text-[11px] font-semibold rounded-full ${
@@ -507,8 +487,8 @@ export function GuidedWorkspace() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0 text-[11px] font-mono">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-bold">
-                      {session.accessionNumber}
+                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-bold" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
+                      {session.accessionNumber ?? "Not assigned"}
                     </span>
                     {activeSpec && (
                       <span className="bg-blue-50 text-blue-800 px-2 py-0.5 rounded border border-blue-200 font-bold">

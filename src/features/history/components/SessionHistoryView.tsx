@@ -41,7 +41,7 @@ export function SessionHistoryView() {
     return sessions.filter((s) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
-        s.accessionNumber.toLowerCase().includes(q) ||
+        s.accessionNumber?.toLowerCase().includes(q) === true ||
         s.demographics.fullName.toLowerCase().includes(q) ||
         s.demographics.requestingPhysician.toLowerCase().includes(q);
 

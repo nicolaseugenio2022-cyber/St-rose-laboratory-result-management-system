@@ -307,8 +307,21 @@ policies, and the absence of `anon`/`authenticated` grants were each verified by
 Applying it also required confirming no account was inside an active lockout at cutover, since a
 lockout already running when the table appears produces no release event.
 
-`supabase/migrations/20260809104941_add_completed_report_snapshots.sql` is not applied to that
-environment. It belongs to Completed History, which has not started.
+`supabase/migrations/20260809104941_add_completed_report_snapshots.sql` has its column effects
+present in that environment, verified 2026-08-15. It adds five columns — `completed_snapshot` on
+`patient_report_sessions`, `encoding_data` on `laboratory_reports`, and `raw_result_value`,
+`formatted_result_value` and `computation_metadata` on `laboratory_results` — and each is introduced
+by this migration alone, appearing neither in the base schema nor in any other migration. All five
+were confirmed present against the live database under a negative control. The retention columns
+`completed_at`, `expires_at` and `last_replaced_at` are **not** evidence either way: they belong to
+the base schema in `02_tables.sql`.
+
+Two parts of that migration remain unprovable read-only and are not claimed here. Whether
+`supabase_migrations.schema_migrations` records the migration cannot be determined, because that
+schema is not exposed through PostgREST and the Supabase CLI is unavailable in this environment. The
+state of the `laboratory_results_evaluation_outcome_check` constraint is likewise unverified, since
+constraint introspection needs a SQL Editor query; the base schema permits four outcome values, this
+migration adds `Invalid`, and `20260809140000_expand_evaluation_outcomes.sql` later permits eight.
 
 That incident is the concrete driver for the Migration-state preflight and schema provisioning item
 above: every current verifier is source-level or uses in-memory fakes, so an unapplied migration
@@ -579,6 +592,8 @@ Remaining project work is tracked under Milestone 5 (Drafts and History) and Mil
 
 The active objective is Milestone 6 security hardening. Checkpoint 6D-2 is complete as of 2026-08-15: Slices A through E, F0 through F6, and the F3 closeout-gap entry point are committed and live-accepted, and the persistent freeze pins were made checkout- and platform-invariant so verification passes on an LF checkout such as CI.
 
-The next planned application work after publication is Completed History. Its UI shell already exists in the application — the `/history` route and the session history view are present — but the functional implementation remains pending, including its persistence and schema path, the `20260809104941_add_completed_report_snapshots.sql` migration that is not yet applied, and the actual history behaviour. That existing shell is the starting point.
+The next planned application work after publication is Completed History, and a substantial part of it already exists. Session completion composes and freezes a completion snapshot and persists it with `completed_at` and `expires_at`; history retrieval, the `/history` route and its session view are present; rendering consumes the frozen snapshot when one exists, preserving snapshot authority; and the operational role gate admits `Admin` and `User` while denying `Developer`, matching ADR-006 visibility. The supporting schema is present in the live environment.
+
+What remains is of two kinds. Incomplete or unsafe: completion persists through sequential upserts of the session, its reports and its results rather than the server-side transactional boundary ADR-006 requires, so a mid-sequence failure can leave a partial completed record; and `replaceSession` is a stub delegating to `completeSession`, so Replacement Mode, retention-anchor preservation and the 30-day eligibility rule do not exist. Genuinely missing: retention expiry is written but never enforced on read, so an expired report is still listed and renderable; and `purgeExpiredSessions` exists but is wired to nothing and emits no audit event.
 
 The remaining Milestone 6 hardening work is still required later before production completion: migration-state preflight and schema provisioning, the outstanding Personnel/Credential and Session-lifecycle audit writers, audit delivery durability, and then performance, accessibility, monitoring, and deployment validation. Deferred UI/UX polish remains separately tracked and gates nothing.

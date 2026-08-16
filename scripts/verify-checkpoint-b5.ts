@@ -227,6 +227,62 @@ immutableSession.reports[0].results = [new LaboratoryResultDomain({ ...immutable
 assert(immutableSession.completedSnapshot!.demographics.address === frozenAddress && !immutableSession.completedSnapshot!.reports[0].results.some((result) => result.formattedResultValue === "CHANGED AFTER COMPLETION"), "historical snapshot is independent from later mutable report data and is not recomputed");
 try { immutableSession.completeSession(); throw new Error("expected completion guard"); } catch (error) { assert(error instanceof DomainInvariantError, "completed sessions cannot be completed/recomputed again"); }
 
+const replacementSession = sessionFor(cbc);
+replacementSession.completeSession();
+const originalReplacementSnapshot = replacementSession.completedSnapshot!;
+const originalReplacementSnapshotJson = JSON.stringify(originalReplacementSnapshot);
+const replacementAnchors = {
+  id: replacementSession.id,
+  accessionNumber: replacementSession.accessionNumber,
+  createdAt: replacementSession.createdAt,
+  completedAt: replacementSession.completedAt,
+  expiresAt: replacementSession.expiresAt,
+};
+replacementSession.reports[0] = applyEncodingResultValue(
+  replacementSession.reports[0],
+  cbc,
+  "HEMOGLOBIN",
+  "135",
+  "NoEvaluation"
+);
+const recompletedSession = replacementSession.recompleteSession();
+assert(
+  recompletedSession !== replacementSession &&
+    recompletedSession.completedSnapshot !== originalReplacementSnapshot &&
+    JSON.stringify(recompletedSession.completedSnapshot) !== originalReplacementSnapshotJson &&
+    replacementSession.completedSnapshot === originalReplacementSnapshot &&
+    JSON.stringify(replacementSession.completedSnapshot) === originalReplacementSnapshotJson &&
+    recompletedSession.id === replacementAnchors.id &&
+    recompletedSession.accessionNumber === replacementAnchors.accessionNumber &&
+    recompletedSession.createdAt === replacementAnchors.createdAt &&
+    recompletedSession.completedAt === replacementAnchors.completedAt &&
+    recompletedSession.expiresAt === replacementAnchors.expiresAt,
+  "replacement re-completion recomposes a different aggregate snapshot while preserving the original snapshot and immutable identity anchors"
+);
+assert(
+  recompletedSession.reports[0].signatories !== replacementSession.reports[0].signatories,
+  "replacement re-completion isolates cloned report signatory arrays"
+);
+
+const nullCompletionAnchorSession = new PatientReportSessionAggregate({
+  id: "completed-without-anchor",
+  accessionNumber: "B5-NULL-ANCHOR",
+  status: "Completed",
+  demographics: demographics(),
+  reports: [validReport(cbc)],
+  completedAt: null,
+});
+try {
+  nullCompletionAnchorSession.recompleteSession();
+  throw new Error("expected completion-anchor guard");
+} catch (error) {
+  assert(
+    error instanceof DomainInvariantError &&
+      error.message === "Completed session requires a completion timestamp for re-completion.",
+    "recompleteSession rejects a Completed session whose completedAt is null"
+  );
+}
+
 const version2Snapshot = immutableSession.completedSnapshot!;
 const legacyV1Reports = version2Snapshot.reports.map(({ renderContractVersion: _renderContractVersion, printedTitle: _printedTitle, staticContentVersion: _staticContentVersion, ...report }) => report);
 const legacyV1Snapshot = cloneAndFreezeSnapshot({ ...version2Snapshot, snapshotVersion: 1, reports: legacyV1Reports });
@@ -322,6 +378,7 @@ const liveCodeIndexOf = (source: string, occurrence: string) => {
   }
   return -1;
 };
+const domainAggregateSource = readNormalizedSource("src/domain/models/patient-report-session-aggregate.ts");
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
 const migrationSource = readNormalizedSqlSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
 const evaluationMigrationSource = readNormalizedSqlSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
@@ -381,7 +438,12 @@ const reportTreeFunctionSource = functionDefinitionSource("persist_session_repor
 const saveDraftFunctionSource = functionDefinitionSource("save_draft_session");
 const completionFunctionSource = functionDefinitionSource("complete_patient_report_session");
 const retentionFunctionSource = functionDefinitionSource("assert_session_within_retention");
+const replacementFunctionSource = functionDefinitionSource("replace_completed_session");
 const completionFunctionMigrationSource = resolveFunctionDefinition("complete_patient_report_session").migrationSource;
+const recompleteSessionSource = domainAggregateSource.slice(
+  domainAggregateSource.indexOf("  public recompleteSession("),
+  domainAggregateSource.indexOf("  public replaceReport(")
+);
 const getRecentSessionsSource = repositorySource.slice(
   repositorySource.indexOf("  async getRecentSessions("),
   repositorySource.indexOf("  async saveDraft(")
@@ -393,6 +455,10 @@ const saveDraftSource = repositorySource.slice(
 const completeSessionSource = repositorySource.slice(
   repositorySource.indexOf("  async completeSession("),
   repositorySource.indexOf("  async replaceSession(")
+);
+const replaceSessionSource = repositorySource.slice(
+  repositorySource.indexOf("  async replaceSession("),
+  repositorySource.indexOf("  async purgeExpiredSessions(")
 );
 assert(repositorySource.includes("encoding_data: report.encodingData") && repositorySource.includes("completed_snapshot: session.completedSnapshot"), "draft encoding data and completed snapshots are wired to persistence");
 assert(repositorySource.includes("raw_result_value") && repositorySource.includes("formatted_result_value") && repositorySource.includes("computation_metadata"), "raw, formatted, and computation evidence are persisted and restored");
@@ -470,6 +536,8 @@ assertServiceRoleOnlyFunction("persist_session_report_tree", "uuid,\\s*jsonb,\\s
 assertServiceRoleOnlyFunction("save_draft_session", "jsonb", "draft transaction function");
 assert(retentionFunctionSource.length > 0, "retention helper exists");
 assertServiceRoleOnlyFunction("assert_session_within_retention", "uuid", "retention helper");
+assert(replacementFunctionSource.length > 0, "completed-session replacement function exists");
+assertServiceRoleOnlyFunction("replace_completed_session", "jsonb", "completed-session replacement function");
 assert(/expires_at\s*<\s*now\(\)/i.test(retentionFunctionSource) && !/clock_timestamp\s*\(\)/i.test(retentionFunctionSource), "retention helper uses transaction-stable now() and never clock_timestamp()");
 assert(/expires_at\s+IS\s+NOT\s+NULL/i.test(retentionFunctionSource), "retention helper treats a NULL expires_at as non-expiring");
 for (const [label, functionSource] of [
@@ -500,5 +568,209 @@ const completionRetentionIndex = liveCodeIndexOf(completeSessionSource, "this.as
 assert(completionOwnershipIndex >= 0 && completionOwnershipIndex < completionRpcIndex, "completeSession verifies existing session ownership before the completion transaction RPC");
 assert(completionRetentionIndex > completionOwnershipIndex && completionRpcIndex > completionRetentionIndex, "completeSession rejects expired completed sessions after ownership verification and before the completion transaction RPC");
 assert(completeSessionSource.indexOf("autoSuggestionLearningService.learnSuggestionsFromSessionDemographics") > completionRpcIndex, "completeSession learns auto-suggestions only after the completion transaction RPC");
+
+const replacementBodyStart = replacementFunctionSource.indexOf("\nBEGIN");
+const replacementBodySource = replacementBodyStart >= 0
+  ? replacementFunctionSource.slice(replacementBodyStart + "\nBEGIN".length)
+  : "";
+assert(
+  /^\s*PERFORM assert_session_within_retention\(target_session_id\);/i.test(replacementBodySource),
+  "replacement transaction performs the authoritative retention check as its first statement"
+);
+assert(
+  /SELECT\s+accession_number,\s*completed_at,\s*expires_at,\s*status\s+INTO\s+v_accession,\s*v_completed_at,\s*v_expires_at,\s*v_status\s+FROM\s+patient_report_sessions\s+WHERE\s+id\s*=\s*target_session_id\s+FOR UPDATE;/i.test(replacementFunctionSource) &&
+    /IF NOT FOUND THEN\s*RAISE EXCEPTION [^;]+;\s*END IF;/i.test(replacementFunctionSource) &&
+    /IF v_status\s*<>\s*'Completed' THEN\s*RAISE EXCEPTION [^;]+;\s*END IF;/i.test(replacementFunctionSource),
+  "replacement transaction locks and validates the existing completed session"
+);
+const replacementSessionUpdateSource = replacementFunctionSource.match(
+  /UPDATE patient_report_sessions\s+SET([\s\S]*?)\s+WHERE\s+id\s*=\s*target_session_id\s*;/i
+)?.[1] || "";
+assert(
+  /\blast_replaced_at\s*=\s*now\(\)/i.test(replacementSessionUpdateSource),
+  "replacement session UPDATE stamps last_replaced_at"
+);
+assert(
+  replacementSessionUpdateSource.length > 0 &&
+    !/\b(?:accession_number|created_at|completed_at|expires_at)\b/i.test(replacementSessionUpdateSource),
+  "replacement session UPDATE preserves accession_number, created_at, completed_at, and expires_at"
+);
+assert(
+  !/payload\s*->\s*'session'\s*->>\s*'completed_at'/i.test(replacementFunctionSource) &&
+    !/payload\s*->\s*'session'\s*->>\s*'expires_at'/i.test(replacementFunctionSource),
+  "replacement reads completed_at and expires_at from the stored session rather than the payload"
+);
+assert(
+  /GET DIAGNOSTICS written_session_count = ROW_COUNT;\s*IF written_session_count < 1 THEN\s*RAISE EXCEPTION [^;]+;\s*END IF;/i.test(replacementFunctionSource),
+  "replacement transaction raises on a session update shortfall"
+);
+const replacementDelegationIndex = liveCodeIndexOf(
+  replacementFunctionSource,
+  "PERFORM persist_session_report_tree("
+);
+const replacementBeforeDelegationSource = replacementDelegationIndex >= 0
+  ? replacementFunctionSource.slice(0, replacementDelegationIndex)
+  : "";
+const staleReportDeleteSource = replacementBeforeDelegationSource.match(
+  /DELETE FROM laboratory_reports[\s\S]*?;/i
+)?.[0] || "";
+const staleResultDeleteSource = replacementBeforeDelegationSource.match(
+  /DELETE FROM laboratory_results[\s\S]*?;/i
+)?.[0] || "";
+const signatoryDeleteSource = replacementBeforeDelegationSource.match(
+  /DELETE FROM report_signatories[\s\S]*?;/i
+)?.[0] || "";
+const firstReplacementDeleteIndex = replacementFunctionSource.search(/\bDELETE FROM\b/i);
+const replacementBeforeFirstDeleteSource = firstReplacementDeleteIndex >= 0
+  ? replacementFunctionSource.slice(0, firstReplacementDeleteIndex)
+  : "";
+assert(
+  /report_element\s*->\s*'signatories'[\s\S]*GROUP BY\s*\(signatory_element\s*->>\s*'personnel_id'\)::uuid\s*HAVING count\(\*\) > 1[\s\S]*Payload contains a duplicate signatory personnel id within a report/i.test(
+    replacementBeforeFirstDeleteSource
+  ),
+  "replacement transaction rejects duplicate signatory personnel ids within each report before cleanup"
+);
+assert(
+  /report_element\s*->>\s*'id'\s+IS NULL[\s\S]*Payload contains a report with a null id/i.test(replacementBeforeFirstDeleteSource) &&
+    /result_element\s*->>\s*'id'\s+IS NULL[\s\S]*Payload contains a result with a null id/i.test(replacementBeforeFirstDeleteSource) &&
+    /signatory_element\s*->>\s*'personnel_id'\s+IS NULL[\s\S]*Payload contains a signatory with a null personnel_id/i.test(replacementBeforeFirstDeleteSource),
+  "replacement transaction rejects null report, result, and signatory identifiers before cleanup"
+);
+assert(
+  [staleReportDeleteSource, staleResultDeleteSource].every(
+    (source) => /\bNOT EXISTS\s*\(/i.test(source) && !/\bNOT IN\b/i.test(source)
+  ),
+  "replacement cleanup uses null-safe NOT EXISTS for stale reports and results and never NOT IN"
+);
+assert(
+  /session_id\s*=\s*target_session_id/i.test(staleReportDeleteSource) &&
+    /NOT EXISTS\s*\([\s\S]*\(report_element\s*->>\s*'id'\)::uuid\s*=\s*stored_report\.id/i.test(staleReportDeleteSource),
+  "replacement transaction deletes stale reports for only the target session before delegation"
+);
+assert(
+  /session_id\s*=\s*target_session_id/i.test(staleResultDeleteSource) &&
+    /NOT EXISTS\s*\([\s\S]*\(result_element\s*->>\s*'id'\)::uuid\s*=\s*stored_result\.id/i.test(staleResultDeleteSource),
+  "replacement transaction deletes stale results for only the target session before delegation"
+);
+assert(
+  /session_id\s*=\s*target_session_id/i.test(signatoryDeleteSource) &&
+    !/\bNOT IN\b|payload\s*->/i.test(signatoryDeleteSource),
+  "replacement transaction deletes all target-session signatories before delegation"
+);
+const replacementDeleteStatements = Array.from(
+  replacementBeforeDelegationSource.matchAll(/DELETE FROM[\s\S]*?;/gi),
+  (match) => match[0]
+);
+assert(
+  replacementDeleteStatements.length === 3 &&
+    replacementDeleteStatements.every((statement) => /\btarget_session_id\b/i.test(statement)),
+  "replacement transaction scopes every cleanup DELETE to target_session_id"
+);
+const staleReportDeleteIndex = liveCodeIndexOf(replacementFunctionSource, "DELETE FROM laboratory_reports");
+const staleResultDeleteIndex = liveCodeIndexOf(replacementFunctionSource, "DELETE FROM laboratory_results");
+const signatoryDeleteIndex = liveCodeIndexOf(replacementFunctionSource, "DELETE FROM report_signatories");
+assert(
+  staleReportDeleteIndex >= 0 &&
+    staleResultDeleteIndex > staleReportDeleteIndex &&
+    signatoryDeleteIndex > staleResultDeleteIndex &&
+    replacementDelegationIndex > signatoryDeleteIndex,
+  "replacement transaction performs report, result, and signatory cleanup in order before delegation"
+);
+assert(
+  /PERFORM persist_session_report_tree\(\s*target_session_id,\s*COALESCE\(payload -> 'reports', '\[\]'::jsonb\),\s*true,\s*true\s*\);/i.test(replacementFunctionSource),
+  "replacement delegates report-tree persistence with exactly true, true"
+);
+
+assert(
+  liveCodeIndexOf(domainAggregateSource, "  public recompleteSession(") >= 0,
+  "recompleteSession exists"
+);
+const recompleteStatusGuardIndex = liveCodeIndexOf(recompleteSessionSource, 'if (this.status !== "Completed")');
+const recompleteExpiryGuardIndex = liveCodeIndexOf(recompleteSessionSource, "if (this.isExpired())");
+assert(
+  recompleteStatusGuardIndex >= 0 && recompleteExpiryGuardIndex > recompleteStatusGuardIndex,
+  "recompleteSession rejects non-completed and expired sessions"
+);
+const recompleteReturnIndex = liveCodeIndexOf(recompleteSessionSource, "return new PatientReportSessionAggregate(");
+assert(
+  recompleteReturnIndex >= 0 && liveCodeIndexOf(recompleteSessionSource, "this.completedSnapshot =") < 0,
+  "recompleteSession returns a new aggregate without assigning to this.completedSnapshot"
+);
+const completionAnchorDeclarationIndex = liveCodeIndexOf(
+  recompleteSessionSource,
+  "const completionAnchor = this.completedAt;"
+);
+const completionAnchorNullGuardIndex = liveCodeIndexOf(
+  recompleteSessionSource,
+  "if (completionAnchor === null)"
+);
+const completionAnchorThrowIndex = liveCodeIndexOf(
+  recompleteSessionSource,
+  'throw new DomainInvariantError("Completed session requires a completion timestamp for re-completion.");'
+);
+const checkedCompletionCompositionIndex = liveCodeIndexOf(
+  recompleteSessionSource,
+  "ReportCompletionService.validateAndCompose(\n      replacementCandidate,\n      completionAnchor\n    )"
+);
+assert(
+  completionAnchorDeclarationIndex > recompleteStatusGuardIndex &&
+    completionAnchorNullGuardIndex > completionAnchorDeclarationIndex &&
+    completionAnchorThrowIndex > completionAnchorNullGuardIndex &&
+    checkedCompletionCompositionIndex > completionAnchorThrowIndex &&
+    liveCodeIndexOf(recompleteSessionSource, "this.completedAt!") < 0,
+  "recompleteSession rejects a null completion anchor and recomposes with the checked completedAt"
+);
+assert(
+  liveCodeIndexOf(recompleteSessionSource, "signatories: [...report.signatories]") >= 0 &&
+    liveCodeIndexOf(recompleteSessionSource, "signatories: report.signatories") < 0,
+  "recompleteSession copies each report signatories array"
+);
+assert(
+  liveCodeIndexOf(recompleteSessionSource, "completedSnapshot: snapshot") >= 0 &&
+    liveCodeIndexOf(recompleteSessionSource, "completedSnapshot: this.completedSnapshot") < 0,
+  "recompleteSession uses the newly recomposed snapshot rather than the original snapshot"
+);
+
+const replacementRpcIndex = liveCodeIndexOf(
+  replaceSessionSource,
+  'const { data, error } = await supabaseServer.rpc("replace_completed_session", { payload });'
+);
+const replacementRpcErrorIndex = liveCodeIndexOf(replaceSessionSource, "if (error) throw error;");
+assert(
+  replacementRpcIndex >= 0 && replacementRpcErrorIndex > replacementRpcIndex,
+  "replaceSession invokes the replacement transaction RPC and throws its errors"
+);
+assert(
+  liveCodeIndexOf(replaceSessionSource, "accession_number") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "created_at") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "created_by_user_id") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "completed_at") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "expires_at") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "session.accessionNumber") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "session.createdAt") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "session.completedAt") < 0 &&
+    liveCodeIndexOf(replaceSessionSource, "session.expiresAt") < 0,
+  "replaceSession payload excludes database-owned anchors and dead creation or ownership fields"
+);
+const replacementCallerIndex = liveCodeIndexOf(replaceSessionSource, "this.requireCaller()");
+const replacementOwnershipIndex = liveCodeIndexOf(
+  replaceSessionSource,
+  "this.assertExistingSessionOwnership(session.id)"
+);
+const replacementRetentionIndex = liveCodeIndexOf(
+  replaceSessionSource,
+  "this.assertSessionWithinRetention(session.id)"
+);
+assert(
+  replacementCallerIndex >= 0 &&
+    replacementOwnershipIndex > replacementCallerIndex &&
+    replacementRetentionIndex > replacementOwnershipIndex &&
+    replacementRpcIndex > replacementRetentionIndex,
+  "replaceSession requires its caller, verifies ownership, and checks retention in order before the replacement RPC"
+);
+assert(
+  liveCodeIndexOf(replaceSessionSource, "this.completeSession(") < 0,
+  "replaceSession no longer delegates to completeSession"
+);
 
 console.log("=== ALL CHECKPOINT B5 VERIFICATION TESTS PASSED ===");

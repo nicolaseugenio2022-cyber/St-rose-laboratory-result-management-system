@@ -244,7 +244,54 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async replaceSession(session: IPatientReportSession): Promise<IPatientReportSession> {
-    return this.completeSession(session);
+    this.requireCaller();
+    await this.assertExistingSessionOwnership(session.id);
+    await this.assertSessionWithinRetention(session.id);
+
+    const payload = {
+      session: {
+        id: session.id,
+        status: "Completed",
+        demographics: session.demographics,
+        completed_snapshot: session.completedSnapshot || null,
+      },
+      reports: session.reports.map((report) => ({
+          id: report.id,
+          template_code: report.templateCode,
+          template_title: report.templateTitle,
+          renderer_family: report.rendererFamily,
+          reagent_kit_info: report.reagentKitInfo || null,
+          remarks: report.remarks || null,
+          encoding_data: report.encodingData || null,
+          results: report.results.filter((res) => res.resultValue).map((res) => ({
+              id: res.id,
+              parameter_code: res.parameterCode,
+              parameter_name: res.parameterName,
+              result_value: res.resultValue,
+              raw_result_value: res.rawResultValue ?? null,
+              formatted_result_value: res.formattedResultValue ?? null,
+              unit: res.unit || null,
+              evaluation_outcome: res.evaluationOutcome,
+              reference_rule_snapshot: res.referenceRuleSnapshot || null,
+              computation_metadata: res.computationMetadata || null,
+              display_order: res.displayOrder,
+            })),
+          signatories: report.signatories.map((sig) => ({
+            personnel_id: sig.personnelId,
+            role: sig.role,
+            printed_full_name: sig.printedFullName,
+            printed_credentials: sig.printedCredentials,
+            printed_prc_license_number: sig.printedPrcLicenseNumber,
+            signature_image_url: sig.signatureImageUrl || null,
+            display_order: sig.displayOrder,
+          })),
+        })),
+    };
+
+    const { data, error } = await supabaseServer.rpc("replace_completed_session", { payload });
+    if (error) throw error;
+
+    return this.withAssignedAccession(session, data as string);
   }
 
   async purgeExpiredSessions(): Promise<number> {

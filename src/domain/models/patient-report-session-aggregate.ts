@@ -101,6 +101,60 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
   }
 
   /**
+   * Re-completes a completed session as a wholesale single-record replacement.
+   * Returns a new aggregate so the original frozen snapshot remains untouched.
+   */
+  public recompleteSession(_getRequirements?: SignatoryRequirementsLookup): PatientReportSessionAggregate {
+    if (this.status !== "Completed") {
+      throw new DomainInvariantError("Session re-completion is only allowed on completed sessions.");
+    }
+
+    const completionAnchor = this.completedAt;
+    if (completionAnchor === null) {
+      throw new DomainInvariantError("Completed session requires a completion timestamp for re-completion.");
+    }
+
+    if (this.isExpired()) {
+      throw new DomainInvariantError(`Cannot re-complete session: retention period of 30 days has expired.`);
+    }
+
+    const replacementReports = this.reports.map(
+      (report) => new LaboratoryReportDomain({
+        ...report,
+        signatories: [...report.signatories],
+      })
+    );
+    const replacementCandidate = new PatientReportSessionAggregate({
+      id: this.id,
+      accessionNumber: this.accessionNumber,
+      status: "Completed",
+      demographics: structuredClone(this.demographics),
+      reports: replacementReports,
+      createdAt: this.createdAt,
+      completedAt: completionAnchor,
+      expiresAt: this.expiresAt,
+    });
+    const snapshot = ReportCompletionService.validateAndCompose(
+      replacementCandidate,
+      completionAnchor
+    );
+
+    for (const report of replacementReports) report.scrubDeselectedResults();
+
+    return new PatientReportSessionAggregate({
+      id: this.id,
+      accessionNumber: this.accessionNumber,
+      status: "Completed",
+      demographics: replacementCandidate.demographics,
+      reports: replacementReports,
+      createdAt: this.createdAt,
+      completedAt: completionAnchor,
+      expiresAt: this.expiresAt,
+      completedSnapshot: snapshot,
+    });
+  }
+
+  /**
    * Replaces a report in a completed session (Single-record replacement workflow).
    */
   public replaceReport(updatedReport: LaboratoryReportDomain, getRequirements: SignatoryRequirementsLookup): void {

@@ -25,6 +25,7 @@ import {
 type OperationalCaller = {
   userId: string;
   role: "Admin" | "User";
+  username: string;
 };
 
 async function requireOperationalCaller(): Promise<OperationalCaller> {
@@ -77,7 +78,7 @@ async function requireOperationalCaller(): Promise<OperationalCaller> {
     throw new Error("This role is not authorized to access patient or report-registry data.");
   }
 
-  return { userId: profile.id, role: profile.role };
+  return { userId: profile.id, role: profile.role, username: profile.username };
 }
 
 export async function listRecentSessionsAction(
@@ -112,6 +113,44 @@ export async function completeSessionAction(
   const repository = new SupabasePatientReportSessionRepository(caller);
   const completed = await repository.completeSession(fromSessionTransport(transport));
   return toSessionTransport(completed);
+}
+
+export async function replaceSessionAction(
+  input: unknown
+): Promise<PatientReportSessionTransport> {
+  const caller = await requireOperationalCaller();
+  const transport = parseSessionMutationInput(input);
+  if (transport.status !== "Completed") {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "SessionReplacementDenied",
+      actorRole: caller.role,
+      targetRole: null,
+      performedByUserId: caller.userId,
+      performedByUsername: caller.username,
+      details: { reasonCode: "session_not_completed" },
+    });
+    throw new Error("Only completed sessions may be replaced.");
+  }
+
+  const repository = new SupabasePatientReportSessionRepository(caller);
+  const replacement = fromSessionTransport(transport).recompleteSession();
+  const replaced = await repository.replaceSession(replacement);
+
+  const reportCount = replaced.reports.length;
+  const templateCodes = replaced.reports.map((report) => report.templateCode);
+  await auditService.emit({
+    category: "SessionReport",
+    eventType: "SessionReplaced",
+    actorRole: caller.role,
+    targetRole: null,
+    performedByUserId: caller.userId,
+    performedByUsername: caller.username,
+    targetReference: replaced.accessionNumber,
+    details: { reportCount, templateCodes },
+  });
+
+  return toSessionTransport(replaced);
 }
 
 export async function listActivePersonnelAction(): Promise<IPersonnel[]> {

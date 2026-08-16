@@ -8,6 +8,7 @@ import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../
 import { ValidationError, DomainInvariantError } from "../src/lib/errors";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import * as ts from "typescript";
 import { cloneAndFreezeSnapshot } from "../src/domain/completion/completed-snapshot";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -366,8 +367,8 @@ const stripSqlComments = (source: string) => {
   return result;
 };
 const readNormalizedSqlSource = (relativePath: string) => stripSqlComments(readNormalizedSource(relativePath));
-const liveCodeIndexOf = (source: string, occurrence: string) => {
-  let index = source.indexOf(occurrence);
+const liveCodeIndexOf = (source: string, occurrence: string, fromIndex = 0) => {
+  let index = source.indexOf(occurrence, fromIndex);
   while (index >= 0) {
     const lineStart = source.lastIndexOf("\n", index - 1) + 1;
     const linePrefix = source.slice(lineStart, index);
@@ -378,8 +379,101 @@ const liveCodeIndexOf = (source: string, occurrence: string) => {
   }
   return -1;
 };
+const liveCodeIndicesOf = (source: string, occurrence: string) => {
+  const indices: number[] = [];
+  let fromIndex = 0;
+  while (fromIndex < source.length) {
+    const index = liveCodeIndexOf(source, occurrence, fromIndex);
+    if (index < 0) break;
+    indices.push(index);
+    fromIndex = index + occurrence.length;
+  }
+  return indices;
+};
+const extractBracedSource = (source: string, openingBraceIndex: number) => {
+  if (openingBraceIndex < 0 || source[openingBraceIndex] !== "{") return "";
+  let depth = 0;
+  let state: "code" | "single-string" | "double-string" | "template-string" | "line-comment" | "block-comment" = "code";
+  for (let index = openingBraceIndex; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (state === "line-comment") {
+      if (character === "\n") state = "code";
+      continue;
+    }
+    if (state === "block-comment") {
+      if (character === "*" && nextCharacter === "/") {
+        state = "code";
+        index += 1;
+      }
+      continue;
+    }
+    if (state !== "code") {
+      if (character === "\\") {
+        index += 1;
+      } else if (
+        (state === "single-string" && character === "'") ||
+        (state === "double-string" && character === '"') ||
+        (state === "template-string" && character === "`")
+      ) {
+        state = "code";
+      }
+      continue;
+    }
+
+    if (character === "/" && nextCharacter === "/") {
+      state = "line-comment";
+      index += 1;
+      continue;
+    }
+    if (character === "/" && nextCharacter === "*") {
+      state = "block-comment";
+      index += 1;
+      continue;
+    }
+    if (character === "'") {
+      state = "single-string";
+      continue;
+    }
+    if (character === '"') {
+      state = "double-string";
+      continue;
+    }
+    if (character === "`") {
+      state = "template-string";
+      continue;
+    }
+    if (character === "{") depth += 1;
+    if (character === "}") depth -= 1;
+    if (depth === 0) return source.slice(openingBraceIndex, index + 1);
+  }
+  return "";
+};
+const topLevelShorthandPropertyKeys = (objectSource: string) => {
+  if (objectSource.length === 0) return null;
+  const parsedSource = ts.createSourceFile(
+    "replacement-details.ts",
+    `const replacementDetails = ${objectSource};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const declaration = parsedSource.statements[0];
+  if (!declaration || !ts.isVariableStatement(declaration)) return null;
+  const initializer = declaration.declarationList.declarations[0]?.initializer;
+  if (!initializer || !ts.isObjectLiteralExpression(initializer)) return null;
+
+  const keys: string[] = [];
+  for (const property of initializer.properties) {
+    if (!ts.isShorthandPropertyAssignment(property) || !ts.isIdentifier(property.name)) return null;
+    keys.push(property.name.text);
+  }
+  return keys;
+};
 const domainAggregateSource = readNormalizedSource("src/domain/models/patient-report-session-aggregate.ts");
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
+const serverActionsSource = readNormalizedSource("src/features/server-boundary/server-actions.ts");
 const migrationSource = readNormalizedSqlSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
 const evaluationMigrationSource = readNormalizedSqlSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
 const timestampedMigrationSources = readdirSync(join(process.cwd(), "supabase/migrations"))
@@ -459,6 +553,208 @@ const completeSessionSource = repositorySource.slice(
 const replaceSessionSource = repositorySource.slice(
   repositorySource.indexOf("  async replaceSession("),
   repositorySource.indexOf("  async purgeExpiredSessions(")
+);
+const replaceSessionActionDeclaration = "export async function replaceSessionAction(";
+const replaceSessionActionStart = liveCodeIndexOf(serverActionsSource, replaceSessionActionDeclaration);
+const replaceSessionActionEnd = replaceSessionActionStart >= 0
+  ? serverActionsSource.indexOf(
+      "\nexport async function",
+      replaceSessionActionStart + replaceSessionActionDeclaration.length
+    )
+  : -1;
+const replaceSessionActionSource = replaceSessionActionStart >= 0
+  ? serverActionsSource.slice(
+      replaceSessionActionStart,
+      replaceSessionActionEnd >= 0 ? replaceSessionActionEnd : serverActionsSource.length
+    )
+  : "";
+assert(replaceSessionActionStart >= 0, "replaceSessionAction exists and is exported");
+
+const replaceActionCallerIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "const caller = await requireOperationalCaller();"
+);
+const replaceActionRepositoryIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "new SupabasePatientReportSessionRepository"
+);
+const replaceActionCallIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "repository.replaceSession("
+);
+assert(
+  replaceActionCallerIndex >= 0 &&
+    replaceActionRepositoryIndex > replaceActionCallerIndex &&
+    replaceActionCallIndex > replaceActionRepositoryIndex,
+  "replaceSessionAction authorizes before repository construction and replacement"
+);
+
+const replacementStatusGuardIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  'if (transport.status !== "Completed") {'
+);
+const replacementStatusGuardSource = extractBracedSource(
+  replaceSessionActionSource,
+  replacementStatusGuardIndex >= 0
+    ? replaceSessionActionSource.indexOf("{", replacementStatusGuardIndex)
+    : -1
+);
+const replacementDenialEmitIndex = liveCodeIndexOf(
+  replacementStatusGuardSource,
+  "await auditService.emit({"
+);
+const replacementDenialEventIndex = liveCodeIndexOf(
+  replacementStatusGuardSource,
+  'eventType: "SessionReplacementDenied"'
+);
+const replacementDenialThrowIndex = liveCodeIndexOf(
+  replacementStatusGuardSource,
+  'throw new Error("Only completed sessions may be replaced.");'
+);
+assert(
+  replacementStatusGuardIndex >= 0 &&
+    replacementDenialEmitIndex >= 0 &&
+    liveCodeIndexOf(replacementStatusGuardSource, 'category: "SecurityDenial"') > replacementDenialEmitIndex &&
+    replacementDenialEventIndex > replacementDenialEmitIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, "actorRole: caller.role") > replacementDenialEventIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, "targetRole: null") > replacementDenialEventIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, "performedByUserId: caller.userId") > replacementDenialEventIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, "performedByUsername: caller.username") > replacementDenialEventIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, 'details: { reasonCode: "session_not_completed" }') > replacementDenialEventIndex &&
+    replacementDenialThrowIndex > replacementDenialEventIndex,
+  "replaceSessionAction rejects non-completed input with the required SecurityDenial before throwing"
+);
+
+const replaceActionRecompletionIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "const replacement = fromSessionTransport(transport).recompleteSession();"
+);
+assert(
+  replaceActionRecompletionIndex > replaceActionRepositoryIndex &&
+    replaceActionRecompletionIndex < replaceActionCallIndex,
+  "replaceSessionAction recompletes the session before calling replaceSession"
+);
+
+const replacementSuccessEventIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  'eventType: "SessionReplaced"'
+);
+const replacementReturnIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "return toSessionTransport("
+);
+assert(
+  replacementSuccessEventIndex > replaceActionCallIndex &&
+    replacementReturnIndex > replacementSuccessEventIndex,
+  "replaceSessionAction emits SessionReplaced only after successful replacement and before returning"
+);
+const awaitedReplacementCallIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "const replaced = await repository.replaceSession("
+);
+const replacementCallIndices = liveCodeIndicesOf(
+  replaceSessionActionSource,
+  "repository.replaceSession("
+);
+const allReplacementCallIndices = liveCodeIndicesOf(
+  replaceSessionActionSource,
+  "replaceSession("
+);
+assert(
+  awaitedReplacementCallIndex >= 0 &&
+    awaitedReplacementCallIndex < replacementSuccessEventIndex &&
+    replacementCallIndices.length > 0 &&
+    allReplacementCallIndices.length === replacementCallIndices.length &&
+    allReplacementCallIndices.every(
+      (index, callIndex) => index === replacementCallIndices[callIndex] + "repository.".length
+    ) &&
+    replacementCallIndices.every(
+      (index) => replaceSessionActionSource.slice(index - "await ".length, index) === "await "
+    ),
+  "replaceSessionAction awaits replacement success before emitting SessionReplaced"
+);
+
+const postReplacementActionSource = replaceActionCallIndex >= 0
+  ? replaceSessionActionSource.slice(replaceActionCallIndex)
+  : "";
+const replacementSuccessEmitIndex = liveCodeIndexOf(
+  postReplacementActionSource,
+  "await auditService.emit({"
+);
+const replacementSuccessEmitSource = extractBracedSource(
+  postReplacementActionSource,
+  replacementSuccessEmitIndex >= 0
+    ? postReplacementActionSource.indexOf("{", replacementSuccessEmitIndex)
+    : -1
+);
+assert(
+  liveCodeIndexOf(replacementSuccessEmitSource, 'category: "SessionReport"') >= 0 &&
+    liveCodeIndexOf(replacementSuccessEmitSource, 'eventType: "SessionReplaced"') >= 0 &&
+    liveCodeIndexOf(replacementSuccessEmitSource, "targetReference: replaced.accessionNumber") >= 0,
+  "replaceSessionAction emits SessionReplaced as SessionReport with the replaced accession reference"
+);
+
+const replacementDetailsPropertyIndex = liveCodeIndexOf(
+  replacementSuccessEmitSource,
+  "details: {"
+);
+const replacementDetailsSource = extractBracedSource(
+  replacementSuccessEmitSource,
+  replacementDetailsPropertyIndex >= 0
+    ? replacementSuccessEmitSource.indexOf("{", replacementDetailsPropertyIndex)
+    : -1
+);
+const prohibitedReplacementDetailFields = [
+  "demographics",
+  "patientName",
+  "requestingPhysician",
+  "resultValue",
+  "rawResultValue",
+  "formattedResultValue",
+  "remarks",
+  "signator",
+  "signatories",
+  "printedFullName",
+  "printedCredentials",
+  "prcLicense",
+  "completedSnapshot",
+] as const;
+assert(
+  replacementDetailsPropertyIndex >= 0 &&
+    liveCodeIndexOf(replacementDetailsSource, "reportCount") >= 0 &&
+    liveCodeIndexOf(replacementDetailsSource, "templateCodes") >= 0 &&
+    prohibitedReplacementDetailFields.every(
+      (field) => liveCodeIndexOf(replacementDetailsSource, field) < 0
+    ),
+  "SessionReplaced audit details contain only the non-clinical replacement summary"
+);
+const allowedReplacementDetailKeys = ["reportCount", "templateCodes"] as const;
+const replacementDetailKeys = topLevelShorthandPropertyKeys(replacementDetailsSource);
+assert(
+  replacementDetailsSource.length > 0 &&
+    replacementDetailKeys !== null &&
+    replacementDetailKeys.length === allowedReplacementDetailKeys.length &&
+    allowedReplacementDetailKeys.every(
+      (key) =>
+        replacementDetailKeys.includes(key) &&
+        liveCodeIndexOf(replacementDetailsSource, key) >= 0
+    ),
+  "SessionReplaced audit details use exactly the shorthand reportCount and templateCodes properties"
+);
+assert(
+  liveCodeIndexOf(
+    replaceSessionActionSource,
+    "const reportCount = replaced.reports.length;"
+  ) >= 0 &&
+    liveCodeIndexOf(
+      replaceSessionActionSource,
+      "const templateCodes = replaced.reports.map((report) => report.templateCode);"
+    ) >= 0,
+  "SessionReplaced audit summary derives reportCount and templateCodes from the replaced reports"
+);
+assert(
+  liveCodeIndexOf(serverActionsSource, "developer_involved") < 0,
+  "server actions never write developer_involved from application code"
 );
 assert(repositorySource.includes("encoding_data: report.encodingData") && repositorySource.includes("completed_snapshot: session.completedSnapshot"), "draft encoding data and completed snapshots are wired to persistence");
 assert(repositorySource.includes("raw_result_value") && repositorySource.includes("formatted_result_value") && repositorySource.includes("computation_metadata"), "raw, formatted, and computation evidence are persisted and restored");

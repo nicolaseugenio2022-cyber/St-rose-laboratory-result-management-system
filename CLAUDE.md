@@ -69,7 +69,7 @@ observe exact-commit CI · verify local `HEAD` against `origin/main`.
 4. **Freeze** — on approval the plan is frozen. Then run `git status` and require a clean working tree:
    - Clean — record the current `HEAD` SHA as the review baseline and proceed.
    - Record the frozen checkpoint contract: baseline SHA · the authority sections relied on ·
-     pinned invariants · slice boundaries · acceptance criteria.
+     pinned invariants · slice boundaries · acceptance criteria · the selected reasoning effort.
    - Not clean — **stop** and report the existing changes to the user.
    - Never stash, discard, commit, revert, or absorb pre-existing changes automatically.
    - Proceed with a dirty tree only when the user explicitly authorizes it and states how those changes are to be treated.
@@ -141,11 +141,15 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort="xhigh" --sandbox workspace-
 straightforward CRUD, deterministic verification. Use `xhigh` for high-risk backend and database
 work — transactional migrations, auth or authorization, RLS and security policy, concurrency and race
 handling, retention and expiry invariants, destructive database paths, complex state transitions such
-as Replacement Mode, and any schema or security change where a mistake is costly. Effort and rigour
-are independent dials: `high` never buys a reduction in verification depth, mutation coverage,
-independent review, or any security gate. **Never interrupt a running delegation to change its
-effort** — let it finish under its frozen contract and evidence chain, and apply the new tier to the
-next qualifying delegation.
+as Replacement Mode, and any schema or security change where a mistake is costly. Claude selects the
+tier from the slice's actual risk and complexity, and **states it in the frozen contract before
+delegating**. Anything above `xhigh` requires a concrete justification recorded in that contract —
+never a reflex. Effort and rigour are independent dials: `high` never buys a reduction in verification
+depth, mutation coverage, independent review, live acceptance, or any security gate. **Never interrupt
+a running delegation to change its effort** — let it finish under its frozen contract and evidence
+chain, and apply the new tier to the next qualifying delegation. **Elapsed time is not a reason to
+escalate**: a long run means the slice is large or the environment is slow, and the answer is a
+narrower slice or a diagnosis, never a higher tier mid-flight or on a rerun of the same work.
 
 Read-only tasks may use `--sandbox read-only`; the model pin still applies and reasoning effort is
 never lowered as an optimization or as rate-limit relief. **`< /dev/null`, or the platform-safe EOF

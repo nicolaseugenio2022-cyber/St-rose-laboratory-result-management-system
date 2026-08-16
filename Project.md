@@ -324,6 +324,86 @@ drifted three times across the two acceptance rounds. Every other column was ver
 to its captured baseline. This is an acknowledged artifact of the authorized test mutation, not a
 residual change of intent, and no claim of byte-identical restoration is made for that column.
 
+### Completed-session replacement — Replacement Mode
+
+Replacement Mode is being delivered as three independently frozen slices. **R1 and R2 are complete
+and committed; R3 is not started.** ADR-006 single-record semantics were confirmed before any code
+was written: the same persisted record is replaced wholesale by a newly composed frozen snapshot,
+with no successor rows and no version history, and prior report content is deliberately
+unrecoverable.
+
+**R1 — domain and transactional persistence.** Complete, committed 2026-08-16 as `aaa3c4f`. Before
+this slice `replaceSession()` delegated to `completeSession()`, which only recomposes when
+`status !== "Completed"`, so replacing an already-completed session silently replaced **nothing**.
+`recompleteSession()` now returns a **new** aggregate rather than mutating, because
+`completeSession()` defines `completedSnapshot` with `configurable: false` and `writable: false` and
+redefining it would throw; the descriptor was not relaxed. The replacement snapshot is composed
+against the **original** `completedAt`, so the replacement moment lives only in `last_replaced_at`.
+Migration `20260815220000_completed_session_replacement.sql` adds
+`replace_completed_session(jsonb)`, which runs the retention assertion as its first statement, locks
+the stored row `FOR UPDATE`, rejects malformed and duplicate payloads, updates only `demographics`,
+`completed_snapshot` and `last_replaced_at`, prunes stale children with session-scoped null-safe
+`NOT EXISTS` deletes, and delegates to the unchanged shared writer. `persist_session_report_tree`,
+`save_draft_session`, `complete_patient_report_session` and `assert_session_within_retention` were
+not modified.
+
+**R1 live acceptance.** The migration is applied to the application database. Acceptance ran
+**91/91** against synthetic session `SR-20260815-0007` through direct `service_role` RPC calls, with
+the repository deliberately bypassed so that every guard proven is a **database** guard. Proven live:
+the original accession, `completed_at` and `expires_at` were preserved across every replacement and
+no accession was allocated, the allocator staying at 8; the completed snapshot was genuinely
+recomposed, changing from absent to one snapshot and then to a different one, and the snapshot
+carried the original completion anchor rather than the replacement time; stale results and
+signatories were transactionally removed rather than retained, while carried rows kept their original
+identifiers; a duplicate signatory payload was rejected by name; and expired replacement was denied
+by the in-transaction retention assertion and permitted again once the expiry was restored, so the
+guard does not over-block.
+
+**Rollback is proven in both directions relative to the write.** A malformed identifier that passes
+the null guards reaches the `UPDATE` and then raises on a cast, and the session row returned
+byte-identical **including `updated_at`**, so the update itself rolled back. A signatory referencing
+a nonexistent person raises a foreign-key violation inside the shared writer, **after** the three
+deletes have run, and the results and signatories were all still present, so the destructive deletes
+roll back too.
+
+**Expected R1 acceptance drift, which is NOT byte-identical restoration.** On `SR-20260815-0007`
+`last_replaced_at` advanced and cannot be reset through the RPC, `updated_at` was rewritten by its
+trigger, and signatory **row identifiers rotated** because replacement deletes and reinserts them by
+design. Demographics, the snapshot, both results and the report row were restored to their baseline
+values. Acceptance ran twice: the first pass scored 90/92 because the acceptance script compared a
+stored `jsonb` object against a JavaScript object with `JSON.stringify`, and PostgreSQL reorders
+`jsonb` keys; the comparison was made key-order-insensitive and the corrected run passed 91/91. The
+second pass is the reason `last_replaced_at`, `updated_at` and the signatory row identifiers moved
+more than once.
+
+**R2 — server boundary, authorization and audit.** Complete, committed 2026-08-16 as `f4f98d7`.
+`replaceSessionAction` authorizes the operational caller before parsing input, constructing the
+repository, re-completing the aggregate or reaching the RPC, on every path including the rejection
+path. **Creator-only ownership is unchanged**: no Admin override, role branch or bypass was added,
+and the action neither re-implements nor shadows the repository's ownership guard, so an Admin still
+cannot replace another user's completed session. The `SessionReplaced` event is emitted **only after
+the awaited replacement succeeds**, so a rejected RPC, an ownership failure or a retention failure
+cannot produce a success record. `targetReference` carries the **accession number**, following the
+established convention that this field holds the entity's human-facing identifier and is one of only
+two searchable audit columns. Audit `details` is exactly `{ reportCount, templateCodes }` — no
+demographics, patient name, physician, result values, remarks, signatory details or credentials.
+Actor identity and `actorRole` come from the verified active profile through the established audit
+path, so **`developer_involved` remains a database-generated column** and is never written by
+application code. R2 required no schema change: `AuditCategory` already contained `SessionReport`,
+and `event_type` is free-form `TEXT` with no `CHECK` constraint.
+
+**Named blocker carried — no `SessionCompleted` audit event.** Session completion is unaudited today;
+`completeSessionAction` emits nothing on success, and the only pre-existing successful `SessionReport`
+event anywhere is `AutomatedRetentionPurgeExecuted`. After R2, replacement is audited while completion
+is not. Closing this is **blocking for the Completed History milestone** and is scheduled for the
+later purge and audit lifecycle closeout; it was deliberately kept out of R2 rather than widening that
+slice.
+
+**Constraint binding on R3.** History is system-wide, but replacement authorization is creator-only.
+R3 must therefore **not present Edit or Reopen as usable for a session the current caller cannot
+replace**, and must reflect the actual authorization rule rather than offering a control that
+predictably fails.
+
 ## Milestone 6 — Production Hardening
 
 Security hardening is in progress and is tracked as checkpoints 6A–6D.

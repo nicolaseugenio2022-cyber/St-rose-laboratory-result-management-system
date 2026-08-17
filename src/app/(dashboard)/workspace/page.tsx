@@ -7,6 +7,13 @@ export const metadata = {
   description: "Dynamic result entry form engine and session workspace.",
 };
 
-export default function WorkspacePage() {
-  return <GuidedWorkspace />;
+export default async function WorkspacePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { sessionId } = await searchParams;
+  return (
+    <GuidedWorkspace reopenSessionId={typeof sessionId === "string" ? sessionId : undefined} />
+  );
 }

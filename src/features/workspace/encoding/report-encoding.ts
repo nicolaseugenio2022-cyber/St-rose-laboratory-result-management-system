@@ -26,6 +26,13 @@ export interface BuildEncodingReportInput {
   legacyRequestedBy?: string | null;
   legacyAdditionalFields?: Record<string, string | undefined>;
   evaluationContext?: EvaluationContext;
+  /**
+   * Selection applied to a definition parameter that has no matching result in the
+   * existing report. Defaults to true. Replacement Mode passes false: a completed
+   * report persists only its selected results, so absence means the parameter was
+   * deselected and must not return as selected-and-blank.
+   */
+  unmatchedParameterSelection?: boolean;
 }
 
 function hasOwnRequestedBy(report?: ILaboratoryReport | null): boolean {
@@ -65,7 +72,8 @@ function resolveLegacyConditionalValue(
 function buildInitialResults(
   definition: ClinicalReportDefinition,
   reportId: string,
-  existingResults: ILaboratoryReport["results"] = []
+  existingResults: ILaboratoryReport["results"] = [],
+  unmatchedParameterSelection: boolean = true
 ): LaboratoryResultDomain[] {
   const consumedCodes = new Set<string>();
 
@@ -98,7 +106,9 @@ function buildInitialResults(
         displayOrder: parameter.displayOrder,
         isSelected: parameter.isRequired
           ? true
-          : ((legacyResult as LaboratoryResultDomain | undefined)?.isSelected ?? true),
+          : legacyResult
+            ? ((legacyResult as LaboratoryResultDomain).isSelected ?? true)
+            : unmatchedParameterSelection,
       });
     });
 
@@ -190,7 +200,12 @@ export function buildEncodingReport(input: BuildEncodingReportInput): Laboratory
       additionalFields,
       repeatableFindings: buildRepeatableFindings(definition, existingReport),
     },
-    results: buildInitialResults(definition, reportId, existingReport?.results),
+    results: buildInitialResults(
+      definition,
+      reportId,
+      existingReport?.results,
+      input.unmatchedParameterSelection ?? true
+    ),
     signatories: existingReport?.signatories || input.signatories,
   });
   return reevaluateEncodingReport(initializedReport, definition, input.evaluationContext);

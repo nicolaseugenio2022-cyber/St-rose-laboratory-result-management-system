@@ -7,9 +7,16 @@ import { fromSessionTransport } from "@/features/server-boundary/session-transpo
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import { Search, History, Eye, Edit3, Calendar, FileText, CheckCircle2, Clock, X } from "lucide-react";
 import { formatDateISO } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+
+type SessionHistoryEntry = {
+  session: PatientReportSessionAggregate;
+  canReopen: boolean;
+};
 
 export function SessionHistoryView() {
-  const [sessions, setSessions] = useState<PatientReportSessionAggregate[]>([]);
+  const router = useRouter();
+  const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Draft" | "Completed">("ALL");
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
@@ -21,7 +28,12 @@ export function SessionHistoryView() {
     setLoading(true);
     try {
       const data = await listRecentSessionsAction({ limit: 50 });
-      setSessions(data.map((entry) => fromSessionTransport(entry.session)));
+      setEntries(
+        data.map((entry) => ({
+          session: fromSessionTransport(entry.session),
+          canReopen: entry.canReopen,
+        }))
+      );
       setLoadError(null);
     } catch (error: unknown) {
       setLoadError(
@@ -37,8 +49,8 @@ export function SessionHistoryView() {
   }, [loadHistory]);
 
   // Memoized filtered session list to prevent array filtering on unrelated state changes
-  const filteredSessions = useMemo(() => {
-    return sessions.filter((s) => {
+  const filteredEntries = useMemo(() => {
+    return entries.filter(({ session: s }) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         s.accessionNumber?.toLowerCase().includes(q) === true ||
@@ -49,7 +61,7 @@ export function SessionHistoryView() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [sessions, searchQuery, statusFilter]);
+  }, [entries, searchQuery, statusFilter]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -76,7 +88,7 @@ export function SessionHistoryView() {
               statusFilter === "ALL" ? "bg-white text-brand-primary shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            All ({sessions.length})
+            All ({entries.length})
           </button>
           <button
             type="button"
@@ -125,7 +137,7 @@ export function SessionHistoryView() {
           <div className="p-12 text-center text-rose-700 text-xs">
             Session history could not be loaded: {loadError}
           </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs">
             No patient report sessions found matching query &apos;{searchQuery}&apos;.
           </div>
@@ -145,7 +157,7 @@ export function SessionHistoryView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSessions.map((sess) => {
+                {filteredEntries.map(({ session: sess, canReopen }) => {
                   const isCompleted = sess.status === "Completed";
 
                   return (
@@ -194,14 +206,16 @@ export function SessionHistoryView() {
                           <Eye className="h-3.5 w-3.5 text-slate-500" />
                           Preview
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => alert(`Reopening session '${sess.accessionNumber}' in workspace.`)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          {isCompleted ? "Replace" : "Edit"}
-                        </button>
+                        {canReopen && (
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/workspace?sessionId=${encodeURIComponent(sess.id)}`)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            {isCompleted ? "Replace" : "Edit"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

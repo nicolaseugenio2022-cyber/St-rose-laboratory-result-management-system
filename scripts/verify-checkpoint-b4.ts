@@ -360,4 +360,55 @@ for (const code of ["HBA1C", "DENGUE_DUO"]) {
 const hiv = build("HIV_RESULT");
 assert(ReportDefinitionRegistry.getDefinition("HIV_RESULT")?.requestedByPolicy.fieldLabel === "Referring Doctor" && hiv.encodingData?.additionalFields?.examinationDateTime === "", "HIV uses dedicated required Referring Doctor and Date & Time demographics field");
 
+// --- R3-2: Replacement Mode hydration and client reopen gating ---
+
+const replacementDefinition = ReportDefinitionRegistry.getDefinition("URINALYSIS")!;
+const replacementBaseline = build("URINALYSIS");
+const deselectedParameter = replacementDefinition.parameters.find((p) => p.isSelectable && !p.isRequired && !p.blankOmission);
+assert(Boolean(deselectedParameter), "URINALYSIS exposes a deselectable optional parameter that is not omitted when blank");
+const deselectedCode = deselectedParameter!.parameterCode;
+// A completed report persists only its selected results: scrubDeselectedResults runs
+// before persistence, so a deselected parameter is expressed by absence on reload.
+const persistedCompletedReport = new LaboratoryReportDomain({
+  ...replacementBaseline,
+  results: replacementBaseline.results.filter((r) => r.parameterCode !== deselectedCode),
+  signatories: [...replacementBaseline.signatories],
+});
+assert(!persistedCompletedReport.results.some((r) => r.parameterCode === deselectedCode), `persisted completed URINALYSIS fixture omits the deselected ${deselectedCode} result`);
+const rebuildFromPersisted = (unmatchedParameterSelection?: boolean) => buildEncodingReport({
+  definition: replacementDefinition,
+  sessionId: "session-b4",
+  reportId: "report-URINALYSIS",
+  rendererFamily: replacementDefinition.rendererFamily as RendererFamily,
+  signatories: [],
+  existingReport: persistedCompletedReport,
+  ...(unmatchedParameterSelection === undefined ? {} : { unmatchedParameterSelection }),
+});
+const replacementHydration = rebuildFromPersisted(false).results.find((r) => r.parameterCode === deselectedCode);
+const defaultHydration = rebuildFromPersisted().results.find((r) => r.parameterCode === deselectedCode);
+assert(replacementHydration !== undefined && defaultHydration !== undefined, `${deselectedCode} is present in both hydrations and differs only by selection`);
+assert(replacementHydration!.isSelected === false, `Replacement Mode hydration keeps ${deselectedCode} deselected when the persisted completed report omits it`);
+assert(defaultHydration!.isSelected === true, `default hydration still selects ${deselectedCode} when the existing report omits it`);
+assert(rebuildFromPersisted(false).results.filter((r) => r.isSelected === false).length === 1, "Replacement Mode hydration deselects only the parameters the persisted completed report omits");
+const freshBuildSelection = build("URINALYSIS").results.find((r) => r.parameterCode === deselectedCode);
+assert(freshBuildSelection?.isSelected === true, `a fresh URINALYSIS encoding report still selects ${deselectedCode} by default`);
+
+const sessionHistorySource = readFileSync(join(process.cwd(), "src/features/history/components/SessionHistoryView.tsx"), "utf8").replace(/\r\n/g, "\n");
+const reopenGuardIndex = sessionHistorySource.indexOf("{canReopen && (");
+const reopenLabelIndex = sessionHistorySource.indexOf('{isCompleted ? "Replace" : "Edit"}');
+assert(/canReopen: entry\.canReopen/.test(sessionHistorySource), "SessionHistoryView takes reopen eligibility from the server-decided listRecentSessionsAction entry");
+assert(reopenGuardIndex >= 0 && reopenLabelIndex > reopenGuardIndex, "SessionHistoryView renders the Replace/Edit control only under canReopen");
+assert(sessionHistorySource.indexOf('{isCompleted ? "Replace" : "Edit"}', reopenLabelIndex + 1) < 0, "SessionHistoryView exposes exactly one Replace/Edit control");
+assert(/router\.push\(`\/workspace\?sessionId=\$\{encodeURIComponent\(sess\.id\)\}`\)/.test(sessionHistorySource), "SessionHistoryView reopens through the workspace session route carrying only the session id");
+
+const replaceHandlerBody = guidedWorkspaceSource.match(/const handleReplaceSession = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";
+const reopenGateIndex = guidedWorkspaceSource.indexOf('if (reopenStatus === "loading" || reopenStatus === "failed") {');
+assert(/getReopenableSessionAction\(\{ sessionId: reopenSessionId \}\)/.test(guidedWorkspaceSource), "GuidedWorkspace loads a reopened session only through getReopenableSessionAction");
+assert(guidedWorkspaceSource.includes("unmatchedParameterSelection: !isReplacementMode"), "GuidedWorkspace hydrates unmatched parameter selection from replacement mode");
+assert(replaceHandlerBody.length > 0, "GuidedWorkspace replacement handler region is non-empty");
+assert(replaceHandlerBody.includes("replaceSessionAction({ session: toSessionTransport(session) })"), "GuidedWorkspace submits a replacement through replaceSessionAction");
+assert(!replaceHandlerBody.includes("completeSessionAction") && !replaceHandlerBody.includes("saveDraftAction"), "GuidedWorkspace replacement never routes through the completion or draft actions");
+assert(replaceHandlerBody.indexOf("replaceSessionAction") < replaceHandlerBody.indexOf('setWorkspaceMode("preview")'), "GuidedWorkspace switches to preview only after the replacement resolves");
+assert(reopenGateIndex >= 0 && reopenGateIndex < guidedWorkspaceSource.indexOf("<ExaminationCatalog"), "GuidedWorkspace withholds the encoding surface until a reopen request resolves");
+
 console.log("=== ALL CHECKPOINT B4 VERIFICATION TESTS PASSED ===");

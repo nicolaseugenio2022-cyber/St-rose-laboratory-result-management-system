@@ -14,8 +14,10 @@ import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import {
   completeSessionAction,
   getRegistryTemplateAction,
+  getReopenableSessionAction,
   listActivePersonnelAction,
   listRegistryTemplatesAction,
+  replaceSessionAction,
   saveDraftAction,
 } from "@/features/server-boundary/server-actions";
 import {
@@ -24,13 +26,13 @@ import {
 } from "@/features/server-boundary/session-transport";
 import { formatDateISO } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User } from "lucide-react";
+import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 
-export function GuidedWorkspace() {
+export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
       id: crypto.randomUUID(),
@@ -65,6 +67,11 @@ export function GuidedWorkspace() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [isReplacementMode, setIsReplacementMode] = useState<boolean>(false);
+  const [reopenStatus, setReopenStatus] = useState<"idle" | "loading" | "ready" | "failed">(
+    reopenSessionId ? "loading" : "idle"
+  );
+  const [reopenError, setReopenError] = useState<string | null>(null);
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
@@ -105,6 +112,40 @@ export function GuidedWorkspace() {
       });
   }, []);
 
+  // Reopen an existing session through the server-authoritative load boundary.
+  // Ownership, status and retention are decided by getReopenableSessionAction; a
+  // session that cannot be reopened never reaches the workspace.
+  useEffect(() => {
+    if (!reopenSessionId) return;
+
+    let cancelled = false;
+    getReopenableSessionAction({ sessionId: reopenSessionId })
+      .then((transport) => {
+        if (cancelled) return;
+        const reopened = fromSessionTransport(transport);
+        const templateCodes = reopened.reports.map((report) => report.templateCode);
+        setSession(reopened);
+        setSelectedTemplateCodes(templateCodes);
+        setActiveTemplateCode(templateCodes[0] ?? null);
+        setIsReplacementMode(reopened.status === "Completed");
+        setIsDirty(false);
+        setSaveStatus("saved");
+        setValidationError(null);
+        setReopenStatus("ready");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setReopenError(
+          error instanceof Error ? error.message : "This session could not be reopened."
+        );
+        setReopenStatus("failed");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reopenSessionId]);
+
   // Load hydrated spec whenever activeTemplateCode changes
   useEffect(() => {
     if (!activeTemplateCode) {
@@ -144,6 +185,7 @@ export function GuidedWorkspace() {
               companyName: prevSession.demographics.companyName,
             },
             evaluationContext: { sex: prevSession.demographics.sex || null },
+            unmatchedParameterSelection: !isReplacementMode,
           });
 
           return new PatientReportSessionAggregate({
@@ -160,7 +202,7 @@ export function GuidedWorkspace() {
           error instanceof Error ? error.message : "The report template could not be loaded."
         );
       });
-  }, [activeTemplateCode, availablePersonnel]);
+  }, [activeTemplateCode, availablePersonnel, isReplacementMode]);
 
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {
@@ -279,6 +321,35 @@ export function GuidedWorkspace() {
     }
   };
 
+  // Replace the completed session wholesale (ADR-006 single-record replacement)
+  const handleReplaceSession = async () => {
+    if (!session.demographics.fullName.trim()) {
+      setValidationError("Patient Name is required before replacing this report.");
+      return;
+    }
+    if (!session.demographics.sex) {
+      setValidationError("Patient Sex is required before replacing this report.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    try {
+      const replaced = await replaceSessionAction({ session: toSessionTransport(session) });
+      setSession(fromSessionTransport(replaced));
+      setIsDirty(false);
+      setSaveStatus("saved");
+      setValidationError(null);
+      setWorkspaceMode("preview");
+    } catch (err: unknown) {
+      setSaveStatus("unsaved");
+      if (err instanceof Error) {
+        setValidationError(err.message);
+      } else {
+        setValidationError("An unexpected error occurred while replacing the report.");
+      }
+    }
+  };
+
   // Handle save draft & exit
   const handleSaveDraftAndExit = useCallback(async () => {
     setShowExitModal(false);
@@ -301,6 +372,61 @@ export function GuidedWorkspace() {
 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
+
+  // A reopen request must resolve before the workspace is usable. Rendering the blank
+  // new-session workspace after a failed load would invite encoding into a different
+  // session than the one requested.
+  if (reopenStatus === "loading" || reopenStatus === "failed") {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-100/60 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs max-w-md w-full p-6 space-y-4 text-center">
+          {reopenStatus === "loading" ? (
+            <>
+              <div className="mx-auto p-2.5 bg-blue-50 text-brand-primary rounded-full w-fit border border-blue-100">
+                <RefreshCw className="h-6 w-6 animate-spin" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Reopening Session</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Loading the saved patient report session from the laboratory record.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mx-auto p-2.5 bg-rose-50 text-rose-700 rounded-full w-fit border border-rose-200">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Session Could Not Be Reopened</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  {reopenError ?? "This session could not be reopened."}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => router.push("/history")}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                >
+                  <History className="h-4 w-4" />
+                  Return to Session History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard")}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Return to Dashboard
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-100/60">
@@ -343,6 +469,12 @@ export function GuidedWorkspace() {
                 >
                   {session.status}
                 </span>
+                {isReplacementMode && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    <RefreshCw className="h-3 w-3" />
+                    Replacement Mode
+                  </span>
+                )}
               </div>
               <h1 className="text-xs sm:text-sm font-bold text-slate-800 leading-tight mt-0.5">
                 {session.demographics.fullName || "New Patient Visit Session"}
@@ -380,20 +512,35 @@ export function GuidedWorkspace() {
               </button>
             </div>
 
-            {/* Save Draft Action */}
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              disabled={saveStatus === "saving" || !isDirty}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                isDirty
-                  ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs"
-                  : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-              }`}
-            >
-              <Save className="h-3.5 w-3.5" />
-              {saveStatus === "saving" ? "Saving..." : "Save Draft"}
-            </button>
+            {/* Save Draft Action — a completed session under replacement has no draft path */}
+            {!isReplacementMode && (
+              <button
+                type="button"
+                onClick={handleSaveDraft}
+                disabled={saveStatus === "saving" || !isDirty}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                  isDirty
+                    ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs"
+                    : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                {saveStatus === "saving" ? "Saving..." : "Save Draft"}
+              </button>
+            )}
+
+            {/* Replace Completed Report Action */}
+            {isReplacementMode && (
+              <button
+                type="button"
+                onClick={handleReplaceSession}
+                disabled={saveStatus === "saving"}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 rounded-lg shadow-xs transition-colors"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
+              </button>
+            )}
 
             {/* Complete Session Action */}
             {session.status !== "Completed" && (
@@ -409,6 +556,20 @@ export function GuidedWorkspace() {
           </div>
         </div>
       </header>
+
+      {/* Replacement Mode Notice */}
+      {isReplacementMode && (
+        <div className="w-full max-w-7xl mx-auto px-4 mt-2 shrink-0">
+          <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center gap-2 text-xs text-amber-900">
+            <RefreshCw className="h-4 w-4 text-amber-700 flex-shrink-0" />
+            <span>
+              <span className="font-bold">Replacement Mode.</span> Saving replaces the completed
+              report for accession {session.accessionNumber} permanently. The previous content is
+              not recoverable, and the accession number is not changed.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Validation Banner Notice */}
       {validationError && (
@@ -597,14 +758,16 @@ export function GuidedWorkspace() {
             </div>
 
             <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={handleSaveDraftAndExit}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
-              >
-                <Save className="h-4 w-4" />
-                Save Draft & Exit
-              </button>
+              {!isReplacementMode && (
+                <button
+                  type="button"
+                  onClick={handleSaveDraftAndExit}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Draft & Exit
+                </button>
+              )}
 
               <button
                 type="button"

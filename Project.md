@@ -442,16 +442,42 @@ Exit are withheld in Completed Replacement Mode because `saveDraftAction` reject
 sessions. A reopen request withholds the encoding surface until it resolves, so a failed load cannot
 leave a blank workspace that would encode into a different session and allocate a new accession.
 
-**R3-2 hydration correction.** A completed report persists only its selected results, so a parameter
-absent on reload was deselected. Reopening previously resurrected it as selected-and-blank, and
-replacement would then have added a blank row the original report never had. `buildEncodingReport`
-gained one optional input, `unmatchedParameterSelection`, defaulting to true; only Replacement Mode
-passes false, so fresh encoding and draft reopen keep their prior behaviour. The exposure is **5**
+**R3-2 hydration correction — partial, with a named gap carried.** Reopening a completed report
+resurrected a parameter that was absent from `laboratory_results` as selected-and-blank, so
+replacement could add a blank row the original report did not have. `buildEncodingReport` gained one
+optional input, `unmatchedParameterSelection`, defaulting to true; only Replacement Mode passes
+false, so fresh encoding and draft reopen keep their prior behaviour. The affected set is **5**
 parameters, not the 64 first estimated: that estimate conflated `isSelectable` with `isRequired`, and
 `composeReportSnapshot` rejects deselecting a required parameter, so the 59 selectable-required
 parameters can never be absent from a completed report. The real set is the selectable, optional
 parameters without `blankOmission` — Urinalysis `WBC`, `RBC`, `EPITHELIAL_CELLS`, `BACTERIA` and
 `MUCUS_THREADS`.
+
+**Corrected premise, found by the publication reviewer on 2026-08-17 and verified against the code.**
+The slice was justified by "a completed report persists only its selected results, so absence on
+reload means deselected." That is **false**. `completeSession` persists
+`report.results.filter((res) => res.resultValue)` — it filters on **blank value**, not on selection —
+and `scrubDeselectedResults` has already run by then, so absence in `laboratory_results` means
+**deselected OR selected-and-blank**. Only `completed_snapshot` distinguishes the two, and the reopen
+path never consults it. Two consequences follow, both confined to the five parameters above, both
+affecting **blank rows only**, and neither fabricating or altering a result value:
+
+- **Over-deselection.** A parameter that was selected-and-blank, and therefore did render as a blank
+  row in the original snapshot, hydrates as deselected, so replacement **removes** that row.
+- **The original defect survives on non-active reports.** The rebuild maps only the report whose
+  `templateCode` equals `activeTemplateCode`, so in a multi-report session every report the operator
+  does not open passes through as persisted, and `composeReportSnapshot`'s `?? true` default
+  **re-adds** the blank rows the correction was written to prevent.
+
+Neither direction was reachable in the evidence gathered: the B4 assertion uses a single-report
+fixture built by removing a result, which is the conflation itself, and live scenario B replaced a
+single `BLOOD_TYPING` report whose parameters are all required. **This is a named carried item and
+needs its own scheduled slice**; it is not closed by R3-2 and must not be treated as closed. The fix
+direction is to derive per-parameter selection from `completedSnapshot.reports[].results[]` presence
+rather than from `laboratory_results`, and to apply it to **every** report at reopen time instead of
+lazily per active tab. It is not publication-blocking: it touches no authorization, audit, accession
+or retention invariant, the drift is visible and correctable as an unchecked box in the encoding
+surface before submitting, and the replaced document is shown in Preview immediately afterwards.
 
 **Nested-button hydration defect — fixed**, committed 2026-08-17 as `e48967a`. Local smoke testing
 surfaced a React hydration error in `SignatorySelectionSection`: the accordion header was a
@@ -533,9 +559,18 @@ Pending:
 - Migration-state preflight and schema provisioning
 - Persistent audit writers for the remaining mandated categories: Personnel and Credential events,
   and Session lifecycle events beyond the automated retention purge
-- Audit delivery durability: every authentication audit writer appends its event separately from the
-  operation it records and swallows a failed append, so an event can be lost. Accepted 2026-08-15 as
-  a project-wide residual, to be addressed across all writers at once rather than per event.
+- Audit delivery durability: every audit writer appends its event separately from the operation it
+  records, so the two are never atomic. Accepted 2026-08-15 as a project-wide residual, to be
+  addressed across all writers at once rather than per event. The failure mode differs by writer, and
+  both halves are current as of 2026-08-17. `IAuditLogRepository.append` **throws** on error. The
+  **authentication** writers — `logout-audit.ts`, `lockout-audit.ts` — wrap the emit in
+  `try { … } catch { console.error(…) }`, so they swallow the failure and the event is genuinely
+  **lost**. The **session lifecycle** writers in `server-actions.ts` — `SessionCompleted` and
+  `SessionReplaced` — do not wrap it, so the throw **propagates** and the caller is told the operation
+  failed when it has already been persisted; a retry re-enters `completeSession`, which shifts
+  `completed_at` and `expires_at` and re-freezes the snapshot, though it cannot double-allocate an
+  accession because `resolve_session_accession_number` returns the existing one under an advisory
+  lock. Any project-wide fix must address both shapes.
 - Performance validation
 - Accessibility validation
 - Monitoring
@@ -964,6 +999,6 @@ The active objective is publishing Completed History, which is functionally comp
 
 Two earlier statements in this section were stale and are corrected here. `replaceSession` is no longer a stub: R1 replaced the delegation with `recompleteSession()` plus `replace_completed_session(jsonb)`. Retention expiry is no longer unenforced on read. **`purgeExpiredSessions` is wired**: `PurgeSchedulerService.executeScheduledPurge` calls it and emits `AutomatedRetentionPurgeExecuted`, reachable through the Admin-guarded `POST /api/purge`. What purge still lacks is a **scheduler** — no cron, platform schedule or `pg_cron` entry exists, so it runs only when invoked. That is backlog and was never a Completed History blocker. One related monitoring nuance, also non-blocking: the event is emitted only when `purgedCount > 0`, so a run that deletes nothing leaves no evidence it executed.
 
-**Remaining Completed History backlog is non-blocking and does not make the milestone incomplete.** None of it is required for publication: purge scheduling and the `purgeExpiredSessions` zero-count audit nuance; `POST /api/purge` returning 500 rather than 403 to a non-Admin, where the authorization boundary itself is intact and mutation-proved; `findById` and `findByAccessionNumber` still returning expired completed sessions when addressed directly, with no interface route reaching them and the write paths guarded regardless; successful-reopen auditing, deliberately not implemented and parked to the audit lifecycle closeout; the runtime response allowlist for the frozen `session-transport.ts`; the project-wide audit delivery durability residual; and workspace resilience, encoding-mode Ctrl+P, Personnel Directory and UI/UX polish, each tracked on its own.
+**Remaining Completed History backlog is non-blocking and does not make the milestone incomplete.** None of it is required for publication: the **Replacement Mode hydration fidelity gap** recorded under the R3-2 hydration correction above, which is a named carried item awaiting its own scheduled slice and is the only one of these that affects a clinical document, bounded to blank rows on five Urinalysis optional parameters; purge scheduling and the `purgeExpiredSessions` zero-count audit nuance; `POST /api/purge` returning 500 rather than 403 to a non-Admin, where the authorization boundary itself is intact and mutation-proved; `findById` and `findByAccessionNumber` still returning expired completed sessions when addressed directly, with no interface route reaching them and the write paths guarded regardless; successful-reopen auditing, deliberately not implemented and parked to the audit lifecycle closeout; the runtime response allowlist for the frozen `session-transport.ts`; the project-wide audit delivery durability residual; and workspace resilience, encoding-mode Ctrl+P, Personnel Directory and UI/UX polish, each tracked on its own.
 
 The remaining Milestone 6 hardening work is still required later before production completion: migration-state preflight and schema provisioning, the outstanding Personnel/Credential and Session-lifecycle audit writers, audit delivery durability, and then performance, accessibility, monitoring, and deployment validation. Deferred UI/UX polish remains separately tracked and gates nothing.

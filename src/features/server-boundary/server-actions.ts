@@ -121,6 +121,20 @@ export async function completeSessionAction(
 
   const repository = new SupabasePatientReportSessionRepository(caller);
   const completed = await repository.completeSession(fromSessionTransport(transport));
+
+  const reportCount = completed.reports.length;
+  const templateCodes = completed.reports.map((report) => report.templateCode);
+  await auditService.emit({
+    category: "SessionReport",
+    eventType: "SessionCompleted",
+    actorRole: caller.role,
+    targetRole: null,
+    performedByUserId: caller.userId,
+    performedByUsername: caller.username,
+    targetReference: completed.accessionNumber,
+    details: { reportCount, templateCodes },
+  });
+
   return toSessionTransport(completed);
 }
 

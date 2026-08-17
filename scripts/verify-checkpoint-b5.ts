@@ -1711,4 +1711,147 @@ assert(
   "replaceSession no longer delegates to completeSession"
 );
 
+// --- Completed History closeout: SessionCompleted audit event ---
+
+const completeSessionActionDeclaration = "export async function completeSessionAction(";
+const completeSessionActionStart = liveCodeIndexOf(serverActionsSource, completeSessionActionDeclaration);
+const completeSessionActionEnd = completeSessionActionStart >= 0
+  ? serverActionsSource.indexOf(
+      "\nexport async function",
+      completeSessionActionStart + completeSessionActionDeclaration.length
+    )
+  : -1;
+const completeSessionActionSource = completeSessionActionStart >= 0
+  ? serverActionsSource.slice(
+      completeSessionActionStart,
+      completeSessionActionEnd >= 0 ? completeSessionActionEnd : serverActionsSource.length
+    )
+  : "";
+assert(completeSessionActionStart >= 0 && completeSessionActionSource.length > 0, "completeSessionAction source region is non-empty");
+
+const awaitedCompletionCallIndex = liveCodeIndexOf(
+  completeSessionActionSource,
+  "const completed = await repository.completeSession("
+);
+const completionCallIndices = liveCodeIndicesOf(
+  completeSessionActionSource,
+  "repository.completeSession("
+);
+const allCompletionCallIndices = liveCodeIndicesOf(
+  completeSessionActionSource,
+  "completeSession("
+);
+const completionSuccessEventIndex = liveCodeIndexOf(
+  completeSessionActionSource,
+  'eventType: "SessionCompleted"'
+);
+const completionReturnIndex = liveCodeIndexOf(
+  completeSessionActionSource,
+  "return toSessionTransport("
+);
+assert(
+  completionSuccessEventIndex > awaitedCompletionCallIndex &&
+    awaitedCompletionCallIndex >= 0 &&
+    completionReturnIndex > completionSuccessEventIndex,
+  "completeSessionAction emits SessionCompleted only after successful completion and before returning"
+);
+assert(
+  completionCallIndices.length > 0 &&
+    allCompletionCallIndices.length === completionCallIndices.length &&
+    allCompletionCallIndices.every(
+      (index, callIndex) => index === completionCallIndices[callIndex] + "repository.".length
+    ) &&
+    completionCallIndices.every(
+      (index) => completeSessionActionSource.slice(index - "await ".length, index) === "await "
+    ),
+  "completeSessionAction awaits completion persistence before emitting SessionCompleted"
+);
+
+const postCompletionActionSource = awaitedCompletionCallIndex >= 0
+  ? completeSessionActionSource.slice(awaitedCompletionCallIndex)
+  : "";
+const completionSuccessEmitIndex = liveCodeIndexOf(
+  postCompletionActionSource,
+  "await auditService.emit({"
+);
+const completionSuccessEmitSource = extractBracedSource(
+  postCompletionActionSource,
+  completionSuccessEmitIndex >= 0
+    ? postCompletionActionSource.indexOf("{", completionSuccessEmitIndex)
+    : -1
+);
+assert(
+  liveCodeIndexOf(completionSuccessEmitSource, 'category: "SessionReport"') >= 0 &&
+    liveCodeIndexOf(completionSuccessEmitSource, 'eventType: "SessionCompleted"') >= 0 &&
+    liveCodeIndexOf(completionSuccessEmitSource, "targetReference: completed.accessionNumber") >= 0 &&
+    liveCodeIndexOf(completionSuccessEmitSource, "targetRole: null") >= 0,
+  "completeSessionAction emits SessionCompleted as SessionReport with the persisted accession reference"
+);
+assert(
+  liveCodeIndexOf(completionSuccessEmitSource, "actorRole: caller.role") >= 0 &&
+    liveCodeIndexOf(completionSuccessEmitSource, "performedByUserId: caller.userId") >= 0 &&
+    liveCodeIndexOf(completionSuccessEmitSource, "performedByUsername: caller.username") >= 0,
+  "SessionCompleted actor identity comes from the authorized operational caller"
+);
+
+const completionDetailsPropertyIndex = liveCodeIndexOf(
+  completionSuccessEmitSource,
+  "details: {"
+);
+const completionDetailsSource = extractBracedSource(
+  completionSuccessEmitSource,
+  completionDetailsPropertyIndex >= 0
+    ? completionSuccessEmitSource.indexOf("{", completionDetailsPropertyIndex)
+    : -1
+);
+const prohibitedCompletionDetailFields = [
+  "demographics",
+  "patientName",
+  "fullName",
+  "requestingPhysician",
+  "resultValue",
+  "rawResultValue",
+  "formattedResultValue",
+  "remarks",
+  "signator",
+  "signatories",
+  "printedFullName",
+  "printedCredentials",
+  "prcLicense",
+  "completedSnapshot",
+] as const;
+assert(
+  completionDetailsPropertyIndex >= 0 &&
+    liveCodeIndexOf(completionDetailsSource, "reportCount") >= 0 &&
+    liveCodeIndexOf(completionDetailsSource, "templateCodes") >= 0 &&
+    prohibitedCompletionDetailFields.every(
+      (field) => liveCodeIndexOf(completionDetailsSource, field) < 0
+    ),
+  "SessionCompleted audit details contain only the non-clinical completion summary"
+);
+const allowedCompletionDetailKeys = ["reportCount", "templateCodes"] as const;
+const completionDetailKeys = topLevelShorthandPropertyKeys(completionDetailsSource);
+assert(
+  completionDetailsSource.length > 0 &&
+    completionDetailKeys !== null &&
+    completionDetailKeys.length === allowedCompletionDetailKeys.length &&
+    allowedCompletionDetailKeys.every(
+      (key) =>
+        completionDetailKeys.includes(key) &&
+        liveCodeIndexOf(completionDetailsSource, key) >= 0
+    ),
+  "SessionCompleted audit details use exactly the shorthand reportCount and templateCodes properties"
+);
+assert(
+  liveCodeIndexOf(
+    completeSessionActionSource,
+    "const reportCount = completed.reports.length;"
+  ) >= 0 &&
+    liveCodeIndexOf(
+      completeSessionActionSource,
+      "const templateCodes = completed.reports.map((report) => report.templateCode);"
+    ) >= 0,
+  "SessionCompleted audit summary derives reportCount and templateCodes from the completed reports"
+);
+
 console.log("=== ALL CHECKPOINT B5 VERIFICATION TESTS PASSED ===");

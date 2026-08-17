@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu, LogOut, KeyRound } from "lucide-react";
 import { navigationConfig } from "@/config/navigation";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
+import { clearWorkspaceRecovery } from "@/features/workspace/workspace-recovery";
 
 export interface HeaderProps {
   onMenuToggle: () => void;
@@ -55,6 +56,9 @@ export function Header({ onMenuToggle }: HeaderProps) {
           </button>
           <button
             onClick={() => {
+              // Never leave unsaved patient data recoverable for the next person at a
+              // shared laboratory workstation.
+              clearWorkspaceRecovery();
               import("@/features/auth/authActions").then((m) => m.logoutAction());
             }}
             className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"

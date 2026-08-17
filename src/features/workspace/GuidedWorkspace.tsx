@@ -31,6 +31,11 @@ import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provi
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
+import {
+  clearWorkspaceRecovery,
+  loadWorkspaceRecovery,
+  saveWorkspaceRecovery,
+} from "./workspace-recovery";
 
 export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
@@ -83,6 +88,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   }, [isDirty, router]);
 
   const handleDiscardAndExit = useCallback(() => {
+    clearWorkspaceRecovery();
     setShowExitModal(false);
     router.push("/dashboard");
   }, [router]);
@@ -111,6 +117,43 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
         );
       });
   }, []);
+
+  // Restore unsaved fresh-workspace input after an accidental refresh. This runs after
+  // mount, never in a state initializer: sessionStorage does not exist during the server
+  // render, so seeding initial state from it would make the client's first render disagree
+  // with the server HTML and fail hydration. A persisted-session route always uses the
+  // server-loaded session, so recovery is not read for it at all.
+  useEffect(() => {
+    if (reopenSessionId) return;
+
+    const recovered = loadWorkspaceRecovery();
+    if (!recovered) return;
+
+    setSession(fromSessionTransport(recovered.session));
+    setSelectedTemplateCodes(recovered.selectedTemplateCodes);
+    setActiveTemplateCode(recovered.activeTemplateCode);
+    setIsDirty(true);
+    setSaveStatus("unsaved");
+  }, [reopenSessionId]);
+
+  // Persist unsaved fresh-workspace input for accidental-refresh recovery. Never for a
+  // reopened or Replacement Mode session, and never once an accession exists — from the
+  // first successful write onward the database is the authority, not sessionStorage.
+  useEffect(() => {
+    if (reopenSessionId || isReplacementMode) return;
+    if (session.accessionNumber !== null || session.status !== "Draft") return;
+    if (!isDirty) return;
+
+    const timer = setTimeout(() => {
+      saveWorkspaceRecovery({
+        session: toSessionTransport(session),
+        selectedTemplateCodes,
+        activeTemplateCode,
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [session, selectedTemplateCodes, activeTemplateCode, isDirty, isReplacementMode, reopenSessionId]);
 
   // Reopen an existing session through the server-authoritative load boundary.
   // Ownership, status and retention are decided by getReopenableSessionAction; a
@@ -282,6 +325,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     setSaveStatus("saving");
     try {
       const saved = await saveDraftAction({ session: toSessionTransport(session) });
+      clearWorkspaceRecovery();
       setSession(fromSessionTransport(saved));
       setIsDirty(false);
       setSaveStatus("saved");
@@ -306,6 +350,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     setSaveStatus("saving");
     try {
       const completed = await completeSessionAction({ session: toSessionTransport(session) });
+      clearWorkspaceRecovery();
       setSession(fromSessionTransport(completed));
       setIsDirty(false);
       setSaveStatus("saved");
@@ -356,6 +401,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     setSaveStatus("saving");
     try {
       await saveDraftAction({ session: toSessionTransport(session) });
+      clearWorkspaceRecovery();
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);

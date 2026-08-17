@@ -411,4 +411,45 @@ assert(!replaceHandlerBody.includes("completeSessionAction") && !replaceHandlerB
 assert(replaceHandlerBody.indexOf("replaceSessionAction") < replaceHandlerBody.indexOf('setWorkspaceMode("preview")'), "GuidedWorkspace switches to preview only after the replacement resolves");
 assert(reopenGateIndex >= 0 && reopenGateIndex < guidedWorkspaceSource.indexOf("<ExaminationCatalog"), "GuidedWorkspace withholds the encoding surface until a reopen request resolves");
 
+// --- Workspace resilience: accidental-refresh recovery ---
+
+const recoverySource = readFileSync(join(process.cwd(), "src/features/workspace/workspace-recovery.ts"), "utf8").replace(/\r\n/g, "\n");
+assert(recoverySource.includes("window.sessionStorage") && !/\blocalStorage\b/.test(recoverySource), "workspace recovery uses sessionStorage and never localStorage");
+assert(/const RECOVERY_TTL_MS = 30 \* 60 \* 1000;/.test(recoverySource), "workspace recovery pins a 30-minute TTL");
+assert(!/allocate_accession_number|allocateAccessionNumber/i.test(recoverySource), "workspace recovery contains no accession allocation reference");
+assert(!/password|token|credential|secret|sessionToken/i.test(recoverySource), "workspace recovery stores no credential or auth material");
+
+const saveRecoveryBody = recoverySource.match(/export function saveWorkspaceRecovery\([\s\S]*?\n\}/)?.[0] || "";
+assert(saveRecoveryBody.length > 0, "saveWorkspaceRecovery region is non-empty");
+const saveAccessionGuardIndex = saveRecoveryBody.indexOf('if (payload.session.accessionNumber !== null) return;');
+const saveStatusGuardIndex = saveRecoveryBody.indexOf('if (payload.session.status !== "Draft") return;');
+const saveSetItemIndex = saveRecoveryBody.indexOf("setItem(");
+assert(saveAccessionGuardIndex >= 0 && saveStatusGuardIndex >= 0 && saveSetItemIndex > saveAccessionGuardIndex && saveSetItemIndex > saveStatusGuardIndex, "saveWorkspaceRecovery refuses a persisted or non-Draft session before writing");
+
+const loadRecoveryBody = recoverySource.match(/export function loadWorkspaceRecovery\([\s\S]*?\n\}/)?.[0] || "";
+assert(loadRecoveryBody.length > 0, "loadWorkspaceRecovery region is non-empty");
+assert(loadRecoveryBody.includes("payload!.session.accessionNumber === null"), "loadWorkspaceRecovery restores only a session with no accession number");
+assert(loadRecoveryBody.includes('payload!.session.status === "Draft"'), "loadWorkspaceRecovery restores only a Draft session");
+assert(loadRecoveryBody.includes("RECOVERY_TTL_MS"), "loadWorkspaceRecovery enforces the TTL on read");
+assert(loadRecoveryBody.includes("payload!.v === RECOVERY_VERSION"), "loadWorkspaceRecovery rejects a version mismatch");
+assert(/if \(!isAccidentalRefresh\(\)\) \{\s*clearWorkspaceRecovery\(\);\s*return null;/.test(loadRecoveryBody), "loadWorkspaceRecovery clears and refuses to restore on a deliberate navigation");
+assert(/entry\?\.type === "reload"/.test(recoverySource) && /catch \{\s*return false;/.test(recoverySource), "accidental-refresh detection accepts only a reload and fails closed");
+
+const recoveryRestoreEffect = guidedWorkspaceSource.match(/useEffect\(\(\) => \{\n    if \(reopenSessionId\) return;\n\n    const recovered = loadWorkspaceRecovery\(\);[\s\S]*?\n  \}, \[reopenSessionId\]\);/)?.[0] || "";
+assert(recoveryRestoreEffect.length > 0, "GuidedWorkspace recovery restore effect region is non-empty");
+assert(recoveryRestoreEffect.indexOf("if (reopenSessionId) return;") < recoveryRestoreEffect.indexOf("loadWorkspaceRecovery()"), "GuidedWorkspace reads recovery only when no persisted session route is present");
+assert(!/useState<[^>]*>\(\(\) =>[^)]*loadWorkspaceRecovery/.test(guidedWorkspaceSource) && !guidedWorkspaceSource.includes("useState(() => loadWorkspaceRecovery"), "GuidedWorkspace never seeds initial state from sessionStorage, which would break hydration");
+const recoverySaveEffect = guidedWorkspaceSource.match(/useEffect\(\(\) => \{\n    if \(reopenSessionId \|\| isReplacementMode\) return;[\s\S]*?\n  \}, \[session, selectedTemplateCodes, activeTemplateCode, isDirty, isReplacementMode, reopenSessionId\]\);/)?.[0] || "";
+assert(recoverySaveEffect.length > 0, "GuidedWorkspace recovery save effect region is non-empty");
+assert(recoverySaveEffect.includes('if (session.accessionNumber !== null || session.status !== "Draft") return;'), "GuidedWorkspace never writes recovery for a persisted session");
+assert(recoverySaveEffect.indexOf("saveWorkspaceRecovery(") > recoverySaveEffect.indexOf("if (reopenSessionId || isReplacementMode) return;"), "GuidedWorkspace never writes recovery for a reopened or Replacement Mode session");
+for (const clearSite of ["saveDraftAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();", "completeSessionAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();"]) {
+  assert(guidedWorkspaceSource.includes(clearSite), "GuidedWorkspace clears recovery immediately after the successful persistence call it follows");
+}
+assert(/const handleDiscardAndExit = useCallback\(\(\) => \{\s*clearWorkspaceRecovery\(\);/.test(guidedWorkspaceSource), "GuidedWorkspace clears recovery when the operator discards and exits");
+const headerSource = readFileSync(join(process.cwd(), "src/components/layout/Header.tsx"), "utf8").replace(/\r\n/g, "\n");
+const headerLogoutIndex = headerSource.indexOf("m.logoutAction()");
+const headerClearIndex = headerSource.indexOf("clearWorkspaceRecovery();");
+assert(headerClearIndex >= 0 && headerLogoutIndex > headerClearIndex, "Logout clears workspace recovery before signing the operator out");
+
 console.log("=== ALL CHECKPOINT B4 VERIFICATION TESTS PASSED ===");

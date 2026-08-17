@@ -540,6 +540,52 @@ had been completed through the application earlier the same day during smoke tes
 from the audit trail that record was already correct, and it was treated as prior corroborating
 evidence rather than as controlled scenario A.
 
+### Workspace resilience — accidental-refresh recovery
+
+**Complete**, committed 2026-08-17. Realises the Milestone 5 scope item "Draft autosave with
+accidental-refresh protection". An accidental browser refresh previously destroyed everything encoded
+before the first Save Draft.
+
+Mechanism is tab-scoped `sessionStorage` — explicitly not the persistent per-origin store, since a
+shared laboratory workstation would otherwise retain patient data on disk after the operator leaves.
+One key, one small module in the workspace feature: no state library, persistence framework,
+IndexedDB or service worker, and no server, repository or database change. Recovered content covers
+demographics, selected reports and tests, result values, remarks, reagent kit fields, signatory
+selections and the remaining encoding state, and the round trip preserves per-parameter selection.
+
+**Recovery applies only to a fresh `/workspace` with no `sessionId` query parameter.** A persisted
+Draft reopen and R3 Replacement Mode always use the authoritative server-loaded session and are never
+hydrated from recovery state; nothing is even read for those routes, and nothing is written for a
+reopened or Replacement Mode session, nor once an accession exists.
+
+**Accession invariants hold and are structural, not merely intended.** A payload is restored only when
+it is version 1, within TTL, `status: "Draft"` and `accessionNumber: null`; anything else is deleted
+rather than ignored. Recovered work therefore stays a Draft rendering the exact literal
+`"Not assigned"`, **no accession is allocated on refresh or restore**, and the first successful Save
+Draft or Complete afterwards allocates **exactly once** through the unchanged atomic path. No
+allocation code was added or referenced.
+
+**TTL is 30 minutes**, checked on read. Recovery clears on successful Save Draft, successful Complete,
+Save Draft & Exit, Discard Changes & Exit, a deliberate New Session, Logout, TTL expiry, version
+mismatch and any invalid payload. An accidental refresh is distinguished from a deliberate New Session
+by the Navigation Timing type: only a reload restores, a navigate clears, and an unavailable entry
+fails closed. The logout clear lives in the client `Header`, because `authActions.ts` is byte-frozen by
+M6C. No credentials, tokens, auth state or accession numbers are stored.
+
+Restoration runs in a post-mount effect, never in a state initializer. `sessionStorage` does not exist
+during the server render, so seeding initial state from it makes the client's first render disagree
+with the server HTML and fails hydration. The first implementation did exactly that and was caught by
+the live refresh check before the final gate; a verifier assertion now pins the correct shape.
+
+Verification: `tsc`, B4, B5, C1, lint and build all PASS with identical pre- and post-Level-D candidate
+hashes; two mutations each fired their intended assertion with byte-verified restores; B4 gained 21
+assertions with none removed or weakened; and the full cycle was manually confirmed live — enter data,
+refresh, state restored, still "Not assigned", allocator unchanged, then one first write allocating
+exactly once.
+
+Accepted residual, unchanged: Chrome writes `sessionStorage` to disk for tab restore, so exposure is
+reduced rather than eliminated.
+
 ## Milestone 6 — Production Hardening
 
 Security hardening is in progress and is tracked as checkpoints 6A–6D.
@@ -571,6 +617,11 @@ Pending:
   `completed_at` and `expires_at` and re-freezes the snapshot, though it cannot double-allocate an
   accession because `resolve_session_accession_number` returns the existing one under an advisory
   lock. Any project-wide fix must address both shapes.
+- **Repository CI workflow is absent.** There is no `.github/workflows` directory, so **no
+  exact-commit CI has ever run for any published commit**, including the Completed History
+  publication at `177edc6`. This is a deployment-prep item, not a passed gate: before production
+  deployment the intended CI workflow must be added and the exact commit then verified against it. Do
+  not describe CI as healthy or passing until both halves are done.
 - Performance validation
 - Accessibility validation
 - Monitoring
@@ -700,20 +751,10 @@ recorded above did not apply.
   committed password change can never be silently hidden, which leaves a user on a request that never
   settles waiting until they navigate or reload. Both belong to the same in-flight and blocked-state
   pass; neither is a functional or security defect.
-- Workspace resilience, approved 2026-08-15 as the next workspace slice and carrying two items. First,
-  accidental-refresh recovery of unsaved workspace input — demographics, selected examinations,
-  entered result values, requesting-physician and request fields, signatory selections and remarks.
-  The mechanism is settled: tab-scoped `sessionStorage`, explicitly not `localStorage`, since a shared
-  laboratory workstation would otherwise retain patient data on disk after the user leaves. It must be
-  scoped by client-session UUID and discarded on mismatch, carry a short TTL, restore only into the
-  matching unsaved workspace, and clear on successful Save Draft, on completion or finish, on an
-  explicit clear or new workspace, and on logout. It must never store an accession, authentication
-  material or secrets; recovered work stays "Not assigned"; and recovery performs no server write and
-  allocates nothing. The residual is accepted: Chrome writes `sessionStorage` to disk for tab restore,
-  so exposure is reduced rather than eliminated. This realises the Milestone 5 scope item "Draft
-  autosave with accidental-refresh protection". Second, encoding-mode print suppression — while the
-  accession is unassigned, browser-native Ctrl+P from the data-entry workspace must not print the
-  workspace form and should show only the save-before-printing notice.
+- Workspace resilience, approved 2026-08-15 as two items. Item one is **complete**; item two remains
+  deferred. Item two, encoding-mode print suppression, keeps its own later slice: while the accession
+  is unassigned, browser-native Ctrl+P from the data-entry workspace must not print the workspace form
+  and should show only the save-before-printing notice.
 - Encoding-mode Ctrl+P currently prints the data-entry workspace while the accession is unassigned.
   This is a scope gap in the accession slice's frozen amendment rather than a defect in what was
   built: the print guard was scoped to the report canvas, which `GuidedWorkspace` mounts only in

@@ -151,52 +151,56 @@ export function SignatorySelectionSection({
   return (
     <div className="bg-slate-50/70 border border-slate-200 rounded-xl overflow-hidden mt-3.5 transition-all">
       {/* Header & Requirement Badges Accordion Toggle */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-3 sm:py-3 sm:px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left hover:bg-slate-100/60 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
-            <ShieldCheck className="h-4 w-4" />
+      {/* The Confirm action is a sibling of the toggle, never a descendant: a button
+          nested inside a button is invalid HTML and the parser hoists it out, which
+          makes the server and client trees disagree during hydration. */}
+      <div className="w-full p-3 sm:py-3 sm:px-4 flex flex-col sm:flex-row sm:items-center gap-2 hover:bg-slate-100/60 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Assigned Signatories & Approval
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                PRC-licensed medical personnel authorizing this laboratory report
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Assigned Signatories & Approval
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              PRC-licensed medical personnel authorizing this laboratory report
-            </p>
-          </div>
-        </div>
 
-        {/* Metadata Requirement Badges */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {isFullyConfirmed ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50/90 text-emerald-800 border border-emerald-200/80 rounded-full">
-              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-              Assigned ✓
-            </span>
-          ) : (
-            <div className="flex items-center gap-1.5">
+          {/* Metadata Requirement Badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {isFullyConfirmed ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50/90 text-emerald-800 border border-emerald-200/80 rounded-full">
+                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                Assigned ✓
+              </span>
+            ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-full">
                 <Clock className="h-3 w-3 text-amber-600" />
                 Suggested (Unconfirmed)
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsConfirmed(true);
-                }}
-                className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-2xs"
-              >
-                Confirm ✓
-              </button>
-            </div>
-          )}
-        </div>
-      </button>
+            )}
+          </div>
+        </button>
+
+        {!isFullyConfirmed && (
+          <button
+            type="button"
+            onClick={() => setIsConfirmed(true)}
+            className="shrink-0 self-start sm:self-auto px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-2xs"
+          >
+            Confirm ✓
+          </button>
+        )}
+      </div>
 
       {isExpanded && (
         <div className="p-3 pt-0 border-t border-slate-200/60 mt-1.5">

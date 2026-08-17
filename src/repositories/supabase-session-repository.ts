@@ -17,6 +17,11 @@ type SessionOwnershipRow = {
   created_by_user_id: string;
 };
 
+type SessionOwnershipProjectionRow = {
+  id: string;
+  created_by_user_id: string;
+};
+
 type SessionRetentionRow = {
   status: string;
   expires_at: string | null;
@@ -116,6 +121,50 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   async findActiveCompletedSessions(): Promise<IPatientReportSession[]> {
     const recent = await this.getRecentSessions(100);
     return recent.filter((s) => s.status === "Completed");
+  }
+
+  async findReopenableSessionForCaller(id: string): Promise<IPatientReportSession | null> {
+    const caller = this.requireCaller();
+    const retentionTimestamp = new Date().toISOString();
+    const { data, error } = await supabaseServer
+      .from("patient_report_sessions")
+      .select(`
+        *,
+        laboratory_reports (
+          *,
+          laboratory_results (*),
+          report_signatories (*)
+        )
+      `)
+      .eq("id", id)
+      .eq("created_by_user_id", caller.userId)
+      .or(`status.eq.Draft,and(status.eq.Completed,completed_at.not.is.null,or(expires_at.is.null,expires_at.gte.${retentionTimestamp}))`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? this.mapToAggregate(data) : null;
+  }
+
+  async getRecentSessionsWithOwnership(
+    limit = 50
+  ): Promise<{ session: PatientReportSessionAggregate; ownedByCaller: boolean }[]> {
+    const caller = this.requireCaller();
+    const sessions = await this.getRecentSessions(limit);
+    const { data, error } = await supabaseServer
+      .from("patient_report_sessions")
+      .select("id, created_by_user_id")
+      .in("id", sessions.map((session) => session.id));
+
+    if (error) throw error;
+    if (!data) throw new Error("Supabase session ownership projection returned no data.");
+
+    const ownerBySessionId = new Map<string, string>(
+      (data as SessionOwnershipProjectionRow[]).map((row) => [row.id, row.created_by_user_id])
+    );
+    return sessions.map((session) => ({
+      session,
+      ownedByCaller: ownerBySessionId.get(session.id) === caller.userId,
+    }));
   }
 
   async getRecentSessions(limit = 50): Promise<PatientReportSessionAggregate[]> {

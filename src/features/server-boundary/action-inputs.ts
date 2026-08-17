@@ -89,6 +89,8 @@ const registryTemplateInputSchema = z.object({
   templateCode: z.string().trim().min(1).max(100),
 }).strict();
 
+const sessionLoadInputSchema = z.object({ sessionId: z.uuid() }).strict();
+
 const emptyActionInputSchema = z.object({}).strict();
 
 export function parseSessionMutationInput(input: unknown): IPatientReportSession {
@@ -104,6 +106,11 @@ export function parseRecentSessionsInput(input: unknown): { limit: number } {
 export function parseRegistryTemplateInput(input: unknown): { templateCode: string } {
   assertNoOwnershipFields(input);
   return registryTemplateInputSchema.parse(input);
+}
+
+export function parseSessionLoadInput(input: unknown): { sessionId: string } {
+  assertNoOwnershipFields(input);
+  return sessionLoadInputSchema.parse(input);
 }
 
 export function parseEmptyActionInput(input: unknown): void {

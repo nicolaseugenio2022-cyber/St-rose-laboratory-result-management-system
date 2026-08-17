@@ -390,6 +390,13 @@ const liveCodeIndicesOf = (source: string, occurrence: string) => {
   }
   return indices;
 };
+const liveCodeIdentifierIndexOf = (source: string, identifier: string) =>
+  liveCodeIndicesOf(source, identifier).find((index) => {
+    const precedingCharacter = source[index - 1] || "";
+    const followingCharacter = source[index + identifier.length] || "";
+    return !/[A-Za-z0-9_$]/.test(precedingCharacter) &&
+      !/[A-Za-z0-9_$]/.test(followingCharacter);
+  }) ?? -1;
 const extractBracedSource = (source: string, openingBraceIndex: number) => {
   if (openingBraceIndex < 0 || source[openingBraceIndex] !== "{") return "";
   let depth = 0;
@@ -471,9 +478,157 @@ const topLevelShorthandPropertyKeys = (objectSource: string) => {
   }
   return keys;
 };
+const topLevelIdentifierPropertyKeys = (objectSource: string) => {
+  if (objectSource.length === 0) return null;
+  const parsedSource = ts.createSourceFile(
+    "response-entry.ts",
+    `const responseEntry = ${objectSource};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const declaration = parsedSource.statements[0];
+  if (!declaration || !ts.isVariableStatement(declaration)) return null;
+  const initializer = declaration.declarationList.declarations[0]?.initializer;
+  if (!initializer || !ts.isObjectLiteralExpression(initializer)) return null;
+
+  const keys: string[] = [];
+  for (const property of initializer.properties) {
+    if (
+      (!ts.isShorthandPropertyAssignment(property) && !ts.isPropertyAssignment(property)) ||
+      !ts.isIdentifier(property.name)
+    ) {
+      return null;
+    }
+    keys.push(property.name.text);
+  }
+  return keys;
+};
+const unwrapParenthesizedExpression = (expression: ts.Expression): ts.Expression => {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current)) current = current.expression;
+  return current;
+};
+const isMapCallExpression = (expression: ts.Expression): expression is ts.CallExpression =>
+  ts.isCallExpression(expression) &&
+  ts.isPropertyAccessExpression(expression.expression) &&
+  expression.expression.name.text === "map";
+const objectLiteralsReturnedFromMapCall = (call: ts.CallExpression) => {
+  const callback = call.arguments[0];
+  if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
+    return [] as ts.ObjectLiteralExpression[];
+  }
+
+  if (!ts.isBlock(callback.body)) {
+    const returnedExpression = unwrapParenthesizedExpression(callback.body);
+    return ts.isObjectLiteralExpression(returnedExpression) ? [returnedExpression] : [];
+  }
+
+  const returnedObjects: ts.ObjectLiteralExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      node !== callback.body &&
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isMethodDeclaration(node))
+    ) {
+      return;
+    }
+    if (ts.isReturnStatement(node) && node.expression) {
+      const returnedExpression = unwrapParenthesizedExpression(node.expression);
+      if (ts.isObjectLiteralExpression(returnedExpression)) returnedObjects.push(returnedExpression);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  callback.body.statements.forEach(visit);
+  return returnedObjects;
+};
+const directReturnedMapCalls = (body: ts.Block) => {
+  const calls: ts.CallExpression[] = [];
+  for (const statement of body.statements) {
+    if (!ts.isReturnStatement(statement) || !statement.expression) continue;
+    const returnedExpression = unwrapParenthesizedExpression(statement.expression);
+    if (isMapCallExpression(returnedExpression)) calls.push(returnedExpression);
+  }
+  return calls;
+};
+const collectMapReturnedObjectLiterals = (root: ts.Node) => {
+  const returnedObjects: ts.ObjectLiteralExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && isMapCallExpression(node)) {
+      returnedObjects.push(...objectLiteralsReturnedFromMapCall(node));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return returnedObjects;
+};
+const prohibitedOwnershipAliases = [
+  "created_by_user_id",
+  "createdBy",
+  "createdByUserId",
+  "creatorUserId",
+  "owner",
+  "ownerId",
+  "ownerUserId",
+  "ownedBy",
+  "ownership",
+] as const;
 const domainAggregateSource = readNormalizedSource("src/domain/models/patient-report-session-aggregate.ts");
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
+const repositoryInterfacesSource = readNormalizedSource("src/repositories/interfaces/index.ts");
 const serverActionsSource = readNormalizedSource("src/features/server-boundary/server-actions.ts");
+const mapToAggregateDeclaration = "  private mapToAggregate(";
+const mapToAggregateStart = liveCodeIndexOf(repositorySource, mapToAggregateDeclaration);
+const mapToAggregateOpeningBrace = mapToAggregateStart >= 0
+  ? repositorySource.indexOf("{", mapToAggregateStart + mapToAggregateDeclaration.length)
+  : -1;
+const mapToAggregateSource = extractBracedSource(repositorySource, mapToAggregateOpeningBrace);
+assert(
+  mapToAggregateSource.length > 0,
+  "mapToAggregate source region is non-empty"
+);
+assert(
+  prohibitedOwnershipAliases.every(
+    (alias) => liveCodeIdentifierIndexOf(mapToAggregateSource, alias) < 0
+  ),
+  "mapToAggregate never reads or assigns an ownership identifier"
+);
+const aggregateConstruction = "return new PatientReportSessionAggregate({";
+const aggregateConstructionIndices = liveCodeIndicesOf(
+  mapToAggregateSource,
+  aggregateConstruction
+);
+const aggregateObjectSource = extractBracedSource(
+  mapToAggregateSource,
+  aggregateConstructionIndices.length === 1
+    ? aggregateConstructionIndices[0] + aggregateConstruction.lastIndexOf("{")
+    : -1
+);
+assert(
+  aggregateConstructionIndices.length === 1 && aggregateObjectSource.length > 0,
+  "mapToAggregate PatientReportSessionAggregate construction region is non-empty and unique"
+);
+const allowedAggregateKeys = [
+  "id",
+  "accessionNumber",
+  "status",
+  "demographics",
+  "reports",
+  "createdAt",
+  "completedAt",
+  "expiresAt",
+  "completedSnapshot",
+] as const;
+const aggregateKeys = topLevelIdentifierPropertyKeys(aggregateObjectSource);
+assert(
+  aggregateKeys !== null &&
+    aggregateKeys.length === allowedAggregateKeys.length &&
+    allowedAggregateKeys.every((key) => aggregateKeys.includes(key)),
+  "mapToAggregate constructs PatientReportSessionAggregate from exactly the approved fields"
+);
 const migrationSource = readNormalizedSqlSource("supabase/migrations/20260809104941_add_completed_report_snapshots.sql");
 const evaluationMigrationSource = readNormalizedSqlSource("supabase/migrations/20260809140000_expand_evaluation_outcomes.sql");
 const timestampedMigrationSources = readdirSync(join(process.cwd(), "supabase/migrations"))
@@ -538,8 +693,222 @@ const recompleteSessionSource = domainAggregateSource.slice(
   domainAggregateSource.indexOf("  public recompleteSession("),
   domainAggregateSource.indexOf("  public replaceReport(")
 );
+const findReopenableSessionDeclaration = "  async findReopenableSessionForCaller(";
+const findReopenableSessionStart = liveCodeIndexOf(
+  repositorySource,
+  findReopenableSessionDeclaration
+);
+const getRecentSessionsWithOwnershipStart = liveCodeIndexOf(
+  repositorySource,
+  "  async getRecentSessionsWithOwnership(",
+  findReopenableSessionStart >= 0
+    ? findReopenableSessionStart + findReopenableSessionDeclaration.length
+    : 0
+);
+const findReopenableSessionSource =
+  findReopenableSessionStart >= 0 && getRecentSessionsWithOwnershipStart > findReopenableSessionStart
+    ? repositorySource.slice(findReopenableSessionStart, getRecentSessionsWithOwnershipStart)
+    : "";
+assert(
+  findReopenableSessionSource.length > 0,
+  "findReopenableSessionForCaller source region is non-empty"
+);
+
+const reopenableQueryStart = liveCodeIndexOf(
+  findReopenableSessionSource,
+  "const { data, error } = await supabaseServer"
+);
+const reopenableIdPredicateIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  '.eq("id", id)'
+);
+const reopenableOwnershipPredicateIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  '.eq("created_by_user_id", caller.userId)'
+);
+const reopenableEligibilityPredicateIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  '.or(`status.eq.Draft,and(status.eq.Completed,'
+);
+const reopenableExpiryPredicateIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  'or(expires_at.is.null,expires_at.gte.${retentionTimestamp})'
+);
+const reopenableCompletionAnchorIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  "completed_at.not.is.null"
+);
+const reopenableMaybeSingleIndex = liveCodeIndexOf(
+  findReopenableSessionSource,
+  ".maybeSingle()"
+);
+assert(
+  reopenableQueryStart >= 0 &&
+    reopenableIdPredicateIndex > reopenableQueryStart &&
+    reopenableOwnershipPredicateIndex > reopenableIdPredicateIndex &&
+    reopenableMaybeSingleIndex > reopenableOwnershipPredicateIndex &&
+    liveCodeIndicesOf(findReopenableSessionSource, "created_by_user_id").length === 1,
+  "findReopenableSessionForCaller filters creator ownership in the database query only"
+);
+assert(
+  liveCodeIndexOf(
+    findReopenableSessionSource,
+    "const retentionTimestamp = new Date().toISOString();"
+  ) >= 0 &&
+    reopenableEligibilityPredicateIndex > reopenableOwnershipPredicateIndex &&
+    reopenableExpiryPredicateIndex > reopenableEligibilityPredicateIndex &&
+    reopenableMaybeSingleIndex > reopenableExpiryPredicateIndex &&
+    liveCodeIndicesOf(findReopenableSessionSource, ".or(").length === 1 &&
+    liveCodeIndexOf(findReopenableSessionSource, ".filter(") < 0,
+  "findReopenableSessionForCaller applies draft-or-completed retention eligibility in the database query"
+);
+assert(
+  reopenableCompletionAnchorIndex > reopenableEligibilityPredicateIndex &&
+    reopenableCompletionAnchorIndex < reopenableExpiryPredicateIndex &&
+    liveCodeIndicesOf(findReopenableSessionSource, "completed_at.not.is.null").length === 1,
+  "findReopenableSessionForCaller requires a completion anchor for Completed sessions"
+);
+assert(
+  liveCodeIndexOf(findReopenableSessionSource, "applyDraftOwnershipScope") < 0,
+  "findReopenableSessionForCaller does not use the completed-session visibility scope"
+);
+
+const getRecentSessionsStart = liveCodeIndexOf(
+  repositorySource,
+  "  async getRecentSessions(",
+  getRecentSessionsWithOwnershipStart >= 0
+    ? getRecentSessionsWithOwnershipStart + "  async getRecentSessionsWithOwnership(".length
+    : 0
+);
+const getRecentSessionsWithOwnershipSource =
+  getRecentSessionsWithOwnershipStart >= 0 &&
+  getRecentSessionsStart > getRecentSessionsWithOwnershipStart
+    ? repositorySource.slice(getRecentSessionsWithOwnershipStart, getRecentSessionsStart)
+    : "";
+assert(
+  getRecentSessionsWithOwnershipSource.length > 0,
+  "getRecentSessionsWithOwnership source region is non-empty"
+);
+const ownershipProjectionSyntaxTree = ts.createSourceFile(
+  "ownership-projection.ts",
+  `class VerificationRepository {\n${getRecentSessionsWithOwnershipSource}\n}`,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS
+);
+const ownershipProjectionClass = ownershipProjectionSyntaxTree.statements.find(ts.isClassDeclaration);
+const ownershipProjectionMethod = ownershipProjectionClass?.members.find(
+  (member): member is ts.MethodDeclaration =>
+    ts.isMethodDeclaration(member) &&
+    ts.isIdentifier(member.name) &&
+    member.name.text === "getRecentSessionsWithOwnership"
+);
+const ownershipProjectionMapReturns = ownershipProjectionMethod?.body
+  ? directReturnedMapCalls(ownershipProjectionMethod.body)
+  : [];
+const ownershipProjectionReturnObjects = ownershipProjectionMapReturns.length === 1
+  ? objectLiteralsReturnedFromMapCall(ownershipProjectionMapReturns[0])
+  : [];
+const allOwnershipProjectionMapObjects = ownershipProjectionMethod?.body
+  ? collectMapReturnedObjectLiterals(ownershipProjectionMethod.body)
+  : [];
+const ownershipProjectionMapExpression = ownershipProjectionMapReturns[0]?.expression;
+assert(
+  ownershipProjectionMapReturns.length === 1 &&
+    ownershipProjectionMapExpression !== undefined &&
+    ts.isPropertyAccessExpression(ownershipProjectionMapExpression) &&
+    ts.isIdentifier(ownershipProjectionMapExpression.expression) &&
+    ownershipProjectionMapExpression.expression.text === "sessions" &&
+    ownershipProjectionReturnObjects.length === 1 &&
+    allOwnershipProjectionMapObjects.length === 1 &&
+    allOwnershipProjectionMapObjects[0] === ownershipProjectionReturnObjects[0],
+  "getRecentSessionsWithOwnership has exactly one operative map-returned response object"
+);
+const ownershipProjectionObjectSource = ownershipProjectionReturnObjects[0]?.getText(
+  ownershipProjectionSyntaxTree
+) ?? "";
+assert(
+  ownershipProjectionObjectSource.length > 0,
+  "getRecentSessionsWithOwnership response object region is non-empty"
+);
+const allowedOwnershipProjectionKeys = ["session", "ownedByCaller"] as const;
+const ownershipProjectionKeys = topLevelIdentifierPropertyKeys(ownershipProjectionObjectSource);
+assert(
+  ownershipProjectionKeys !== null &&
+    ownershipProjectionKeys.length === allowedOwnershipProjectionKeys.length &&
+    allowedOwnershipProjectionKeys.every((key) => ownershipProjectionKeys.includes(key)),
+  "getRecentSessionsWithOwnership returns exactly session and ownedByCaller"
+);
+const ownershipProjectionMapCallback = ownershipProjectionMapReturns[0]?.arguments[0];
+const ownershipProjectionSessionParameter =
+  ownershipProjectionMapCallback &&
+  (ts.isArrowFunction(ownershipProjectionMapCallback) ||
+    ts.isFunctionExpression(ownershipProjectionMapCallback)) &&
+  ownershipProjectionMapCallback.parameters[0] !== undefined &&
+  ts.isIdentifier(ownershipProjectionMapCallback.parameters[0].name)
+    ? ownershipProjectionMapCallback.parameters[0].name
+    : undefined;
+const ownershipProjectionSessionProperty = ownershipProjectionReturnObjects[0]?.properties.find(
+  (property): property is ts.ShorthandPropertyAssignment =>
+    ts.isShorthandPropertyAssignment(property) &&
+    ts.isIdentifier(property.name) &&
+    property.name.text === "session"
+);
+assert(
+  ownershipProjectionSessionParameter !== undefined &&
+    ownershipProjectionSessionProperty !== undefined &&
+    ownershipProjectionSessionProperty.name.text === ownershipProjectionSessionParameter.text &&
+    ownershipProjectionSessionProperty.objectAssignmentInitializer === undefined &&
+    liveCodeIndexOf(
+      ownershipProjectionObjectSource,
+      ownershipProjectionSessionProperty.getText(ownershipProjectionSyntaxTree)
+    ) >= 0,
+  "getRecentSessionsWithOwnership returns the bare map-callback session parameter by shorthand"
+);
+const liveOwnershipProjectionObjectAssignCalls: ts.CallExpression[] = [];
+const liveOwnershipProjectionSessionSpreads: ts.SpreadAssignment[] = [];
+if (ownershipProjectionMethod?.body && ownershipProjectionSessionParameter) {
+  const visitOwnershipProjectionEnrichment = (node: ts.Node): void => {
+    const spreadExpression = ts.isSpreadAssignment(node)
+      ? unwrapParenthesizedExpression(node.expression)
+      : undefined;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Object" &&
+      node.expression.name.text === "assign" &&
+      liveCodeIndexOf(
+        getRecentSessionsWithOwnershipSource,
+        node.getText(ownershipProjectionSyntaxTree)
+      ) >= 0
+    ) {
+      liveOwnershipProjectionObjectAssignCalls.push(node);
+    }
+    if (
+      ts.isSpreadAssignment(node) &&
+      spreadExpression !== undefined &&
+      ts.isIdentifier(spreadExpression) &&
+      spreadExpression.text === ownershipProjectionSessionParameter.text &&
+      liveCodeIndexOf(
+        getRecentSessionsWithOwnershipSource,
+        node.getText(ownershipProjectionSyntaxTree)
+      ) >= 0
+    ) {
+      liveOwnershipProjectionSessionSpreads.push(node);
+    }
+    ts.forEachChild(node, visitOwnershipProjectionEnrichment);
+  };
+  ownershipProjectionMethod.body.statements.forEach(visitOwnershipProjectionEnrichment);
+}
+assert(
+  liveOwnershipProjectionObjectAssignCalls.length === 0 &&
+    liveOwnershipProjectionSessionSpreads.length === 0,
+  "getRecentSessionsWithOwnership does not enrich the returned session with Object.assign or object spread"
+);
+
 const getRecentSessionsSource = repositorySource.slice(
-  repositorySource.indexOf("  async getRecentSessions("),
+  getRecentSessionsStart,
   repositorySource.indexOf("  async saveDraft(")
 );
 const saveDraftSource = repositorySource.slice(
@@ -554,6 +923,144 @@ const replaceSessionSource = repositorySource.slice(
   repositorySource.indexOf("  async replaceSession("),
   repositorySource.indexOf("  async purgeExpiredSessions(")
 );
+const sessionHistoryEntryTypeDeclaration = "export type SessionHistoryEntryTransport =";
+const sessionHistoryEntryTypeStart = liveCodeIndexOf(
+  serverActionsSource,
+  sessionHistoryEntryTypeDeclaration
+);
+const sessionHistoryEntryTypeBraceSource = extractBracedSource(
+  serverActionsSource,
+  sessionHistoryEntryTypeStart >= 0
+    ? serverActionsSource.indexOf("{", sessionHistoryEntryTypeStart)
+    : -1
+);
+const sessionHistoryEntryTypeSource = sessionHistoryEntryTypeStart >= 0 &&
+  sessionHistoryEntryTypeBraceSource.length > 0
+  ? serverActionsSource.slice(
+      sessionHistoryEntryTypeStart,
+      serverActionsSource.indexOf("{", sessionHistoryEntryTypeStart) +
+        sessionHistoryEntryTypeBraceSource.length
+    )
+  : "";
+assert(
+  sessionHistoryEntryTypeSource.length > 0 && sessionHistoryEntryTypeBraceSource.length > 0,
+  "SessionHistoryEntryTransport type declaration region is non-empty"
+);
+
+const listRecentSessionsActionDeclaration = "export async function listRecentSessionsAction(";
+const listRecentSessionsActionStart = liveCodeIndexOf(
+  serverActionsSource,
+  listRecentSessionsActionDeclaration
+);
+const saveDraftActionStart = liveCodeIndexOf(
+  serverActionsSource,
+  "export async function saveDraftAction(",
+  listRecentSessionsActionStart >= 0
+    ? listRecentSessionsActionStart + listRecentSessionsActionDeclaration.length
+    : 0
+);
+const listRecentSessionsActionSource =
+  listRecentSessionsActionStart >= 0 && saveDraftActionStart > listRecentSessionsActionStart
+    ? serverActionsSource.slice(listRecentSessionsActionStart, saveDraftActionStart)
+    : "";
+assert(
+  listRecentSessionsActionSource.length > 0,
+  "listRecentSessionsAction source region is non-empty"
+);
+const listRecentSessionsActionSyntaxTree = ts.createSourceFile(
+  "list-recent-sessions-action.ts",
+  listRecentSessionsActionSource,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS
+);
+const listRecentSessionsActionNode = listRecentSessionsActionSyntaxTree.statements.find(
+  (statement): statement is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(statement) &&
+    statement.name?.text === "listRecentSessionsAction"
+);
+const historyEntryMapReturns = listRecentSessionsActionNode?.body
+  ? directReturnedMapCalls(listRecentSessionsActionNode.body)
+  : [];
+const liveHistoryActionReturns: ts.ReturnStatement[] = [];
+if (listRecentSessionsActionNode?.body) {
+  const visitHistoryActionReturns = (node: ts.Node): void => {
+    if (
+      node !== listRecentSessionsActionNode.body &&
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isMethodDeclaration(node))
+    ) {
+      return;
+    }
+    if (ts.isReturnStatement(node)) {
+      if (
+        liveCodeIndexOf(
+          listRecentSessionsActionSource,
+          "return",
+          node.getStart(listRecentSessionsActionSyntaxTree)
+        ) === node.getStart(listRecentSessionsActionSyntaxTree)
+      ) {
+        liveHistoryActionReturns.push(node);
+      }
+      return;
+    }
+    ts.forEachChild(node, visitHistoryActionReturns);
+  };
+  listRecentSessionsActionNode.body.statements.forEach(visitHistoryActionReturns);
+}
+const soleHistoryActionReturnExpression = liveHistoryActionReturns[0]?.expression
+  ? unwrapParenthesizedExpression(liveHistoryActionReturns[0].expression)
+  : undefined;
+assert(
+  liveHistoryActionReturns.length === 1 &&
+    historyEntryMapReturns.length === 1 &&
+    soleHistoryActionReturnExpression === historyEntryMapReturns[0],
+  "listRecentSessionsAction has exactly one live-code return and it is the operative map return"
+);
+const historyEntryReturnObjects = historyEntryMapReturns.length === 1
+  ? objectLiteralsReturnedFromMapCall(historyEntryMapReturns[0])
+  : [];
+const allHistoryEntryMapObjects = listRecentSessionsActionNode?.body
+  ? collectMapReturnedObjectLiterals(listRecentSessionsActionNode.body)
+  : [];
+const historyEntryMapExpression = historyEntryMapReturns[0]?.expression;
+assert(
+  historyEntryMapReturns.length === 1 &&
+    historyEntryMapExpression !== undefined &&
+    ts.isPropertyAccessExpression(historyEntryMapExpression) &&
+    ts.isIdentifier(historyEntryMapExpression.expression) &&
+    historyEntryMapExpression.expression.text === "sessions" &&
+    historyEntryReturnObjects.length === 1 &&
+    allHistoryEntryMapObjects.length === 1 &&
+    allHistoryEntryMapObjects[0] === historyEntryReturnObjects[0],
+  "listRecentSessionsAction has exactly one object returned from its operative map callback"
+);
+const historyEntryObjectSource = historyEntryReturnObjects[0]?.getText(
+  listRecentSessionsActionSyntaxTree
+) ?? "";
+assert(
+  historyEntryObjectSource.length > 0,
+  "listRecentSessionsAction response entry object region is non-empty"
+);
+const allowedHistoryEntryKeys = ["session", "canReopen"] as const;
+const historyEntryKeys = topLevelIdentifierPropertyKeys(historyEntryObjectSource);
+assert(
+  historyEntryKeys !== null &&
+    historyEntryKeys.length === allowedHistoryEntryKeys.length &&
+    allowedHistoryEntryKeys.every((key) => historyEntryKeys.includes(key)),
+  "listRecentSessionsAction response entry exposes exactly session and canReopen"
+);
+assert(
+  prohibitedOwnershipAliases.every(
+    (alias) =>
+      liveCodeIdentifierIndexOf(listRecentSessionsActionSource, alias) < 0 &&
+      liveCodeIdentifierIndexOf(sessionHistoryEntryTypeSource, alias) < 0
+  ),
+  "session history action and transport type expose no ownership aliases"
+);
+
 const replaceSessionActionDeclaration = "export async function replaceSessionAction(";
 const replaceSessionActionStart = liveCodeIndexOf(serverActionsSource, replaceSessionActionDeclaration);
 const replaceSessionActionEnd = replaceSessionActionStart >= 0
@@ -569,6 +1076,141 @@ const replaceSessionActionSource = replaceSessionActionStart >= 0
     )
   : "";
 assert(replaceSessionActionStart >= 0, "replaceSessionAction exists and is exported");
+
+const getReopenableSessionActionDeclaration =
+  "export async function getReopenableSessionAction(";
+const getReopenableSessionActionStart = liveCodeIndexOf(
+  serverActionsSource,
+  getReopenableSessionActionDeclaration
+);
+const listActivePersonnelActionStart = liveCodeIndexOf(
+  serverActionsSource,
+  "export async function listActivePersonnelAction(",
+  getReopenableSessionActionStart >= 0
+    ? getReopenableSessionActionStart + getReopenableSessionActionDeclaration.length
+    : 0
+);
+const getReopenableSessionActionSource =
+  getReopenableSessionActionStart >= 0 &&
+  listActivePersonnelActionStart > getReopenableSessionActionStart
+    ? serverActionsSource.slice(
+        getReopenableSessionActionStart,
+        listActivePersonnelActionStart
+      )
+    : "";
+assert(
+  getReopenableSessionActionSource.length > 0,
+  "getReopenableSessionAction source region is non-empty"
+);
+
+const reopenActionCallerIndex = liveCodeIndexOf(
+  getReopenableSessionActionSource,
+  "const caller = await requireOperationalCaller();"
+);
+const reopenActionParserIndex = liveCodeIndexOf(
+  getReopenableSessionActionSource,
+  "parseSessionLoadInput(input)"
+);
+const reopenActionRepositoryIndex = liveCodeIndexOf(
+  getReopenableSessionActionSource,
+  "new SupabasePatientReportSessionRepository(caller)"
+);
+const reopenActionLoadIndex = liveCodeIndexOf(
+  getReopenableSessionActionSource,
+  "repository.findReopenableSessionForCaller(sessionId)"
+);
+assert(
+  reopenActionCallerIndex >= 0 &&
+    reopenActionParserIndex > reopenActionCallerIndex &&
+    reopenActionRepositoryIndex > reopenActionParserIndex &&
+    reopenActionLoadIndex > reopenActionRepositoryIndex,
+  "getReopenableSessionAction authorizes before parsing, repository construction, and loading"
+);
+
+const reopenDenialGuardIndex = liveCodeIndexOf(
+  getReopenableSessionActionSource,
+  "if (!session) {"
+);
+const reopenDenialGuardSource = extractBracedSource(
+  getReopenableSessionActionSource,
+  reopenDenialGuardIndex >= 0
+    ? getReopenableSessionActionSource.indexOf("{", reopenDenialGuardIndex)
+    : -1
+);
+assert(
+  reopenDenialGuardSource.length > 0,
+  "getReopenableSessionAction denial path region is non-empty"
+);
+const reopenDenialEmitIndex = liveCodeIndexOf(
+  reopenDenialGuardSource,
+  "await auditService.emit({"
+);
+const reopenDenialThrowIndex = liveCodeIndexOf(
+  reopenDenialGuardSource,
+  'throw new Error("This session cannot be reopened.");'
+);
+const reopenDenialEmitSource = extractBracedSource(
+  reopenDenialGuardSource,
+  reopenDenialEmitIndex >= 0
+    ? reopenDenialGuardSource.indexOf("{", reopenDenialEmitIndex)
+    : -1
+);
+assert(
+  reopenDenialEmitSource.length > 0,
+  "getReopenableSessionAction SessionReopenDenied audit region is non-empty"
+);
+assert(
+  reopenDenialEmitIndex >= 0 &&
+    liveCodeIndexOf(reopenDenialEmitSource, 'category: "SecurityDenial"') >= 0 &&
+    liveCodeIndexOf(reopenDenialEmitSource, 'eventType: "SessionReopenDenied"') >= 0 &&
+    reopenDenialThrowIndex > reopenDenialEmitIndex,
+  "getReopenableSessionAction awaits SessionReopenDenied SecurityDenial before throwing"
+);
+const reopenDenialDetailsIndex = liveCodeIndexOf(
+  reopenDenialEmitSource,
+  "details: {"
+);
+const reopenDenialDetailsSource = extractBracedSource(
+  reopenDenialEmitSource,
+  reopenDenialDetailsIndex >= 0
+    ? reopenDenialEmitSource.indexOf("{", reopenDenialDetailsIndex)
+    : -1
+);
+assert(
+  reopenDenialDetailsSource.length > 0,
+  "SessionReopenDenied details region is non-empty"
+);
+const reopenDenialDetailKeys = topLevelIdentifierPropertyKeys(
+  reopenDenialDetailsSource
+);
+assert(
+  reopenDenialDetailKeys !== null &&
+    reopenDenialDetailKeys.length === 1 &&
+    reopenDenialDetailKeys[0] === "reasonCode" &&
+    liveCodeIndexOf(
+      reopenDenialDetailsSource,
+      'reasonCode: "session_not_replaceable"'
+    ) >= 0,
+  "SessionReopenDenied details contain exactly the session_not_replaceable reasonCode"
+);
+
+assert(
+  repositoryInterfacesSource.length > 0 &&
+    liveCodeIndexOf(
+      repositoryInterfacesSource,
+      "findReopenableSessionForCaller"
+    ) < 0 &&
+    liveCodeIndexOf(
+      repositoryInterfacesSource,
+      "getRecentSessionsWithOwnership"
+    ) < 0,
+  "the frozen repository interface excludes concrete history replacement methods"
+);
+assert(
+  liveCodeIndexOf(repositorySource, "findReplaceableSessionForCaller") < 0 &&
+    liveCodeIndexOf(serverActionsSource, "getReplaceableSessionAction") < 0,
+  "legacy replaceable-session load names are absent"
+);
 
 const replaceActionCallerIndex = liveCodeIndexOf(
   replaceSessionActionSource,

@@ -21,7 +21,7 @@ export function SessionHistoryView() {
     setLoading(true);
     try {
       const data = await listRecentSessionsAction({ limit: 50 });
-      setSessions(data.map(fromSessionTransport));
+      setSessions(data.map((entry) => fromSessionTransport(entry.session)));
       setLoadError(null);
     } catch (error: unknown) {
       setLoadError(

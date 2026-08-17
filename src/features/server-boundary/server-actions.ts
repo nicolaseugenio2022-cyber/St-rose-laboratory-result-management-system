@@ -14,6 +14,7 @@ import {
   parseEmptyActionInput,
   parseRecentSessionsInput,
   parseRegistryTemplateInput,
+  parseSessionLoadInput,
   parseSessionMutationInput,
 } from "@/features/server-boundary/action-inputs";
 import {
@@ -26,6 +27,11 @@ type OperationalCaller = {
   userId: string;
   role: "Admin" | "User";
   username: string;
+};
+
+export type SessionHistoryEntryTransport = {
+  session: PatientReportSessionTransport;
+  canReopen: boolean;
 };
 
 async function requireOperationalCaller(): Promise<OperationalCaller> {
@@ -83,12 +89,15 @@ async function requireOperationalCaller(): Promise<OperationalCaller> {
 
 export async function listRecentSessionsAction(
   input: unknown
-): Promise<PatientReportSessionTransport[]> {
+): Promise<SessionHistoryEntryTransport[]> {
   const caller = await requireOperationalCaller();
   const { limit } = parseRecentSessionsInput(input);
   const repository = new SupabasePatientReportSessionRepository(caller);
-  const sessions = await repository.getRecentSessions(limit);
-  return sessions.map(toSessionTransport);
+  const sessions = await repository.getRecentSessionsWithOwnership(limit);
+  return sessions.map((entry) => ({
+    session: toSessionTransport(entry.session),
+    canReopen: entry.ownedByCaller,
+  }));
 }
 
 export async function saveDraftAction(
@@ -151,6 +160,29 @@ export async function replaceSessionAction(
   });
 
   return toSessionTransport(replaced);
+}
+
+export async function getReopenableSessionAction(
+  input: unknown
+): Promise<PatientReportSessionTransport> {
+  const caller = await requireOperationalCaller();
+  const { sessionId } = parseSessionLoadInput(input);
+  const repository = new SupabasePatientReportSessionRepository(caller);
+  const session = await repository.findReopenableSessionForCaller(sessionId);
+  if (!session) {
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "SessionReopenDenied",
+      actorRole: caller.role,
+      targetRole: null,
+      performedByUserId: caller.userId,
+      performedByUsername: caller.username,
+      details: { reasonCode: "session_not_replaceable" },
+    });
+    throw new Error("This session cannot be reopened.");
+  }
+
+  return toSessionTransport(session);
 }
 
 export async function listActivePersonnelAction(): Promise<IPersonnel[]> {

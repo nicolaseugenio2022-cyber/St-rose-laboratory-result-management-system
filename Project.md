@@ -326,8 +326,8 @@ residual change of intent, and no claim of byte-identical restoration is made fo
 
 ### Completed-session replacement — Replacement Mode
 
-Replacement Mode is being delivered as three independently frozen slices. **R1 and R2 are complete
-and committed; R3 is not started.** ADR-006 single-record semantics were confirmed before any code
+Replacement Mode was delivered as three independently frozen slices. **R1, R2 and R3 are complete,
+committed and live-accepted.** ADR-006 single-record semantics were confirmed before any code
 was written: the same persisted record is replaced wholesale by a newly composed frozen snapshot,
 with no successor rows and no version history, and prior report content is deliberately
 unrecoverable.
@@ -392,17 +392,127 @@ path, so **`developer_involved` remains a database-generated column** and is nev
 application code. R2 required no schema change: `AuditCategory` already contained `SessionReport`,
 and `event_type` is free-form `TEXT` with no `CHECK` constraint.
 
-**Named blocker carried — no `SessionCompleted` audit event.** Session completion is unaudited today;
-`completeSessionAction` emits nothing on success, and the only pre-existing successful `SessionReport`
-event anywhere is `AutomatedRetentionPurgeExecuted`. After R2, replacement is audited while completion
-is not. Closing this is **blocking for the Completed History milestone** and is scheduled for the
-later purge and audit lifecycle closeout; it was deliberately kept out of R2 rather than widening that
-slice.
+**Named blocker — no `SessionCompleted` audit event. CLOSED**, committed 2026-08-17 as `d3334e9`.
+Before it, `completeSessionAction` emitted nothing on success and the only successful `SessionReport`
+event anywhere was `AutomatedRetentionPurgeExecuted`, so after R2 replacement was audited while the
+completion that created the record was not. `SessionCompleted` is now emitted from the existing
+successful completion path, mirroring the `SessionReplaced` precedent exactly and changing only the
+event type and the aggregate summarised. It is emitted **only after the awaited completion
+persistence resolves and before returning**, so every failing path — the non-Draft guard, a rejected
+RPC, an ownership failure, a retention failure — throws before the emit is reachable and produces no
+record. `category` is `SessionReport`; `targetReference` is the **persisted** accession taken from
+`complete_patient_report_session` via `withAssignedAccession`, never a client-supplied value;
+`details` is exactly `{ reportCount, templateCodes }`, carrying no demographic, clinical, remarks or
+signatory data; and `developer_involved` remains database-derived because actor identity comes from
+the verified active profile. No schema change and no migration were required. No `SecurityDenial`
+path was added for the non-Draft rejection: that guard is input validation, unlike R2's, which
+rejects a caller action against a completed clinical record.
 
-**Constraint binding on R3.** History is system-wide, but replacement authorization is creator-only.
-R3 must therefore **not present Edit or Reopen as usable for a session the current caller cannot
-replace**, and must reflect the actual authorization rule rather than offering a control that
-predictably fails.
+**Constraint binding on R3 — SATISFIED by R3-2.** History is system-wide while replacement
+authorization is creator-only, so R3 had to not present Edit or Reopen as usable for a session the
+caller cannot replace. `listRecentSessionsAction` returns the server's `canReopen` decision and the
+History view renders the Replace/Edit control only under it, proven live in both directions.
+
+**R3-1 — reopen authorization and load boundary.** Complete, committed 2026-08-17 as `0518b2e`.
+`findReopenableSessionForCaller` enforces creator ownership and eligibility entirely as database
+predicates: owned **and** (Draft **or** (Completed **and** `completed_at IS NOT NULL` **and** within
+retention)). A session belonging to another user, an expired one, or a Completed row lacking a
+completion anchor is simply not found. `applyDraftOwnershipScope` is deliberately not used, because
+it admits every Completed session regardless of owner. Drafts are returned on purpose: a reopened
+Draft is written back by `saveDraftAction` or `completeSessionAction`, which enforce the same
+ownership and retention guards, so nothing openable is unsavable. `getReopenableSessionAction`
+authorizes before parsing, repository construction and the load on every path, and a miss emits
+`SessionReopenDenied` as a `SecurityDenial` carrying only `{ reasonCode }`. A successful reopen is
+deliberately not audited — there is no precedent for auditing reads of session data, replacement
+itself is audited, and an abandoned reopen changes nothing.
+
+**R3-2 — History to Replacement Mode UI flow.** Complete, committed 2026-08-17 as `854ad02`. The
+flow is History → server-derived `canReopen` gate → `/workspace?sessionId=…` → R3-1 load → hydrated
+workspace → Replacement Mode → `replaceSessionAction` → Preview. The session id travels as a query
+parameter and is **not** trusted: the action re-parses it as a uuid and re-enforces ownership, status
+and retention. The workspace hydrates the persisted aggregate rather than minting a replacement
+identity — id, accession, `createdAt`, `completedAt`, `expiresAt` and the frozen snapshot all carry
+through, selected template codes are seeded from the persisted reports, and the existing encoding
+path merges persisted results, remarks, reagent kit info, requested-by, additional fields,
+repeatable findings and signatories. **No accession-allocation path was added**, and the
+fresh-session initializer still starts at `accessionNumber: null` rendering `"Not assigned"`.
+Replacement submits only through `replaceSessionAction`, never through the completion or draft
+actions, and switches to Preview only after the replacement resolves. Save Draft and Save Draft &
+Exit are withheld in Completed Replacement Mode because `saveDraftAction` rejects non-Draft
+sessions. A reopen request withholds the encoding surface until it resolves, so a failed load cannot
+leave a blank workspace that would encode into a different session and allocate a new accession.
+
+**R3-2 hydration correction.** A completed report persists only its selected results, so a parameter
+absent on reload was deselected. Reopening previously resurrected it as selected-and-blank, and
+replacement would then have added a blank row the original report never had. `buildEncodingReport`
+gained one optional input, `unmatchedParameterSelection`, defaulting to true; only Replacement Mode
+passes false, so fresh encoding and draft reopen keep their prior behaviour. The exposure is **5**
+parameters, not the 64 first estimated: that estimate conflated `isSelectable` with `isRequired`, and
+`composeReportSnapshot` rejects deselecting a required parameter, so the 59 selectable-required
+parameters can never be absent from a completed report. The real set is the selectable, optional
+parameters without `blankOmission` — Urinalysis `WBC`, `RBC`, `EPITHELIAL_CELLS`, `BACTERIA` and
+`MUCUS_THREADS`.
+
+**Nested-button hydration defect — fixed**, committed 2026-08-17 as `e48967a`. Local smoke testing
+surfaced a React hydration error in `SignatorySelectionSection`: the accordion header was a
+`<button>` spanning the header row with the Confirm action rendered inside it. A button cannot be a
+descendant of a button, so the parser hoists the inner one out and the DOM built from the
+server-rendered markup no longer matches the client tree. The row is now a plain container holding
+two sibling native buttons, with the status badge kept inside the toggle so every previously
+clickable surface still toggles. `aria-expanded` was added; no hydration warning was suppressed and
+no action was removed. A scan of `src/features` and `src/rendering` found no other nested-button
+structure. Confirmed live: the workspace console was clean across fresh loads during acceptance.
+
+**Completed History live acceptance — 4 of 4 scenarios, 75 assertions, 0 failures**, run 2026-08-17
+against project `ruxsmcypeisbkotibzfs` through the real authenticated application boundary in the
+browser, not by direct RPC, because the scenarios had to prove the client gate as well as the server
+one. Synthetic session `SR-20260817-0010` was created for the purpose and is **retained as
+acceptance evidence**; `SR-20260815-0007`, `0008` and `SR-20260817-0009` were not modified and
+nothing was deleted.
+
+- **A — Completion.** A synthetic Draft was completed through the normal boundary. The accession was
+  minted at the first persisted write and the allocator advanced **9 → 10 exactly once** across the
+  whole acceptance. Exactly one `SessionCompleted` was written, with `targetReference` equal to the
+  persisted accession, `details` exactly `{ reportCount: 1, templateCodes: ["BLOOD_TYPING"] }`, no
+  clinical, demographic or signatory data, `developer_involved: false`, and `occurred_at` 341 ms
+  after `completed_at`.
+- **B — Replacement Mode.** The owned Completed session was reopened through R3-1, hydrated through
+  the R3-2 path, changed in one controlled synthetic way, and replaced through `replaceSessionAction`.
+  The session id, accession, `created_by_user_id`, `created_at`, `completed_at`, `expires_at`, the
+  snapshot's original completion anchor, the report row id and both result row ids were all
+  preserved. `last_replaced_at` advanced from null. **The replacement allocated nothing** — the
+  allocator stayed at 10 — and the session count did not change, so no successor row was created.
+  Exactly one `SessionReplaced` was written and `SessionCompleted` did not increase. The workspace
+  switched to Preview, which rendered the replaced content.
+- **C — Non-owned Completed.** Signed in as a different operational user, all five Completed
+  sessions remained visible, every row offered Preview only with no Replace or Edit control, and both
+  Drafts were absent because draft scope is owner-only. A direct `/workspace?sessionId=…` load of
+  another user's session was denied server-side and showed the safe-state panel with no encoding
+  surface. The denied load performed **no write at all**: `updated_at` was identical before and
+  after.
+- **D — Expired Completed.** Under explicit authorization the retained fixture's `expires_at` was
+  temporarily backdated. The session dropped out of History, the R3-1 load was denied, no replacement
+  occurred, and `expires_at` was then restored to its exact captured value with the History listing
+  recovering.
+
+Audit movement across acceptance: `SessionCompleted` **1 → 2**, `SessionReplaced` **0 → 1**,
+`SessionReopenDenied` **0 → 2**, `SessionReplacementDenied` unchanged at 0. Both denials were
+`SecurityDenial` records carrying only `{ reasonCode }` with `target_reference: null`, so no accession
+or patient identifier appears in a denial record.
+
+**Expected irreversible drift, explicitly not defects.** `updated_at` on `SR-20260817-0010` moved
+four times — completion, replacement, expiry backdate, expiry restore — because the `BEFORE UPDATE`
+trigger rewrites it and restoring fires it again. **Signatory row identifiers rotated** during
+replacement while the personnel identifiers stayed identical, which is by design since replacement
+prunes and reinserts them. The frozen snapshot and report remarks were replaced wholesale and the
+prior content is deliberately unrecoverable under ADR-006. No claim of byte-identical restoration is
+made for any of these. Everything else was verified against its captured baseline, and `expires_at`
+was restored exactly.
+
+**Baseline note.** `SessionCompleted` stood at 1, not 0, when acceptance began: `SR-20260817-0009`
+had been completed through the application earlier the same day during smoke testing. Reconstructed
+from the audit trail that record was already correct, and it was treated as prior corroborating
+evidence rather than as controlled scenario A.
 
 ## Milestone 6 — Production Hardening
 
@@ -846,10 +956,14 @@ Phase C is complete. Preview, Print, and PDF resolve through one authoritative N
 
 Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
 
-The active objective is Milestone 6 security hardening. Checkpoint 6D-2 is complete as of 2026-08-15: Slices A through E, F0 through F6, and the F3 closeout-gap entry point are committed and live-accepted, and the persistent freeze pins were made checkout- and platform-invariant so verification passes on an LF checkout such as CI.
+Milestone 6 checkpoint 6D-2 is complete as of 2026-08-15: Slices A through E, F0 through F6, and the F3 closeout-gap entry point are committed and live-accepted, and the persistent freeze pins were made checkout- and platform-invariant so verification passes on an LF checkout such as CI.
 
-The next planned application work after publication is Completed History, and a substantial part of it already exists. Session completion composes and freezes a completion snapshot and persists it with `completed_at` and `expires_at`; history retrieval, the `/history` route and its session view are present; rendering consumes the frozen snapshot when one exists, preserving snapshot authority; and the operational role gate admits `Admin` and `User` while denying `Developer`, matching ADR-006 visibility. The supporting schema is present in the live environment.
+The active objective is publishing Completed History, which is functionally complete and live-accepted as described below.
 
-What remains is of two kinds. Incomplete or unsafe: completion persists through sequential upserts of the session, its reports and its results rather than the server-side transactional boundary ADR-006 requires, so a mid-sequence failure can leave a partial completed record; and `replaceSession` is a stub delegating to `completeSession`, so Replacement Mode, retention-anchor preservation and the 30-day eligibility rule do not exist. Genuinely missing: retention expiry is written but never enforced on read, so an expired report is still listed and renderable; and `purgeExpiredSessions` exists but is wired to nothing and emits no audit event.
+**Completed History is functionally complete and live-accepted as of 2026-08-17, pending publication.** Session completion composes and freezes a completion snapshot and persists it transactionally with `completed_at` and `expires_at`; history retrieval, the `/history` route and its session view are present; rendering consumes the frozen snapshot when one exists, preserving snapshot authority; and the operational role gate admits `Admin` and `User` while denying `Developer`, matching ADR-006 visibility. Retention expiry is enforced on read and again inside the write transaction. Replacement Mode exists end to end — domain, atomic database replacement, server boundary with audit, the reopen authorization boundary, and the History-to-workspace UI flow — with the accession and the retention anchor preserved across replacement. Session completion and replacement are both audited. The final live acceptance passed 4 of 4 scenarios and 75 assertions with 0 failures.
+
+Two earlier statements in this section were stale and are corrected here. `replaceSession` is no longer a stub: R1 replaced the delegation with `recompleteSession()` plus `replace_completed_session(jsonb)`. Retention expiry is no longer unenforced on read. **`purgeExpiredSessions` is wired**: `PurgeSchedulerService.executeScheduledPurge` calls it and emits `AutomatedRetentionPurgeExecuted`, reachable through the Admin-guarded `POST /api/purge`. What purge still lacks is a **scheduler** — no cron, platform schedule or `pg_cron` entry exists, so it runs only when invoked. That is backlog and was never a Completed History blocker. One related monitoring nuance, also non-blocking: the event is emitted only when `purgedCount > 0`, so a run that deletes nothing leaves no evidence it executed.
+
+**Remaining Completed History backlog is non-blocking and does not make the milestone incomplete.** None of it is required for publication: purge scheduling and the `purgeExpiredSessions` zero-count audit nuance; `POST /api/purge` returning 500 rather than 403 to a non-Admin, where the authorization boundary itself is intact and mutation-proved; `findById` and `findByAccessionNumber` still returning expired completed sessions when addressed directly, with no interface route reaching them and the write paths guarded regardless; successful-reopen auditing, deliberately not implemented and parked to the audit lifecycle closeout; the runtime response allowlist for the frozen `session-transport.ts`; the project-wide audit delivery durability residual; and workspace resilience, encoding-mode Ctrl+P, Personnel Directory and UI/UX polish, each tracked on its own.
 
 The remaining Milestone 6 hardening work is still required later before production completion: migration-state preflight and schema provisioning, the outstanding Personnel/Credential and Session-lifecycle audit writers, audit delivery durability, and then performance, accessibility, monitoring, and deployment validation. Deferred UI/UX polish remains separately tracked and gates nothing.

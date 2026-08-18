@@ -1,6 +1,7 @@
 import React from "react";
 import type { IPersonnel } from "@/domain/models/interfaces";
 import { PersonnelFormValues } from "@/lib/validations/personnelValidation";
+import type { PersonnelActionResult } from "@/features/server-boundary/personnel-actions";
 import { Modal } from "@/components/ui/Modal";
 import { PersonnelForm } from "./PersonnelForm";
 
@@ -8,7 +9,7 @@ export interface PersonnelFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: IPersonnel | null;
-  onSubmit: (data: PersonnelFormValues) => Promise<void>;
+  onSubmit: (data: PersonnelFormValues) => Promise<PersonnelActionResult>;
   isLoading?: boolean;
 }
 

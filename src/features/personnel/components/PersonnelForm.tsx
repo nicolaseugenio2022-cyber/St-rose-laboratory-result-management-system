@@ -15,9 +15,11 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 
+import type { PersonnelActionResult } from "@/features/server-boundary/personnel-actions";
+
 export interface PersonnelFormProps {
   initialData?: IPersonnel | null;
-  onSubmit: (data: PersonnelFormValues) => Promise<void>;
+  onSubmit: (data: PersonnelFormValues) => Promise<PersonnelActionResult>;
   onCancel: () => void;
   isLoading?: boolean;
 }
@@ -48,6 +50,7 @@ export function PersonnelForm({
     handleSubmit,
     reset,
     watch,
+    setError,
     formState: { errors },
   } = useForm<PersonnelFormValues>({
     resolver: zodResolver(personnelFormSchema),
@@ -66,9 +69,16 @@ export function PersonnelForm({
   const handleFormSubmit = async (values: PersonnelFormValues) => {
     setServerError(null);
     try {
-      await onSubmit(values);
+      const result = await onSubmit(values);
+      if (!result.success && result.error === "DUPLICATE_PRC") {
+        setError("prcLicenseNumber", {
+          type: "manual",
+          message: "That PRC licence number is already registered.",
+        });
+      }
     } catch (err) {
-      setServerError((err as Error)?.message || "Failed to save personnel record.");
+      const message = (err as Error)?.message || "Failed to save personnel record.";
+      setServerError(message);
     }
   };
 

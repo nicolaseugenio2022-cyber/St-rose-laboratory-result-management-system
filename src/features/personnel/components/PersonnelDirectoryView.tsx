@@ -1,28 +1,24 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Info, Plus, Search, UserCheck } from "lucide-react";
 import type { IPersonnel } from "@/domain/models/interfaces";
 import {
   PersonnelFormValues,
   personnelRoleLabel,
 } from "@/lib/validations/personnelValidation";
+import { listPersonnelAction } from "@/features/server-boundary/personnel-actions";
+import type { PersonnelActionResult } from "@/features/server-boundary/personnel-actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { PersonnelTable, formatPersonnelName } from "./PersonnelTable";
 import { PersonnelFormModal } from "./PersonnelFormModal";
 
-const NOT_CONNECTED_MESSAGE =
-  "Personnel records are not connected yet — saving and status changes arrive in a later slice.";
-
 export interface PersonnelDirectoryViewProps {
-  /** Admin may manage the directory; every other permitted role is read-only. */
   canManage: boolean;
   personnel?: readonly IPersonnel[];
-  /** Renders the temporary preview-data notice. Dropped in P2. */
-  isPreviewData?: boolean;
-  onSubmit?: (values: PersonnelFormValues) => Promise<void>;
+  onSubmit?: (values: PersonnelFormValues, editingPersonnel: IPersonnel | null) => Promise<PersonnelActionResult>;
   onToggleStatus?: (person: IPersonnel) => Promise<void>;
   isLoading?: boolean;
 }
@@ -33,19 +29,38 @@ const ROLE_FILTER_OPTIONS = [
   { label: "Medical Technologist", value: "MedicalTechnologist" },
 ];
 
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function PersonnelDirectoryView({
   canManage,
-  personnel = [],
-  isPreviewData = false,
+  personnel: initialPersonnel = [],
   onSubmit,
   onToggleStatus,
   isLoading = false,
 }: PersonnelDirectoryViewProps) {
+  const [personnel, setPersonnel] = useState<readonly IPersonnel[]>(initialPersonnel);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPersonnel, setEditingPersonnel] = useState<IPersonnel | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const refreshPersonnel = useCallback(async () => {
+    try {
+      const result = await listPersonnelAction();
+      setPersonnel(result);
+      setRefreshError(null);
+    } catch {
+      setRefreshError("Could not refresh the personnel directory. Showing previous data.");
+    }
+  }, []);
+
+  useEffect(() => {
+    setPersonnel(initialPersonnel);
+  }, [initialPersonnel]);
 
   const filteredPersonnel = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -79,22 +94,30 @@ export function PersonnelDirectoryView({
     setIsModalOpen(false);
   };
 
-  // No write boundary exists yet. Rather than fake a successful save, surface the
-  // deferred state through the form's existing error channel.
-  const handleSubmit = async (values: PersonnelFormValues) => {
+  const handleSubmit = async (values: PersonnelFormValues): Promise<PersonnelActionResult> => {
     if (!onSubmit) {
-      throw new Error(NOT_CONNECTED_MESSAGE);
+      throw new Error("Personnel management is not connected yet.");
     }
-    await onSubmit(values);
+    const result = await onSubmit(values, editingPersonnel);
+    if (!result.success) {
+      return result;
+    }
     handleCloseModal();
+    await refreshPersonnel();
+    return result;
   };
 
   const handleToggleStatus = async (person: IPersonnel) => {
     if (!onToggleStatus) {
-      setNotice(NOT_CONNECTED_MESSAGE);
+      setNotice("Personnel management is not connected yet.");
       return;
     }
-    await onToggleStatus(person);
+    try {
+      await onToggleStatus(person);
+      await refreshPersonnel();
+    } catch (error) {
+      setNotice(errorMessage(error, "Failed to update personnel status."));
+    }
   };
 
   return (
@@ -122,21 +145,16 @@ export function PersonnelDirectoryView({
         )}
       </div>
 
-      {/* TEMPORARY — removed in P2 together with preview-fixture.ts */}
-      {isPreviewData && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-brand-warning-border bg-brand-warning-bg p-3.5">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-warning" />
-          <p className="text-xs font-medium leading-relaxed text-brand-warning">
-            Preview data — not from the database. These sample records exist only to review the
-            directory layout, and are replaced by the real personnel read in a later slice.
-          </p>
-        </div>
-      )}
-
       {notice && (
         <div className="flex items-start gap-2.5 rounded-xl border border-brand-info-border bg-brand-info-bg p-3.5">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-info" />
           <p className="text-xs font-medium leading-relaxed text-brand-info">{notice}</p>
+        </div>
+      )}
+
+      {refreshError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">
+          {refreshError}
         </div>
       )}
 

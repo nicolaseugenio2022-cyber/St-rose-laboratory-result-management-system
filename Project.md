@@ -1059,3 +1059,34 @@ Verification: TypeScript, lint and build all passed, with `/personnel` present i
 **One process residual is recorded rather than resolved.** P1 was implemented directly by Claude at explicit user direction rather than delegated, which departs from the normal division of labour for feature work. It is recorded here so the gap is visible and is not claimed as satisfied. A fresh read-only publication review was subsequently run over this range and returned no blocking findings; the two documentation-accuracy items it raised are corrected above.
 
 The backend contract is captured in `architecture/personnel-backend/personnel-directory-backend-plan.md`. Its central finding is that **the backend requires no migration**: the `personnel` table already carries every column, constraint and trigger needed, RLS is enabled with no policies, and `IPersonnelRepository` already declares full CRUD whose `create`, `update` and `toggleActiveStatus` have never had a caller. P2 supplies an Admin-only write boundary with Developer read-only, `PersonnelCredential` audit writers — closing the Personnel and Credential audit writer already listed as outstanding above — duplicate-PRC handling, and a dedicated verifier with mutation proofs and a mandatory independent reviewer. Signature upload and the hardening of the currently forgeable, and currently uncalled, signature access token remain deferred to their own security slice. **Production SQL is applied manually by the operator and never by an implementer.**
+
+## Personnel Directory — P2 Backend and Live Acceptance (2026-08-18)
+
+**The Personnel Directory is now a working Admin-managed feature.** P2 supplies the write boundary that P1 deliberately omitted: an Admin-only server-action surface over the pre-existing personnel repository, a dedicated authorization guard, the first `PersonnelCredential` audit writers, and a dedicated verifier. The temporary P1 preview fixture is deleted and the page now reads real personnel.
+
+**No migration, DDL or SQL was involved.** As the backend handoff predicted, the `personnel` table already carried every column, constraint and trigger required, and `IPersonnelRepository` already declared the full CRUD surface whose `create`, `update` and `toggleActiveStatus` had never had a caller. No storage bucket was created and no signature upload or signature-token work was performed.
+
+New: `src/lib/personnel-guard.ts` (`requirePersonnelReader` for Admin and Developer, `requirePersonnelAdmin` for Admin alone, both emitting `SecurityDenial` / `PersonnelDirectoryAccessDenied` with a reason code before refusing); `src/features/server-boundary/personnel-actions.ts` (list, create, update, toggle — kept out of the B5-order-pinned `server-actions.ts`); `scripts/verify-personnel-directory.ts`. The byte-frozen `auth-guards.ts` and the shape-pinned `IPersonnelRepository` were not modified, and the verifier now pins both `auth-guards.ts` and `server-actions.ts` to their baseline `5eac3f7` hashes.
+
+Duplicate PRC licence numbers are reported as a **typed result** (`{ success: false, error: "DUPLICATE_PRC" }`) rather than a thrown error. This is deliberate and load-bearing: Next.js redacts messages thrown from Server Actions in production builds, so a thrown error would have degraded to the generic banner in the deployed application while appearing correct in development. Server action return values are not redacted, so the field-level error survives.
+
+**Live acceptance passed 9 of 9 scenarios** against the live Supabase project on 2026-08-18, executed against a **production build** rather than a development server, driving the real Server Actions through the real authorization guards.
+
+- Admin CRUD and the Developer read-only boundary were both verified through real Server Actions. Four separate Developer write attempts — including the two inline UI action closures — were refused server-side with zero writes.
+- The duplicate-PRC typed result was confirmed in the production build, with the client receiving `{"success":false,"error":"DUPLICATE_PRC"}` intact and no redaction leak; the failed attempts produced no row and no audit event. Field-level handling on `prcLicenseNumber` was confirmed, with the modal held open and no refresh.
+- A created Medical Technologist had `signature_image_url` null, and it remained null across a subsequent edit.
+- A deactivated record remained visible in the directory while being **excluded from workspace signatory selection**, and became selectable again on reactivation.
+- Historical `report_signatories` and completed snapshots remained **byte-identical** through a controlled edit of a Pathologist referenced by eight signatory rows and three completed snapshots, verified by SHA-256 before and after, and the record was then restored.
+- The expected `PersonnelCredential` audits were observed — 2 `PersonnelRecordCreated`, 4 `PersonnelRecordUpdated`, 4 `PersonnelStatusToggled` — alongside 4 `SecurityDenial` / `PersonnelDirectoryAccessDenied` events, all carrying `target_role: null` with the personnel classification recorded in `details.personnelRole`, since a personnel classification is not an authentication role.
+
+This closes the **Personnel and Credential audit writer** previously listed as outstanding above. The Session-lifecycle audit writers and the remaining Milestone 6 hardening work are unaffected.
+
+**Two inactive synthetic acceptance records are retained** in the live directory: `ACCEPTANCE-EDITED P2-PATHOLOGIST` (`ACC-P2-PATH-0001`) and `ACCEPTANCE-EDITED P2-MEDTECH` (`ACC-P2-MT-0001`). Both were parked inactive rather than deleted, since personnel are never hard-deleted, and both are therefore **excluded from clinical signatory selection**. Their retention or retirement is an operator decision.
+
+**Three residuals are recorded and deliberately not fixed in this publication.**
+
+1. Editing a personnel record whose `middle_initial` is SQL `NULL` currently normalizes it to an empty string. Business rendering is unaffected because the renderers treat both as absent, but exact `NULL` preservation is deferred to a small follow-up. One live record, `TEST PATHOLOGIST SYNTHETIC`, carries this drift from the controlled acceptance edit.
+2. Non-null Pathologist signature preservation could not be live-tested, because no personnel record currently carries a signature and signature upload is deferred. The preservation path — omitting the key so the stored URL is untouched — is implemented and covered by the verifier, but was exercised only from `null` to `null`.
+3. Audit writes remain non-atomic with the personnel mutations they record, which is the existing project-wide residual accepted on 2026-08-15 and to be addressed across all writers at once rather than per event.
+
+Signature upload, the `personnel-signatures` bucket, and hardening of the currently forgeable and still uncalled signature access token remain deferred to their own security slice.

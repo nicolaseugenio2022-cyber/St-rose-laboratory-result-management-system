@@ -126,6 +126,20 @@ export const personnelStatusSchema = z
   })
   .strict();
 
+export const uploadPersonnelSignatureSchema = z
+  .object({
+    personnelId: z.string().uuid("Invalid personnel identifier."),
+    fileBase64: z.string().min(1, "File data is required."),
+    fileName: z.string().min(1, "File name is required."),
+  })
+  .strict();
+
+export const removePersonnelSignatureSchema = z
+  .object({
+    personnelId: z.string().uuid("Invalid personnel identifier."),
+  })
+  .strict();
+
 export const emptyPersonnelActionSchema = z.object({}).strict();
 
 export type CreatePersonnelValues = z.infer<typeof createPersonnelSchema>;

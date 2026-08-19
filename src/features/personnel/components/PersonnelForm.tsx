@@ -3,7 +3,7 @@
 import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ImageOff } from "lucide-react";
+import { PersonnelSignatureField } from "@/features/personnel/components/PersonnelSignatureField";
 import type { IPersonnel } from "@/domain/models/interfaces";
 import {
   PERSONNEL_ROLE_OPTIONS,
@@ -21,6 +21,7 @@ export interface PersonnelFormProps {
   initialData?: IPersonnel | null;
   onSubmit: (data: PersonnelFormValues) => Promise<PersonnelActionResult>;
   onCancel: () => void;
+  onSignatureChanged: (newUrl: string | null) => void;
   isLoading?: boolean;
 }
 
@@ -40,6 +41,7 @@ export function PersonnelForm({
   initialData,
   onSubmit,
   onCancel,
+  onSignatureChanged,
   isLoading = false,
 }: PersonnelFormProps) {
   const isEditing = !!initialData;
@@ -76,9 +78,8 @@ export function PersonnelForm({
           message: "That PRC licence number is already registered.",
         });
       }
-    } catch (err) {
-      const message = (err as Error)?.message || "Failed to save personnel record.";
-      setServerError(message);
+    } catch {
+      setServerError("Failed to save personnel record. Please try again.");
     }
   };
 
@@ -146,21 +147,12 @@ export function PersonnelForm({
         {...register("status")}
       />
 
-      {isPathologist && (
-        <div className="rounded-lg border border-dashed border-brand-border bg-slate-50 p-4 opacity-70">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 text-brand-text-subtle">
-              <ImageOff className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-brand-text">Signature Image</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-brand-text-muted">
-                Signature upload is not available yet. It arrives in a later slice, together with
-                protected storage handling.
-              </p>
-            </div>
-          </div>
-        </div>
+      {isPathologist && initialData?.id && (
+        <PersonnelSignatureField
+          personnelId={initialData.id}
+          signatureImageUrl={initialData.signatureImageUrl}
+          onSignatureChanged={onSignatureChanged}
+        />
       )}
 
       <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">

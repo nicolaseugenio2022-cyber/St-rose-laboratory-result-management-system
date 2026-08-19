@@ -94,6 +94,16 @@ export function PersonnelDirectoryView({
     setIsModalOpen(false);
   };
 
+  const handleSignatureChanged = useCallback(
+    async (newUrl: string | null) => {
+      setEditingPersonnel((prev) =>
+        prev ? { ...prev, signatureImageUrl: newUrl } : prev,
+      );
+      await refreshPersonnel();
+    },
+    [refreshPersonnel],
+  );
+
   const handleSubmit = async (values: PersonnelFormValues): Promise<PersonnelActionResult> => {
     if (!onSubmit) {
       throw new Error("Personnel management is not connected yet.");
@@ -192,6 +202,7 @@ export function PersonnelDirectoryView({
           onClose={handleCloseModal}
           initialData={editingPersonnel}
           onSubmit={handleSubmit}
+          onSignatureChanged={handleSignatureChanged}
           isLoading={isLoading}
         />
       )}

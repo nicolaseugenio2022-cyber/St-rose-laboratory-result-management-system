@@ -63,15 +63,6 @@ export class SecurityService {
     return false;
   }
 
-  /**
-   * Non-Public Signature Storage Tokenizer per SECURITY_MODEL.md Section 9.
-   * Generates a time-limited, signed access token for signature PNG assets.
-   */
-  public generateSignatureAccessToken(signaturePath: string, validDurationSeconds = 300): string {
-    const expiresAt = Date.now() + validDurationSeconds * 1000;
-    const token = Buffer.from(`${signaturePath}:${expiresAt}`).toString("base64url");
-    return `/api/signatures/proxy?path=${encodeURIComponent(signaturePath)}&token=${token}`;
-  }
 }
 
 export const securityService = new SecurityService();

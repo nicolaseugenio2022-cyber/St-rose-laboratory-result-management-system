@@ -10,6 +10,7 @@ export interface PersonnelFormModalProps {
   onClose: () => void;
   initialData?: IPersonnel | null;
   onSubmit: (data: PersonnelFormValues) => Promise<PersonnelActionResult>;
+  onSignatureChanged: (newUrl: string | null) => void;
   isLoading?: boolean;
 }
 
@@ -18,6 +19,7 @@ export function PersonnelFormModal({
   onClose,
   initialData,
   onSubmit,
+  onSignatureChanged,
   isLoading = false,
 }: PersonnelFormModalProps) {
   const isEditing = !!initialData;
@@ -32,6 +34,7 @@ export function PersonnelFormModal({
         initialData={initialData}
         onSubmit={onSubmit}
         onCancel={onClose}
+        onSignatureChanged={onSignatureChanged}
         isLoading={isLoading}
       />
     </Modal>

@@ -30,7 +30,8 @@ data/*.local.json
 next-env.d.ts
     
 # AI context files
-AGENTS.md
+# AGENTS.md is intentionally TRACKED: it is the repository-local project authority
+# and must travel with every clone. CLAUDE.md is likewise tracked.
 
 # Templates for Clinic
 Templates/

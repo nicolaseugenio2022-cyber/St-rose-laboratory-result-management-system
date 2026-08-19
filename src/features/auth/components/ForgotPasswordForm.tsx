@@ -76,13 +76,13 @@ export function ForgotPasswordForm() {
   return (
     <Card className="w-full max-w-md shadow-lg">
       <CardHeader className="space-y-3 pb-6 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary text-brand-primary-foreground shadow-sm">
+        <div className="mx-auto flex items-center justify-center">
           <Image
-            src="/st-rose-logo.png"
-            alt="St. Rose Diagnostic Laboratory Logo"
-            width={28}
-            height={28}
-            className="h-7 w-7 object-contain"
+            src="/st-rose-logo-official.png"
+            alt="St. Rose Diagnostic Laboratory"
+            width={48}
+            height={48}
+            className="h-12 w-12 object-contain"
             priority
           />
         </div>

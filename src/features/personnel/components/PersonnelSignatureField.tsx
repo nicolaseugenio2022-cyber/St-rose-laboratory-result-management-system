@@ -27,14 +27,12 @@ export function PersonnelSignatureField({
   const [isUploading, setIsUploading] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const hasSignature = !!signatureImageUrl;
 
-  const handleUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
+  const processFile = useCallback(
+    async (file: File) => {
       setError(null);
 
       if (file.type !== ACCEPTED_MIME) {
@@ -75,6 +73,47 @@ export function PersonnelSignatureField({
     [personnelId, onSignatureChanged]
   );
 
+  const handleFileInputChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) processFile(file);
+    },
+    [processFile]
+  );
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragOver(false);
+
+      const files = Array.from(event.dataTransfer.files);
+      if (files.length !== 1) {
+        setError("Please drop exactly one PNG file.");
+        return;
+      }
+      processFile(files[0]);
+    },
+    [processFile]
+  );
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  const handleDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
   const handleRemove = useCallback(async () => {
     setError(null);
     setIsRemoving(true);
@@ -94,7 +133,17 @@ export function PersonnelSignatureField({
   }, [personnelId, onSignatureChanged]);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div
+      className={`rounded-lg border bg-slate-50 p-4 transition-colors ${
+        isDragOver
+          ? "border-brand-primary bg-brand-primary/5"
+          : "border-slate-200"
+      }`}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+    >
       <p className="text-xs font-semibold text-brand-text">Signature Image</p>
       <p className="mt-1 text-[11px] leading-relaxed text-brand-text-muted">
         PNG only, maximum 2 MB. Signature is used in completed laboratory reports.
@@ -112,7 +161,7 @@ export function PersonnelSignatureField({
           type="file"
           accept="image/png"
           className="hidden"
-          onChange={handleUpload}
+          onChange={handleFileInputChange}
         />
 
         {hasSignature ? (

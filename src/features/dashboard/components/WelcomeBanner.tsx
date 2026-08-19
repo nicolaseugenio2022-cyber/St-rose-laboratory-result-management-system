@@ -13,7 +13,7 @@ export function WelcomeBanner({ profile }: WelcomeBannerProps) {
   const friendlyRole = role === "Admin" ? "Administrator" : role;
 
   return (
-    <div className="rounded-xl border border-brand-border bg-brand-surface p-6 shadow-xs">
+    <div className="rounded-xl border border-brand-border bg-brand-surface p-6 shadow-sm">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2">

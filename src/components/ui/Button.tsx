@@ -13,11 +13,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       "inline-flex items-center justify-center font-medium transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
 
     const variants = {
-      primary: "bg-brand-primary text-brand-primary-foreground hover:bg-brand-primary-hover active:opacity-90 shadow-xs",
-      secondary: "bg-brand-secondary text-brand-secondary-foreground hover:bg-brand-secondary-hover active:bg-slate-900 shadow-xs",
+      primary: "bg-brand-primary text-brand-primary-foreground hover:bg-brand-primary-hover active:opacity-90 shadow-sm",
+      secondary: "bg-brand-secondary text-brand-secondary-foreground hover:bg-brand-secondary-hover active:bg-slate-900 shadow-sm",
       outline: "border border-brand-border bg-brand-surface text-brand-text hover:bg-brand-surface-hover hover:border-slate-300 active:bg-slate-100",
       ghost: "text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text active:bg-slate-200",
-      danger: "bg-brand-danger text-white hover:bg-rose-700 active:bg-rose-800 shadow-xs",
+      danger: "bg-brand-danger text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm",
     };
 
     const sizes = {

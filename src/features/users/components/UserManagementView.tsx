@@ -180,7 +180,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
       </div>
 
       {/* Filter & Action Toolbar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-brand-surface p-4 rounded-xl border border-brand-border shadow-xs">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-brand-surface p-4 rounded-xl border border-brand-border shadow-sm">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-3 h-4 w-4 text-brand-text-subtle pointer-events-none" />
           <Input

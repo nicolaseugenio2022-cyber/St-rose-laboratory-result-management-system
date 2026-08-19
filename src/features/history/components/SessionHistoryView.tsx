@@ -85,7 +85,7 @@ export function SessionHistoryView() {
             type="button"
             onClick={() => setStatusFilter("ALL")}
             className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "ALL" ? "bg-white text-brand-primary shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+              statusFilter === "ALL" ? "bg-white text-brand-primary shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
             }`}
           >
             All ({entries.length})
@@ -94,7 +94,7 @@ export function SessionHistoryView() {
             type="button"
             onClick={() => setStatusFilter("Completed")}
             className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "Completed" ? "bg-white text-emerald-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+              statusFilter === "Completed" ? "bg-white text-emerald-700 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
             }`}
           >
             Completed
@@ -103,7 +103,7 @@ export function SessionHistoryView() {
             type="button"
             onClick={() => setStatusFilter("Draft")}
             className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "Draft" ? "bg-white text-amber-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+              statusFilter === "Draft" ? "bg-white text-amber-700 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
             }`}
           >
             Drafts
@@ -112,7 +112,7 @@ export function SessionHistoryView() {
       </div>
 
       {/* Search Toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
@@ -130,7 +130,7 @@ export function SessionHistoryView() {
       </div>
 
       {/* Session Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-xs">Loading session history...</div>
         ) : loadError ? (
@@ -228,7 +228,7 @@ export function SessionHistoryView() {
 
       {/* Report Preview Modal */}
       {previewSession && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-slate-300 w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
               <div className="flex items-center gap-2.5">

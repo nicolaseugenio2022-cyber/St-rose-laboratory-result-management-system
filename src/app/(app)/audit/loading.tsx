@@ -12,7 +12,7 @@ export default function AuditLoading() {
       </div>
 
       {/* Toolbar */}
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="h-4 w-24 rounded bg-slate-100"></div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -25,14 +25,14 @@ export default function AuditLoading() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="h-11 border-b border-slate-200 bg-slate-100"></div>
         {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-16 border-b border-slate-100 bg-slate-50 last:border-b-0"></div>
         ))}
       </div>
 
-      <div className="h-14 w-full rounded-xl border border-slate-200 bg-white shadow-xs"></div>
+      <div className="h-14 w-full rounded-xl border border-slate-200 bg-white shadow-sm"></div>
     </div>
   );
 }

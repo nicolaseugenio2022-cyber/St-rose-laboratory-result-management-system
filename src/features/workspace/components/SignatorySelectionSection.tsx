@@ -195,7 +195,7 @@ export function SignatorySelectionSection({
           <button
             type="button"
             onClick={() => setIsConfirmed(true)}
-            className="shrink-0 self-start sm:self-auto px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-2xs"
+            className="shrink-0 self-start sm:self-auto px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-sm"
           >
             Confirm ✓
           </button>
@@ -206,7 +206,7 @@ export function SignatorySelectionSection({
         <div className="p-3 pt-0 border-t border-slate-200/60 mt-1.5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {/* Pathologist Card */}
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs">
+            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
                 Pathologist (Signatory 1)
@@ -230,7 +230,7 @@ export function SignatorySelectionSection({
             </div>
 
             {/* Medical Technologist 1 Card */}
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs">
+            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
                 Medical Technologist (Signatory 2)
@@ -255,7 +255,7 @@ export function SignatorySelectionSection({
 
             {/* Medical Technologist 2 Card (Rendered ONLY when requiredMedtechsCount >= 2, e.g. HIV_RESULT) */}
             {requiredMedtechsCount >= 2 && (
-              <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs">
+              <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
                 <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
                   <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
                   Medical Technologist 2 (Signatory 3)

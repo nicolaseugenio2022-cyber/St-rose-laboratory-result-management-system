@@ -65,7 +65,7 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
 
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-brand-border bg-slate-50/50">
-          <div className="rounded-lg border border-brand-border bg-brand-surface p-3 shadow-xs">
+          <div className="rounded-lg border border-brand-border bg-brand-surface p-3 shadow-sm">
             <p className="text-xs font-semibold text-brand-text">Result Management System</p>
             <p className="text-[11px] text-brand-text-muted mt-0.5">Version 1.0.0 — Baseline</p>
           </div>

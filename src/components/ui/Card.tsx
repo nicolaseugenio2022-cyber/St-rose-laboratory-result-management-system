@@ -8,7 +8,7 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Card({ className, variant = "default", children, ...props }: CardProps) {
   const baseStyles = "rounded-xl bg-brand-card transition-all";
   const variants = {
-    default: "border border-brand-card-border shadow-xs hover:border-slate-300",
+    default: "border border-brand-card-border shadow-sm hover:border-slate-300",
     flat: "bg-brand-surface-hover border border-brand-border-subtle",
     outline: "border border-brand-card-border",
   };

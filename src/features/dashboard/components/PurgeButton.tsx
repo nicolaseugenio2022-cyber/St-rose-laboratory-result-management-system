@@ -30,7 +30,7 @@ export default function PurgeButton() {
         type="button"
         onClick={handlePurge}
         disabled={purging}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-xs shrink-0"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-sm shrink-0"
       >
         {purging ? "Running purge..." : "Run Retention Purge Trigger"}
       </button>

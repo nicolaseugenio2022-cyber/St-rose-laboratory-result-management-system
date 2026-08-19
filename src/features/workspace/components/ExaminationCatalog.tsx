@@ -101,7 +101,7 @@ export function ExaminationCatalog({
   const isSearchActive = searchQuery.trim().length > 0;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col h-full overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden">
       {/* Header & Search Bar with 2-Level Visual Hierarchy */}
       <div className="p-3.5 border-b border-slate-100 bg-slate-50/70 shrink-0 space-y-2">
         <div>
@@ -149,10 +149,10 @@ export function ExaminationCatalog({
           const isPartialSelected = selectedInFamily > 0 && selectedInFamily < specs.length;
 
           const categoryHeaderClass = isAllSelected
-            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-emerald-50/95 border-l-4 border-l-emerald-500 border-b border-emerald-200/80 flex items-center justify-between text-left transition-all shadow-2xs"
+            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-emerald-50/95 border-l-4 border-l-emerald-500 border-b border-emerald-200/80 flex items-center justify-between text-left transition-all shadow-sm"
             : isPartialSelected
-            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-blue-50/95 border-l-4 border-l-brand-primary border-b border-blue-200/80 flex items-center justify-between text-left transition-all shadow-2xs"
-            : "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-slate-100/95 backdrop-blur-xs hover:bg-slate-200/90 border-b border-slate-200 flex items-center justify-between text-left transition-all shadow-2xs";
+            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-blue-50/95 border-l-4 border-l-brand-primary border-b border-blue-200/80 flex items-center justify-between text-left transition-all shadow-sm"
+            : "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-slate-100/95 backdrop-blur-sm hover:bg-slate-200/90 border-b border-slate-200 flex items-center justify-between text-left transition-all shadow-sm";
 
           const statsText = isAllSelected
             ? `All ${specs.length} examinations selected ✓`
@@ -227,10 +227,10 @@ export function ExaminationCatalog({
                         }}
                         className={`group relative h-[62px] px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-1.5 shrink-0 ${
                           isActive
-                            ? "bg-blue-50/50 border-l-2 border-l-brand-primary border-y-slate-200/80 border-r-slate-200/80 shadow-2xs"
+                            ? "bg-blue-50/50 border-l-2 border-l-brand-primary border-y-slate-200/80 border-r-slate-200/80 shadow-sm"
                             : isSelected
                             ? "bg-slate-50/70 border-slate-200/90 hover:border-slate-300"
-                            : "bg-white border-slate-200/80 hover:border-blue-300/80 hover:shadow-2xs hover:bg-blue-50/10"
+                            : "bg-white border-slate-200/80 hover:border-blue-300/80 hover:shadow-sm hover:bg-blue-50/10"
                         }`}
                       >
                         <div className="flex flex-col justify-between min-w-0 flex-1 h-full py-0.5">
@@ -246,7 +246,7 @@ export function ExaminationCatalog({
 
                           {/* Row 2: Secondary Non-Wrapping Metadata (Softened Contrast Code • Renderer) */}
                           <div className="flex items-center gap-2 whitespace-nowrap text-[9.5px] text-slate-400/90 font-mono overflow-hidden">
-                            <span className="font-semibold text-slate-600 bg-slate-100/70 px-1.5 py-0.2 rounded border border-slate-200/60 shrink-0">
+                            <span className="font-semibold text-slate-600 bg-slate-100/70 px-1.5 py-0.5 rounded border border-slate-200/60 shrink-0">
                               {code}
                             </span>
                             <span className="text-slate-300/80">•</span>

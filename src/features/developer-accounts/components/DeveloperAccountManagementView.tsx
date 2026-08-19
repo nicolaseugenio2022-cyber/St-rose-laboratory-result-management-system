@@ -158,7 +158,7 @@ export function DeveloperAccountManagementView({
         </div>
       )}
 
-      <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-xs sm:flex-row sm:items-center">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-sm sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-brand-text-subtle" />
           <Input

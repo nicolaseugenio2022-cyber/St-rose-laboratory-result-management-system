@@ -40,7 +40,7 @@ export function ParameterRow({
       className={cn(
         "grid grid-cols-1 gap-2 rounded-lg border px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center",
         isSelected
-          ? "border-slate-200 bg-transparent shadow-2xs hover:border-slate-300"
+          ? "border-slate-200 bg-transparent shadow-sm hover:border-slate-300"
           : "border-slate-200/80 bg-slate-50/80 opacity-60"
       )}
     >
@@ -92,7 +92,7 @@ export function ParameterRow({
           className={cn(
             "inline-block min-w-[70px] rounded-md border px-2 py-0.5 text-center text-[10px] font-extrabold uppercase tracking-wider",
             outcome === "Invalid"
-              ? "border-rose-400 bg-rose-100 text-rose-900 shadow-2xs"
+              ? "border-rose-400 bg-rose-100 text-rose-900 shadow-sm"
               : outcome === "Abnormal" || outcome === "High"
                 ? "border-rose-300 bg-rose-100 text-rose-800"
                 : outcome === "Low"

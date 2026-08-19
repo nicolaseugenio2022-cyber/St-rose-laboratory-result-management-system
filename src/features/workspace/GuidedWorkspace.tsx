@@ -425,7 +425,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   if (reopenStatus === "loading" || reopenStatus === "failed") {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-100/60 p-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs max-w-md w-full p-6 space-y-4 text-center">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm max-w-md w-full p-6 space-y-4 text-center">
           {reopenStatus === "loading" ? (
             <>
               <div className="mx-auto p-2.5 bg-blue-50 text-brand-primary rounded-full w-fit border border-blue-100">
@@ -453,7 +453,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 <button
                   type="button"
                   onClick={() => router.push("/history")}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
                 >
                   <History className="h-4 w-4" />
                   Return to Session History
@@ -477,7 +477,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-100/60">
       {/* Fixed Workspace Top Navigation Bar */}
-      <header className="h-14 bg-white border-b border-slate-200 shadow-xs px-4 flex items-center shrink-0 z-30">
+      <header className="h-14 bg-white border-b border-slate-200 shadow-sm px-4 flex items-center shrink-0 z-30">
         <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* Back to Dashboard Navigation Button */}
@@ -537,7 +537,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 onClick={() => setWorkspaceMode("encoding")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
                   workspaceMode === "encoding"
-                    ? "bg-white text-slate-800 shadow-xs"
+                    ? "bg-white text-slate-800 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -549,7 +549,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 onClick={() => setWorkspaceMode("preview")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
                   workspaceMode === "preview"
-                    ? "bg-white text-slate-800 shadow-xs"
+                    ? "bg-white text-slate-800 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -566,7 +566,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 disabled={saveStatus === "saving" || !isDirty}
                 className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
                   isDirty
-                    ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs"
+                    ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm"
                     : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
                 }`}
               >
@@ -581,7 +581,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 type="button"
                 onClick={handleReplaceSession}
                 disabled={saveStatus === "saving"}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 rounded-lg shadow-xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 rounded-lg shadow-sm transition-colors"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
@@ -593,7 +593,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
               <button
                 type="button"
                 onClick={handleCompleteSession}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Complete Session
@@ -683,7 +683,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
             <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-4">
               {/* Sticky Patient Context Bar inside Encoding Pane */}
               {session.demographics.fullName && (
-                <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-xs border border-slate-200 shadow-2xs py-2 px-3.5 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-700 font-medium">
+                <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border border-slate-200 shadow-sm py-2 px-3.5 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-700 font-medium">
                   <div className="flex items-center gap-2 truncate">
                     <User className="h-3.5 w-3.5 text-brand-primary shrink-0" />
                     <span className="font-bold text-slate-900 truncate">{session.demographics.fullName}</span>
@@ -749,7 +749,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                   onChangeReport={handleReportChange}
                 />
               ) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-6 py-6 text-center shadow-2xs flex flex-col items-center justify-center my-3">
+                <div className="bg-white rounded-xl border border-slate-200 p-6 py-6 text-center shadow-sm flex flex-col items-center justify-center my-3">
                   <div className="p-2.5 bg-blue-50 text-brand-primary rounded-full mb-2 border border-blue-100">
                     <FileText className="h-6 w-6" />
                   </div>
@@ -763,7 +763,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
           </div>
         ) : (
           /* Live Screen Preview Mode using SharedRenderingEngine */
-          <div className="h-full overflow-y-auto bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+          <div className="h-full overflow-y-auto bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
               <div>
                 <h2 className="text-base font-bold text-slate-800">A4 Printable Document Screen Preview</h2>
@@ -789,7 +789,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
       {/* Unsaved Changes Exit Confirmation Modal */}
       {showExitModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-amber-100 text-amber-700 shrink-0">
@@ -808,7 +808,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 <button
                   type="button"
                   onClick={handleSaveDraftAndExit}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
                 >
                   <Save className="h-4 w-4" />
                   Save Draft & Exit

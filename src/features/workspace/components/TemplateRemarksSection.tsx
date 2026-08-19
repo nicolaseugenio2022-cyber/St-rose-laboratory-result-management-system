@@ -22,7 +22,7 @@ export function TemplateRemarksSection({ remarks, onChange }: TemplateRemarksSec
         </div>
         <div className="flex items-center gap-2">
           {remarks && remarks.trim() !== "" && (
-            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-full">
               Has Remarks
             </span>
           )}

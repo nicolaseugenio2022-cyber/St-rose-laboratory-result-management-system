@@ -75,7 +75,7 @@ export function SelectedReportsPanel({
           <button
             type="button"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors shadow-2xs"
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors shadow-sm"
             aria-label="Examination Actions Menu"
           >
             <span>Actions</span>
@@ -142,7 +142,7 @@ export function SelectedReportsPanel({
               title={`${spec.template.templateTitle} (${spec.template.examinationFamily})`}
               className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs transition-all cursor-pointer select-none ${
                 isActive
-                  ? "bg-white border-t-2 border-t-brand-primary border-x border-b-white font-bold text-brand-primary shadow-2xs -mb-px"
+                  ? "bg-white border-t-2 border-t-brand-primary border-x border-b-white font-bold text-brand-primary shadow-sm -mb-px"
                   : "bg-slate-100/90 border border-slate-200/80 text-slate-600 hover:bg-slate-200/70 font-medium"
               }`}
             >
@@ -150,7 +150,7 @@ export function SelectedReportsPanel({
 
               {/* Renderer Badge */}
               <span
-                className={`text-[9px] font-mono px-1 py-0.2 rounded ${
+                className={`text-[9px] font-mono px-1 py-0.5 rounded ${
                   isActive ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-200/60 text-slate-500"
                 }`}
               >

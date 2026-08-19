@@ -34,7 +34,7 @@ export default function ErrorPage({
         <button
           type="button"
           onClick={() => reset()}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-brand-hover transition-colors shadow-xs"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover transition-colors shadow-sm"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Try Again

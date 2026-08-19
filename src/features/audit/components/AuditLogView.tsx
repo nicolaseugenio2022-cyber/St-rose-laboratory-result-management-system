@@ -208,7 +208,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           type="button"
           onClick={() => void loadPage(filters, offset)}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
           Refresh Logs
@@ -216,7 +216,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
       </div>
 
       {/* Audit Filter Toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
           <Filter className="h-4 w-4 text-slate-400" />
           <span>Audit filters</span>
@@ -274,7 +274,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         )}
 
         {page.events.length === 0 && !loading ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-xs">
+          <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
             <ShieldCheck className="mx-auto h-7 w-7 text-slate-300" />
             <p className="mt-3 text-xs text-slate-400">No audit logs match the active filters.</p>
           </div>
@@ -329,7 +329,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center" aria-live="polite">
-                <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-xs">
+                <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
                   Loading audit logs...
                 </span>
               </div>
@@ -337,7 +337,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           </div>
         )}
 
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500" aria-live="polite">
             Showing <span className="font-semibold text-slate-700">{firstVisible}–{lastVisible}</span> of{" "}
             <span className="font-semibold text-slate-700">{page.total}</span> events

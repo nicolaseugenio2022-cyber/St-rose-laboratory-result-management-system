@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useTransition, useState } from "react";
+import React, { useTransition, useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { loginAction } from "@/features/auth/authActions";
+import { getLockoutRetryAfterAction } from "@/features/auth/lockout-status-actions";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -24,6 +25,19 @@ export default function LoginPage() {
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [retryAfterMs, setRetryAfterMs] = useState<number | null>(null);
+  const isLocked = retryAfterMs !== null && retryAfterMs > 0;
+
+  useEffect(() => {
+    if (!isLocked) return;
+    const timer = setInterval(() => {
+      setRetryAfterMs((prev) => {
+        if (prev === null || prev <= 1000) return null;
+        return prev - 1000;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isLocked]);
 
   const {
     register,
@@ -40,6 +54,7 @@ export default function LoginPage() {
 
   const onSubmit = (data: LoginFormValues) => {
     setServerError(null);
+    setRetryAfterMs(null);
     startTransition(async () => {
       const formData = new FormData();
       formData.append("username", data.username);
@@ -52,6 +67,13 @@ export default function LoginPage() {
       // (a successful login redirects and doesn't return here)
       if (result && !result.success) {
         setServerError(result.error);
+
+        if (result.error === "Too many login attempts. Please try again later.") {
+          const status = await getLockoutRetryAfterAction({ username: data.username });
+          if (status.retryAfterMs > 0) {
+            setRetryAfterMs(status.retryAfterMs);
+          }
+        }
       }
     });
   };
@@ -86,6 +108,15 @@ export default function LoginPage() {
           {serverError && (
             <div className="rounded-md bg-brand-danger/10 p-3 text-sm text-brand-danger border border-brand-danger/20">
               {serverError}
+              {retryAfterMs !== null && retryAfterMs > 0 && (
+                <span className="block mt-1 font-medium">
+                  {" Try again in "}
+                  {Math.floor(retryAfterMs / 60000)}
+                  {" minute(s) "}
+                  {Math.floor((retryAfterMs % 60000) / 1000)}
+                  {" second(s)."}
+                </span>
+              )}
             </div>
           )}
           
@@ -166,7 +197,7 @@ export default function LoginPage() {
           <Button 
             type="submit" 
             className="w-full" 
-            disabled={isPending}
+            disabled={isPending || isLocked}
           >
             {isPending ? (
               <>

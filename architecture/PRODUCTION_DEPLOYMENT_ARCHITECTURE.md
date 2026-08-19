@@ -131,7 +131,14 @@ graph LR
 ```
 
 - Unauthenticated HTTP requests directly to signature asset URLs are **blocked**.
-- Assets are delivered exclusively through token-gated proxy endpoints (`/api/signatures/proxy?path=...&token=...`).
+- Assets are delivered exclusively through the **authenticated private proxy** endpoint
+  (`/api/signatures/proxy?path=...`). **There is no custom access token and no HMAC.** The endpoint
+  authenticates the application session and admits only `Admin` and `User`, matching report visibility;
+  it then proves the requested object path is referenced by either the current
+  `personnel.signature_image_url` or a frozen `report_signatories.signature_image_url` before streaming
+  the bytes with the server-only credential. This matches the §5.2 diagram above, which has always shown
+  session verification. Superseded wording describing a `&token=` query parameter referred to an earlier
+  unsigned, forgeable token that was **removed** in the P3 signature slice (2026-08-19).
 
 ---
 

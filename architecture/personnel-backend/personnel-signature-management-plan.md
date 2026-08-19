@@ -67,7 +67,7 @@ Established by direct inspection at `236481b`. Do not re-derive.
   (`getSupabaseClient()`), and falls back to a 1x1 transparent PNG when Supabase is unconfigured.
 - **No verifier references `security-service.ts`, `generateSignatureAccessToken`, `signatures/proxy`, or
   the token encoding.** The token and the proxy are entirely unpinned, so both may be changed freely.
-- The proxy is the **only consumer of `src/lib/supabase/client.ts` anywhere in `src/`.**
+- The proxy is the only *signature-path* consumer of `src/lib/supabase/client.ts`. **That module is NOT unused** — `src/repositories/supabase-auto-suggestion-repository.ts:2` imports it via a relative path, which an earlier `@/`-prefixed grep missed. Corrected 2026-08-19.
 
 **Authority already settles format and limits** — `architecture/PRODUCTION_DEPLOYMENT_ARCHITECTURE.md` §5.1:
 bucket `personnel-signatures`, Public `FALSE`, allowed MIME `image/png`, max size `2 MB`.
@@ -94,31 +94,35 @@ That is the correct authorization rule for reading a signature asset, matching A
 
 ---
 
-## 3. Live Supabase bucket preflight — CONFIRMED
+## 3. Live Supabase bucket preflight — CONFIRMED (after correction)
 
 **Repository evidence cannot prove the live bucket exists or is private.** There is no `createBucket` call,
 no storage SQL, and no migration anywhere in the repository. The bucket name appears only as the constant
 `STORAGE_BUCKETS.PERSONNEL_SIGNATURES` (`src/lib/constants.ts:35`), inside the proxy route, and in
-documentation prose. These five properties are therefore verifiable only against the live project, by the
-operator, and never by the implementer.
+documentation prose. These five properties are therefore verifiable only against the live project.
 
-**Status: all five checks were confirmed by the operator on 2026-08-19 in project `ruxsmcypeisbkotibzfs`.**
+**Preflight history — the first confirmation was inaccurate, and that is recorded deliberately.**
+An initial round reported all five checks as confirmed. Live acceptance then failed at the first upload with
+`Bucket not found`, and a read-only probe showed **zero buckets** in `ruxsmcypeisbkotibzfs`. The bucket was
+created manually by the operator. A second verification found `allowed_mime_types` still `null` rather than
+`image/png`; that restriction was then corrected manually. Only after both corrections did all five verify.
 
-| # | Check | Result |
+**Status: all five verified live on 2026-08-19, after the corrections above.**
+
+| # | Check | Verified value |
 |---|---|---|
-| 1 | Bucket `personnel-signatures` **exists** | **Confirmed** |
-| 2 | **Public = false** | **Confirmed** |
-| 3 | **Allowed MIME types = `image/png`** | **Confirmed** |
-| 4 | **File size limit = 2 MB** | **Confirmed** |
-| 5 | **No anon or authenticated Storage policy granting direct read** | **Confirmed** |
+| 1 | Bucket `personnel-signatures` exists | present |
+| 2 | Public = false | `public: false` |
+| 3 | Allowed MIME types = `image/png` | `["image/png"]` |
+| 4 | File size limit = 2 MB | `2097152` |
+| 5 | No anon/authenticated direct read | anon download denied; public URL 400 |
 
-This preflight gate is therefore **satisfied**, and it is the only reason it existed — Big Pickle may
-proceed on this point without further action.
+Check 5 was proven against a **real uploaded object** with a positive control: the service credential
+downloaded it successfully while the anon credential was denied. An empty-list result alone is not evidence,
+because storage RLS filters rows rather than erroring.
 
-**Big Pickle must still never create, alter, or configure the bucket.** Provisioning and reconfiguration
-remain operator actions. If any of the five properties is later observed to differ from the table above —
-for example an upload rejected as an unsupported MIME type, or an object readable without a session — that
-is a **stop and report** condition, not something to work around in code.
+**Big Pickle must never create, alter, or configure the bucket.** Provisioning and reconfiguration remain
+operator actions. If any property is later observed to differ, that is a **stop and report** condition.
 
 ---
 
@@ -146,8 +150,9 @@ is a **stop and report** condition, not something to work around in code.
 
 - `architecture/PRODUCTION_DEPLOYMENT_ARCHITECTURE.md` — see §15. Its §5.2 token wording conflict is
   recorded for post-acceptance documentation sync and must **not** be edited during implementation.
-- `src/lib/supabase/client.ts` — after the proxy rewrite this module has no remaining consumer in `src/`.
-  **Leave it in place.** Removing it is out of scope and would widen the diff for no security benefit.
+- `src/lib/supabase/client.ts` — **leave it in place.** It retains a consumer
+  (`src/repositories/supabase-auto-suggestion-repository.ts`), so it is not dead code, and removing it is out
+  of scope regardless. An earlier revision of this handoff wrongly described it as unused.
 
 ---
 
@@ -405,7 +410,7 @@ retained or retired; park acceptance personnel **inactive** so they cannot reach
   sync; do not edit the file during implementation.**
 - **Fixing the `verify-checkpoint-b4.ts` invocation quirk** described in §11 — pre-existing, unrelated, and
   explicitly deferred.
-- Deleting `src/lib/supabase/client.ts`, even though it becomes unused.
+- Deleting `src/lib/supabase/client.ts` — it still has a consumer and is not unused.
 - Orphaned-object garbage collection.
 - Signatures for Medical Technologists, or on any non-Pathologist slot, ever.
 - Re-rendering, back-filling, or migrating historical reports.

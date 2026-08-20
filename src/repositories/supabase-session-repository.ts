@@ -146,10 +146,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async getRecentSessionsWithOwnership(
-    limit = 50
+    limit = 50,
+    search?: string
   ): Promise<{ session: PatientReportSessionAggregate; ownedByCaller: boolean }[]> {
     const caller = this.requireCaller();
-    const sessions = await this.getRecentSessions(limit);
+    const sessions = await this.getRecentSessions(limit, search);
     const { data, error } = await supabaseServer
       .from("patient_report_sessions")
       .select("id, created_by_user_id")
@@ -167,9 +168,9 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     }));
   }
 
-  async getRecentSessions(limit = 50): Promise<PatientReportSessionAggregate[]> {
+  async getRecentSessions(limit = 50, search?: string): Promise<PatientReportSessionAggregate[]> {
     const retentionTimestamp = new Date().toISOString();
-    const { data, error } = await this.applyDraftOwnershipScope(
+    const query = this.applyDraftOwnershipScope(
       supabaseServer
         .from("patient_report_sessions")
         .select(`
@@ -183,6 +184,9 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         .order("created_at", { ascending: false })
         .limit(limit)
     ).or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`);
+    const { data, error } = await (search
+      ? query.like("accession_number", `${search}%`)
+      : query);
 
     if (error) throw error;
     if (!data) throw new Error("Supabase session history query returned no data.");

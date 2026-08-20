@@ -83,6 +83,7 @@ const sessionMutationInputSchema = z.object({
 
 const recentSessionsInputSchema = z.object({
   limit: z.number().int().min(1).max(100),
+  search: z.string().trim().min(1).max(24).regex(/^[A-Za-z0-9-]+$/).transform((value) => value.toUpperCase()).optional(),
 }).strict();
 
 const registryTemplateInputSchema = z.object({
@@ -98,7 +99,7 @@ export function parseSessionMutationInput(input: unknown): IPatientReportSession
   return sessionMutationInputSchema.parse(input).session as unknown as IPatientReportSession;
 }
 
-export function parseRecentSessionsInput(input: unknown): { limit: number } {
+export function parseRecentSessionsInput(input: unknown): { limit: number; search?: string } {
   assertNoOwnershipFields(input);
   return recentSessionsInputSchema.parse(input);
 }

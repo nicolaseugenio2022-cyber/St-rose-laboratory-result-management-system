@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -50,6 +50,10 @@ type SortKey = "accession" | "patient" | "date" | "retention";
 type SortDirection = "ascending" | "descending";
 
 const TABLE_COLUMN_COUNT = 9;
+
+function matchesSearchTerm(value: unknown, normalizedQuery: string) {
+  return typeof value === "string" && value.toLowerCase().includes(normalizedQuery);
+}
 
 function compareOptionalStrings(
   leftValue: string | null | undefined,
@@ -145,6 +149,12 @@ export function SessionHistoryView() {
   const router = useRouter();
   const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const trimmedSearchQuery = searchQuery.trim();
+  const accessionSearch =
+    trimmedSearchQuery.length > 0 && /^[A-Za-z0-9-]+$/.test(trimmedSearchQuery)
+      ? trimmedSearchQuery
+      : undefined;
+  const [debouncedAccessionSearch, setDebouncedAccessionSearch] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Draft" | "Completed">("ALL");
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -154,41 +164,63 @@ export function SessionHistoryView() {
     direction: "descending",
   });
 
-  // Load session history
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listRecentSessionsAction({ limit: 50 });
-      setEntries(
-        data.map((entry) => ({
-          session: fromSessionTransport(entry.session),
-          canReopen: entry.canReopen,
-        }))
-      );
-      setLoadError(null);
-    } catch (error: unknown) {
-      setLoadError(
-        error instanceof Error ? error.message : "Session history could not be loaded."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    const debounceId = window.setTimeout(() => {
+      setDebouncedAccessionSearch(accessionSearch);
+    }, 300);
 
-  const hasActiveSearch = searchQuery.length > 0;
+    return () => window.clearTimeout(debounceId);
+  }, [accessionSearch]);
+
+  // Load session history, discarding any response superseded by a newer debounced search.
+  useEffect(() => {
+    let superseded = false;
+
+    const loadHistory = async () => {
+      setLoading(true);
+      try {
+        const data = await listRecentSessionsAction(
+          debouncedAccessionSearch
+            ? { limit: 50, search: debouncedAccessionSearch }
+            : { limit: 50 }
+        );
+        if (superseded) return;
+        setEntries(
+          data.map((entry) => ({
+            session: fromSessionTransport(entry.session),
+            canReopen: entry.canReopen,
+          }))
+        );
+        setLoadError(null);
+      } catch (error: unknown) {
+        if (superseded) return;
+        setLoadError(
+          error instanceof Error ? error.message : "Session history could not be loaded."
+        );
+      } finally {
+        if (!superseded) setLoading(false);
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      superseded = true;
+    };
+  }, [debouncedAccessionSearch]);
+
+  const hasActiveSearch = trimmedSearchQuery.length > 0;
+  const hasActiveAccessionSearch = accessionSearch !== undefined;
+  const serverSearchPending = accessionSearch !== debouncedAccessionSearch;
 
   // Filter and sort the complete entries so reopen eligibility always travels with its session.
   const filteredEntries = useMemo(() => {
     const filtered = entries.filter(({ session: s }) => {
       const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
-        s.accessionNumber?.toLowerCase().includes(q) === true ||
-        s.demographics.fullName.toLowerCase().includes(q) ||
-        s.demographics.requestingPhysician.toLowerCase().includes(q);
+        q.length === 0 ||
+        matchesSearchTerm(s.accessionNumber, q) ||
+        matchesSearchTerm(s.demographics.fullName, q) ||
+        matchesSearchTerm(s.demographics.requestingPhysician, q);
 
       const matchesStatus = statusFilter === "ALL" || s.status === statusFilter;
 
@@ -299,8 +331,8 @@ export function SessionHistoryView() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by Accession Number (e.g. SR-20260807-0001), Patient Name, or Physician..."
-                aria-label="Search loaded session history"
+                placeholder="Search accession prefix, patient name, or physician..."
+                aria-label="Search session history by accession prefix, patient name, or physician"
                 className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
               />
             </div>
@@ -324,15 +356,21 @@ export function SessionHistoryView() {
         </div>
         <div className="flex flex-col gap-1 text-xs text-brand-text-muted sm:flex-row sm:items-center sm:justify-between">
           <p aria-live="polite">
-            Showing {filteredEntries.length} of {entries.length} loaded sessions
+            {hasActiveAccessionSearch
+              ? `Showing ${filteredEntries.length} of ${entries.length} accession matches returned`
+              : `Showing ${filteredEntries.length} of ${entries.length} loaded sessions`}
           </p>
-          <p>Up to the newest 50 sessions are currently loaded. Search covers only these loaded sessions.</p>
+          {hasActiveAccessionSearch ? (
+            <p>Accession numbers are matched by prefix across retained sessions you can access; up to 50 matches are returned.</p>
+          ) : (
+            <p>Up to the newest 50 sessions are currently loaded. Patient-name and physician matching covers only these loaded sessions; valid accession prefixes search retained history server-side.</p>
+          )}
         </div>
       </div>
 
       {/* Session Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        {loading ? (
+        {loading || serverSearchPending ? (
           <HistoryTableSkeleton />
         ) : loadError ? (
           <div className="p-6">
@@ -344,8 +382,14 @@ export function SessionHistoryView() {
           hasActiveSearch ? (
             <EmptyState
               icon={SearchX}
-              title="No matches in loaded sessions"
-              description="Your search matched nothing in the sessions currently loaded. Older sessions or other records may still exist."
+              title={hasActiveAccessionSearch ? "No matching accession number" : "No matches in loaded sessions"}
+              description={
+                hasActiveAccessionSearch
+                  ? statusFilter === "ALL"
+                    ? "No session visible within the retention window matches this accession prefix."
+                    : `No visible ${statusFilter.toLowerCase()} session within the retention window matches this accession prefix.`
+                  : "This search matched nothing among the newest 50 loaded sessions. Patient-name and physician searches do not search older sessions."
+              }
               action={
                 <Button type="button" variant="outline" size="sm" onClick={() => setSearchQuery("")}>
                   Clear search

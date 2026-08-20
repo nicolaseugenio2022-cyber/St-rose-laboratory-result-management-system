@@ -91,9 +91,9 @@ export async function listRecentSessionsAction(
   input: unknown
 ): Promise<SessionHistoryEntryTransport[]> {
   const caller = await requireOperationalCaller();
-  const { limit } = parseRecentSessionsInput(input);
+  const { limit, search } = parseRecentSessionsInput(input);
   const repository = new SupabasePatientReportSessionRepository(caller);
-  const sessions = await repository.getRecentSessionsWithOwnership(limit);
+  const sessions = await repository.getRecentSessionsWithOwnership(limit, search);
   return sessions.map((entry) => ({
     session: toSessionTransport(entry.session),
     canReopen: entry.ownedByCaller,

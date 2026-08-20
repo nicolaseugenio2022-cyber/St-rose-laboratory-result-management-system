@@ -38,7 +38,7 @@ export function ParameterRow({
     <div
       data-parameter-row
       className={cn(
-        "grid grid-cols-1 gap-2 rounded-lg border px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center",
+        "grid grid-cols-1 gap-2 rounded-lg border px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center xl:grid-cols-[minmax(260px,1fr)_minmax(200px,280px)_minmax(56px,auto)_minmax(88px,auto)]",
         isSelected
           ? "border-slate-200 bg-transparent shadow-sm hover:border-slate-300"
           : "border-slate-200/80 bg-slate-50/80 opacity-60"

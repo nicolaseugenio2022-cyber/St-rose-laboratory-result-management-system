@@ -37,6 +37,9 @@ import {
   saveWorkspaceRecovery,
 } from "./workspace-recovery";
 
+// Shared workspace container: fluid width with a readability cap (UX2-A).
+const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
+
 export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
@@ -424,7 +427,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   // session than the one requested.
   if (reopenStatus === "loading" || reopenStatus === "failed") {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-100/60 p-4">
+      <div className="h-dvh w-full flex items-center justify-center bg-slate-100/60 p-4">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm max-w-md w-full p-6 space-y-4 text-center">
           {reopenStatus === "loading" ? (
             <>
@@ -475,11 +478,11 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-100/60">
+    <div className="h-dvh w-full overflow-hidden flex flex-col bg-slate-100/60">
       {/* Fixed Workspace Top Navigation Bar */}
       <header className="h-14 bg-white border-b border-slate-200 shadow-sm px-4 flex items-center shrink-0 z-30">
-        <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className={`${WORKSPACE_CONTAINER} flex items-center justify-between gap-3`}>
+          <div className="flex items-center gap-3 min-w-0">
             {/* Back to Dashboard Navigation Button */}
             <button
               type="button"
@@ -501,7 +504,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
               <Menu className="h-5 w-5" />
             </button>
 
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 text-[11px] font-bold font-mono bg-blue-100 text-blue-800 rounded" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
                   {session.accessionNumber ?? "Not assigned"}
@@ -522,14 +525,14 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                   </span>
                 )}
               </div>
-              <h1 className="text-xs sm:text-sm font-bold text-slate-800 leading-tight mt-0.5">
+              <h1 className="text-xs sm:text-sm font-bold text-slate-800 leading-tight mt-0.5 truncate">
                 {session.demographics.fullName || "New Patient Visit Session"}
               </h1>
             </div>
           </div>
 
           {/* Sticky Action Toolbar */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Workspace View Mode Switcher */}
             <div className="bg-slate-100 p-1 rounded-lg flex items-center gap-1 border border-slate-200">
               <button
@@ -542,7 +545,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 }`}
               >
                 <Edit3 className="h-3.5 w-3.5" />
-                Encoding
+                <span className="hidden sm:inline">Encoding</span>
               </button>
               <button
                 type="button"
@@ -554,7 +557,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 }`}
               >
                 <Eye className="h-3.5 w-3.5" />
-                Live Preview
+                <span className="hidden sm:inline">Live Preview</span>
               </button>
             </div>
 
@@ -605,7 +608,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
       {/* Replacement Mode Notice */}
       {isReplacementMode && (
-        <div className="w-full max-w-7xl mx-auto px-4 mt-2 shrink-0">
+        <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
           <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center gap-2 text-xs text-amber-900">
             <RefreshCw className="h-4 w-4 text-amber-700 flex-shrink-0" />
             <span>
@@ -619,7 +622,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
       {/* Validation Banner Notice */}
       {validationError && (
-        <div className="w-full max-w-7xl mx-auto px-4 mt-2 shrink-0">
+        <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
           <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between text-xs text-red-700">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
@@ -637,9 +640,9 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       )}
 
       {/* Main Workspace Dual-Pane Independent Scroll Layout */}
-      <main className="flex-1 overflow-hidden p-3 sm:p-4 max-w-7xl w-full mx-auto">
+      <main className={`flex-1 overflow-hidden p-3 sm:p-4 xl:px-6 ${WORKSPACE_CONTAINER}`}>
         {workspaceMode === "encoding" ? (
-          <div className="h-full flex flex-col lg:flex-row gap-3.5 items-stretch overflow-hidden">
+          <div className="h-full flex flex-col lg:flex-row gap-3 items-stretch overflow-hidden">
             {/* Desktop Left Sidebar: Fixed 280px width Independently Scrollable */}
             <div className="hidden lg:block w-[280px] shrink-0 h-full overflow-hidden">
               <ExaminationCatalog
@@ -680,32 +683,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
             )}
 
             {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-4">
-              {/* Sticky Patient Context Bar inside Encoding Pane */}
-              {session.demographics.fullName && (
-                <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border border-slate-200 shadow-sm py-2 px-3.5 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-700 font-medium">
-                  <div className="flex items-center gap-2 truncate">
-                    <User className="h-3.5 w-3.5 text-brand-primary shrink-0" />
-                    <span className="font-bold text-slate-900 truncate">{session.demographics.fullName}</span>
-                    {session.demographics.sex && session.demographics.age > 0 && (
-                      <span className="text-slate-500 font-mono text-[11px] shrink-0">
-                        • {session.demographics.sex}, {session.demographics.age} y/o
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 text-[11px] font-mono">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-bold" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
-                      {session.accessionNumber ?? "Not assigned"}
-                    </span>
-                    {activeSpec && (
-                      <span className="bg-blue-50 text-blue-800 px-2 py-0.5 rounded border border-blue-200 font-bold">
-                        {activeSpec.template.templateCode}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
+            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-32">
               {/* Patient Demographics Header Card */}
               <PatientDemographicsForm
                 demographics={session.demographics}
@@ -728,15 +706,44 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
               />
 
               {/* Single-Line Horizontal Scrollable Examination Tab Strip */}
-              <SelectedReportsPanel
-                selectedSpecs={selectedSpecs}
-                activeTemplateCode={activeTemplateCode}
-                onSelectActiveTemplate={setActiveTemplateCode}
-                onRemoveTemplate={handleRemoveTemplate}
-                onCloseOtherTemplates={handleCloseOtherTemplates}
-                onClearAllTemplates={handleClearAllTemplates}
-                isDirty={isDirty}
-              />
+              {/* Persistent session context: patient identity + report tab strip (UX2-A) */}
+              <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-3 py-2 space-y-2">
+                <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-700">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <User aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
+                    <span className="truncate font-bold text-slate-900">
+                      {session.demographics.fullName || "New Patient Visit Session"}
+                    </span>
+                    {session.demographics.sex && session.demographics.age > 0 && (
+                      <span className="shrink-0 font-mono text-[11px] text-slate-500">
+                        • {session.demographics.sex}, {session.demographics.age} y/o
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]">
+                    <span
+                      className="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 font-bold text-slate-700"
+                      title={session.accessionNumber === null ? "Accession not assigned" : undefined}
+                    >
+                      {session.accessionNumber ?? "Not assigned"}
+                    </span>
+                    {activeSpec && (
+                      <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-bold text-blue-800">
+                        {activeSpec.template.templateCode}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <SelectedReportsPanel
+                  selectedSpecs={selectedSpecs}
+                  activeTemplateCode={activeTemplateCode}
+                  onSelectActiveTemplate={setActiveTemplateCode}
+                  onRemoveTemplate={handleRemoveTemplate}
+                  onCloseOtherTemplates={handleCloseOtherTemplates}
+                  onClearAllTemplates={handleClearAllTemplates}
+                  isDirty={isDirty}
+                />
+              </div>
 
               {/* Dynamic Result Form Dispatcher */}
               {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (

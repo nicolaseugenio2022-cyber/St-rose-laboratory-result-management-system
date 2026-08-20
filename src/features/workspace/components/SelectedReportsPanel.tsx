@@ -37,7 +37,7 @@ export function SelectedReportsPanel({
 
   if (selectedSpecs.length === 0) {
     return (
-      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 text-center mb-4">
+      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 text-center">
         <p className="text-xs font-bold text-amber-800">No examinations selected.</p>
         <p className="text-xs text-amber-600 mt-1">
           Choose one or more laboratory examinations from the catalog to begin encoding laboratory results.
@@ -54,11 +54,11 @@ export function SelectedReportsPanel({
   };
 
   return (
-    <div className="mb-3">
+    <div>
       {/* Header Info Bar & Actions Dropdown Menu */}
       <div className="flex items-center justify-between px-1 mb-1.5">
         <div className="flex items-center gap-1.5">
-          <Layers className="h-3.5 w-3.5 text-brand-primary" />
+          <Layers aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
           <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
             Active Examination Tabs ({selectedSpecs.length})
           </span>
@@ -146,7 +146,7 @@ export function SelectedReportsPanel({
                   : "bg-slate-100/90 border border-slate-200/80 text-slate-600 hover:bg-slate-200/70 font-medium"
               }`}
             >
-              <span className="truncate max-w-[140px]">{spec.template.templateTitle}</span>
+              <span className="truncate max-w-[180px] xl:max-w-[260px]">{spec.template.templateTitle}</span>
 
               {/* Renderer Badge */}
               <span

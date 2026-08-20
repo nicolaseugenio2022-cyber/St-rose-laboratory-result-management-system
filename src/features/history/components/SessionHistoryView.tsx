@@ -150,8 +150,12 @@ export function SessionHistoryView() {
   const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const trimmedSearchQuery = searchQuery.trim();
+  // Route to the server accession search only for input actually shaped like an accession
+  // prefix (SR-YYYYMMDD-XXXX). The server's validation allowlist is deliberately broader —
+  // it decides what is SAFE to send, not what IS an accession — so reusing it here would
+  // misclassify ordinary names such as "nicolas" and strand patient/physician matching.
   const accessionSearch =
-    trimmedSearchQuery.length > 0 && /^[A-Za-z0-9-]+$/.test(trimmedSearchQuery)
+    trimmedSearchQuery.length > 0 && /^SR-?[0-9-]*$/i.test(trimmedSearchQuery)
       ? trimmedSearchQuery
       : undefined;
   const [debouncedAccessionSearch, setDebouncedAccessionSearch] = useState<string | undefined>();

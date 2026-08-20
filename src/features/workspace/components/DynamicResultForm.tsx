@@ -50,7 +50,13 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
     return (report.results.find((result) => result.parameterCode === parameter.parameterCode) as LaboratoryResultDomain | undefined)?.isSelected ?? true;
   });
 
-  return <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-encoding-report={definition.templateCode}>
+  return <div
+    id={`report-panel-${definition.templateCode}`}
+    role="tabpanel"
+    aria-labelledby={`report-tab-${definition.templateCode}`}
+    className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+    data-encoding-report={definition.templateCode}
+  >
     <div className="border-b border-slate-200 bg-slate-50/90 px-4 py-3">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>

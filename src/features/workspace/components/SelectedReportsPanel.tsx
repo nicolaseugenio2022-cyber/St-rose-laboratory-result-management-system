@@ -23,6 +23,7 @@ export function SelectedReportsPanel({
 }: SelectedReportsPanelProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Close dropdown menu when clicking outside
   useEffect(() => {
@@ -51,6 +52,17 @@ export function SelectedReportsPanel({
     if (window.confirm("Are you sure you want to remove all laboratory examinations from this visit session?")) {
       onClearAllTemplates();
     }
+  };
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex = (currentIndex + direction + selectedSpecs.length) % selectedSpecs.length;
+    const nextCode = selectedSpecs[nextIndex].template.templateCode;
+    onSelectActiveTemplate(nextCode);
+    tabRefs.current[nextCode]?.focus();
   };
 
   return (
@@ -130,32 +142,53 @@ export function SelectedReportsPanel({
       </div>
 
       {/* Browser-style Tab Strip */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
-        {selectedSpecs.map((spec) => {
+      <div
+        role="tablist"
+        aria-label="Selected examination reports"
+        className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200"
+      >
+        {selectedSpecs.map((spec, index) => {
           const code = spec.template.templateCode;
           const isActive = activeTemplateCode === code;
+          const tabId = `report-tab-${code}`;
+          const panelId = `report-panel-${code}`;
 
           return (
             <div
               key={code}
-              onClick={() => onSelectActiveTemplate(code)}
-              title={`${spec.template.templateTitle} (${spec.template.examinationFamily})`}
-              className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs transition-all cursor-pointer select-none ${
+              role="presentation"
+              className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs transition-all select-none ${
                 isActive
                   ? "bg-white border-t-2 border-t-brand-primary border-x border-b-white font-bold text-brand-primary shadow-sm -mb-px"
                   : "bg-slate-100/90 border border-slate-200/80 text-slate-600 hover:bg-slate-200/70 font-medium"
               }`}
             >
-              <span className="truncate max-w-[180px] xl:max-w-[260px]">{spec.template.templateTitle}</span>
-
-              {/* Renderer Badge */}
-              <span
-                className={`text-[9px] font-mono px-1 py-0.5 rounded ${
-                  isActive ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-200/60 text-slate-500"
-                }`}
+              <button
+                ref={(node) => {
+                  tabRefs.current[code] = node;
+                }}
+                id={tabId}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={panelId}
+                tabIndex={isActive || (!activeTemplateCode && index === 0) ? 0 : -1}
+                onClick={() => onSelectActiveTemplate(code)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                title={`${spec.template.templateTitle} (${spec.template.examinationFamily})`}
+                className="flex min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
               >
-                {spec.template.rendererFamily}
-              </span>
+                <span className="truncate max-w-[180px] xl:max-w-[260px]">{spec.template.templateTitle}</span>
+
+                {/* Renderer Badge */}
+                <span
+                  className={`text-[9px] font-mono px-1 py-0.5 rounded ${
+                    isActive ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-200/60 text-slate-500"
+                  }`}
+                >
+                  {spec.template.rendererFamily}
+                </span>
+              </button>
 
               {/* Close Tab (X) Action Button */}
               <button
@@ -168,6 +201,7 @@ export function SelectedReportsPanel({
                   isActive ? "text-slate-400 hover:text-red-600" : "text-slate-400 hover:text-red-600"
                 }`}
                 title="Remove examination tab"
+                aria-label={`Remove ${spec.template.templateTitle} examination tab`}
               >
                 <X className="h-3 w-3" />
               </button>

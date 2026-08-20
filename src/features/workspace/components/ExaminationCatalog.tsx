@@ -219,13 +219,7 @@ export function ExaminationCatalog({
                     return (
                       <div
                         key={code}
-                        onClick={() => {
-                          if (!isSelected) {
-                            onToggleTemplateSelection(code);
-                          }
-                          onSelectTemplate(code);
-                        }}
-                        className={`group relative h-[62px] px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-1.5 shrink-0 ${
+                        className={`group relative h-[62px] px-2.5 py-1.5 rounded-lg border transition-all flex items-center justify-between gap-1.5 shrink-0 ${
                           isActive
                             ? "bg-blue-50/50 border-l-2 border-l-brand-primary border-y-slate-200/80 border-r-slate-200/80 shadow-sm"
                             : isSelected
@@ -233,7 +227,16 @@ export function ExaminationCatalog({
                             : "bg-white border-slate-200/80 hover:border-blue-300/80 hover:shadow-sm hover:bg-blue-50/10"
                         }`}
                       >
-                        <div className="flex flex-col justify-between min-w-0 flex-1 h-full py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isSelected) {
+                              onToggleTemplateSelection(code);
+                            }
+                            onSelectTemplate(code);
+                          }}
+                          className="flex min-w-0 flex-1 h-full cursor-pointer flex-col justify-between py-0.5 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+                        >
                           {/* Row 1: Primary Title (Catalog Display Title from Template Metadata) */}
                           <span
                             className={`text-xs leading-tight block truncate ${
@@ -254,11 +257,12 @@ export function ExaminationCatalog({
                               {rendererLabel}
                             </span>
                           </div>
-                        </div>
+                        </button>
 
                         {/* Softened Guidance Selection Control Button (~15% Weight Reduction) */}
                         <button
                           type="button"
+                          tabIndex={-1}
                           onClick={(e) => {
                             e.stopPropagation();
                             onToggleTemplateSelection(code);
@@ -269,6 +273,7 @@ export function ExaminationCatalog({
                               : "bg-slate-50/80 text-slate-400/80 border-slate-200/60 hover:bg-slate-100 hover:text-slate-600"
                           }`}
                           title={isSelected ? "Deselect Examination" : "Select Examination"}
+                          aria-label={`${isSelected ? "Deselect" : "Select"} ${displayTitle}`}
                         >
                           {isSelected ? <Check className="h-2.5 w-2.5 stroke-[2]" /> : <Plus className="h-2.5 w-2.5" />}
                         </button>

@@ -73,6 +73,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationFocusTarget, setValidationFocusTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [isReplacementMode, setIsReplacementMode] = useState<boolean>(false);
@@ -120,6 +121,21 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
         );
       });
   }, []);
+
+  useEffect(() => {
+    if (!validationFocusTarget || workspaceMode !== "encoding") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const field = document.getElementById(validationFocusTarget);
+      if (field instanceof HTMLElement) {
+        field.focus({ preventScroll: true });
+        field.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      setValidationFocusTarget(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [validationFocusTarget, workspaceMode]);
 
   // Restore unsaved fresh-workspace input after an accidental refresh. This runs after
   // mount, never in a state initializer: sessionStorage does not exist during the server
@@ -324,7 +340,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   );
 
   // Manual save draft handler
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = useCallback(async () => {
     setSaveStatus("saving");
     try {
       const saved = await saveDraftAction({ session: toSessionTransport(session) });
@@ -337,16 +353,20 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       setSaveStatus("unsaved");
       setValidationError("Failed to save draft session.");
     }
-  };
+  }, [session]);
 
   // Complete session handler
   const handleCompleteSession = async () => {
     if (!session.demographics.fullName.trim()) {
       setValidationError("Patient Name is required before completing session.");
+      setWorkspaceMode("encoding");
+      setValidationFocusTarget("patient-full-name");
       return;
     }
     if (!session.demographics.sex) {
       setValidationError("Patient Sex is required before completing session.");
+      setWorkspaceMode("encoding");
+      setValidationFocusTarget("patient-sex");
       return;
     }
 
@@ -373,10 +393,14 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const handleReplaceSession = async () => {
     if (!session.demographics.fullName.trim()) {
       setValidationError("Patient Name is required before replacing this report.");
+      setWorkspaceMode("encoding");
+      setValidationFocusTarget("patient-full-name");
       return;
     }
     if (!session.demographics.sex) {
       setValidationError("Patient Sex is required before replacing this report.");
+      setWorkspaceMode("encoding");
+      setValidationFocusTarget("patient-sex");
       return;
     }
 
@@ -421,6 +445,35 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
+
+  useEffect(() => {
+    const handleWorkspaceShortcut = (event: KeyboardEvent) => {
+      if ((!event.ctrlKey && !event.metaKey) || event.defaultPrevented || showExitModal) return;
+      if (event.target instanceof HTMLTextAreaElement) return;
+
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (!isReplacementMode && !event.repeat && isDirty && saveStatus !== "saving") {
+          void handleSaveDraft();
+        }
+        return;
+      }
+
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const currentIndex = selectedSpecs.findIndex(
+        (spec) => spec.template.templateCode === activeTemplateCode
+      );
+      if (currentIndex < 0 || selectedSpecs.length < 2) return;
+
+      event.preventDefault();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const nextIndex = (currentIndex + direction + selectedSpecs.length) % selectedSpecs.length;
+      setActiveTemplateCode(selectedSpecs[nextIndex].template.templateCode);
+    };
+
+    window.addEventListener("keydown", handleWorkspaceShortcut);
+    return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
+  }, [activeTemplateCode, handleSaveDraft, isDirty, isReplacementMode, saveStatus, selectedSpecs, showExitModal]);
 
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different

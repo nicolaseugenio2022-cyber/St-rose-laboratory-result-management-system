@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
@@ -10,6 +10,7 @@ import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
 import { DynamicResultForm } from "./components/DynamicResultForm";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import {
   completeSessionAction,
@@ -39,6 +40,8 @@ import {
 
 // Shared workspace container: fluid width with a readability cap (UX2-A).
 const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
+
+type WorkspaceConfirmation = "clearAll" | "complete" | "replace";
 
 export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
@@ -74,6 +77,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationFocusTarget, setValidationFocusTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<WorkspaceConfirmation | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [isReplacementMode, setIsReplacementMode] = useState<boolean>(false);
@@ -81,6 +85,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     reopenSessionId ? "loading" : "idle"
   );
   const [reopenError, setReopenError] = useState<string | null>(null);
+  const submissionInFlightRef = useRef(false);
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
@@ -136,6 +141,18 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
     return () => window.cancelAnimationFrame(frame);
   }, [validationFocusTarget, workspaceMode]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   // Restore unsaved fresh-workspace input after an accidental refresh. This runs after
   // mount, never in a state initializer: sessionStorage does not exist during the server
@@ -355,21 +372,70 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     }
   }, [session]);
 
-  // Complete session handler
-  const handleCompleteSession = async () => {
+  const focusDemographicsValidationError = useCallback((message: string, target: "patient-full-name" | "patient-sex") => {
+    setPendingConfirmation(null);
+    setValidationError(message);
+    setWorkspaceMode("encoding");
+    setValidationFocusTarget(target);
+  }, []);
+
+  const requestCompleteConfirmation = useCallback(() => {
     if (!session.demographics.fullName.trim()) {
-      setValidationError("Patient Name is required before completing session.");
-      setWorkspaceMode("encoding");
-      setValidationFocusTarget("patient-full-name");
+      focusDemographicsValidationError(
+        "Patient Name is required before completing session.",
+        "patient-full-name"
+      );
       return;
     }
     if (!session.demographics.sex) {
-      setValidationError("Patient Sex is required before completing session.");
-      setWorkspaceMode("encoding");
-      setValidationFocusTarget("patient-sex");
+      focusDemographicsValidationError(
+        "Patient Sex is required before completing session.",
+        "patient-sex"
+      );
       return;
     }
 
+    setPendingConfirmation("complete");
+  }, [focusDemographicsValidationError, session.demographics.fullName, session.demographics.sex]);
+
+  const requestReplaceConfirmation = useCallback(() => {
+    if (!session.demographics.fullName.trim()) {
+      focusDemographicsValidationError(
+        "Patient Name is required before replacing this report.",
+        "patient-full-name"
+      );
+      return;
+    }
+    if (!session.demographics.sex) {
+      focusDemographicsValidationError(
+        "Patient Sex is required before replacing this report.",
+        "patient-sex"
+      );
+      return;
+    }
+
+    setPendingConfirmation("replace");
+  }, [focusDemographicsValidationError, session.demographics.fullName, session.demographics.sex]);
+
+  // Complete session handler
+  const handleCompleteSession = async () => {
+    if (!session.demographics.fullName.trim()) {
+      focusDemographicsValidationError(
+        "Patient Name is required before completing session.",
+        "patient-full-name"
+      );
+      return;
+    }
+    if (!session.demographics.sex) {
+      focusDemographicsValidationError(
+        "Patient Sex is required before completing session.",
+        "patient-sex"
+      );
+      return;
+    }
+    if (submissionInFlightRef.current) return;
+
+    submissionInFlightRef.current = true;
     setSaveStatus("saving");
     try {
       const completed = await completeSessionAction({ session: toSessionTransport(session) });
@@ -386,24 +452,31 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       } else {
         setValidationError("An unexpected error occurred while completing the session.");
       }
+    } finally {
+      submissionInFlightRef.current = false;
+      setPendingConfirmation(null);
     }
   };
 
   // Replace the completed session wholesale (ADR-006 single-record replacement)
   const handleReplaceSession = async () => {
     if (!session.demographics.fullName.trim()) {
-      setValidationError("Patient Name is required before replacing this report.");
-      setWorkspaceMode("encoding");
-      setValidationFocusTarget("patient-full-name");
+      focusDemographicsValidationError(
+        "Patient Name is required before replacing this report.",
+        "patient-full-name"
+      );
       return;
     }
     if (!session.demographics.sex) {
-      setValidationError("Patient Sex is required before replacing this report.");
-      setWorkspaceMode("encoding");
-      setValidationFocusTarget("patient-sex");
+      focusDemographicsValidationError(
+        "Patient Sex is required before replacing this report.",
+        "patient-sex"
+      );
       return;
     }
+    if (submissionInFlightRef.current) return;
 
+    submissionInFlightRef.current = true;
     setSaveStatus("saving");
     try {
       const replaced = await replaceSessionAction({ session: toSessionTransport(session) });
@@ -419,6 +492,9 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       } else {
         setValidationError("An unexpected error occurred while replacing the report.");
       }
+    } finally {
+      submissionInFlightRef.current = false;
+      setPendingConfirmation(null);
     }
   };
 
@@ -445,16 +521,38 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
+  const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null;
+
+  const handleCancelConfirmation = useCallback(() => {
+    setPendingConfirmation(null);
+  }, []);
+
+  const handleConfirmClearAll = useCallback(() => {
+    handleClearAllTemplates();
+    setPendingConfirmation(null);
+  }, [handleClearAllTemplates]);
 
   useEffect(() => {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
-      if ((!event.ctrlKey && !event.metaKey) || event.defaultPrevented || showExitModal) return;
+      if ((!event.ctrlKey && !event.metaKey) || event.defaultPrevented || isWorkspaceDialogOpen) return;
       if (event.target instanceof HTMLTextAreaElement) return;
 
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (!isReplacementMode && !event.repeat && isDirty && saveStatus !== "saving") {
           void handleSaveDraft();
+        }
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (!event.repeat && saveStatus !== "saving") {
+          if (isReplacementMode) {
+            requestReplaceConfirmation();
+          } else if (session.status !== "Completed") {
+            requestCompleteConfirmation();
+          }
         }
         return;
       }
@@ -473,7 +571,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
     window.addEventListener("keydown", handleWorkspaceShortcut);
     return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
-  }, [activeTemplateCode, handleSaveDraft, isDirty, isReplacementMode, saveStatus, selectedSpecs, showExitModal]);
+  }, [activeTemplateCode, handleSaveDraft, isDirty, isReplacementMode, isWorkspaceDialogOpen, requestCompleteConfirmation, requestReplaceConfirmation, saveStatus, selectedSpecs, session.status]);
 
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different
@@ -635,7 +733,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
             {isReplacementMode && (
               <button
                 type="button"
-                onClick={handleReplaceSession}
+                onClick={requestReplaceConfirmation}
                 disabled={saveStatus === "saving"}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 rounded-lg shadow-sm transition-colors"
               >
@@ -648,7 +746,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
             {session.status !== "Completed" && (
               <button
                 type="button"
-                onClick={handleCompleteSession}
+                onClick={requestCompleteConfirmation}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
@@ -793,7 +891,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                   onSelectActiveTemplate={setActiveTemplateCode}
                   onRemoveTemplate={handleRemoveTemplate}
                   onCloseOtherTemplates={handleCloseOtherTemplates}
-                  onClearAllTemplates={handleClearAllTemplates}
+                  onClearAllTemplates={() => setPendingConfirmation("clearAll")}
                   isDirty={isDirty}
                 />
               </div>
@@ -846,6 +944,39 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        isOpen={pendingConfirmation === "complete"}
+        onCancel={handleCancelConfirmation}
+        onConfirm={() => void handleCompleteSession()}
+        title="Complete Session?"
+        description={`Complete the session for ${session.demographics.fullName.trim()} with ${selectedSpecs.length} laboratory report${selectedSpecs.length === 1 ? "" : "s"}, assigning its accession number and freezing the completed report snapshot.`}
+        confirmLabel="Complete Session"
+        pendingLabel="Completing..."
+        isPending={pendingConfirmation === "complete" && saveStatus === "saving"}
+      />
+
+      <ConfirmDialog
+        isOpen={pendingConfirmation === "replace"}
+        onCancel={handleCancelConfirmation}
+        onConfirm={() => void handleReplaceSession()}
+        title="Replace Completed Report?"
+        description={`Replace completed report ${session.accessionNumber ?? "Not assigned"} and permanently overwrite its prior content, which cannot be recovered.`}
+        confirmLabel="Replace Report"
+        pendingLabel="Replacing..."
+        variant="destructive"
+        isPending={pendingConfirmation === "replace" && saveStatus === "saving"}
+      />
+
+      <ConfirmDialog
+        isOpen={pendingConfirmation === "clearAll"}
+        onCancel={handleCancelConfirmation}
+        onConfirm={handleConfirmClearAll}
+        title="Clear All Examinations?"
+        description="Are you sure you want to remove all laboratory examinations from this visit session?"
+        confirmLabel="Clear All"
+        variant="destructive"
+      />
 
       {/* Unsaved Changes Exit Confirmation Modal */}
       {showExitModal && (

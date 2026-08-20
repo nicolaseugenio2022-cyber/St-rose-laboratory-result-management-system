@@ -47,11 +47,9 @@ export function SelectedReportsPanel({
     );
   }
 
-  const handleClearAllWithConfirm = () => {
+  const handleRequestClearAll = () => {
     setIsMenuOpen(false);
-    if (window.confirm("Are you sure you want to remove all laboratory examinations from this visit session?")) {
-      onClearAllTemplates();
-    }
+    onClearAllTemplates();
   };
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
@@ -130,7 +128,7 @@ export function SelectedReportsPanel({
 
               <button
                 type="button"
-                onClick={handleClearAllWithConfirm}
+                onClick={handleRequestClearAll}
                 className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-semibold"
               >
                 <Trash2 className="h-3.5 w-3.5 text-rose-500" />

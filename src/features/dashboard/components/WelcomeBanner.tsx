@@ -34,9 +34,9 @@ export function WelcomeBanner({ profile }: WelcomeBannerProps) {
             <span className="text-xs text-brand-text-muted">v1.0.0</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-brand-text tracking-tight">
+          <h2 className="text-2xl font-bold text-brand-text tracking-tight">
             St. Rose Diagnostic Laboratory
-          </h1>
+          </h2>
 
           <p className="text-xs text-brand-text-muted/90 leading-relaxed">
             {summary}

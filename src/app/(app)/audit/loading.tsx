@@ -2,7 +2,7 @@ import React from "react";
 
 export default function AuditLoading() {
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-pulse">
+    <div className="space-y-6 animate-pulse">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 border-b border-slate-200 pb-5">
         <div>

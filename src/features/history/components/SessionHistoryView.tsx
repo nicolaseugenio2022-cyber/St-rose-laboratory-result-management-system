@@ -64,7 +64,7 @@ export function SessionHistoryView() {
   }, [entries, searchQuery, statusFilter]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
@@ -72,7 +72,7 @@ export function SessionHistoryView() {
             <div className="p-2 rounded-lg bg-blue-50 text-brand-primary">
               <History className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patient Report Session History</h1>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Patient Report Session History</h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
             Search, preview, print, and manage patient laboratory report sessions within the 30-day retention window.

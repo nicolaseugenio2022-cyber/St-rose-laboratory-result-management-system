@@ -14,8 +14,8 @@ export interface DashboardSectionProps {
  * Titled dashboard region.
  *
  * Uses a real <section> with an accessible name so the dashboard has a
- * navigable outline: the page heading is the banner's <h1>, each section is an
- * <h2>. Composition-agnostic — Administrator, Laboratory User and Developer
+ * navigable outline: the shell Header provides the page-level h1, while the
+ * dashboard banner heading and each section heading are <h2>. Composition-agnostic — Administrator, Laboratory User and Developer
  * all compose from this rather than each inventing a section shell.
  */
 export function DashboardSection({

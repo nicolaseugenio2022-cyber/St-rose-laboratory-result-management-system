@@ -11,7 +11,7 @@ import { DynamicResultForm } from "./components/DynamicResultForm";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
+import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 import {
   completeSessionAction,
   getReopenableSessionAction,
@@ -25,6 +25,7 @@ import {
   toSessionTransport,
 } from "@/features/server-boundary/session-transport";
 import { formatDateISO } from "@/lib/utils";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
@@ -39,6 +40,20 @@ import {
 
 // Shared workspace container: fluid width with a readability cap (UX2-A).
 const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
+
+const SharedRenderingEngine = dynamic(
+  () =>
+    import("@/rendering/SharedRenderingEngine").then(
+      (renderingModule) => renderingModule.SharedRenderingEngine
+    ),
+  {
+    loading: () => (
+      <SkeletonRegion isLoading label="Loading report preview">
+        <Skeleton className="mx-auto h-[70vh] min-h-96 w-full max-w-[210mm]" />
+      </SkeletonRegion>
+    ),
+  }
+);
 
 type WorkspaceConfirmation = "clearAll" | "complete" | "replace";
 

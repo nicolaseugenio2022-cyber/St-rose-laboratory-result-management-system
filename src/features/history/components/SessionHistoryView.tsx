@@ -1,18 +1,145 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  Calendar,
+  Clock,
+  Edit3,
+  Eye,
+  History,
+  ListFilter,
+  Search,
+  SearchX,
+  X,
+} from "lucide-react";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
 import { fromSessionTransport } from "@/features/server-boundary/session-transport";
-import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
-import { Search, History, Eye, Edit3, Calendar, FileText, CheckCircle2, Clock, X } from "lucide-react";
 import { formatDateISO } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
+import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+
+const SharedRenderingEngine = dynamic(
+  () =>
+    import("@/rendering/SharedRenderingEngine").then(
+      (renderingModule) => renderingModule.SharedRenderingEngine
+    ),
+  {
+    loading: () => (
+      <SkeletonRegion isLoading label="Loading report preview">
+        <Skeleton className="mx-auto h-[70vh] min-h-96 w-full max-w-[210mm]" />
+      </SkeletonRegion>
+    ),
+  }
+);
 
 type SessionHistoryEntry = {
   session: PatientReportSessionAggregate;
   canReopen: boolean;
 };
+
+type SortKey = "accession" | "patient" | "date" | "retention";
+type SortDirection = "ascending" | "descending";
+
+const TABLE_COLUMN_COUNT = 9;
+
+function compareOptionalStrings(
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+  direction: SortDirection
+) {
+  const left = typeof leftValue === "string" && leftValue.length > 0 ? leftValue : null;
+  const right = typeof rightValue === "string" && rightValue.length > 0 ? rightValue : null;
+
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+
+  const comparison = left.localeCompare(right);
+  return direction === "ascending" ? comparison : -comparison;
+}
+
+function localCalendarDayNumber(value: Date) {
+  const localMidnight = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  return Date.UTC(
+    localMidnight.getFullYear(),
+    localMidnight.getMonth(),
+    localMidnight.getDate()
+  );
+}
+
+function getRetentionDetails(session: PatientReportSessionAggregate) {
+  if (session.status === "Draft" || !session.expiresAt) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  const calendarDaysRemaining = Math.round(
+    (localCalendarDayNumber(new Date(session.expiresAt)) - localCalendarDayNumber(new Date())) /
+      millisecondsPerDay
+  );
+  const daysRemaining = Math.max(0, calendarDaysRemaining);
+  const label =
+    daysRemaining === 0
+      ? "Expires today"
+      : daysRemaining === 1
+        ? "Expires tomorrow"
+        : `Expires in ${daysRemaining} days`;
+
+  if (daysRemaining <= 2) {
+    return {
+      label,
+      icon: AlertTriangle,
+      className: "border-brand-danger-border bg-brand-danger-bg text-brand-danger",
+    };
+  }
+
+  if (daysRemaining <= 7) {
+    return {
+      label,
+      icon: Clock,
+      className: "border-brand-warning-border bg-brand-warning-bg text-brand-warning",
+    };
+  }
+
+  return { label, icon: null, className: "text-brand-text-muted" };
+}
+
+function HistoryTableSkeleton() {
+  return (
+    <SkeletonRegion isLoading label="Loading session history" className="overflow-x-auto">
+      <table className="w-full min-w-[960px] border-collapse text-left text-xs">
+        <caption className="sr-only">Loading patient report session history</caption>
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50">
+            {Array.from({ length: TABLE_COLUMN_COUNT }).map((_, columnIndex) => (
+              <th key={columnIndex} className="px-4 py-3">
+                <Skeleton className="h-3 w-20" />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {Array.from({ length: 5 }).map((_, rowIndex) => (
+            <tr key={rowIndex}>
+              {Array.from({ length: TABLE_COLUMN_COUNT }).map((__, columnIndex) => (
+                <td key={columnIndex} className="px-4 py-3">
+                  <Skeleton className="h-4 w-full" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </SkeletonRegion>
+  );
+}
 
 export function SessionHistoryView() {
   const router = useRouter();
@@ -22,6 +149,10 @@ export function SessionHistoryView() {
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
+    key: "date",
+    direction: "descending",
+  });
 
   // Load session history
   const loadHistory = useCallback(async () => {
@@ -48,10 +179,12 @@ export function SessionHistoryView() {
     loadHistory();
   }, [loadHistory]);
 
-  // Memoized filtered session list to prevent array filtering on unrelated state changes
+  const hasActiveSearch = searchQuery.length > 0;
+
+  // Filter and sort the complete entries so reopen eligibility always travels with its session.
   const filteredEntries = useMemo(() => {
-    return entries.filter(({ session: s }) => {
-      const q = searchQuery.toLowerCase();
+    const filtered = entries.filter(({ session: s }) => {
+      const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
         s.accessionNumber?.toLowerCase().includes(q) === true ||
         s.demographics.fullName.toLowerCase().includes(q) ||
@@ -61,7 +194,52 @@ export function SessionHistoryView() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [entries, searchQuery, statusFilter]);
+
+    return [...filtered].sort((left, right) => {
+      const leftSession = left.session;
+      const rightSession = right.session;
+      let comparison = 0;
+
+      if (sort.key === "accession") {
+        comparison = (leftSession.accessionNumber ?? "").localeCompare(
+          rightSession.accessionNumber ?? ""
+        );
+      } else if (sort.key === "patient") {
+        return compareOptionalStrings(
+          leftSession.demographics.fullName,
+          rightSession.demographics.fullName,
+          sort.direction
+        );
+      } else if (sort.key === "date") {
+        return compareOptionalStrings(
+          leftSession.demographics.examinationDate,
+          rightSession.demographics.examinationDate,
+          sort.direction
+        );
+      } else {
+        const leftExpiry = leftSession.expiresAt
+          ? localCalendarDayNumber(new Date(leftSession.expiresAt))
+          : Number.POSITIVE_INFINITY;
+        const rightExpiry = rightSession.expiresAt
+          ? localCalendarDayNumber(new Date(rightSession.expiresAt))
+          : Number.POSITIVE_INFINITY;
+        comparison = leftExpiry - rightExpiry;
+      }
+
+      return sort.direction === "ascending" ? comparison : -comparison;
+    });
+  }, [entries, searchQuery, sort, statusFilter]);
+
+  const updateSort = (key: SortKey) => {
+    setSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "ascending" ? "descending" : "ascending",
+    }));
+  };
+
+  const ariaSort = (key: SortKey): SortDirection | "none" =>
+    sort.key === key ? sort.direction : "none";
 
   return (
     <div className="space-y-6 pb-12">
@@ -112,46 +290,118 @@ export function SessionHistoryView() {
       </div>
 
       {/* Search Toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by Accession Number (e.g. SR-20260807-0001), Patient Name, or Physician..."
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary"
-          />
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by Accession Number (e.g. SR-20260807-0001), Patient Name, or Physician..."
+                aria-label="Search loaded session history"
+                className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+              />
+            </div>
+            {hasActiveSearch && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear session history search"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                Clear search
+              </Button>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
+            <Calendar className="h-4 w-4 text-slate-400" aria-hidden="true" />
+            <span>Today: {formatDateISO()}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-medium shrink-0">
-          <Calendar className="h-4 w-4 text-slate-400" />
-          <span>Today: {formatDateISO()}</span>
+        <div className="flex flex-col gap-1 text-xs text-brand-text-muted sm:flex-row sm:items-center sm:justify-between">
+          <p aria-live="polite">
+            Showing {filteredEntries.length} of {entries.length} loaded sessions
+          </p>
+          <p>Up to the newest 50 sessions are currently loaded. Search covers only these loaded sessions.</p>
         </div>
       </div>
 
       {/* Session Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
-          <div className="p-8 text-center text-slate-400 text-xs">Loading session history...</div>
+          <HistoryTableSkeleton />
         ) : loadError ? (
-          <div className="p-12 text-center text-rose-700 text-xs">
-            Session history could not be loaded: {loadError}
+          <div className="p-6">
+            <Alert variant="destructive">
+              Session history could not be loaded: {loadError}
+            </Alert>
           </div>
         ) : filteredEntries.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            No patient report sessions found matching query &apos;{searchQuery}&apos;.
-          </div>
+          hasActiveSearch ? (
+            <EmptyState
+              icon={SearchX}
+              title="No matches in loaded sessions"
+              description="Your search matched nothing in the sessions currently loaded. Older sessions or other records may still exist."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => setSearchQuery("")}>
+                  Clear search
+                </Button>
+              }
+              headingLevel={3}
+            />
+          ) : statusFilter !== "ALL" ? (
+            <EmptyState
+              icon={ListFilter}
+              title="No sessions with this status"
+              description={`No ${statusFilter.toLowerCase()} sessions are present in the sessions currently loaded.`}
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => setStatusFilter("ALL")}>
+                  Show all
+                </Button>
+              }
+              headingLevel={3}
+            />
+          ) : (
+            <EmptyState
+              icon={History}
+              title="No session history yet"
+              description="Patient report sessions will appear here after they are created."
+              headingLevel={3}
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="w-full min-w-[960px] border-collapse text-left text-xs">
+              <caption className="sr-only">Patient report session history</caption>
               <thead>
                 <tr className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[10px]">
-                  <th className="py-3 px-4">ACCESSION NO</th>
-                  <th className="py-3 px-4">PATIENT NAME</th>
+                  <th className="py-3 px-4" aria-sort={ariaSort("accession")}>
+                    <button type="button" onClick={() => updateSort("accession")} aria-label="Sort by accession number" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
+                      ACCESSION NO <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="py-3 px-4" aria-sort={ariaSort("patient")}>
+                    <button type="button" onClick={() => updateSort("patient")} aria-label="Sort by patient name" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
+                      PATIENT NAME <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </th>
                   <th className="py-3 px-4">AGE / SEX</th>
                   <th className="py-3 px-4">TESTS</th>
                   <th className="py-3 px-4">PHYSICIAN</th>
-                  <th className="py-3 px-4">DATE</th>
+                  <th className="py-3 px-4" aria-sort={ariaSort("date")}>
+                    <button type="button" onClick={() => updateSort("date")} aria-label="Sort by examination date" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
+                      DATE <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="py-3 px-4" aria-sort={ariaSort("retention")}>
+                    <button type="button" onClick={() => updateSort("retention")} aria-label="Sort by retention expiry" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
+                      RETENTION <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </th>
                   <th className="py-3 px-4">STATUS</th>
                   <th className="py-3 px-4 text-right">ACTIONS</th>
                 </tr>
@@ -159,59 +409,41 @@ export function SessionHistoryView() {
               <tbody className="divide-y divide-slate-100">
                 {filteredEntries.map(({ session: sess, canReopen }) => {
                   const isCompleted = sess.status === "Completed";
+                  const retention = getRetentionDetails(sess);
+                  const RetentionIcon = retention?.icon;
 
                   return (
                     <tr key={sess.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-900">
-                        {sess.accessionNumber}
-                      </td>
-                      <td className="py-3 px-4 font-bold text-slate-900 uppercase">
-                        {sess.demographics.fullName || "Unnamed Patient"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
-                      </td>
+                      <td className="py-3 px-4 font-mono font-bold text-blue-900">{sess.accessionNumber}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 uppercase">{sess.demographics.fullName || "Unnamed Patient"}</td>
+                      <td className="py-3 px-4 text-slate-600">{sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}</td>
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
                           {sess.reports.map((r) => (
-                            <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">
-                              {r.templateCode}
-                            </span>
+                            <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-600 truncate max-w-[150px]">
-                        {sess.demographics.requestingPhysician || "—"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                        {sess.demographics.examinationDate}
-                      </td>
+                      <td className="py-3 px-4 text-slate-600 truncate max-w-[150px]">{sess.demographics.requestingPhysician || "—"}</td>
+                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">{sess.demographics.examinationDate || "—"}</td>
                       <td className="py-3 px-4">
-                        {isCompleted ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Completed
+                        {retention ? (
+                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
+                            {RetentionIcon && <RetentionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                            {retention.label}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                            <Clock className="h-3 w-3 text-amber-600" /> Draft
-                          </span>
+                          <span aria-label="No retention expiry for a draft">—</span>
                         )}
                       </td>
+                      <td className="py-3 px-4"><StatusBadge status={sess.status} size="sm" /></td>
                       <td className="py-3 px-4 text-right space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewSession(sess)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
+                        <button type="button" onClick={() => setPreviewSession(sess)} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors">
                           <Eye className="h-3.5 w-3.5 text-slate-500" />
                           Preview
                         </button>
                         {canReopen && (
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/workspace?sessionId=${encodeURIComponent(sess.id)}`)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors"
-                          >
+                          <button type="button" onClick={() => router.push(`/workspace?sessionId=${encodeURIComponent(sess.id)}`)} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors">
                             <Edit3 className="h-3.5 w-3.5" />
                             {isCompleted ? "Replace" : "Edit"}
                           </button>
@@ -227,30 +459,19 @@ export function SessionHistoryView() {
       </div>
 
       {/* Report Preview Modal */}
-      {previewSession && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-slate-300 w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
-              <div className="flex items-center gap-2.5">
-                <FileText className="h-5 w-5 text-brand-primary" />
-                <h3 className="text-base font-bold text-slate-900">
-                  Session Preview — {previewSession.accessionNumber}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewSession(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Shared Rendering Engine Output */}
+      <Modal
+        isOpen={previewSession !== null}
+        onClose={() => setPreviewSession(null)}
+        title={`Session Preview — ${previewSession?.accessionNumber ?? ""}`}
+        closeLabel="Close session preview"
+        className="max-h-[90vh] max-w-5xl overflow-hidden"
+      >
+        {previewSession && (
+          <div className="max-h-[calc(90vh-8rem)] overflow-y-auto pr-1">
             <SharedRenderingEngine session={previewSession} targetOutput="ScreenPreview" />
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

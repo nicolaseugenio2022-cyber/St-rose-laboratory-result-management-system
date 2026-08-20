@@ -14,7 +14,6 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SharedRenderingEngine } from "@/rendering/SharedRenderingEngine";
 import {
   completeSessionAction,
-  getRegistryTemplateAction,
   getReopenableSessionAction,
   listActivePersonnelAction,
   listRegistryTemplatesAction,
@@ -225,16 +224,17 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     };
   }, [reopenSessionId]);
 
-  // Load hydrated spec whenever activeTemplateCode changes
+  // Resolve the hydrated spec loaded by the authenticated registry bootstrap.
   useEffect(() => {
     if (!activeTemplateCode) {
       setActiveSpec(null);
       return;
     }
 
-    getRegistryTemplateAction({ templateCode: activeTemplateCode })
-      .then((spec) => {
-        if (spec) {
+    const spec = allActiveTemplates.find(
+      (candidate) => candidate.template.templateCode === activeTemplateCode
+    );
+    if (spec) {
         setActiveSpec(spec);
         const definition = ReportDefinitionRegistry.getDefinition(activeTemplateCode);
         if (!definition) {
@@ -274,14 +274,8 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
               : [...prevSession.reports, encodingReport],
           });
         });
-        }
-      })
-      .catch((error: unknown) => {
-        setValidationError(
-          error instanceof Error ? error.message : "The report template could not be loaded."
-        );
-      });
-  }, [activeTemplateCode, availablePersonnel, isReplacementMode]);
+    }
+  }, [activeTemplateCode, allActiveTemplates, availablePersonnel, isReplacementMode]);
 
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {

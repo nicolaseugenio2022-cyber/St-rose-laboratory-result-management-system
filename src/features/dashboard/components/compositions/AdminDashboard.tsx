@@ -1,6 +1,10 @@
 import React from "react";
 import { ShieldCheck, UserCheck, Users, UserPlus, History } from "lucide-react";
+import Link from "next/link";
 import { WelcomeBanner } from "../WelcomeBanner";
+import { SessionRow } from "../primitives/SessionRow";
+import { EmptyState } from "@/components/ui/EmptyState";
+import type { RecentWork } from "@/features/dashboard/recent-work";
 import { DashboardSection } from "../primitives/DashboardSection";
 import { MetricTile } from "../primitives/MetricTile";
 import { ActionCard } from "../primitives/ActionCard";
@@ -12,6 +16,7 @@ export interface AdminDashboardProps {
   activeUsers: number;
   inactiveUsers: number;
   adminUsers: number;
+  recentWork: RecentWork;
 }
 
 /**
@@ -21,8 +26,11 @@ export interface AdminDashboardProps {
  * The four oversized account-stat cards are replaced by one compact tile row —
  * the same four figures, read at a glance, without consuming the fold.
  *
- * Recent laboratory activity is deliberately absent here: it requires session
- * reads and belongs to UX1-B behind an independent review.
+ * Recent laboratory activity is read through the same authorized operational
+ * path the Laboratory User uses. Administrators see completed activity, but the
+ * repository query scopes drafts to their owner, so an Administrator never sees
+ * another user's unfinished work and gains no reopen power over it — Resume is
+ * rendered only where the server returned `canReopen` for this caller.
  */
 export function AdminDashboard({
   currentUserProfile,
@@ -30,6 +38,7 @@ export function AdminDashboard({
   activeUsers,
   inactiveUsers,
   adminUsers,
+  recentWork,
 }: AdminDashboardProps) {
   return (
     <div className="space-y-6">
@@ -79,15 +88,31 @@ export function AdminDashboard({
         </div>
       </DashboardSection>
 
-      <DashboardSection title="Laboratory">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <ActionCard
+      <DashboardSection
+        title="Recent laboratory activity"
+        description="Most recent completed sessions."
+        action={
+          <Link
             href="/history"
+            className="rounded text-xs font-semibold text-brand-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2"
+          >
+            View all history
+          </Link>
+        }
+      >
+        {recentWork.recentCompleted.length === 0 ? (
+          <EmptyState
             icon={History}
-            title="Completed history"
-            description="Review completed sessions, replacements and exports."
+            title="No recent laboratory activity"
+            description="Completed patient sessions will appear here."
           />
-        </div>
+        ) : (
+          <div className="space-y-2">
+            {recentWork.recentCompleted.slice(0, 6).map((item) => (
+              <SessionRow key={item.id} item={item} showResume />
+            ))}
+          </div>
+        )}
       </DashboardSection>
     </div>
   );

@@ -7,6 +7,8 @@ import { resetUserPasswordAction } from "@/features/server-boundary/user-account
 import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
 import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { UserTable } from "./UserTable";
@@ -26,6 +28,8 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<UserProfile | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<UserProfile | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
@@ -72,8 +76,9 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
   };
 
   const handleToggleStatus = async (user: UserProfile) => {
+    setActionError(null);
     if (user.id === currentUserId && user.status === "Active") {
-      window.alert("You cannot deactivate the currently authenticated account.");
+      setActionError("You cannot deactivate the currently authenticated account.");
       return;
     }
 
@@ -84,7 +89,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
       await loadUsers();
     } catch (err) {
       console.error("Failed to toggle status:", err);
-      window.alert((err as Error)?.message || "Failed to update user status.");
+      setActionError((err as Error)?.message || "Failed to update user status.");
     }
   };
 
@@ -112,15 +117,19 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     }
   };
 
-  const handleDeleteUser = async (user: UserProfile) => {
+  const handleDeleteUser = (user: UserProfile) => {
+    setActionError(null);
     if (user.id === currentUserId) {
-      window.alert("You cannot delete the currently authenticated account.");
+      setActionError("You cannot delete the currently authenticated account.");
       return;
     }
 
-    if (!window.confirm(`Delete user account '${user.username}'? This action cannot be undone.`)) {
-      return;
-    }
+    setPendingDeleteUser(user);
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    const user = pendingDeleteUser;
+    if (!user) return;
 
     setIsDeleting(user.id);
     try {
@@ -128,9 +137,10 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
       await loadUsers();
     } catch (err) {
       console.error("Failed to delete user:", err);
-      window.alert((err as Error)?.message || "Failed to delete user account.");
+      setActionError((err as Error)?.message || "Failed to delete user account.");
     } finally {
       setIsDeleting(null);
+      setPendingDeleteUser(null);
     }
   };
 
@@ -179,6 +189,10 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
         </Button>
       </div>
 
+      {actionError && (
+        <Alert variant="destructive" onDismiss={() => setActionError(null)}>{actionError}</Alert>
+      )}
+
       {/* Filter & Action Toolbar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-brand-surface p-4 rounded-xl border border-brand-border shadow-sm">
         <div className="relative flex-1">
@@ -226,6 +240,18 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
         onClose={handleClosePasswordReset}
         onSubmit={handlePasswordReset}
         isLoading={isResettingPassword}
+      />
+
+      <ConfirmDialog
+        isOpen={pendingDeleteUser !== null}
+        onCancel={() => setPendingDeleteUser(null)}
+        onConfirm={() => void handleConfirmDeleteUser()}
+        title="Delete user account?"
+        description={`Permanently delete the account '${pendingDeleteUser?.username}'. This cannot be undone.`}
+        confirmLabel="Delete account"
+        pendingLabel="Deleting..."
+        variant="destructive"
+        isPending={isDeleting === pendingDeleteUser?.id}
       />
     </div>
   );

@@ -2,7 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Search, Users } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import {
   createDeveloperAccountAction,
@@ -39,6 +41,7 @@ export function DeveloperAccountManagementView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [busyAccountId, setBusyAccountId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingDeleteAccount, setPendingDeleteAccount] = useState<User | null>(null);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -93,14 +96,13 @@ export function DeveloperAccountManagementView({
     }
   };
 
-  const handleDelete = async (account: User) => {
-    if (
-      !window.confirm(
-        `Delete Developer account '${account.username}'? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
+  const handleDelete = (account: User) => {
+    setPendingDeleteAccount(account);
+  };
+
+  const handleConfirmDelete = async () => {
+    const account = pendingDeleteAccount;
+    if (!account) return;
 
     setActionError(null);
     setBusyAccountId(account.id);
@@ -111,6 +113,7 @@ export function DeveloperAccountManagementView({
       setActionError(errorMessage(error, "Failed to delete Developer account."));
     } finally {
       setBusyAccountId(null);
+      setPendingDeleteAccount(null);
     }
   };
 
@@ -150,12 +153,7 @@ export function DeveloperAccountManagementView({
       </div>
 
       {actionError && (
-        <div
-          role="alert"
-          className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700"
-        >
-          {actionError}
-        </div>
+        <Alert variant="destructive" onDismiss={() => setActionError(null)}>{actionError}</Alert>
       )}
 
       <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-sm sm:flex-row sm:items-center">
@@ -209,6 +207,18 @@ export function DeveloperAccountManagementView({
         onResetPassword={(values) =>
           submitAndRefresh(() => resetDeveloperPasswordAction(values))
         }
+      />
+
+      <ConfirmDialog
+        isOpen={pendingDeleteAccount !== null}
+        onCancel={() => setPendingDeleteAccount(null)}
+        onConfirm={() => void handleConfirmDelete()}
+        title="Delete Developer account?"
+        description={`Permanently delete the Developer account '${pendingDeleteAccount?.username}'. This cannot be undone.`}
+        confirmLabel="Delete account"
+        pendingLabel="Deleting..."
+        variant="destructive"
+        isPending={busyAccountId === pendingDeleteAccount?.id}
       />
     </div>
   );

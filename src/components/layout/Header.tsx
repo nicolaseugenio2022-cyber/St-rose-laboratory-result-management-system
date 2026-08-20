@@ -4,14 +4,18 @@ import React, { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, LogOut, KeyRound } from "lucide-react";
 import { navigationConfig } from "@/config/navigation";
+import { formatRoleLabel } from "@/config/roles";
+import { UserRole } from "@/domain/types";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { clearWorkspaceRecovery } from "@/features/workspace/workspace-recovery";
 
 export interface HeaderProps {
   onMenuToggle: () => void;
+  username?: string;
+  role?: UserRole;
 }
 
-export function Header({ onMenuToggle }: HeaderProps) {
+export function Header({ onMenuToggle, username, role }: HeaderProps) {
   const pathname = usePathname();
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
@@ -42,10 +46,19 @@ export function Header({ onMenuToggle }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-brand-success-bg px-2.5 py-1 text-xs font-medium text-brand-success border border-brand-success-border">
-            <span className="h-2 w-2 rounded-full bg-brand-success"></span>
-            System Ready
-          </span>
+          {username && (
+            <div
+              className="hidden min-w-0 max-w-48 flex-col border-r border-brand-border pr-3 sm:flex"
+              aria-label={`Signed in as ${username}`}
+            >
+              <span className="truncate text-sm font-medium text-brand-text" title={username}>
+                {username}
+              </span>
+              <span className="whitespace-nowrap text-xs text-brand-text-muted">
+                {formatRoleLabel(role)}
+              </span>
+            </div>
+          )}
           <button
             onClick={() => setIsChangePasswordOpen(true)}
             className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"

@@ -59,7 +59,7 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
         </div>
 
         {/* Dynamic Navigation Menu */}
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto">
           <NavigationMenu onNavigate={onClose} currentUserRole={currentUserRole} />
         </div>
 

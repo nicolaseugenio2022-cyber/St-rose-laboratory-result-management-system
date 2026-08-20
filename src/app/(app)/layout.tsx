@@ -13,5 +13,12 @@ export default async function AppRouteGroupLayout({
     redirect("/login");
   }
 
-  return <AppShell currentUserRole={currentUserProfile.role}>{children}</AppShell>;
+  return (
+    <AppShell
+      currentUserRole={currentUserProfile.role}
+      username={currentUserProfile.username}
+    >
+      {children}
+    </AppShell>
+  );
 }

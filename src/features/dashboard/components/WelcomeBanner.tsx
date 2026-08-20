@@ -1,6 +1,6 @@
 import React from "react";
-import { Activity, Shield } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
+import { Shield } from "lucide-react";
+import { formatRoleLabel } from "@/config/roles";
 import { IUserProfile } from "@/domain/models/interfaces";
 
 interface WelcomeBannerProps {
@@ -10,7 +10,7 @@ interface WelcomeBannerProps {
 export function WelcomeBanner({ profile }: WelcomeBannerProps) {
   const role = profile?.role || "User";
 
-  const friendlyRole = role === "Admin" ? "Administrator" : role;
+  const friendlyRole = formatRoleLabel(role);
 
   // Role-aware summary. The previous copy described an "administrative
   // workspace" with "account management" to every role, including the
@@ -27,10 +27,6 @@ export function WelcomeBanner({ profile }: WelcomeBannerProps) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2">
-            <Badge variant="success" size="sm">
-              <Activity className="h-3 w-3 mr-1 text-brand-success" />
-              System Operational
-            </Badge>
             <span className="text-xs text-brand-text-muted">v1.0.0</span>
           </div>
 

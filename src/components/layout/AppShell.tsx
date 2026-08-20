@@ -9,9 +9,10 @@ import { PageContainer } from "./PageContainer";
 export interface AppShellProps {
   children: React.ReactNode;
   currentUserRole?: UserRole;
+  username?: string;
 }
 
-export function AppShell({ children, currentUserRole }: AppShellProps) {
+export function AppShell({ children, currentUserRole, username }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -25,7 +26,11 @@ export function AppShell({ children, currentUserRole }: AppShellProps) {
 
       {/* Main Content Viewport */}
       <div className="flex flex-1 flex-col min-w-0">
-        <Header onMenuToggle={() => setSidebarOpen((prev) => !prev)} />
+        <Header
+          onMenuToggle={() => setSidebarOpen((prev) => !prev)}
+          username={username}
+          role={currentUserRole}
+        />
         <PageContainer>{children}</PageContainer>
       </div>
     </div>

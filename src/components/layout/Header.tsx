@@ -33,7 +33,7 @@ export function Header({ onMenuToggle, username, role }: HeaderProps) {
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuToggle}
-            className="rounded-lg p-2 text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-focus-ring lg:hidden"
+            className="rounded-lg p-2 text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
             aria-label="Toggle Navigation Drawer"
           >
             <Menu className="h-5 w-5" />
@@ -61,7 +61,7 @@ export function Header({ onMenuToggle, username, role }: HeaderProps) {
           )}
           <button
             onClick={() => setIsChangePasswordOpen(true)}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
             aria-label="Change Password"
           >
             <KeyRound className="h-4 w-4 sm:mr-2" />
@@ -74,7 +74,7 @@ export function Header({ onMenuToggle, username, role }: HeaderProps) {
               clearWorkspaceRecovery();
               import("@/features/auth/authActions").then((m) => m.logoutAction());
             }}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
             aria-label="Logout"
           >
             <LogOut className="h-4 w-4 sm:mr-2" />

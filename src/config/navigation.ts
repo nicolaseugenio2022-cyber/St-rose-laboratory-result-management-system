@@ -20,12 +20,14 @@ export const navigationConfig: NavItemConfig[] = [
     href: "/workspace",
     iconName: "FileEdit",
     description: "Guided patient visit creation and result encoding workspace",
+    requiredRole: ["Admin", "User"],
   },
   {
     title: "Completed History",
     href: "/history",
     iconName: "History",
     description: "30-day active record directory, report replacement, and export",
+    requiredRole: ["Admin", "User"],
   },
   {
     title: "Audit Logs",
@@ -56,3 +58,16 @@ export const navigationConfig: NavItemConfig[] = [
     requiredRole: ["Admin", "Developer"],
   },
 ];
+
+export function filterNavigationForRole(
+  currentUserRole: UserRole | undefined,
+  items: NavItemConfig[] = navigationConfig
+): NavItemConfig[] {
+  return items.filter((item) => {
+    if (!item.requiredRole) return true;
+    const allowedRoles = Array.isArray(item.requiredRole) ? item.requiredRole : [item.requiredRole];
+    if (!currentUserRole) return false;
+    const normalizedCurrent = String(currentUserRole).toLowerCase();
+    return allowedRoles.map((role) => String(role).toLowerCase()).includes(normalizedCurrent);
+  });
+}

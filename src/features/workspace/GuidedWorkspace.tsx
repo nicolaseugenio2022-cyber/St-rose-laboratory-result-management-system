@@ -587,7 +587,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   // session than the one requested.
   if (reopenStatus === "loading" || reopenStatus === "failed") {
     return (
-      <div className="h-dvh w-full flex items-center justify-center bg-slate-100/60 p-4">
+      <div className="h-full min-h-0 w-full flex items-center justify-center bg-slate-100/60 p-4">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm max-w-md w-full p-6 space-y-4 text-center">
           {reopenStatus === "loading" ? (
             <>
@@ -638,7 +638,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   }
 
   return (
-    <div className="h-dvh w-full overflow-hidden flex flex-col bg-slate-100/60">
+    <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-100/60">
       {/* Fixed Workspace Top Navigation Bar */}
       <header className="h-14 bg-white border-b border-slate-200 shadow-sm px-4 flex items-center shrink-0 z-30">
         <div className={`${WORKSPACE_CONTAINER} flex items-center justify-between gap-3`}>

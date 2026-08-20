@@ -37,6 +37,7 @@ import {
   loadWorkspaceRecovery,
   saveWorkspaceRecovery,
 } from "./workspace-recovery";
+import { useWorkspaceNavigationInterceptor } from "@/components/layout/workspace-navigation-guard";
 
 // Shared workspace container: fluid width with a readability cap (UX2-A).
 const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
@@ -83,6 +84,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>([]);
 
   const router = useRouter();
+  const registerNavigationInterceptor = useWorkspaceNavigationInterceptor();
   const [activeTemplateCode, setActiveTemplateCode] = useState<string | null>(null);
   const [activeSpec, setActiveSpec] = useState<HydratedTemplateSpec | null>(null);
   const [selectedTemplateCodes, setSelectedTemplateCodes] = useState<string[]>([]);
@@ -94,6 +96,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const [pendingConfirmation, setPendingConfirmation] = useState<WorkspaceConfirmation | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [exitDestination, setExitDestination] = useState<string>("/dashboard");
   const [isReplacementMode, setIsReplacementMode] = useState<boolean>(false);
   const [reopenStatus, setReopenStatus] = useState<"idle" | "loading" | "ready" | "failed">(
     reopenSessionId ? "loading" : "idle"
@@ -104,6 +107,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
     if (isDirty) {
+      setExitDestination("/dashboard");
       setShowExitModal(true);
     } else {
       router.push("/dashboard");
@@ -113,8 +117,8 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const handleDiscardAndExit = useCallback(() => {
     clearWorkspaceRecovery();
     setShowExitModal(false);
-    router.push("/dashboard");
-  }, [router]);
+    router.push(exitDestination);
+  }, [exitDestination, router]);
 
   // Load all active hydrated template specs through the authenticated server boundary.
   useEffect(() => {
@@ -509,6 +513,8 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
   // Handle save draft & exit
   const handleSaveDraftAndExit = useCallback(async () => {
+    if (saveStatus === "saving") return;
+
     setShowExitModal(false);
     setSaveStatus("saving");
     try {
@@ -517,12 +523,12 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
-      router.push("/dashboard");
+      router.push(exitDestination);
     } catch {
       setSaveStatus("unsaved");
       setValidationError("Failed to save draft session before exit.");
     }
-  }, [session, router]);
+  }, [exitDestination, router, saveStatus, session]);
 
   const selectedSpecs = useMemo(() => {
     return allActiveTemplates.filter((spec) => selectedTemplateCodes.includes(spec.template.templateCode));
@@ -531,6 +537,19 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
   const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null;
+
+  useEffect(() => {
+    const interceptNavigation = (href: string) => {
+      if (isWorkspaceDialogOpen) return true;
+      if (!isDirty) return false;
+
+      setExitDestination(href);
+      setShowExitModal(true);
+      return true;
+    };
+
+    return registerNavigationInterceptor(interceptNavigation);
+  }, [isDirty, isWorkspaceDialogOpen, registerNavigationInterceptor]);
 
   const handleCancelConfirmation = useCallback(() => {
     setPendingConfirmation(null);
@@ -1008,6 +1027,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
                 <button
                   type="button"
                   onClick={handleSaveDraftAndExit}
+                  disabled={saveStatus === "saving"}
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
                 >
                   <Save className="h-4 w-4" />
@@ -1018,6 +1038,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
               <button
                 type="button"
                 onClick={handleDiscardAndExit}
+                disabled={saveStatus === "saving"}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
               >
                 <LogOut className="h-4 w-4" />

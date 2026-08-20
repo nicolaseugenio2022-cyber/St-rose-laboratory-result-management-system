@@ -17,6 +17,7 @@ import {
 import { filterNavigationForRole, NavItemConfig } from "@/config/navigation";
 import { UserRole } from "@/domain/types";
 import { cn } from "@/utils/cn";
+import { useWorkspaceNavigationRequester } from "./workspace-navigation-guard";
 
 const iconMap: Record<NavItemConfig["iconName"], LucideIcon> = {
   LayoutDashboard,
@@ -44,6 +45,7 @@ export function NavRail({
   onCloseDrawer,
 }: NavRailProps) {
   const pathname = usePathname();
+  const requestNavigation = useWorkspaceNavigationRequester();
   const drawerRef = useRef<HTMLElement>(null);
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const items = filterNavigationForRole(currentUserRole);
@@ -103,7 +105,14 @@ export function NavRail({
         aria-label={item.title}
         aria-current={isActive ? "page" : undefined}
         title={item.title}
-        onClick={onCloseDrawer}
+        onClick={(event) => {
+          if (requestNavigation(item.href)) {
+            event.preventDefault();
+            return;
+          }
+
+          onCloseDrawer();
+        }}
         className={cn(
           "flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
           isActive

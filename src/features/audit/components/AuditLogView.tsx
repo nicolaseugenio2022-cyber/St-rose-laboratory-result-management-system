@@ -13,10 +13,13 @@ import {
   ShieldCheck,
   UserCheck,
 } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 import {
   Table,
   TableBody,
@@ -101,6 +104,35 @@ function buildCriteria(
 function formatOccurredAt(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function AuditTableSkeleton() {
+  return (
+    <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
+      <table className="w-full border-collapse text-left text-xs">
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50">
+            {Array.from({ length: 6 }).map((_, columnIndex) => (
+              <th key={columnIndex} className="px-4 py-3">
+                <Skeleton className="h-3 w-20" />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {Array.from({ length: 5 }).map((_, rowIndex) => (
+            <tr key={rowIndex}>
+              {Array.from({ length: 6 }).map((__, columnIndex) => (
+                <td key={columnIndex} className="px-4 py-3">
+                  <Skeleton className="h-4 w-full" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </SkeletonRegion>
+  );
 }
 
 export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps) {
@@ -264,20 +296,17 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
       {/* Audit Logs Table */}
       <div className="space-y-3" aria-busy={loading}>
-        {error && (
-          <div
-            role="alert"
-            className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700"
-          >
-            {error}
-          </div>
-        )}
+        {error && <Alert variant="destructive">{error}</Alert>}
 
-        {page.events.length === 0 && !loading ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-            <ShieldCheck className="mx-auto h-7 w-7 text-slate-300" />
-            <p className="mt-3 text-xs text-slate-400">No audit logs match the active filters.</p>
-          </div>
+        {page.events.length === 0 ? loading ? (
+          <AuditTableSkeleton />
+        ) : (
+          <EmptyState
+            icon={ShieldCheck}
+            title="No audit events match these filters"
+            description="No recorded event matches the active filter selection. Adjust or clear the filters to widen the search."
+            headingLevel={3}
+          />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>
             <Table>

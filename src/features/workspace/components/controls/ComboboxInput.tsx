@@ -14,7 +14,7 @@ export function ComboboxInput({ parameter, value, isSelected, patientSex, onChan
   const outcome = evaluateEncodingResult(value, parameter, patientSex);
   const listId = `combo-options-${parameter.parameterCode}`;
   return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect}>
-    <input type="text" data-encoding-input data-control-type="Combobox" list={listId} value={value} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} placeholder="Type or select..." className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary" />
+    <input type="text" data-encoding-input data-control-type="Combobox" aria-label={parameter.parameterName} list={listId} value={value} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} placeholder="Type or select..." className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary" />
     <datalist id={listId}>{parameter.options?.map((option) => <option key={option} value={option} />)}</datalist>
   </ParameterRow>;
 }

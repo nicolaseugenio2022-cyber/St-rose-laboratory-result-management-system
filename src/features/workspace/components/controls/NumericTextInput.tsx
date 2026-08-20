@@ -33,6 +33,7 @@ export function NumericTextInput({ parameter, value, isSelected, patientSex, onC
         inputMode="decimal"
         data-encoding-input
         data-control-type="NumericText"
+        aria-label={parameter.parameterName}
         value={value}
         disabled={!isSelected}
         aria-invalid={outcome === "Invalid"}

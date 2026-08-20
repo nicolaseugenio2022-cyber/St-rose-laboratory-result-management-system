@@ -30,6 +30,7 @@ export function ComputedInput({ parameter, value, isSelected, patientSex, evalua
       type="text"
       data-encoding-input
       data-control-type="Computed"
+      aria-label={parameter.parameterName}
       value={value}
       placeholder="Auto-calculated when inputs present"
       readOnly

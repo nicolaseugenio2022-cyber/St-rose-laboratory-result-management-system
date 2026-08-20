@@ -13,7 +13,7 @@ export interface SingleSelectInputProps {
 export function SingleSelectInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect }: SingleSelectInputProps) {
   const outcome = evaluateEncodingResult(value, parameter, patientSex);
   return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect}>
-    <select value={value} data-encoding-input data-control-type="SingleSelect" disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
+    <select value={value} data-encoding-input data-control-type="SingleSelect" aria-label={parameter.parameterName} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
       <option value="">-- Select --</option>
       {parameter.options?.map((option) => <option key={option} value={option}>{option}</option>)}
     </select>

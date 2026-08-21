@@ -24,7 +24,10 @@ export const NATIVE_REPORT_THEME = {
   },
   header: {
     topMm: 4,
-    logoXmm: 16,
+    // The official mark is 1:1 and renders 15 x 15 mm contained inside the 21 x 15 mm box,
+    // so it sits 3 mm inboard of the box edge. Offsetting the box to 12 puts the mark's
+    // visible left edge at 15 mm — flush with the page content margin, like every other element.
+    logoXmm: 12,
     logoWidthMm: 21,
     logoHeightMm: 15,
     identityXmm: 41,

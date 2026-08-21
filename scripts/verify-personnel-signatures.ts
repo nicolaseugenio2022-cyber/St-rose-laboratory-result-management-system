@@ -15,6 +15,62 @@ function sha256(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+    if (inString) {
+      result += ch;
+      if (ch === "\\") escaped = true;
+      else if (ch === stringChar) inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      result += ch;
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      result += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        result += " ";
+        i++;
+      }
+      if (i < source.length) result += source[i];
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      result += "  ";
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        result += source[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < source.length) {
+        result += "  ";
+        i++;
+      }
+      continue;
+    }
+    result += ch;
+  }
+
+  return result;
+}
+
 function extractFunctionBody(source: string, functionName: string): string {
   const pattern = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${functionName}\\(`);
   const match = pattern.exec(source);
@@ -77,11 +133,16 @@ const nextConfigSource = getSource("next.config.ts");
 // ── Assertion 1: Every signature write action calls requirePersonnelAdmin() before any storage or repository call ──
 const uploadBody = extractFunctionBody(signatureActionsSource, "uploadPersonnelSignatureAction");
 const removeBody = extractFunctionBody(signatureActionsSource, "removePersonnelSignatureAction");
+assert(uploadBody.length > 0, "uploadPersonnelSignatureAction body was extracted from personnel-signature-actions.ts");
+assert(removeBody.length > 0, "removePersonnelSignatureAction body was extracted from personnel-signature-actions.ts");
+// Stripping removes commented-out code so it cannot satisfy an invocation-ordering check.
+const searchableUploadBody = stripComments(uploadBody);
+const searchableRemoveBody = stripComments(removeBody);
 
 {
-  const adminGuardIndex = uploadBody.indexOf("requirePersonnelAdmin()");
-  const repositoryIndex = uploadBody.indexOf("SupabasePersonnelRepository");
-  const storageIndex = uploadBody.indexOf("uploadSignatureObject");
+  const adminGuardIndex = searchableUploadBody.search(/await\s+requirePersonnelAdmin\s*\(\s*\)/);
+  const repositoryIndex = searchableUploadBody.indexOf("SupabasePersonnelRepository");
+  const storageIndex = searchableUploadBody.search(/await\s+uploadSignatureObject\s*\(/);
   assert(
     adminGuardIndex >= 0 && repositoryIndex > adminGuardIndex && storageIndex > adminGuardIndex,
     "uploadPersonnelSignatureAction authorizes Admin before any repository or storage call"
@@ -89,8 +150,8 @@ const removeBody = extractFunctionBody(signatureActionsSource, "removePersonnelS
 }
 
 {
-  const adminGuardIndex = removeBody.indexOf("requirePersonnelAdmin()");
-  const repositoryIndex = removeBody.indexOf("SupabasePersonnelRepository");
+  const adminGuardIndex = searchableRemoveBody.search(/await\s+requirePersonnelAdmin\s*\(\s*\)/);
+  const repositoryIndex = searchableRemoveBody.indexOf("SupabasePersonnelRepository");
   assert(
     adminGuardIndex >= 0 && repositoryIndex > adminGuardIndex,
     "removePersonnelSignatureAction authorizes Admin before repository call"
@@ -451,9 +512,11 @@ assert(
 );
 
 // ── Assertion 17 (V2): Storage-before-DB ordering — upload, role recheck, then DB update ──
-const actionUploadIndex = uploadBody.indexOf("uploadSignatureObject(");
-const roleRecheckIndex = uploadBody.indexOf("currentPersonnel = await repository.findById");
-const dbUpdateIndex = uploadBody.indexOf("await repository.update(");
+const actionUploadIndex = searchableUploadBody.search(/await\s+uploadSignatureObject\s*\(/);
+const roleRecheckIndex = searchableUploadBody.search(
+  /const\s+currentPersonnel\s*=\s*await\s+repository\.findById\s*\(/
+);
+const dbUpdateIndex = searchableUploadBody.search(/await\s+repository\.update\s*\(/);
 assert(
   actionUploadIndex > 0 && roleRecheckIndex > 0 && dbUpdateIndex > 0
   && roleRecheckIndex > actionUploadIndex && dbUpdateIndex > roleRecheckIndex,

@@ -49,6 +49,62 @@ function extractFunctionBody(source: string, functionName: string): string {
   return source.substring(startBrace + 1);
 }
 
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+    if (inString) {
+      result += ch;
+      if (ch === "\\") escaped = true;
+      else if (ch === stringChar) inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      result += ch;
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      result += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        result += " ";
+        i++;
+      }
+      if (i < source.length) result += source[i];
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      result += "  ";
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        result += source[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < source.length) {
+        result += "  ";
+        i++;
+      }
+      continue;
+    }
+    result += ch;
+  }
+
+  return result;
+}
+
 const personnelActionsSource = getSource("src/features/server-boundary/personnel-actions.ts");
 const personnelGuardSource = getSource("src/lib/personnel-guard.ts");
 const authGuardsSource = getSource("src/lib/auth-guards.ts");
@@ -58,8 +114,11 @@ const personnelFormSource = getSource("src/features/personnel/components/Personn
 // ── Assertion 1: Every write action calls requirePersonnelAdmin() before any repository call ──
 for (const actionName of ["createPersonnelAction", "updatePersonnelAction", "togglePersonnelStatusAction"]) {
   const actionBody = extractFunctionBody(personnelActionsSource, actionName);
-  const adminGuardIndex = actionBody.indexOf("requirePersonnelAdmin()");
-  const repositoryIndex = actionBody.indexOf("SupabasePersonnelRepository");
+  assert(actionBody.length > 0, `${actionName} body was extracted from personnel-actions.ts`);
+  // Stripping removes commented-out code so it cannot satisfy an invocation-ordering check.
+  const searchableActionBody = stripComments(actionBody);
+  const adminGuardIndex = searchableActionBody.search(/await\s+requirePersonnelAdmin\s*\(\s*\)/);
+  const repositoryIndex = searchableActionBody.indexOf("SupabasePersonnelRepository");
   assert(
     adminGuardIndex >= 0 && repositoryIndex > adminGuardIndex,
     `${actionName} authorizes an Admin caller (requirePersonnelAdmin) before mutating`

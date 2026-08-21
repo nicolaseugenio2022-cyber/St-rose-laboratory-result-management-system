@@ -50,9 +50,14 @@ Automated C1, C2, C3, C4, C4.1, C4.2, and C5 verification currently passes. C4, 
 
 Phase C is closed. Preview, Print, and PDF resolve through one authoritative Native composition.
 
-Remaining project work is tracked under Milestone 5 (Drafts and History) and Milestone 6 (Production Hardening).
+Milestone 6 security hardening remains tracked below; checkpoint 6D-2 is complete.
 
-Milestone 6 security hardening is the active work. Checkpoint 6D-2 is complete; see Milestone 6.
+**The Whole-System User-Centered UI/UX Improvement Program is complete and published.** It ran after
+Milestone 6D-2 and covered UX0 through UX6 across the application surfaces, plus two workspace
+performance slices and an operator-initiated Draft deletion capability. It changed presentation,
+accessibility, navigation and client performance only: no clinical semantics, no report content, no
+retention rule, no authorization boundary and no schema were altered by it. See **UI/UX Improvement
+Program** below for what shipped and what remains deferred.
 
 ---
 
@@ -740,10 +745,12 @@ recorded above did not apply.
 
 - Security-Denial coverage for route-level `checkRouteAccess` denials remains deferred while
   `src/lib/auth-guards.ts` is byte-frozen by M6C verification.
-- A system-wide user-centered UI/UX review is deferred until the required application functionality
-  is complete. Internal and canonical values remain stable in the domain, database, services, audit
-  events, and APIs; end-user wording is a presentation-layer translation only. This is not current
-  milestone work.
+- A system-wide user-centered UI/UX review was previously deferred here until the required
+  application functionality was complete. That deferral was **superseded by user direction** and the
+  work has since been carried out and published; see **UI/UX Improvement Program** below. The
+  original condition still holds and was respected throughout: internal and canonical values remain
+  stable in the domain, database, services, audit events, and APIs, and end-user wording remains a
+  presentation-layer translation only.
 - Deferred UI/UX polish, tracked separately from functional and security completion and blocking
   neither: the login cooldown message should convey the remaining wait from the authoritative server
   retry state without revealing whether the username or the network dimension caused it; and the
@@ -784,6 +791,157 @@ recorded above did not apply.
   ownership of a session. Verified as **pre-existing at the baseline commit** and unchanged by the
   accession slice, which is why it was not actioned there. It needs its own hardening slice and a
   decision on the intended ownership semantics.
+
+---
+
+# UI/UX Improvement Program (Complete and Published)
+
+Authorized by user direction after Milestone 6D-2, superseding the earlier deferral recorded under
+Milestone 6 follow-ups. Planned in `architecture/whole-system-user-centered-ui-ux-improvement-plan.md`.
+
+**Scope boundary observed throughout.** This program changed presentation, accessibility, navigation
+and client-side performance. It did not change clinical meaning, report content, parameter ordering,
+evaluation, reference resolution, suffixes, computed fields, signatory policy, completed snapshots,
+retention rules, accession allocation, authorization boundaries, or any schema. The 17-report
+declarative registry, Completed Snapshot authority, the 30-day completed-session retention lifecycle,
+and the Native rendering architecture recorded elsewhere in this document are unchanged.
+
+## What shipped
+
+**Shared primitives and dialogs.** `Skeleton`, `Alert`, `EmptyState`, `StatusBadge`, `ConfirmDialog`,
+and an accessible `Modal` with focus trap, Cancel-first focus, Escape and focus restoration. Every
+native browser dialog was subsequently removed: `window.confirm` and `window.alert` no longer appear
+anywhere under `src/`.
+
+**Dashboard.** Composed per role rather than presenting one Administrator view to everyone, with
+authorized recent laboratory work surfaced per role.
+
+**Workspace.** The encoding surface was widened from roughly 950 px to roughly 1350 px at 1920 by
+replacing a 1280 px cap with a fluid container capped for readability; patient and session context
+plus the report tab strip became persistent while scrolling. Keyboard and focus work followed:
+semantic report tabs, keyboard-reachable catalog rows, `Ctrl/Cmd+S`, `Ctrl/Cmd+←/→` report switching,
+and validation focus that resolves to the offending field. Completion and replacement gained
+confirmation dialogs and a `beforeunload` dirty-work guard, and in-app navigation out of the Workspace
+through the navigation rail is guarded against unsaved encoding.
+
+**Application shell.** `/workspace` previously rendered with no shell at all. It now mounts under a
+route-group layout with a compact icon rail carrying the same role-filtered navigation as the
+administrative sidebar, at a 64 px footprint rather than the full 256 px, with a skip-to-content link
+and no rail in printed output. Navigation visibility was aligned with server authorization: a
+`Developer` no longer sees Session Workspace or Completed History, which `requireOperationalCaller`
+already refused. Denied navigation now explains itself on the Dashboard rather than bouncing
+silently. The shell shows the signed-in operator's username and role, and two hardcoded status badges
+that reflected no real system state were removed.
+
+**History.** Retention is now visible per row as an operator-facing countdown derived for display
+only from the authoritative `expiresAt`; drafts show no expiry. Three distinct empty states replaced
+one ambiguous state, loading uses a table-shaped skeleton, and the preview overlay was rebuilt on the
+accessible `Modal`. The Preview/PDF rendering bundle is loaded lazily, reducing the History route's
+first-load JavaScript by roughly 129 kB.
+
+**History search.** Accession numbers are searched **server-side by prefix**, within the existing
+ownership and retention predicates, so a record older than the loaded page is findable rather than
+indistinguishable from one that does not exist. Search input is validated by an allowlist derived
+from the authoritative accession grammar and normalized before use; the predicate is applied as an
+additional filter and never merged into the ownership or retention conditions. Patient-name and
+physician matching remains client-side over the loaded page and is described as such in the
+interface.
+
+**Accessibility.** Every encoding control now carries a programmatic accessible name, so screen
+readers announce parameters by name rather than as unlabelled fields. Each module page has exactly
+one top-level heading. Focus treatment is consistent: form controls show focus on click, buttons and
+links on keyboard focus only. Catalog text contrast was raised to meet WCAG AA, measured rather than
+estimated. The error boundary no longer renders raw exception text to end users.
+
+**Performance.** The Workspace preview rendering bundle is deferred, and the hydrated examination
+catalog is reused on selection rather than refetched.
+
+## Draft deletion
+
+An operator may permanently delete **their own Draft session**. The server boundary re-reads the
+stored row, requires `created_by_user_id` to match the authenticated caller, requires
+`status === "Draft"` as a positive equality test, and additionally carries both conditions on the
+delete statement itself. The deletion must affect exactly one row or it fails; a `SessionDraftDeleted`
+audit event is emitted only after a confirmed single-row deletion, and carries no demographics,
+accession number or result values. Reports, results and signatories are removed by existing cascade
+foreign keys. `Developer` is denied, inheriting the existing operational-caller rule.
+
+**Completed sessions have no removal action of any kind** — no delete, no archive, no void, no
+mark-for-deletion. They remain governed solely by the existing
+`Completed → Retained → Expired → System Cleanup Purge` lifecycle and the 30-day retention rule
+recorded under Milestone 5. Corrections continue to be made through Replacement Mode. No new
+lifecycle state was introduced.
+
+## Native report changes
+
+**Live Preview provenance strip retired.** The preview no longer displays composition diagnostics to
+operators. Provenance remains fully machine-readable on the preview wrapper as
+`data-live-preview-production-path`, `-composition-source`, `-composition-provider`, `-scale` and
+`-zoom-percent`. Three C-family assertions that previously matched the visible prose were amended to
+pin those attribute names together with their values, which makes them more specific than what they
+replaced. The strip already carried `no-print`, so printed output was never affected.
+
+**Report logo geometry.** The header logo box remains `21 × 15 mm` with `fit: "contain"`, and the
+official `1254 × 1254` asset continues to render at `15 × 15 mm`. Only the box offset changed, from
+`logoXmm: 16` to `12`, so the visible left edge of the mark now sits at `15 mm`, flush with the page
+content margin. No logo size, divider position, identity block position, page margin or A4 dimension
+changed, and no verifier assertion required amendment. The single theme token feeds both the DOM
+preview and the PDF exporter through the same composed primitive, so the two paths cannot diverge.
+
+**Application version.** The displayed product version derives from a single source,
+`SYSTEM_CONSTANTS.APP.VERSION`. `package.json` was deliberately left unsynchronized.
+
+## Deferred, with no implementation claimed
+
+These were considered and consciously left open. None is implemented.
+
+- **Encoding type scale and density.** No minimum type size has been established. Five sites below
+  10 px and 76 at 10–11 px remain unchanged, pending an explicit decision that trades readability
+  against rows-per-screen for the high-volume encoder.
+- **History shared `Table` adoption.** History still renders its own table markup while four other
+  screens consume the shared primitive. Adopting it would change header type size and row padding,
+  so it is gated behind the same density decision above.
+- **`--color-text-subtle` contrast.** The shared token resolves to a value that fails WCAG AA on
+  white and is consumed at roughly 15 sites. Application-wide contrast is therefore **not** complete;
+  this needs its own slice with full consumer verification.
+- **History payload projection.** `listRecentSessionsAction` returns the complete session aggregate —
+  every report, result value and completed snapshot — for each listed row, while the table renders
+  seven scalar fields. This is authorized and ownership-scoped, so it is not a disclosure defect, but
+  it is broader than the screen needs. Narrowing it would alter the shape that B5 verification pins
+  structurally, so it requires an explicit ruling before any change.
+- **Global patient-name and physician search.** Deferred by scale rather than by decision: at present
+  the loaded page covers the entire retained set, so client-side matching is complete. Revisit when
+  retained sessions routinely approach the loaded page size.
+- **Browser Back / `popstate` dirty-work guard.** `beforeunload` covers tab close and refresh, and
+  in-app rail navigation is guarded, but the browser Back button can still discard unsaved encoding
+  without prompting. Deliberately not attempted: a history-manipulating guard risks trapping
+  legitimate navigation, and warrants its own slice.
+- **`error.digest` exposure.** The error boundary shows no correlation reference to the operator.
+  Exposing the opaque digest would aid support but belongs with operational support work rather than
+  interface work.
+
+## Technical and process residuals
+
+- `scripts/check-navigation.js` is a diagnostic printer with no assertions. Its TypeScript-stripping
+  regex removes the values it parses, so it emits empty results and exits successfully regardless of
+  state. **It must not be read as passing evidence** and will not catch a navigation-visibility
+  regression.
+- `verify-checkpoint-b4.ts`, `verify-checkpoint-c4.ts` and `verify-checkpoint-c4-1.ts` render markup
+  through `react-dom/server` and therefore **must be run without** `--conditions=react-server`, even
+  though the general guidance for verifier invocation prescribes that flag. The remaining checkpoints
+  require it.
+- Server actions emit their audit event after the persistence call rather than within one
+  transaction. A failure between the two yields an error to the caller despite a committed write.
+  This is the uniform pattern across every action in the server boundary and is recorded as a
+  systemic residual rather than a defect of any one slice; closing it would require database-side
+  functions.
+- `src/app/globals.css` carries a comment citing a status badge that no longer exists. The token it
+  documents is still in use for other states.
+- Two navigation destinations share one icon in `config/navigation.ts`, now visible in both the
+  sidebar and the Workspace rail.
+- The report logo's flush-left alignment depends on the official asset remaining square. A future
+  non-square replacement would keep the preview and PDF in agreement with each other but move the
+  visible left edge off the content margin.
 
 ---
 

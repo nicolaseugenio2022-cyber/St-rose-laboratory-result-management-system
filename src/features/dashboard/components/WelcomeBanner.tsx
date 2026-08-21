@@ -2,6 +2,7 @@ import React from "react";
 import { Shield } from "lucide-react";
 import { formatRoleLabel } from "@/config/roles";
 import { IUserProfile } from "@/domain/models/interfaces";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 
 interface WelcomeBannerProps {
   profile: IUserProfile | null;
@@ -27,7 +28,7 @@ export function WelcomeBanner({ profile }: WelcomeBannerProps) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-brand-text-muted">v1.0.0</span>
+            <span className="text-xs text-brand-text-muted">v{SYSTEM_CONSTANTS.APP.VERSION}</span>
           </div>
 
           <h2 className="text-2xl font-bold text-brand-text tracking-tight">

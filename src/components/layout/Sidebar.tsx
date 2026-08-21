@@ -6,6 +6,7 @@ import Image from "next/image";
 import { X } from "lucide-react";
 import { NavigationMenu } from "./NavigationMenu";
 import { cn } from "@/utils/cn";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 import { UserRole } from "@/domain/types";
 
 export interface SidebarProps {
@@ -67,7 +68,7 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
         <div className="p-4 border-t border-brand-border bg-slate-50/50">
           <div className="rounded-lg border border-brand-border bg-brand-surface p-3 shadow-sm">
             <p className="text-xs font-semibold text-brand-text">Result Management System</p>
-            <p className="text-[11px] text-brand-text-muted mt-0.5">Version 1.0.0 — Baseline</p>
+            <p className="text-[11px] text-brand-text-muted mt-0.5">Version {SYSTEM_CONSTANTS.APP.VERSION}</p>
           </div>
         </div>
       </aside>

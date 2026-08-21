@@ -228,19 +228,116 @@ assert(
   "signatureImageUrl does not appear in any validation schema"
 );
 
-// ── Assertion 10: auth-guards.ts and server-actions.ts still match their baseline hashes ──
+// ── Assertion 10: auth-guards.ts still matches its baseline hash ──
 const EXPECTED_AUTH_GUARDS_HASH = "972a7614ade21c72f7ed96953c32a3b6b2ccb61192e1ca95166d1b0b18417181";
-const EXPECTED_SERVER_ACTIONS_HASH = "caa0868c57712efd365b479e57d5beb28cb204e53c54f200aa398572702833fb";
 
 const authGuardsHash = sha256(authGuardsSource);
-const serverActionsHash = sha256(serverActionsSource);
 assert(
   authGuardsHash === EXPECTED_AUTH_GUARDS_HASH,
   `auth-guards.ts must match baseline 5eac3f7 (expected ${EXPECTED_AUTH_GUARDS_HASH}, got ${authGuardsHash})`
 );
+
+// The server-actions.ts whole-file pin was miscalibrated: unrelated session/workspace changes
+// tripped it, and its fail-fast assertion masked later personnel checks. Pin only the personnel boundary.
+function extractDeclaredFunction(source: string, declaration: string): string {
+  const declarationIndex = source.indexOf(declaration);
+  if (declarationIndex < 0) return "";
+
+  const startBrace = source.indexOf("{", declarationIndex);
+  if (startBrace < 0) return "";
+
+  let depth = 0;
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = startBrace; i < source.length; i++) {
+    const ch = source[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (inString) {
+      if (ch === stringChar) inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        const functionEnd = i + 1;
+        return source.slice(
+          declarationIndex,
+          source[functionEnd] === "\n" ? functionEnd + 1 : functionEnd
+        );
+      }
+    }
+  }
+  return "";
+}
+
+const listActivePersonnelFunction = extractDeclaredFunction(
+  serverActionsSource,
+  "export async function listActivePersonnelAction"
+);
 assert(
-  serverActionsHash === EXPECTED_SERVER_ACTIONS_HASH,
-  `server-actions.ts must match baseline 5eac3f7 (expected ${EXPECTED_SERVER_ACTIONS_HASH}, got ${serverActionsHash})`
+  listActivePersonnelFunction.length > 0,
+  "server-actions.ts exports listActivePersonnelAction"
+);
+assert(
+  /export async function listActivePersonnelAction\(\s*\)/.test(serverActionsSource),
+  "listActivePersonnelAction accepts no client-controlled input"
+);
+
+const operationalGuardIndex = listActivePersonnelFunction.search(
+  /await\s+requireOperationalCaller\s*\(\s*\)/
+);
+const personnelRepositoryIndex = listActivePersonnelFunction.indexOf("SupabasePersonnelRepository");
+assert(
+  operationalGuardIndex >= 0 && personnelRepositoryIndex > operationalGuardIndex,
+  "listActivePersonnelAction authorizes with requireOperationalCaller before repository access"
+);
+assert(
+  /new\s+SupabasePersonnelRepository\s*\(\s*\)/.test(listActivePersonnelFunction) &&
+    /repository\.findAllActive\s*\(\s*\)/.test(listActivePersonnelFunction),
+  "listActivePersonnelAction uses SupabasePersonnelRepository.findAllActive()"
+);
+
+const listActivePersonnelMethodCalls = Array.from(
+  listActivePersonnelFunction.matchAll(/\.([A-Za-z_$][\w$]*)\s*\(/g),
+  (match) => match[1]
+);
+assert(
+  listActivePersonnelMethodCalls.length === 1 && listActivePersonnelMethodCalls[0] === "findAllActive",
+  "listActivePersonnelAction exposes no write path (its only method call is findAllActive())"
+);
+
+const EXPECTED_LIST_ACTIVE_PERSONNEL_HASH =
+  "d8ca8901bc617d6737341b18fd60a022c6ea436ea42e994a2cae5de5a5c212a8";
+const listActivePersonnelHash = sha256(listActivePersonnelFunction.replace(/\r\n/g, "\n"));
+assert(
+  listActivePersonnelHash === EXPECTED_LIST_ACTIVE_PERSONNEL_HASH,
+  `listActivePersonnelAction must retain its exact body (expected ${EXPECTED_LIST_ACTIVE_PERSONNEL_HASH}, got ${listActivePersonnelHash})`
+);
+
+const EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH =
+  "fad982439891feee9cfee5422e46cc0f414b602be2d9b1726b44b44dad2c9ff2";
+const requireOperationalCallerFunction = extractDeclaredFunction(
+  serverActionsSource,
+  "async function requireOperationalCaller"
+);
+assert(
+  /if\s*\(\s*profile\.role\s*!==\s*"Admin"\s*&&\s*profile\.role\s*!==\s*"User"\s*\)\s*\{/.test(
+    requireOperationalCallerFunction
+  ),
+  "requireOperationalCaller gates callers to exactly Admin or User"
+);
+const requireOperationalCallerHash = sha256(requireOperationalCallerFunction.replace(/\r\n/g, "\n"));
+assert(
+  requireOperationalCallerHash === EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH,
+  `requireOperationalCaller must retain its exact operational-role body (expected ${EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH}, got ${requireOperationalCallerHash})`
 );
 
 // ── Assertion 11 (SHOULD-FIX): PNG magic bytes are validated inside validatePngMagicBytes, not just declared as a constant ──

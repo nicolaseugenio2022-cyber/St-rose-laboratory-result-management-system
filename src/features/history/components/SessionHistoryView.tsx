@@ -499,9 +499,9 @@ export function SessionHistoryView() {
 
                   return (
                     <tr key={sess.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-900">{sess.accessionNumber}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-blue-900 whitespace-nowrap tabular-nums">{sess.accessionNumber}</td>
                       <td className="py-3 px-4 font-bold text-slate-900 uppercase">{sess.demographics.fullName || "Unnamed Patient"}</td>
-                      <td className="py-3 px-4 text-slate-600">{sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}</td>
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap tabular-nums">{sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}</td>
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
                           {sess.reports.map((r) => (
@@ -509,8 +509,16 @@ export function SessionHistoryView() {
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-600 truncate max-w-[150px]">{sess.demographics.requestingPhysician || "—"}</td>
-                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">{sess.demographics.examinationDate || "—"}</td>
+                      <td className="py-3 px-4 text-slate-600">
+                        {/* truncate needs a block-level box; max-width on a td is advisory under auto table layout. */}
+                        <span
+                          className="block max-w-[150px] truncate"
+                          title={sess.demographics.requestingPhysician || undefined}
+                        >
+                          {sess.demographics.requestingPhysician || "—"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap tabular-nums">{sess.demographics.examinationDate || "—"}</td>
                       <td className="py-3 px-4">
                         {retention ? (
                           <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>

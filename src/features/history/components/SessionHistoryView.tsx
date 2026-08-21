@@ -8,13 +8,10 @@ import {
   ArrowUpDown,
   Calendar,
   Clock,
-  Edit3,
-  Eye,
   History,
   ListFilter,
   Search,
   SearchX,
-  Trash2,
   X,
 } from "lucide-react";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
@@ -29,8 +26,10 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Select";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { HistorySessionActions } from "./HistorySessionActions";
 
 const SharedRenderingEngine = dynamic(
   () =>
@@ -61,6 +60,20 @@ const TABLE_COLUMN_COUNT = 7;
 // visible through compact-laptop widths since its width is already bounded by the +N cap.
 // Keep this array in step with the header row - the loading skeleton is driven from it.
 const COLUMN_HIDDEN_CLASS = ["", "", "", "hidden xl:table-cell", "", "", ""];
+
+// Below md the table becomes a card list, which has no column headers to sort from. This select
+// restores the same four sort keys and both directions through the existing sort state - it adds
+// no sorting logic of its own. Values are `key:direction`.
+const CARD_SORT_OPTIONS = [
+  { label: "Date — newest first", value: "date:descending" },
+  { label: "Date — oldest first", value: "date:ascending" },
+  { label: "Accession — ascending", value: "accession:ascending" },
+  { label: "Accession — descending", value: "accession:descending" },
+  { label: "Patient — A to Z", value: "patient:ascending" },
+  { label: "Patient — Z to A", value: "patient:descending" },
+  { label: "Retention — expiring first", value: "retention:ascending" },
+  { label: "Retention — latest first", value: "retention:descending" },
+];
 
 // A session may carry any number of reports, so an uncapped chip list lets one row
 // widen the whole table. Three covers the common routine panel; the rest collapse
@@ -395,6 +408,18 @@ export function SessionHistoryView() {
               </Button>
             )}
           </div>
+          {/* Card mode has no sortable column headers, so the same sort keys are offered here. */}
+          <div className="w-full shrink-0 md:hidden sm:max-w-xs">
+            <Select
+              label="Sort by"
+              options={CARD_SORT_OPTIONS}
+              value={`${sort.key}:${sort.direction}`}
+              onChange={(event) => {
+                const [key, direction] = event.target.value.split(":");
+                setSort({ key: key as SortKey, direction: direction as SortDirection });
+              }}
+            />
+          </div>
           <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
             <Calendar className="h-4 w-4 text-slate-400" aria-hidden="true" />
             <span>Today: {formatDateISO()}</span>
@@ -470,7 +495,8 @@ export function SessionHistoryView() {
             />
           )
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[720px] border-collapse text-left text-xs">
               <caption className="sr-only">Patient report session history</caption>
               <thead>
@@ -502,7 +528,6 @@ export function SessionHistoryView() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredEntries.map(({ session: sess, canReopen }) => {
-                  const isCompleted = sess.status === "Completed";
                   const retention = getRetentionDetails(sess);
                   const RetentionIcon = retention?.icon;
 
@@ -562,28 +587,14 @@ export function SessionHistoryView() {
                       </td>
                       <td className="py-3 px-4"><StatusBadge status={sess.status} size="sm" /></td>
                       <td className="py-3 px-4 text-right space-x-2">
-                        <button type="button" onClick={() => setPreviewSession(sess)} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors">
-                          <Eye className="h-3.5 w-3.5 text-slate-500" />
-                          Preview
-                        </button>
-                        {canReopen && (
-                          <button type="button" onClick={() => router.push(`/workspace?sessionId=${encodeURIComponent(sess.id)}`)} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors">
-                            <Edit3 className="h-3.5 w-3.5" />
-                            {isCompleted ? "Replace" : "Edit"}
-                          </button>
-                        )}
-                        {/* canReopen carries plain server-decided ownership despite its reopen-oriented name. */}
-                        {!isCompleted && canReopen && (
-                          <button
-                            type="button"
-                            onClick={() => setPendingDeleteEntry({ session: sess, canReopen })}
-                            disabled={isDeletingId === sess.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                            Delete draft
-                          </button>
-                        )}
+                        <HistorySessionActions
+                          entry={{ session: sess, canReopen }}
+                          variant="table"
+                          isDeleting={isDeletingId === sess.id}
+                          onPreview={setPreviewSession}
+                          onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
+                          onDeleteDraft={setPendingDeleteEntry}
+                        />
                       </td>
                     </tr>
                   );
@@ -591,6 +602,71 @@ export function SessionHistoryView() {
               </tbody>
             </table>
           </div>
+
+          {/* Narrow-width presentation of the SAME filteredEntries and the SAME handlers.
+              Presentation is duplicated; data and action semantics are not. Rendered inside this
+              branch so loading, error and empty states replace it rather than stacking above it. */}
+          <ul className="divide-y divide-slate-100 md:hidden" aria-label="Patient report session history">
+            {filteredEntries.map(({ session: sess, canReopen }) => {
+              const retention = getRetentionDetails(sess);
+              const RetentionIcon = retention?.icon;
+              const hiddenTestCount = sess.reports.length - MAX_VISIBLE_TEST_CHIPS;
+
+              return (
+                <li key={sess.id} className="space-y-2 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold uppercase text-slate-900">{sess.demographics.fullName || "Unnamed Patient"}</p>
+                      <p className="mt-0.5 font-mono font-bold tabular-nums text-blue-900">{sess.accessionNumber}</p>
+                    </div>
+                    <StatusBadge status={sess.status} size="sm" />
+                  </div>
+
+                  <div className="flex flex-wrap gap-1">
+                    {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
+                      <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
+                    ))}
+                    {hiddenTestCount > 0 && (
+                      <span
+                        className="px-2 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-700 rounded border border-slate-300 whitespace-nowrap"
+                        title={sess.reports.slice(MAX_VISIBLE_TEST_CHIPS).map((r) => r.templateCode).join(", ")}
+                      >
+                        <span aria-hidden="true">+{hiddenTestCount}</span>
+                        <span className="sr-only">
+                          {hiddenTestCount} more {hiddenTestCount === 1 ? "test" : "tests"} not shown
+                        </span>
+                      </span>
+                    )}
+                  </div>
+
+                  {retention && (
+                    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
+                      {RetentionIcon && <RetentionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                      {retention.label}
+                    </span>
+                  )}
+
+                  <p className="text-[11px] text-slate-500">
+                    <span className="whitespace-nowrap tabular-nums">
+                      {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
+                    </span>
+                    {sess.demographics.requestingPhysician && <> · {sess.demographics.requestingPhysician}</>}
+                    <span className="whitespace-nowrap tabular-nums"> · {sess.demographics.examinationDate || "—"}</span>
+                  </p>
+
+                  <HistorySessionActions
+                    entry={{ session: sess, canReopen }}
+                    variant="card"
+                    isDeleting={isDeletingId === sess.id}
+                    onPreview={setPreviewSession}
+                    onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
+                    onDeleteDraft={setPendingDeleteEntry}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+          </>
         )}
       </div>
 

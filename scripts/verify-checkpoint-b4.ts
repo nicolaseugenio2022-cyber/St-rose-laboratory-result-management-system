@@ -20,6 +20,7 @@ import { evaluateEncodingResult } from "../src/features/workspace/encoding/evalu
 import { ParameterRow } from "../src/features/workspace/components/controls/ParameterRow";
 import { evaluateParameterValue } from "../src/services/parameter-evaluation-service";
 import { GenericReportResolver } from "../src/services/generic-report-resolver";
+import { HistorySessionActions } from "../src/features/history/components/HistorySessionActions";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
@@ -394,12 +395,74 @@ const freshBuildSelection = build("URINALYSIS").results.find((r) => r.parameterC
 assert(freshBuildSelection?.isSelected === true, `a fresh URINALYSIS encoding report still selects ${deselectedCode} by default`);
 
 const sessionHistorySource = readFileSync(join(process.cwd(), "src/features/history/components/SessionHistoryView.tsx"), "utf8").replace(/\r\n/g, "\n");
-const reopenGuardIndex = sessionHistorySource.indexOf("{canReopen && (");
-const reopenLabelIndex = sessionHistorySource.indexOf('{isCompleted ? "Replace" : "Edit"}');
-assert(/canReopen: entry\.canReopen/.test(sessionHistorySource), "SessionHistoryView takes reopen eligibility from the server-decided listRecentSessionsAction entry");
-assert(reopenGuardIndex >= 0 && reopenLabelIndex > reopenGuardIndex, "SessionHistoryView renders the Replace/Edit control only under canReopen");
-assert(sessionHistorySource.indexOf('{isCompleted ? "Replace" : "Edit"}', reopenLabelIndex + 1) < 0, "SessionHistoryView exposes exactly one Replace/Edit control");
-assert(/router\.push\(`\/workspace\?sessionId=\$\{encodeURIComponent\(sess\.id\)\}`\)/.test(sessionHistorySource), "SessionHistoryView reopens through the workspace session route carrying only the session id");
+
+// Two invariants, verified by the cheapest sound method for each.
+//
+// (a) PARENT WIRING - that History passes the server's eligibility through unmodified. This cannot
+//     be reached by rendering the action component, because the substitution would happen before
+//     the component is called. It stays a textual assertion, deliberately narrow.
+//     Existence checks are not enough here: the same substitution is available at the mapping AND
+//     at each prop pass, so these assert exact OCCURRENCE COUNTS. A forced `canReopen: true` at any
+//     one site changes a count and fails. Trailing-comma anchoring additionally rejects supersets
+//     such as `entry.canReopen || true`.
+const countOf = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+assert(
+  countOf(sessionHistorySource, "canReopen: entry.canReopen,") === 1,
+  "SessionHistoryView takes reopen eligibility from the server-decided listRecentSessionsAction entry, unmodified"
+);
+assert(
+  countOf(sessionHistorySource, "entry={{ session: sess, canReopen }}") === 2,
+  "SessionHistoryView hands both renderings the unmodified server eligibility"
+);
+assert(
+  countOf(sessionHistorySource, "<HistorySessionActions") === 2,
+  "SessionHistoryView renders the shared action component in both responsive renderings"
+);
+assert(
+  (sessionHistorySource.match(/router\.push\(`\/workspace\?sessionId=\$\{encodeURIComponent\(target\.id\)\}`\)/g) || []).length === 2,
+  "SessionHistoryView reopens through the workspace session route carrying only the session id, at both call sites"
+);
+
+// (b) AUTHORIZATION GATING - previously approximated by source-text proxies, which were shown to be
+//     evadable by positional decoys and by comment-borne gate tokens. Both History renderings now
+//     share one action component, so the invariant is asserted by RENDERING THE SHIPPED COMPONENT
+//     and inspecting what it actually produces. No source text is parsed for this.
+const historyActionSession = (status: "Draft" | "Completed") =>
+  ({ id: "history-session", status }) as unknown as PatientReportSessionAggregate;
+const renderHistoryActions = (
+  status: "Draft" | "Completed",
+  canReopen: boolean,
+  variant: "table" | "card"
+) =>
+  renderToStaticMarkup(
+    React.createElement(HistorySessionActions, {
+      entry: { session: historyActionSession(status), canReopen },
+      variant,
+      isDeleting: false,
+      onPreview: noOp,
+      onReopen: noOp,
+      onDeleteDraft: noOp,
+    })
+  );
+
+for (const variant of ["table", "card"] as const) {
+  const deniedDraft = renderHistoryActions("Draft", false, variant);
+  assert(!/Replace|Edit/.test(deniedDraft), `HistorySessionActions renders no Replace/Edit control when canReopen is false (${variant})`);
+  assert(!deniedDraft.includes("Delete draft"), `HistorySessionActions renders no removal control when canReopen is false (${variant})`);
+  assert(deniedDraft.includes("Preview"), `HistorySessionActions still offers Preview when canReopen is false (${variant})`);
+
+  const ownedDraft = renderHistoryActions("Draft", true, variant);
+  assert(/>\s*Edit\s*</.test(ownedDraft), `HistorySessionActions renders the Edit control for an owned draft (${variant})`);
+  assert(ownedDraft.includes("Delete draft"), `HistorySessionActions offers draft removal for an owned draft (${variant})`);
+
+  const reopenableCompleted = renderHistoryActions("Completed", true, variant);
+  assert(/>\s*Replace\s*</.test(reopenableCompleted), `HistorySessionActions renders Replace for a reopenable completed session (${variant})`);
+  assert(!reopenableCompleted.includes("Delete draft"), `HistorySessionActions never offers removal for a completed session (${variant})`);
+
+  const deniedCompleted = renderHistoryActions("Completed", false, variant);
+  assert(!/Replace|Edit/.test(deniedCompleted), `HistorySessionActions renders no Replace/Edit control for a non-reopenable completed session (${variant})`);
+  assert(!deniedCompleted.includes("Delete draft"), `HistorySessionActions renders no removal control for a non-reopenable completed session (${variant})`);
+}
 
 const replaceHandlerBody = guidedWorkspaceSource.match(/const handleReplaceSession = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";
 const reopenGateIndex = guidedWorkspaceSource.indexOf('if (reopenStatus === "loading" || reopenStatus === "failed") {');

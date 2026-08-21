@@ -14,6 +14,29 @@ Read at session start; treat as authoritative and never restate or override:
 - `Project.md` — confirmed project decisions, milestones, phase gates, render policy
 - `LABORATORY_TEMPLATE_SPECIFICATION.md` and `architecture/` — report specifications, ADRs, implementation guidelines
 
+## Second brain — consult selectively, never bulk-load
+
+Durable cross-project engineering knowledge lives in the Obsidian vault at
+`C:\Obsidian\Nicolas Second Brain`, shared with Codex. **It is not session context and is not read
+at session start.** The repository authority files above remain authoritative for this project.
+
+Consult it only when prior project context, known bugs, reusable patterns, architecture decisions,
+workflow rules, or user preferences are **materially relevant** to the task at hand. For ordinary
+repo-local work — where the authority files, the source, and Git already settle the question —
+do not load the vault at all.
+
+When it is warranted: enter through `Claude/Start-Here.md`, start from `Knowledge/AI_CONTEXT.md`,
+and follow **only task-relevant links**. **Never bulk-load or recursively read `Knowledge/`.**
+Those rules are defined in the vault, not here — follow them there rather than restating them.
+
+- `Knowledge/` is the single durable store shared by Claude and Codex. Do not create a
+  Claude-specific knowledge base and do not treat native memory as the durable store.
+- Promote a lesson through `Commands/04 Knowledge Update.md` **only** when it is genuinely
+  reusable beyond this project and meets that command's criteria. Report the candidate first.
+- Project-specific progress belongs in `Project.md` and in the vault's St. Rose project note —
+  never in `Knowledge/`. This mirrors `AGENTS.md` §10: transient implementation detail is not
+  permanent architecture.
+
 ## Roles
 
 - **Claude** — primary planner and architect · scope and contract freezer · authority interpreter ·

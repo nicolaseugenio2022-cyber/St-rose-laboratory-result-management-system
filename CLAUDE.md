@@ -269,11 +269,28 @@ node node_modules/typescript/bin/tsc --noEmit
 node node_modules/next/dist/bin/next lint
 node node_modules/next/dist/bin/next build
 node node_modules/tsx/dist/cli.mjs --conditions=react-server scripts/<name>.ts
+node node_modules/tsx/dist/cli.mjs scripts/<name>.ts
 ```
 
-`--conditions=react-server` is required or the verifiers fail on the `server-only` import. The worker
-must never install anything, add or change a dependency, or work around the sandbox; when a command
-cannot start it says so plainly and stops.
+**`--conditions=react-server` is not universal — it is required by some verifiers and breaks others.**
+Measured across the suite:
+
+- **Must run WITH the flag** — their import graph reaches a `server-only` module and fails without it:
+  `verify-admin-invariants`, `verify-developer-boundary`, `verify-recovery-flow`.
+- **Must run WITHOUT the flag** — they render markup through `react-dom/server`, which the
+  `react-server` condition forbids: `verify-checkpoint-b4`, `verify-checkpoint-c4`,
+  `verify-checkpoint-c4-1`, `verify-checkpoint-c4-2`. Under the flag these fail on
+  `react-dom/server is not supported in React Server Components` **before any assertion runs**.
+- **Either works** for the remainder, including B1–B3, B5, C1–C3, C5, M6A–M6D,
+  `verify-dashboard-recent-work` and `verify-lockout-countdown`. Prefer the flag there for
+  consistency.
+
+A verifier that fails to *start* has proved nothing. Distinguish that from an assertion failure and
+report it as such rather than as a gate result — and never retry with the other invocation to make a
+red gate go green without saying which invocation produced which outcome.
+
+The worker must never install anything, add or change a dependency, or work around the sandbox; when
+a command cannot start it says so plainly and stops.
 
 Verifier menu, **each as applicable** — M6A, M6B, M6C, M6D, the Developer boundary verifier, the
 Admin invariant verifier, the recovery verifier, C1, C4, C4.2, C5. A menu, not a mandatory sequence.

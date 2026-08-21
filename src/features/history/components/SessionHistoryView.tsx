@@ -14,14 +14,19 @@ import {
   ListFilter,
   Search,
   SearchX,
+  Trash2,
   X,
 } from "lucide-react";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
-import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
+import {
+  deleteDraftSessionAction as deleteDraftSession,
+  listRecentSessionsAction,
+} from "@/features/server-boundary/server-actions";
 import { fromSessionTransport } from "@/features/server-boundary/session-transport";
 import { formatDateISO } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
@@ -163,6 +168,10 @@ export function SessionHistoryView() {
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<SessionHistoryEntry | null>(null);
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
     key: "date",
     direction: "descending",
@@ -210,7 +219,7 @@ export function SessionHistoryView() {
     return () => {
       superseded = true;
     };
-  }, [debouncedAccessionSearch]);
+  }, [debouncedAccessionSearch, reloadToken]);
 
   const hasActiveSearch = trimmedSearchQuery.length > 0;
   const hasActiveAccessionSearch = accessionSearch !== undefined;
@@ -276,6 +285,28 @@ export function SessionHistoryView() {
 
   const ariaSort = (key: SortKey): SortDirection | "none" =>
     sort.key === key ? sort.direction : "none";
+
+  const handleConfirmDeleteDraft = async () => {
+    const entry = pendingDeleteEntry;
+    if (!entry) return;
+    if (isDeletingId) return;
+
+    const { session } = entry;
+    setIsDeletingId(session.id);
+    setDeleteError(null);
+    try {
+      await deleteDraftSession({ sessionId: session.id });
+      setPendingDeleteEntry(null);
+      setReloadToken((current) => current + 1);
+    } catch (error: unknown) {
+      setPendingDeleteEntry(null);
+      setDeleteError(
+        error instanceof Error ? error.message : "The draft could not be deleted."
+      );
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -371,6 +402,12 @@ export function SessionHistoryView() {
           )}
         </div>
       </div>
+
+      {deleteError && (
+        <Alert variant="destructive" onDismiss={() => setDeleteError(null)}>
+          {deleteError}
+        </Alert>
+      )}
 
       {/* Session Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -496,6 +533,18 @@ export function SessionHistoryView() {
                             {isCompleted ? "Replace" : "Edit"}
                           </button>
                         )}
+                        {/* canReopen carries plain server-decided ownership despite its reopen-oriented name. */}
+                        {!isCompleted && canReopen && (
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteEntry({ session: sess, canReopen })}
+                            disabled={isDeletingId === sess.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                            Delete draft
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -520,6 +569,18 @@ export function SessionHistoryView() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={pendingDeleteEntry !== null}
+        onCancel={() => setPendingDeleteEntry(null)}
+        onConfirm={() => void handleConfirmDeleteDraft()}
+        title="Delete this draft?"
+        description={`Permanently delete the draft for ${pendingDeleteEntry?.session.demographics.fullName || "Unnamed Patient"} (${pendingDeleteEntry?.session.accessionNumber ?? ""}). Any unfinished encoding in this session will be removed and cannot be recovered.`}
+        confirmLabel="Delete draft"
+        pendingLabel="Deleting..."
+        variant="destructive"
+        isPending={isDeletingId === pendingDeleteEntry?.session.id}
+      />
     </div>
   );
 }

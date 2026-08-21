@@ -204,7 +204,7 @@ async function main(): Promise<void> {
     reportTitle: "CBC",
   }));
   assert(activeCbcMarkup.includes("data-live-preview-composition-source=\"StandardAdaptiveTabular\""), "active CBC browser markup must prove the standardized production composer");
-  assert(activeCbcMarkup.includes("Preview mode:") && activeCbcMarkup.includes("Native") && activeCbcMarkup.includes("Composition source:") && activeCbcMarkup.includes("StandardNative") && activeCbcMarkup.includes("Layout family:") && activeCbcMarkup.includes("StandardAdaptiveTabular"), "active CBC must visibly expose Native / StandardNative / StandardAdaptiveTabular provenance");
+  assert(activeCbcMarkup.includes('data-live-preview-composition-provider="StandardNative"') && activeCbcMarkup.includes('data-live-preview-composition-source="StandardAdaptiveTabular"'), "active CBC must expose StandardNative / StandardAdaptiveTabular provenance as machine-readable attributes");
 
   const urineText = pageText(pages.get("URINALYSIS")!);
   assert((urineText.match(/0-2 \/HPF/g) || []).length === 1 && (urineText.match(/>50 \/HPF/g) || []).length === 1, "Urinalysis /HPF suffixes must occur exactly once");

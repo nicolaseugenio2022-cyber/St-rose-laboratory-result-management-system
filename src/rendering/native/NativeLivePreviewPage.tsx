@@ -36,14 +36,6 @@ export function NativeLivePreviewPage({
         data-live-preview-zoom-percent={zoomLevel}
         className={`shrink-0 ${!isLastPage ? "a4-page-break" : ""}`}
       >
-        <div
-          className="no-print mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-xs"
-          data-live-preview-provenance="true"
-        >
-          <span>Preview mode: <strong className="text-slate-900">Native</strong></span>
-          <span>Composition source: <strong className="text-slate-900">{compositionProvider}</strong></span>
-          <span>Layout family: <strong className="text-slate-900">{composedPage.compositionSource}</strong></span>
-        </div>
         <NativeReportPreview page={composedPage} scale={previewScale} className="a4-preview-shadow" />
       </div>
     );

@@ -213,7 +213,7 @@ async function main(): Promise<void> {
   assert(at75.includes('data-live-preview-scale="0.75"') && !at75.includes("transform:scale"), "toolbar 75% must have one scale owner at native scale 0.75");
   assert(approximately(dimensions100.width, 210 * 96 / 25.4) && approximately(dimensions100.height, 297 * 96 / 25.4), "100% must emit physical A4 CSS dimensions");
   assert(approximately(dimensions75.width, dimensions100.width * 0.75) && approximately(dimensions75.height, dimensions100.height * 0.75), "75% must scale the complete A4 page uniformly");
-  assert(at100.includes("Preview mode:") && at100.includes("StandardNative") && at100.includes("StandardAdaptiveTabular"), "manual provenance must remain visible");
+  assert(at100.includes('data-live-preview-composition-provider="StandardNative"') && at100.includes('data-live-preview-composition-source="StandardAdaptiveTabular"'), "manual provenance must remain exposed as machine-readable attributes");
 
   const moduleRuntime = await import("node:module");
   const extensionRuntime = moduleRuntime.default as unknown as { _extensions: Record<string, (module: unknown, filename: string) => void> };
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
     targetOutput: "ScreenPreview",
   }));
   assert((engineMarkup.match(/data-native-report-preview=/g) || []).length === 1, "Native mode must mount exactly one visible Native report page");
-  assert(engineMarkup.includes('data-native-report-preview="CBC"') && engineMarkup.includes("Preview mode:") && engineMarkup.includes("StandardNative") && engineMarkup.includes("StandardAdaptiveTabular"), "the selected CBC page must expose Native / StandardNative / StandardAdaptiveTabular provenance");
+  assert(engineMarkup.includes('data-native-report-preview="CBC"') && engineMarkup.includes('data-live-preview-composition-provider="StandardNative"') && engineMarkup.includes('data-live-preview-composition-source="StandardAdaptiveTabular"'), "the selected CBC page must expose StandardNative / StandardAdaptiveTabular provenance as machine-readable attributes");
   assert(!engineMarkup.includes('data-live-preview-renderer="legacy"'), "Native mode must not mount a legacy comparison renderer");
   assert(!engineMarkup.includes('data-live-preview-renderer="experimental"'), "Native mode must not mount an experimental comparison renderer");
   assert(!engineMarkup.includes('data-live-preview-renderer="legacy-export"') && !engineMarkup.includes("data-c4-preserved-pdf-route"), "the print/export clone must not mount during normal Live Preview");

@@ -380,18 +380,24 @@ A **fresh read-only independent reviewer is required** when the slice touches au
 authorization · Developer isolation · credential or secret handling · audit confidentiality or
 visibility · privacy or sensitive-data handling · RLS or security policy · migrations, schema, or
 security configuration · destructive or live-database work · a frozen security boundary · or when
-implementation evidence contains an unresolved contradiction. It is also mandatory at a publication
-boundary.
+implementation evidence contains an unresolved contradiction.
 
-**The reviewer must be an independent reviewer the user has explicitly approved**, in a fresh
-context, that did not produce the candidate (see Independence under Roles, and `AGENTS.md` §5.4).
-On this account that excludes Claude from reviewing its own work, and no agent becomes an approved
-reviewer by being available or by being a different model. **Claude's scope, diff, and publication
-review does not satisfy this requirement.**
+**Publication is not itself a trigger.** Review is required only where the slice **independently**
+crosses one of those boundaries; where it does, the review must be **complete before publication**.
+A low-risk presentation or documentation slice crossing none of them publishes without a reviewer.
 
-**If no approved reviewer is available, stop before publication and ask the user to decide** —
-approve a reviewer, accept the residual risk explicitly, or defer the slice. Report the state as
-**INDEPENDENT REVIEW PENDING** until it is resolved.
+**The approved reviewer is a separate, fresh, read-only Claude context** that did not implement or
+edit the candidate (see Independence under Roles, and `AGENTS.md` §5.4). The implementing context
+may never review its own slice and call that independent. **Codex, OpenCode / Big Pickle and Fable 5
+are not approved reviewers.** **Claude's own scope, diff, and publication review does not satisfy
+this requirement.**
+
+Give the reviewer the frozen scope, the diff and verification evidence, the authority constraints,
+and **explicit review questions**; require a **written verdict**. **No verdict is no review
+evidence.**
+
+**If a fresh independent Claude context is unavailable, stop and ask the user** — never waive the
+review. Report the state as **INDEPENDENT REVIEW PENDING** until it is resolved.
 
 Where a review does run, **Claude generates and supplies the bounded diff or patch** — the
 smallest *complete* risk-relevant packet, never the full diff by default: frozen contract and

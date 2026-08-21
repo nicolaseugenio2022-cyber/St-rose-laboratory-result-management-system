@@ -246,15 +246,32 @@ absent or failing condition proves nothing.
 **Required** for: authentication or authorization · Developer isolation · credentials or secrets ·
 audit confidentiality · privacy or sensitive data · RLS or security policy · migrations, schema, or
 security configuration · destructive or live-database work · a frozen boundary · an unresolved
-evidence contradiction · **any publication boundary**.
+evidence contradiction.
 
 **Not required** for an ordinary low or medium-risk slice.
 
-**Who may review.** Only an independent reviewer **the user has explicitly approved**, in a fresh
-context. **The disqualifier is having produced the candidate under review** (§2 independence rule),
-which on the current account excludes Claude from reviewing its own work. No agent becomes an
-approved reviewer by being available, by being a different model, or by being named in an older
-document.
+**Publication is not itself a trigger.** A slice requires independent review only when it
+**independently** crosses one of the boundaries above. **Where such a slice is being published, the
+review must be complete before publication** — publication never proceeds on an open requirement, and
+an unmet requirement is a hard stop rather than something publication can overtake. A low-risk
+presentation or documentation slice that crosses none of those boundaries is published without an
+independent reviewer.
+
+**Who may review.** The approved independent reviewer on this account is **a separate, fresh,
+read-only Claude context**. **The disqualifier is having produced the candidate under review**
+(§2 independence rule) — the implementing context may never review its own slice and call that
+independent. **Codex, OpenCode / Big Pickle and Fable 5 are not approved reviewers**; Fable 5 remains
+reserved for Milestone 6 performance work where materially useful. No agent becomes an approved
+reviewer by being available, by being a different model, or by being named in an older document.
+
+**What the reviewer must be given, and must return.** Supply the frozen scope, the diff and
+verification evidence, the governing authority constraints, and **explicit review questions**. The
+reviewer must return a **written verdict**. **No verdict is no review evidence** — an abandoned,
+truncated, or unanswered review leaves the requirement open and is reported as such, never counted as
+a pass.
+
+**If a fresh independent Claude context is unavailable, stop and ask the user** rather than waiving
+the review.
 
 **If no approved independent reviewer is available, the slice stops before publication** and the
 user decides: approve a reviewer, accept the residual risk explicitly, or defer the slice. Claude may

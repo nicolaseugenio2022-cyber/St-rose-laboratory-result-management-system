@@ -56,6 +56,11 @@ type SortDirection = "ascending" | "descending";
 
 const TABLE_COLUMN_COUNT = 9;
 
+// A session may carry any number of reports, so an uncapped chip list lets one row
+// widen the whole table. Three covers the common routine panel; the rest collapse
+// into a +N indicator. Display only - sess.reports stays complete for Preview.
+const MAX_VISIBLE_TEST_CHIPS = 3;
+
 function matchesSearchTerm(value: unknown, normalizedQuery: string) {
   return typeof value === "string" && value.toLowerCase().includes(normalizedQuery);
 }
@@ -504,9 +509,21 @@ export function SessionHistoryView() {
                       <td className="py-3 px-4 text-slate-600 whitespace-nowrap tabular-nums">{sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}</td>
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
-                          {sess.reports.map((r) => (
+                          {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
                             <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
                           ))}
+                          {sess.reports.length > MAX_VISIBLE_TEST_CHIPS && (
+                            <span
+                              className="px-2 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-700 rounded border border-slate-300 whitespace-nowrap"
+                              title={sess.reports.slice(MAX_VISIBLE_TEST_CHIPS).map((r) => r.templateCode).join(", ")}
+                            >
+                              <span aria-hidden="true">+{sess.reports.length - MAX_VISIBLE_TEST_CHIPS}</span>
+                              <span className="sr-only">
+                                {sess.reports.length - MAX_VISIBLE_TEST_CHIPS} more{" "}
+                                {sess.reports.length - MAX_VISIBLE_TEST_CHIPS === 1 ? "test" : "tests"} not shown
+                              </span>
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-600">

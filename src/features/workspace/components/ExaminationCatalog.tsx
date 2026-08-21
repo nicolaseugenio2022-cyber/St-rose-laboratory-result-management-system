@@ -118,13 +118,13 @@ export function ExaminationCatalog({
 
         {/* Enhanced Search Input with Clear Action */}
         <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400/80" />
+          <Search aria-hidden="true" className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400/80" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search examinations..."
-            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50/60 border border-slate-200/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary/60 transition-colors placeholder:text-slate-400/90 font-medium text-slate-700"
+            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50/60 border border-slate-200/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary/60 transition-colors placeholder:text-slate-500 font-medium text-slate-700"
           />
           {searchQuery && (
             <button
@@ -191,10 +191,10 @@ export function ExaminationCatalog({
                   <p
                     className={`text-[9.5px] font-mono mt-0.25 pl-6 ${
                       isAllSelected
-                        ? "font-bold text-emerald-700/90"
+                        ? "font-bold text-emerald-700"
                         : isPartialSelected
-                        ? "font-bold text-blue-700/90"
-                        : "font-medium text-slate-400/90"
+                        ? "font-bold text-blue-700"
+                        : "font-medium text-slate-500"
                     }`}
                   >
                     {statsText}
@@ -248,12 +248,12 @@ export function ExaminationCatalog({
                           </span>
 
                           {/* Row 2: Secondary Non-Wrapping Metadata (Softened Contrast Code • Renderer) */}
-                          <div className="flex items-center gap-2 whitespace-nowrap text-[9.5px] text-slate-400/90 font-mono overflow-hidden">
+                          <div className="flex items-center gap-2 whitespace-nowrap text-[9.5px] text-slate-500 font-mono overflow-hidden">
                             <span className="font-semibold text-slate-600 bg-slate-100/70 px-1.5 py-0.5 rounded border border-slate-200/60 shrink-0">
                               {code}
                             </span>
-                            <span className="text-slate-300/80">•</span>
-                            <span className="inline-flex items-center justify-center h-3.5 px-1.5 py-0 text-[8.5px] font-semibold text-indigo-600/90 bg-indigo-50/70 border border-indigo-100/60 rounded shrink-0 leading-none">
+                            <span aria-hidden="true" className="text-slate-300/80">•</span>
+                            <span className="inline-flex items-center justify-center h-3.5 px-1.5 py-0 text-[8.5px] font-semibold text-indigo-600 bg-indigo-50/70 border border-indigo-100/60 rounded shrink-0 leading-none">
                               {rendererLabel}
                             </span>
                           </div>
@@ -270,7 +270,7 @@ export function ExaminationCatalog({
                           className={`h-5 w-5 inline-flex items-center justify-center rounded-md transition-colors pointer-events-auto shrink-0 border ${
                             isSelected
                               ? "bg-slate-100/70 text-brand-primary/80 border-slate-200/90 hover:bg-slate-200/60"
-                              : "bg-slate-50/80 text-slate-400/80 border-slate-200/60 hover:bg-slate-100 hover:text-slate-600"
+                              : "bg-slate-50/80 text-slate-500 border-slate-200/60 hover:bg-slate-100 hover:text-slate-600"
                           }`}
                           title={isSelected ? "Deselect Examination" : "Select Examination"}
                           aria-label={`${isSelected ? "Deselect" : "Select"} ${displayTitle}`}

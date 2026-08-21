@@ -2,9 +2,9 @@
 
 **St. Rose Laboratory Result Management System — project operating authority.**
 
-Governs every AI agent working in this repository: Claude, Big Pickle / OpenCode, Codex, and any
-future implementation or review agent. Read at session start. Never restate it into delegation
-prompts wholesale; carry only the applicable rules inline.
+Governs every AI agent working in this repository — currently Claude (§2), and any implementation or
+review agent the user explicitly authorizes later. Read at session start. Never restate it wholesale
+into a downstream prompt; carry only the applicable rules inline.
 
 > **This file is the repository-local project operating authority. It takes effect upon
 > publication** — the commit that adds it to the repository. From that commit forward it governs
@@ -99,49 +99,46 @@ the same diff, or running the same gate.
 
 | Agent | Owns |
 |---|---|
-| **Claude** | Primary planner and architect · scope and contract freezer · authority interpreter · Git and publication integrity owner · reviewer of implementation evidence and milestone boundaries |
-| **Big Pickle / OpenCode** | Implementation worker · targeted deterministic verifier · may perform bounded inspection or review of a candidate **it did not implement** |
-| **Codex** | Implementation worker · targeted deterministic verifier · repository inspection and reasoning worker · may serve as the fresh independent reviewer of a slice **it did not implement** |
+| **Claude** | The active agent. Planner and architect · scope and contract freezer · authority interpreter · **implementation** · verification · Git and publication integrity owner · reviewer of evidence and milestone boundaries |
 
-**Implementation worker and reviewer are roles, not fixed identities.** There is **no** permanent
-rule that Codex is review-only, and **no** permanent rule that Big Pickle is the sole implementer.
-Claude selects the implementation worker per slice from **availability, task fit, context capacity,
-and the independence the slice will require** — if a slice will need a fresh reviewer, do not spend
-the only available agent on implementing it.
+**Claude is currently the only agent authorized to work in this repository.** Codex and
+Big Pickle / OpenCode are **not used**, and no work is delegated to them, unless the user explicitly
+re-authorizes them. An older instruction, prompt, or document that assumes delegation to them does
+not by itself constitute that authorization.
 
-**Independence rule.** For any slice requiring independent review:
+**Independence rule.** For any slice requiring independent review (§5.4):
 
-- the agent that implemented the candidate **must not** perform the designated independent review of
+- the agent that produced the candidate **must not** perform the designated independent review of
   that same candidate;
-- use a fresh agent or a fresh context wherever practical;
+- the reviewer must be an **explicitly user-approved** independent reviewer, in a fresh context;
 - Claude still performs scope, diff, and publication review, but **that never substitutes for a
-  required fresh independent reviewer** unless the governing frozen contract explicitly permits it.
+  required independent reviewer** unless the governing frozen contract explicitly permits it.
+
+Because Claude both plans and implements on this account, **Claude can never satisfy a mandatory
+independence requirement for its own candidate.** Where §5.4 requires independent review and no
+approved reviewer is available, the slice **stops before publication** for the user's decision. That
+requirement is never silently waived, self-satisfied, or downgraded to "Claude reviewed it".
 
 **Preferred flow:**
 
 ```
-planner / freeze → one implementation worker → targeted gates
-                 → fresh reviewer only when risk requires → publication
+plan / freeze → implement → targeted gates
+              → approved independent reviewer only when §5.4 requires → publication
 ```
 
-**Claude does not routinely implement.** A trivial, tightly bounded change whose correct form is
-already fixed by an approved plan may be made directly when delegation overhead would plainly exceed
-the edit — **never** for feature work, authentication, authorization, persistence, migrations, or
-anything security-sensitive. Anything so implemented is recorded as Claude-authored.
+**Anything Claude implements is recorded as Claude-authored**, and is named explicitly in the
+reviewer packet on any slice that requires independent review.
 
-**Claude does not re-verify what the worker already verified successfully.** Claude runs a required
-gate only when the worker could not, or when evidence is missing, partial, unattributable, or
-contradicted.
-
-**Avoid duplicated verification.** Do not have Claude, Big Pickle, and Codex all rerun identical
-checks. Independent review is *reasoning* review, not a second run of the deterministic suite.
-Reserve it for the risk levels named in §5.4.
+**Do not duplicate verification.** Re-run a gate only when it was interrupted, its evidence is
+missing, partial or unattributable, or it is contradicted by the diff or a review finding.
+Independent review is *reasoning* review, not a second run of the deterministic suite. Reserve it for
+the risk levels named in §5.4.
 
 ---
 
 ## 3. Preflight
 
-Before freezing or delegating any slice, establish and report:
+Before freezing any slice, establish and report:
 
 1. local `HEAD`
 2. `origin/main`
@@ -154,10 +151,8 @@ Before freezing or delegating any slice, establish and report:
 **explicitly classified before a slice is frozen**. Never stash, discard, revert, commit, or absorb a
 pre-existing change automatically. An unclassified or unexpected entry is a hard stop.
 
-**Currently expected working-tree entries** (both intentional, both to be preserved):
-
-- `D public/st-rose-logo.png` — deliberate user deletion; **do not restore**. Lands with slice UX0-B.
-- `?? architecture/whole-system-user-centered-ui-ux-improvement-plan.md` — approved UI/UX handoff.
+**There are currently no standing expected working-tree entries.** Any dirty path must be classified
+against the active slice or the user's own work before a slice is frozen.
 
 ---
 
@@ -214,10 +209,21 @@ node node_modules/next/dist/bin/next build
 node node_modules/tsx/dist/cli.mjs --conditions=react-server scripts/<name>.ts
 ```
 
-**Known invocation exception — record it, do not "fix" it.** The C4-family verifiers
-(`verify-checkpoint-c4.ts`, `c4-1.ts`, `c4-2.ts`) import `react-dom/server` and **cannot** run under
-`--conditions=react-server`. They pass without that flag. Other verifiers require it. Do not "repair"
-this during unrelated work.
+**Known invocation exception — record it, do not "fix" it.** Exactly four verifiers import
+`react-dom/server` and therefore **cannot** run under `--conditions=react-server`; under that flag
+they fail on `react-dom/server is not supported in React Server Components` **before any assertion
+runs**:
+
+- `verify-checkpoint-b4.ts`
+- `verify-checkpoint-c4.ts`
+- `verify-checkpoint-c4-1.ts`
+- `verify-checkpoint-c4-2.ts`
+
+They pass without the flag. Other verifiers require it. Do not "repair" this during unrelated work.
+
+**A verifier that fails to *start* has proved nothing.** Distinguish that from an assertion failure
+and report it as such, and never retry with the other invocation to turn a red gate green without
+stating which invocation produced which outcome.
 
 ### 5.3 Adversarial verification
 
@@ -244,12 +250,24 @@ evidence contradiction · **any publication boundary**.
 
 **Not required** for an ordinary low or medium-risk slice.
 
-**Who may review.** Either Codex or Big Pickle / OpenCode, in a fresh context. **The only
-disqualifier is having produced the candidate under review** (§2 independence rule). Because a
-sandboxed worker cannot run Git, Claude supplies the reviewer a **bounded packet** — the smallest
-*self-sufficient* set, never the full diff by default: the frozen contract and invariants,
+**Who may review.** Only an independent reviewer **the user has explicitly approved**, in a fresh
+context. **The disqualifier is having produced the candidate under review** (§2 independence rule),
+which on the current account excludes Claude from reviewing its own work. No agent becomes an
+approved reviewer by being available, by being a different model, or by being named in an older
+document.
+
+**If no approved independent reviewer is available, the slice stops before publication** and the
+user decides: approve a reviewer, accept the residual risk explicitly, or defer the slice. Claude may
+analyse provisionally to surface blockers, and must report the state as **INDEPENDENT REVIEW
+PENDING** — that never satisfies the requirement, which stays open until an approved reviewer
+completes it or the user waives it having seen the residual risk. **Never silently waive,
+self-satisfy, or downgrade an independence requirement.**
+
+**Reviewer packet.** When a review does run, the reviewer is supplied a **bounded packet** — the
+smallest *self-sufficient* set, never the full diff by default: the frozen contract and invariants,
 security-relevant hunks, schema and security changes, **every changed or deleted existing
-assertion**, the closest same-layer precedent, and a concise verification summary.
+assertion**, the closest same-layer precedent, and a concise verification summary. Where the reviewer
+cannot run Git, Claude supplies the diff and any expected frozen-file hashes.
 
 ### 5.5 Manual acceptance
 

@@ -3,8 +3,9 @@
 Orchestration rules for Claude Code in this repository.
 
 Project, domain, clinical, and architectural rules are **not** defined here.
-This file governs only the division of labour between Claude, the implementation workers
-(Big Pickle / OpenCode and Codex), and the user.
+This file governs only how Claude works in this repository and the division of labour between Claude
+and the user. `AGENTS.md` remains the project operating authority; where the two touch the same
+concern, `AGENTS.md` states the rule and this file states the operational consequence.
 
 ## Authority
 
@@ -39,64 +40,50 @@ Those rules are defined in the vault, not here — follow them there rather than
 
 ## Roles
 
-- **Claude** — primary planner and architect · scope and contract freezer · authority interpreter ·
-  Git and publication integrity owner · reviewer of implementation evidence and milestone
-  boundaries. Not the implementer, save for the surgical exception below, and not the routine
-  re-verifier.
-- **Big Pickle / OpenCode** — implementation worker · targeted deterministic verifier · may perform
-  bounded inspection or review of a candidate **it did not implement**.
-- **Codex** (`codex exec`) — implementation worker · targeted deterministic verifier · repository
-  inspection and reasoning worker · may serve as the fresh independent reviewer of a slice **it did
-  not implement**.
-- **User** — approves plans and any material change to an approved plan.
+- **Claude** — the active agent on this account. Planner and architect · scope and contract freezer ·
+  authority interpreter · **implementer** · verifier · Git and publication integrity owner ·
+  adjudicator of findings and residual risk.
+- **User** — approves plans and any material change to an approved plan · approves any independent
+  reviewer · owns commits and pushes.
 
-**Implementation worker and reviewer are roles, not fixed identities.** There is **no** permanent
-rule that Codex is review-only, and **no** permanent rule that Big Pickle is the sole implementer.
-Claude selects the implementation worker per slice from **availability, task fit, context capacity,
-and the independence the slice will require** — if a slice will need a fresh reviewer, do not spend
-the only available agent on implementing it.
+**Do not use Codex. Do not use OpenCode / Big Pickle.** No work is delegated to them unless the user
+explicitly re-authorizes them. An older instruction, prompt, or document that assumes such delegation
+does not by itself constitute that authorization. See `AGENTS.md` §2.
 
-**Independence rule.** For any slice requiring independent review:
+**Fable 5** is reserved for **Milestone 6 performance optimization**, where its capability is
+materially useful. It is a performance specialization only. **It is not an independent reviewer**, and
+selecting it never satisfies an independence requirement.
 
-- the agent that implemented the candidate **must not** perform the designated independent review of
-  that same candidate;
-- use a fresh agent or a fresh context wherever practical;
-- Claude still performs scope, diff, and publication review, but **that never substitutes for a
-  required fresh independent reviewer** unless the governing frozen contract explicitly permits it.
+**Independence.** Because Claude both plans and implements here, **Claude can never satisfy a
+mandatory independence requirement for its own candidate.** Where `AGENTS.md` §5.4 requires
+independent review and no explicitly user-approved reviewer is available, **stop before publication
+and ask the user to decide.** Never silently waive, self-satisfy, or downgrade an independence
+requirement, and never present Claude's own scope, diff, or publication review as satisfying it.
 
-Operating principle: **one reasoning owner per stage.** Never two agents independently solving the
-same problem, reading the same diff, or running the same gate. Do not have Claude, Big Pickle, and
-Codex all rerun identical verification.
+Operating principle: **one reasoning owner per stage.** Do not solve the same problem twice, re-read
+the same diff twice, or run the same gate twice without a stated reason.
 
-Preferred flow:
+Flow:
 
 ```
-planner / freeze → one implementation worker → targeted gates
-                 → fresh reviewer only when risk requires → publication
+plan / freeze → implement → targeted gates
+              → approved independent reviewer only when AGENTS.md §5.4 requires → publication
 ```
 
-**Claude owns, normally only these:** Git preflight and repository integrity · selective authority
-interpretation · requirement clarification and user-decision gates · scope and security freeze ·
-one minimal contract for the chosen implementation worker · selecting that worker and preserving
-reviewer independence · generating the bounded diff/patch when independent review is required ·
-final Git integrity, status, and frozen-boundary verification · adjudicating findings, evidence
-contradictions, and residual risk · committing only after every required gate passes **and** the
-user has authorized that commit.
+**Claude owns:** Git preflight and repository integrity · selective authority interpretation ·
+requirement clarification and user-decision gates · scope and security freeze · the implementation ·
+the verification ladder including mutation proofs with byte-verified restore · final Git integrity,
+status, and frozen-boundary verification · generating the bounded packet when independent review is
+required · adjudicating findings, evidence contradictions, and residual risk · committing only after
+every required gate passes **and** the user has authorized that commit.
 
-**The implementation worker owns:** implementation investigation within the frozen scope · the code
-change · Levels A, B, C and D (see Verification ladder) · mutation proofs with byte-verified restore ·
-frozen-file integrity by supplied SHA-256 where Git is unavailable · a concise structured report. It does
-not rediscover architecture Claude supplied and does not restate project context.
+**Everything Claude implements is recorded as Claude-authored**, and is named explicitly in the
+reviewer packet on any slice that requires independent review.
 
-**Claude does not** re-investigate the implementation, rerun a gate the worker executed successfully,
-rebuild mutation harnesses, or narrate implementation. See Review contract for when Claude reads code.
-
-**Surgical exception.** Claude may implement directly only when *all* hold: the change is trivial and
-tightly bounded; its correct form is already established by the frozen plan; no new architectural
-reasoning is required; and delegation overhead would plainly exceed the edit. **Never** for feature
-work, authentication, authorization, persistence design, migrations, query projection, or anything
-security-sensitive — those are delegated or replanned. Anything so implemented is recorded as
-Claude-authored and, on a high-risk slice, named explicitly in the reviewer packet.
+**Implementing does not lower the bar.** Feature work, authentication, authorization, persistence
+design, migrations, query projection and anything security-sensitive keep every gate they already
+had — full verification depth, mutation coverage where §5.3 requires it, live acceptance, and the
+independence requirement above.
 
 ## Version control
 
@@ -117,7 +104,7 @@ observe exact-commit CI · verify local `HEAD` against `origin/main`.
    unresolved and a directly analogous established operation exists, **inspect that exact precedent
    first** and adopt what it settles; broaden only if it is insufficient or contradictory.
 2. **Plan** — produce a concrete plan: scope, explicit out-of-scope, affected files/areas, acceptance criteria, verification steps.
-3. **Stop** — present the plan and wait. Before explicit approval: do not invoke an implementation worker, do not write application code.
+3. **Stop** — present the plan and wait. Do not write application code before explicit approval.
 4. **Freeze** — on approval the plan is frozen. Then run `git status` and require a clean working tree:
    - Clean — record the current `HEAD` SHA as the review baseline and proceed.
    - Record the frozen checkpoint contract: baseline SHA · the authority sections relied on ·
@@ -130,10 +117,10 @@ observe exact-commit CI · verify local `HEAD` against `origin/main`.
      decision, trace the changed symbol through the relevant authority files, frozen verifier
      assertions, historical baseline pins, schema constraints, and directly related type contracts.
      Targeted only — never a whole-repository reread. A conflict found here is a hard stop for the
-     user's decision; found after delegation it has already wasted an implementation.
-5. **Delegate** — hand the frozen slice to `codex exec` (see Delegation contract).
-6. **Review** — independently inspect the repository (see Review contract). The worker's summary is evidence, never proof.
-7. **Correct** — a mistake lying entirely inside the frozen plan may be sent back to the same worker without asking. Maximum **2** automatic correction rounds; review again after each. Once exhausted, stop and report.
+     user's decision; found later it has already wasted an implementation.
+5. **Implement** — build the frozen slice (see Slice contract).
+6. **Review** — independently inspect the repository against Git (see Review contract). A summary is evidence, never proof.
+7. **Correct** — a mistake lying entirely inside the frozen plan may be corrected without asking. Maximum **2** automatic correction rounds; review again after each. Once exhausted, stop and report.
 8. **Declare** — report completion only after independently verifying every acceptance criterion.
    A slice adding a user-facing capability names the entry point that actually reaches it, or records
    explicitly that it remains unreachable — type checks, lint, build and every verifier pass happily
@@ -148,18 +135,16 @@ implementation exposes an assumption never actually established · a security-se
 warrants it · an authority file changes on disk · or a new session begins. Otherwise continue from
 the freeze.
 
-**Slice by cohesion and risk, never by line count.** Prefer one delegation when the work is a
-single cohesive reasoning unit with shared invariants and a bounded context packet. Split when
-responsibilities are independently understandable · different security boundaries are involved ·
-separate investigations need materially different context · combining would produce an oversized
-prompt or excessive worker reasoning · independent rollback and verification would be safer · or
-the combined slice would risk the ten-minute foreground wall. Changed-line count is an informal
-signal only and is never an authority rule. Each slice must have a single unambiguous completion
-boundary. The two-round automatic correction limit applies **per slice**; re-slicing work to
-obtain a fresh correction budget is a hard stop.
+**Slice by cohesion and risk, never by line count.** Keep the work in one slice when it is a single
+cohesive reasoning unit with shared invariants. Split when responsibilities are independently
+understandable · different security boundaries are involved · separate investigations need
+materially different context · or independent rollback and verification would be safer.
+Changed-line count is an informal signal only and is never an authority rule. Each slice must have
+a single unambiguous completion boundary. The two-round automatic correction limit applies **per
+slice**; re-slicing work to obtain a fresh correction budget is a hard stop.
 
-When one delegation covers both production and verifier changes, the prompt must name the existing
-assertions that the production change will invalidate, and state how they are to be repaired.
+When one slice covers both production and verifier changes, the frozen contract must name the
+existing assertions the production change will invalidate, and state how they are to be repaired.
 
 ## Hard stops — ask the user
 
@@ -175,69 +160,53 @@ resolved by reading, never by asking. Escalate genuine product, UX, security, or
 - The work belongs to a later milestone or checkpoint, or is an unrelated improvement.
 - The working tree is dirty at freeze time.
 - Correction rounds are exhausted.
-- The Codex session's actual model or reasoning effort does not match gpt-5.6-sol and the effort tier
-  the contract selected.
+- `AGENTS.md` §5.4 requires independent review and no user-approved independent reviewer is
+  available.
 
-## Delegation contract
+## Slice contract
 
-Implementation delegations must pin the model explicitly. Never rely on ambient global
-config — `~/.codex/config.toml` can change between delegations without the plan, the
-prompt, or the review noticing:
+Before implementing, write the frozen contract down. It is the working authority for the slice, and
+it is what the final report is checked against:
 
 ```
-codex exec -m gpt-5.6-sol -c model_reasoning_effort="high"  --sandbox workspace-write "<prompt>" < /dev/null
-codex exec -m gpt-5.6-sol -c model_reasoning_effort="xhigh" --sandbox workspace-write "<prompt>" < /dev/null
+BASELINE           baseline SHA; what previous slices already landed
+GOAL               the one outcome this slice must produce
+FILES IN SCOPE     named paths
+EXACT CHANGES      the frozen change, precisely enough to implement without redesign
+PINNED INVARIANTS  the applicable invariants, stated inline
+REQUIRED GATES     the Level B/C/D suite for this slice, by name
+DO NOT TOUCH       AGENTS.md, Project.md; frozen files; out-of-scope areas
+STOP CONDITION     implement and verify only this; no commit or push; leave everything in the
+                   working tree
 ```
 
-**Effort tier.** `high` is the default: implementation, UI work, routine repository changes,
-straightforward CRUD, deterministic verification. Use `xhigh` for high-risk backend and database
-work — transactional migrations, auth or authorization, RLS and security policy, concurrency and race
-handling, retention and expiry invariants, destructive database paths, complex state transitions such
-as Replacement Mode, and any schema or security change where a mistake is costly. Claude selects the
-tier from the slice's actual risk and complexity, and **states it in the frozen contract before
-delegating**. Anything above `xhigh` requires a concrete justification recorded in that contract —
-never a reflex. Effort and rigour are independent dials: `high` never buys a reduction in verification
-depth, mutation coverage, independent review, live acceptance, or any security gate. **Never interrupt
-a running delegation to change its effort** — let it finish under its frozen contract and evidence
-chain, and apply the new tier to the next qualifying delegation. **Elapsed time is not a reason to
-escalate**: a long run means the slice is large or the environment is slow, and the answer is a
-narrower slice or a diagnosis, never a higher tier mid-flight or on a rerun of the same work.
+Acceptance criteria and pinned invariants are carried **verbatim**; surrounding narrative is not.
 
-Read-only tasks may use `--sandbox read-only`; the model pin still applies and reasoning effort is
-never lowered as an optimization or as rate-limit relief. **`< /dev/null`, or the platform-safe EOF
-equivalent, is mandatory on every non-interactive invocation** — implementation, continuation, probe,
-reviewer, correction.
-**Write any large prompt to a temp file first and invoke Codex with a short command that reads it**
-(`"$(cat <file>)"`), rather than embedding a large heredoc in the same invocation — inlining multi-KB
-prompts adds command-scanning and approval overhead for no benefit.
-
-**Diagnose from evidence.** If explicit stdin closure cannot be confirmed, check blocked stdin first.
-If stdin was already explicitly closed, do not diagnose it again — distinguish genuine stall, wrapper
-timeout, environment or process failure, and implementation failure from the evidence available
-(liveness, CPU movement, output growth, rollout progress). **A wrapper timeout is not a Codex
-failure**: the process often survives and keeps working, so establish whether it is alive and
-progressing before acting. Never automatically kill it, restart the slice, or rerun completed work.
-Tool and environment failures never consume correction rounds.
-
-**One delegation at a time.** Run a single `codex exec` unless genuinely independent tasks justify
-parallelism, and state what makes them independent. On a 429 or other rate-limit response, do not
-retry immediately and do not launch a parallel or replacement delegation to route around it: preserve
-the current candidate and evidence untouched, back off, then retry **the same task** after the
-cooldown. A rate limit is an environment failure under the rule above, and never a reason to drop a
-required gate or thin a mutation set.
+**Reasoning effort.** Raise it for high-risk backend and database work — transactional migrations,
+auth or authorization, RLS and security policy, concurrency and race handling, retention and expiry
+invariants, destructive database paths, complex state transitions such as Replacement Mode, and any
+schema or security change where a mistake is costly. State the selected tier in the frozen contract
+before starting. **Effort and rigour are independent dials:** a lower tier never buys a reduction in
+verification depth, mutation coverage, independent review, live acceptance, or any security gate.
+**Elapsed time is not a reason to escalate** — a long run means the slice is large or the environment
+is slow, and the answer is a narrower slice or a diagnosis.
 
 **Do not put a predicted-long job behind a foreground wall.** Run it in the background, or split at a
 stable boundary — implementation plus A/B, then C/D against that exact unchanged candidate.
 
-**After a stranded run, prefer a fresh narrowly scoped delegation over `codex exec resume`.** First
-establish what landed: working tree, surviving process, stranded thread-store writer, partial diff. A
-surviving process holds the writer lock, making `resume` fail with `already has an active writer`;
-`resume` also rejects `--sandbox`. A fresh scoped `codex exec` avoids both but inherits no context.
-
-**Surgical continuation.** When a stable candidate exposes a narrow defect, do not resend the slice
-contract. Send only: the defect · the allowed files · the required edit class · evidence already
+**Surgical continuation.** When a stable candidate exposes a narrow defect, do not restate the slice
+contract. Address only: the defect · the allowed files · the required edit class · evidence already
 accepted · invalidated gates · outstanding gates. Do not reconsider architecture unless the defect
 requires it.
+
+**Environment failures never consume correction rounds.** A tool crash, a rate limit, or a runtime
+fault is not an implementation failure. Preserve the current candidate and evidence untouched,
+diagnose from evidence — liveness, output growth, exit status — and retry the same task. Never rerun
+completed work, and never drop a required gate or thin a mutation set to route around an environment
+problem.
+
+**Never install anything, add or change a dependency, or work around a blocked command.** When a
+command cannot start, say so plainly and stop.
 
 **Never evade a textual verifier.** A semantically equivalent syntax change made only to satisfy,
 bypass, or dodge a textual assertion is prohibited — disguising a call while preserving the same
@@ -247,44 +216,9 @@ whether the implementation's placement or design is wrong, or the verifier's log
 that. Never weaken a security assertion merely to make a candidate pass, and preserve exact-equality
 and negative assertions wherever they encode an approved security boundary.
 
-Every implementation prompt uses these headings and normally nothing else:
-
-```
-BASELINE           baseline SHA; what previous slices already landed
-GOAL               the one outcome this slice must produce
-FILES IN SCOPE     named paths
-EXACT CHANGES      the frozen change, precisely enough to implement without redesign
-PINNED INVARIANTS  the applicable invariants, stated inline by Claude
-FROZEN HASHES      expected SHA-256 for frozen files the worker must self-check (Git is unavailable to it)
-REQUIRED GATES     the Level B/C/D suite for this slice, by name
-DO NOT TOUCH       AGENTS.md, Project.md; frozen files; out-of-scope areas
-STOP CONDITION     implement and verify only this; no commit or push; leave everything in the
-                   working tree; return the structured report below
-```
-
-Acceptance criteria and pinned invariants are carried **verbatim**; surrounding narrative is not.
-
-The worker returns exactly this, with no tool-call narration: **1** files changed · **2** implementation
-result · **3** verification clusters with PASS/FAIL · **4** mutations, each with invariant, intended
-assertion, assertion that actually fired, and restore hash · **5** frozen-file and authority
-integrity by supplied SHA-256 · **6** every path it created or modified, including temporary files
-(Claude verifies repository state through Git) · **7** unresolved findings or decisions · **8**
-elapsed time and approximate usage.
-
-### Prompt economy
-
-Claude has already read the authority files and reconciled scope; the prompt carries the conclusions
-so the worker does not repeat that work. State the applicable invariants inline and omit those the
-change cannot touch. Name the files in scope — the worker opens others only when an import or call
-path requires it. The worker may load `AGENTS.md` for its own operating rules, but do not send it to
-`Project.md` or `architecture/` for rules the prompt already states. Require the structured report and nothing more.
-
-Scope discipline, hard stops, and the clean-tree requirement are unchanged. A shorter prompt must
-never mean a vaguer one.
-
 ### Verification split
 
-**The implementation worker runs every deterministic gate**, using these proven direct-`node` invocations. Never `npm`
+**Run every deterministic gate** with these proven direct-`node` invocations. Never `npm`
 or `npx` — the PowerShell execution policy blocks their shims.
 
 ```
@@ -312,25 +246,22 @@ A verifier that fails to *start* has proved nothing. Distinguish that from an as
 report it as such rather than as a gate result — and never retry with the other invocation to make a
 red gate go green without saying which invocation produced which outcome.
 
-The worker must never install anything, add or change a dependency, or work around the sandbox; when
-a command cannot start it says so plainly and stops.
+Never install anything, add or change a dependency, or work around a blocked command; when a
+command cannot start, say so plainly and stop.
 
 Verifier menu, **each as applicable** — M6A, M6B, M6C, M6D, the Developer boundary verifier, the
 Admin invariant verifier, the recovery verifier, C1, C4, C4.2, C5. A menu, not a mandatory sequence.
-Claude names the required suite in the contract from the checkpoint's actual risk and scope, and
+Name the required suite in the frozen contract from the checkpoint's actual risk and scope, and
 that selection must fully cover the candidate change.
 
-**Git stays Claude's.** A sandboxed worker runs as a different Windows principal, so Git refuses the
-repository as dubiously owned; this is confirmed for Codex and must be assumed for any sandboxed
-worker until a probe shows otherwise. The worker therefore cannot verify working-tree cleanliness,
-untracked files, diff scope, or frozen-file integrity against Git objects — Claude owns all of it. **Never add
-a `safe.directory` exception or otherwise weaken Git's ownership protection to work around this.**
-Where the worker needs a self-check, Claude supplies expected SHA-256 hashes in the contract and the
-worker verifies them with `fs` and `crypto`.
+**Git integrity is verified against Git, never inferred.** Working-tree cleanliness, untracked
+files, diff scope, and frozen-file integrity are established by real Git commands against the
+recorded baseline. **Never add a `safe.directory` exception or otherwise weaken Git's ownership
+protection**, and never substitute a hash check for a Git status and diff-scope check — hashes
+identify *which* candidate was verified, not what changed in the repository.
 
-**Never report a gate as passed when the worker could not execute it.** A gate the worker did not run
-is not evidence of anything. Widening worker capability requires a fresh probe, recorded here in the
-same change.
+**Never report a gate as passed when it did not execute.** A gate that did not run is not evidence
+of anything, and a verifier that failed to start is not a gate result.
 
 ### Verification ladder
 
@@ -338,8 +269,8 @@ Targeted implementation checks → affected verifier/checkpoint → required ris
 proof → restored candidate → one final complete gate. Run the smallest check capable of catching
 what the current step could plausibly break.
 
-**The implementation worker runs A, B, C and D.** Claude runs only a required gate the worker could
-not execute — that gate alone, never the suite again.
+**Claude runs A, B, C and D.** Run a required gate once; re-run it only for a stated reason (see
+Running verification).
 
 - **A — during implementation.** One targeted verifier script as a fast failure signal.
 - **B — stable candidate.** Once the diff stops changing, run only the verifiers whose assertions the
@@ -360,10 +291,9 @@ a **new** candidate hash set, and run the invalidated verification. Only then is
 again. **Deterministic PASS evidence applies solely to the exact hashed candidate it verified.**
 
 **Hash handshake.** Record SHA-256 for every changed candidate file immediately before Level D and
-recompute immediately after, requiring exact equality. The worker reports the verified hash set; Claude
-compares it against the actual working tree before accepting the evidence. Hashes identify *which*
-candidate was verified — they never substitute for Claude's Git status and diff-scope checks, which
-remain Claude-owned.
+recompute immediately after, requiring exact equality. Record the verified hash set and compare it
+against the actual working tree before accepting the evidence. Hashes identify *which* candidate was
+verified — they never substitute for the Git status and diff-scope checks.
 
 **A persistent pin is not a candidate hash.** A hash committed to the repository — a freeze pin, a
 baseline constant — must be checkout- and platform-invariant, so normalize pure representation
@@ -417,7 +347,7 @@ equivalent harness meeting the rules above.
 ## Review contract
 
 Claude's review is **repository integrity plus adjudication**, not a second code review. Never rely
-on the worker's summary for these; check them independently, every time:
+on a summary for these; check them independently against Git, every time:
 
 - `git status` — unexpected or untracked files.
 - `git diff --stat` against the recorded baseline — nothing outside the frozen scope.
@@ -428,13 +358,11 @@ on the worker's summary for these; check them independently, every time:
   examined; never call a scan repository-wide when it was not.
 - `AGENTS.md` and `Project.md` untouched (check both `Project.md` and `PROJECT.md`; same file on Windows).
 - No invented requirements, fields, rules, or styling; nothing beyond plan scope.
-- Every acceptance criterion accounted for by evidence — the worker's, and the reviewer's where one was required.
-- **Delegation identity** — read the actual session rollout, do not assume the flags took effect:
-  `ls -t ~/.codex/sessions/*/*/*/rollout-*.jsonl | head -1`, confirm it is the delegation just run
-  (`"originator":"codex_exec"`, correct `cwd`), then extract `"model"` and `"reasoning_effort"`.
-  Report both, and whether they matched **gpt-5.6-sol** and the **effort tier this slice's contract
-  selected**. This is a hard gate, not an observation: a silent downgrade is invisible in the output
-  and would otherwise let high-risk work pass at a lower tier than the contract required.
+- Every acceptance criterion accounted for by evidence, including the reviewer's where one was required.
+- **Independence status** — state explicitly whether `AGENTS.md` §5.4 required an independent
+  reviewer for this slice, and if so whether a user-approved reviewer actually completed it. This is
+  a hard gate, not an observation: an unmet independence requirement must surface as **INDEPENDENT
+  REVIEW PENDING**, never as a slice reported complete.
 
 **Claude does not routinely deep-read the diff.** Where a slice requires a fresh independent reviewer, that
 reviewer performs the code review. Claude deep-reads only when the reviewer raises a finding ·
@@ -445,8 +373,8 @@ mutation proof.
 
 ### Independent review
 
-No automatic reviewer. For an ordinary low or medium-risk slice, the implementation worker's own
-deterministic verification is sufficient; Claude reviews the evidence summary and does not redo it.
+No automatic reviewer. For an ordinary low or medium-risk slice, Claude's own deterministic
+verification is sufficient and no independent reviewer is required.
 
 A **fresh read-only independent reviewer is required** when the slice touches authentication or
 authorization · Developer isolation · credential or secret handling · audit confidentiality or
@@ -455,12 +383,17 @@ security configuration · destructive or live-database work · a frozen security
 implementation evidence contains an unresolved contradiction. It is also mandatory at a publication
 boundary.
 
-**The reviewer must be an agent that did not implement the candidate** (see Independence rule under
-Roles). Either Codex or Big Pickle / OpenCode may serve, in a fresh context; the only disqualifier is
-having produced the candidate under review. Claude's scope, diff, and publication review does not
-satisfy this requirement.
+**The reviewer must be an independent reviewer the user has explicitly approved**, in a fresh
+context, that did not produce the candidate (see Independence under Roles, and `AGENTS.md` §5.4).
+On this account that excludes Claude from reviewing its own work, and no agent becomes an approved
+reviewer by being available or by being a different model. **Claude's scope, diff, and publication
+review does not satisfy this requirement.**
 
-Because a sandboxed worker cannot run Git, **Claude generates and supplies the bounded diff or patch** — the
+**If no approved reviewer is available, stop before publication and ask the user to decide** —
+approve a reviewer, accept the residual risk explicitly, or defer the slice. Report the state as
+**INDEPENDENT REVIEW PENDING** until it is resolved.
+
+Where a review does run, **Claude generates and supplies the bounded diff or patch** — the
 smallest *complete* risk-relevant packet, never the full diff by default: frozen contract and
 invariants · security-relevant production hunks · migration, schema and security changes · **every
 changed or deleted existing assertion** · Claude-authored surgical changes · relevant authority
@@ -489,18 +422,16 @@ review is reasoning review, never deterministic-suite duplication.
 State authorized exceptions up front, and check the prompt for self-contradiction before launch —
 never pair "read the packet" with "run nothing".
 
-**If a mandatory reviewer cannot run** after correct stdin handling and verified environment
-diagnosis, report **INDEPENDENT REVIEW PENDING**. Claude may analyse provisionally to surface
-blockers, but that never satisfies the requirement, which stays open until a healthy reviewer
-completes or the user explicitly waives it having seen the residual risk.
+**If a mandatory reviewer is unavailable or cannot complete**, report **INDEPENDENT REVIEW
+PENDING**. Claude may analyse provisionally to surface blockers, but that never satisfies the
+requirement, which stays open until an approved reviewer completes it or the user explicitly waives
+it having seen the residual risk.
 
 ### Running verification
 
-**If the worker executed a required gate successfully, Claude does not rerun it merely for independent
-confirmation.** If the worker could not execute one required gate, Claude runs that gate alone —
-never the suite again.
+**Do not re-run a gate that already passed on this exact candidate** merely for reassurance.
 
-Re-run a gate the worker reported only when it was interrupted, timed out, or failed · its evidence is
+Re-run a gate only when it was interrupted, timed out, or failed · its evidence is
 missing, partial, or unattributable to this run · or its report conflicts with the diff or with
 reviewer findings. State which reason applied; when none does, say the evidence was accepted.
 

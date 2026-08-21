@@ -53,27 +53,53 @@ export function HistorySessionActions({
   const mayDeleteDraft = !isCompleted && canReopen;
 
   const isCard = variant === "card";
+  // Table controls share one height so they sit on a single baseline; the emphasis difference is
+  // carried by surface (bordered / ghost / icon-only), not by differing geometry.
   const previewClass = isCard
     ? "inline-flex min-h-[2.25rem] items-center gap-1.5 rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-    : "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors";
+    : "inline-flex h-8 items-center gap-1.5 rounded border border-slate-300 bg-slate-100 px-2 xl:px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring";
+  // Table variant carries three actions in one cell. They share one shape language - same height,
+  // radius and padding rhythm - so they read as a single group, and emphasis is carried by fill:
+  // Preview alone is filled, Replace/Edit is outlined, Delete draft is outlined and icon-only.
+  // The fill must contrast with the row: a white fill on a white row is invisible, which left
+  // Preview and Replace/Edit distinguishable only by one border shade.
+  // Every control keeps a visible resting border, so interactivity never depends on colour alone.
   const reopenClass = isCard
     ? "inline-flex min-h-[2.25rem] items-center gap-1.5 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-brand-primary transition-colors hover:bg-blue-100"
-    : "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-blue-200 bg-blue-50 text-brand-primary hover:bg-blue-100 transition-colors";
+    : "inline-flex h-8 items-center gap-1.5 rounded border border-slate-200 px-2 xl:px-2.5 text-xs font-semibold text-brand-primary transition-colors hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring";
+  // Icon-only in the table: 32x32 clears the WCAG 2.5.8 target-size minimum, the trash glyph
+  // carries the destructive meaning by shape rather than by colour, and the accessible name is
+  // supplied explicitly below.
   const deleteClass = isCard
     ? "inline-flex min-h-[2.25rem] items-center gap-1.5 rounded px-2 py-2 text-xs font-semibold text-slate-500 transition-colors hover:text-brand-danger disabled:opacity-60"
-    : "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors";
+    : "inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 text-slate-500 transition-colors hover:border-brand-danger-border hover:bg-brand-danger-bg hover:text-brand-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:opacity-60";
   const iconSize = isCard ? "h-4 w-4" : "h-3.5 w-3.5";
+  // Between lg and xl the shell leaves the table roughly 720px, so the labelled controls do
+  // not fit. They collapse to icons there; the text stays in the DOM for assistive tech.
+  const labelClass = isCard ? "" : "hidden xl:inline";
 
   const primaryActions = (
     <>
-      <button type="button" onClick={() => onPreview(session)} className={previewClass}>
+      <button
+        type="button"
+        onClick={() => onPreview(session)}
+        className={previewClass}
+        aria-label="Preview"
+        title="Preview"
+      >
         <Eye className={`${iconSize} text-slate-500`} aria-hidden="true" />
-        Preview
+        <span className={labelClass}>Preview</span>
       </button>
       {mayReopen && (
-        <button type="button" onClick={() => onReopen(session)} className={reopenClass}>
+        <button
+          type="button"
+          onClick={() => onReopen(session)}
+          className={reopenClass}
+          aria-label={isCompleted ? "Replace" : "Edit"}
+          title={isCompleted ? "Replace" : "Edit"}
+        >
           <Edit3 className={iconSize} aria-hidden="true" />
-          {isCompleted ? "Replace" : "Edit"}
+          <span className={labelClass}>{isCompleted ? "Replace" : "Edit"}</span>
         </button>
       )}
     </>
@@ -85,18 +111,25 @@ export function HistorySessionActions({
       onClick={() => onDeleteDraft(entry)}
       disabled={isDeleting}
       className={deleteClass}
+      // The table variant renders no visible label, so the accessible name is supplied here.
+      // `title` gives sighted pointer users the same wording, keeping the control discoverable.
+      aria-label={isCard ? undefined : "Delete draft"}
+      title={isCard ? undefined : "Delete draft"}
     >
-      <Trash2 className={`${iconSize}${isCard ? "" : " text-slate-500"}`} aria-hidden="true" />
-      Delete draft
+      {/* Slightly larger glyph in the table: it is the control's only visible content. */}
+      <Trash2 className="h-4 w-4" aria-hidden="true" />
+      {isCard ? "Delete draft" : null}
     </button>
   ) : null;
 
   if (!isCard) {
+    // One nowrap row, left-aligned. Right-aligning made Preview land at a different x on every
+    // row depending on how many actions that row had, which broke the vertical scan line.
     return (
-      <>
+      <div className="flex items-center justify-start gap-1.5 whitespace-nowrap">
         {primaryActions}
         {deleteAction}
-      </>
+      </div>
     );
   }
 

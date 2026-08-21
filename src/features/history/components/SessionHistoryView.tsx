@@ -53,13 +53,26 @@ type SessionHistoryEntry = {
 type SortKey = "accession" | "patient" | "date" | "retention";
 type SortDirection = "ascending" | "descending";
 
-const TABLE_COLUMN_COUNT = 7;
+const TABLE_COLUMN_COUNT = 5;
 
-// Column-level responsive visibility, index-aligned with the header and body rows below.
-// Date drops first because accession, status and retention carry more scan value; Tests stays
-// visible through compact-laptop widths since its width is already bounded by the +N cap.
-// Keep this array in step with the header row - the loading skeleton is driven from it.
-const COLUMN_HIDDEN_CLASS = ["", "", "", "hidden xl:table-cell", "", "", ""];
+// Status, retention and examination date answer one question - where is this session in its
+// lifecycle - so they share a single column instead of three. That removes two columns and their
+// horizontal padding, which is what lets the remaining five fit the shell without scrolling.
+// No column is hidden any more; width is managed by proportion instead of visibility.
+const COLUMN_HIDDEN_CLASS = ["", "", "", "", ""];
+
+// The table uses `table-fixed`, so these proportions - not the widest cell content - decide column
+// widths. That is what keeps the row inside its container: under the default auto layout a
+// nowrap actions cell expands to its intrinsic width and pushes the table into horizontal scroll.
+// Percentages are index-aligned with the header row and sum to 100 for the seven-column state;
+// when Date is hidden the browser redistributes its share across the rest.
+const COLUMN_WIDTH_CLASS = [
+  "w-[19%]", // accession - monospace identifier, needs a stable minimum
+  "w-[27%]", // patient   - highest scan priority, carries secondary metadata beneath
+  "w-[14%]", // tests     - bounded by the three-chip + N cap
+  "w-[18%]", // status    - badge, retention and examination date stacked
+  "w-[22%]", // actions   - three controls, labelled at xl and icon-only below it
+];
 
 // Below md the table becomes a card list, which has no column headers to sort from. This select
 // restores the same four sort keys and both directions through the existing sort state - it adds
@@ -147,12 +160,12 @@ function getRetentionDetails(session: PatientReportSessionAggregate) {
 function HistoryTableSkeleton() {
   return (
     <SkeletonRegion isLoading label="Loading session history" className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-left text-xs">
+      <table className="w-full table-fixed border-collapse text-left text-xs">
         <caption className="sr-only">Loading patient report session history</caption>
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50">
             {Array.from({ length: TABLE_COLUMN_COUNT }).map((_, columnIndex) => (
-              <th key={columnIndex} className={`px-4 py-3 ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
+              <th key={columnIndex} className={`px-2.5 py-3 ${COLUMN_WIDTH_CLASS[columnIndex]} ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
               </th>
             ))}
@@ -162,7 +175,7 @@ function HistoryTableSkeleton() {
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <tr key={rowIndex}>
               {Array.from({ length: TABLE_COLUMN_COUNT }).map((__, columnIndex) => (
-                <td key={columnIndex} className={`px-4 py-3 ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
+                <td key={columnIndex} className={`px-2.5 py-3 ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
                   <Skeleton className="h-4 w-full" />
                 </td>
               ))}
@@ -382,24 +395,30 @@ export function SessionHistoryView() {
 
       {/* Search Toolbar */}
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search accession prefix, patient name, or physician..."
-                aria-label="Search session history by accession prefix, patient name, or physician"
-                className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
-              />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-end gap-2 sm:max-w-md">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <label htmlFor="history-search" className="block text-xs font-semibold text-brand-text">
+                Search sessions
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  id="history-search"
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Accession prefix, patient name, or physician"
+                  className="h-10 w-full rounded-lg border border-slate-300 pl-10 pr-4 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                />
+              </div>
             </div>
             {hasActiveSearch && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="h-10 shrink-0"
                 onClick={() => setSearchQuery("")}
                 aria-label="Clear session history search"
               >
@@ -408,8 +427,9 @@ export function SessionHistoryView() {
               </Button>
             )}
           </div>
-          {/* Card mode has no sortable column headers, so the same sort keys are offered here. */}
-          <div className="w-full shrink-0 md:hidden sm:max-w-xs">
+          {/* The canonical sort control. Accession, Patient and Status sort from their headers too,
+              but Date has no header of its own now, so this stays visible at every width. */}
+          <div className="w-full shrink-0 sm:max-w-xs">
             <Select
               label="Sort by"
               options={CARD_SORT_OPTIONS}
@@ -420,12 +440,12 @@ export function SessionHistoryView() {
               }}
             />
           </div>
-          <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="flex h-10 shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
             <Calendar className="h-4 w-4 text-slate-400" aria-hidden="true" />
             <span>Today: {formatDateISO()}</span>
           </div>
         </div>
-        <div className="flex flex-col gap-1 text-xs text-brand-text-muted sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 border-t border-slate-100 pt-3 text-xs text-brand-text-muted sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
           <p aria-live="polite">
             {hasActiveAccessionSearch
               ? `Showing ${filteredEntries.length} of ${entries.length} accession matches returned`
@@ -497,33 +517,27 @@ export function SessionHistoryView() {
         ) : (
           <>
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[720px] border-collapse text-left text-xs">
+            <table className="w-full table-fixed border-collapse text-left text-xs">
               <caption className="sr-only">Patient report session history</caption>
               <thead>
                 <tr className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[10px]">
-                  <th className="py-3 px-4" aria-sort={ariaSort("accession")}>
+                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[0]}`} aria-sort={ariaSort("accession")}>
                     <button type="button" onClick={() => updateSort("accession")} aria-label="Sort by accession number" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
                       ACCESSION NO <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className="py-3 px-4" aria-sort={ariaSort("patient")}>
+                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[1]}`} aria-sort={ariaSort("patient")}>
                     <button type="button" onClick={() => updateSort("patient")} aria-label="Sort by patient name" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
                       PATIENT <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className="py-3 px-4">TESTS</th>
-                  <th className={`py-3 px-4 ${COLUMN_HIDDEN_CLASS[3]}`} aria-sort={ariaSort("date")}>
-                    <button type="button" onClick={() => updateSort("date")} aria-label="Sort by examination date" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
-                      DATE <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="py-3 px-4" aria-sort={ariaSort("retention")}>
+                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</th>
+                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[3]}`} aria-sort={ariaSort("retention")}>
                     <button type="button" onClick={() => updateSort("retention")} aria-label="Sort by retention expiry" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
-                      RETENTION <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
+                      STATUS <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className="py-3 px-4">STATUS</th>
-                  <th className="py-3 px-4 text-right">ACTIONS</th>
+                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -533,9 +547,9 @@ export function SessionHistoryView() {
 
                   return (
                     <tr key={sess.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-900 whitespace-nowrap tabular-nums">{sess.accessionNumber}</td>
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900 uppercase">{sess.demographics.fullName || "Unnamed Patient"}</div>
+                      <td className="py-3 px-2.5 font-mono font-bold text-blue-900 tabular-nums break-all xl:whitespace-nowrap xl:break-normal">{sess.accessionNumber}</td>
+                      <td className="py-3 px-2.5">
+                        <div className="font-bold text-slate-900 uppercase break-words">{sess.demographics.fullName || "Unnamed Patient"}</div>
                         {/* Secondary identity metadata: lowest scan priority, so it is the first thing
                             dropped as width tightens. Both values remain available in Preview. */}
                         <div className="hidden lg:flex lg:items-baseline lg:gap-1.5 mt-0.5 text-[11px] text-slate-500">
@@ -555,7 +569,7 @@ export function SessionHistoryView() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2.5">
                         <div className="flex flex-wrap gap-1">
                           {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
                             <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
@@ -574,19 +588,21 @@ export function SessionHistoryView() {
                           )}
                         </div>
                       </td>
-                      <td className={`py-3 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap tabular-nums ${COLUMN_HIDDEN_CLASS[3]}`}>{sess.demographics.examinationDate || "—"}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2.5">
+                        <StatusBadge status={sess.status} size="sm" />
                         {retention ? (
-                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
+                          <span className={`mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
                             {RetentionIcon && <RetentionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
                             {retention.label}
                           </span>
                         ) : (
-                          <span aria-label="No retention expiry for a draft">—</span>
+                          <span className="mt-1 block text-[11px] text-slate-500">Not yet retained</span>
                         )}
+                        <div className="mt-1 font-mono text-[11px] tabular-nums text-slate-500">
+                          {sess.demographics.examinationDate || "—"}
+                        </div>
                       </td>
-                      <td className="py-3 px-4"><StatusBadge status={sess.status} size="sm" /></td>
-                      <td className="py-3 px-4 text-right space-x-2">
+                      <td className="py-3 px-2.5">
                         <HistorySessionActions
                           entry={{ session: sess, canReopen }}
                           variant="table"

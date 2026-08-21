@@ -100,6 +100,23 @@ export async function listRecentSessionsAction(
   }));
 }
 
+export async function deleteDraftSessionAction(input: unknown): Promise<void> {
+  const caller = await requireOperationalCaller();
+  const { sessionId } = parseSessionLoadInput(input);
+  const repository = new SupabasePatientReportSessionRepository(caller);
+  await repository.deleteDraftSession(sessionId);
+  await auditService.emit({
+    category: "SessionReport",
+    eventType: "SessionDraftDeleted",
+    actorRole: caller.role,
+    targetRole: null,
+    performedByUserId: caller.userId,
+    performedByUsername: caller.username,
+    targetReference: sessionId,
+    details: { sessionId, deletedAt: new Date().toISOString() },
+  });
+}
+
 export async function saveDraftAction(
   input: unknown
 ): Promise<PatientReportSessionTransport> {

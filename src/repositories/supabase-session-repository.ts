@@ -360,6 +360,44 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     return data.length;
   }
 
+  async deleteDraftSession(id: string): Promise<void> {
+    const caller = this.requireCaller();
+    const { data, error } = await supabaseServer
+      .from("patient_report_sessions")
+      .select("id, status, created_by_user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) throw new Error("Session not found.");
+
+    const storedSession = data as {
+      id: string;
+      status: string;
+      created_by_user_id: string;
+    };
+    if (storedSession.created_by_user_id !== caller.userId) {
+      throw new Error("Session ownership validation failed.");
+    }
+    if (storedSession.status === "Draft") {
+      const { data: deletedRows, error: deleteError } = await supabaseServer
+        .from("patient_report_sessions")
+        .delete()
+        .eq("id", id)
+        .eq("status", "Draft")
+        .eq("created_by_user_id", caller.userId)
+        .select("id");
+
+      if (deleteError) throw deleteError;
+      if (!deletedRows || deletedRows.length !== 1) {
+        throw new Error("Draft deletion did not affect exactly one session.");
+      }
+      return;
+    }
+
+    throw new Error("Only draft sessions may be deleted.");
+  }
+
   private withAssignedAccession(
     session: IPatientReportSession,
     accessionNumber: string

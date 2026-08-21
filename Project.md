@@ -922,12 +922,15 @@ These were considered and consciously left open. None is implemented.
 
 ## Technical and process residuals
 
-- `scripts/check-navigation.js` is a diagnostic printer with no assertions. Its TypeScript-stripping
-  regex removes the values it parses, so it emits empty results and exits successfully regardless of
-  state. **It must not be read as passing evidence** and will not catch a navigation-visibility
-  regression.
-- `verify-checkpoint-b4.ts`, `verify-checkpoint-c4.ts` and `verify-checkpoint-c4-1.ts` render markup
-  through `react-dom/server` and therefore **must be run without** `--conditions=react-server`, even
+- `scripts/check-navigation.js` no longer exists. It was a diagnostic printer whose
+  TypeScript-stripping regex removed the values it parsed, so it emitted empty results and exited
+  successfully regardless of state. It was replaced by `scripts/check-navigation.ts`, which imports
+  the real `navigationConfig` and `filterNavigationForRole` instead of parsing source as text, and
+  exits non-zero when an assertion fails. It is now valid passing evidence for navigation
+  visibility.
+- `verify-checkpoint-b4.ts`, `verify-checkpoint-c4.ts`, `verify-checkpoint-c4-1.ts` and
+  `verify-checkpoint-c4-2.ts` render markup through `react-dom/server` and therefore
+  **must be run without** `--conditions=react-server`, even
   though the general guidance for verifier invocation prescribes that flag. The remaining checkpoints
   require it.
 - Server actions emit their audit event after the persistence call rather than within one
@@ -1224,7 +1227,7 @@ The backend contract is captured in `architecture/personnel-backend/personnel-di
 
 **No migration, DDL or SQL was involved.** As the backend handoff predicted, the `personnel` table already carried every column, constraint and trigger required, and `IPersonnelRepository` already declared the full CRUD surface whose `create`, `update` and `toggleActiveStatus` had never had a caller. No storage bucket was created and no signature upload or signature-token work was performed.
 
-New: `src/lib/personnel-guard.ts` (`requirePersonnelReader` for Admin and Developer, `requirePersonnelAdmin` for Admin alone, both emitting `SecurityDenial` / `PersonnelDirectoryAccessDenied` with a reason code before refusing); `src/features/server-boundary/personnel-actions.ts` (list, create, update, toggle — kept out of the B5-order-pinned `server-actions.ts`); `scripts/verify-personnel-directory.ts`. The byte-frozen `auth-guards.ts` and the shape-pinned `IPersonnelRepository` were not modified, and the verifier now pins both `auth-guards.ts` and `server-actions.ts` to their baseline `5eac3f7` hashes.
+New: `src/lib/personnel-guard.ts` (`requirePersonnelReader` for Admin and Developer, `requirePersonnelAdmin` for Admin alone, both emitting `SecurityDenial` / `PersonnelDirectoryAccessDenied` with a reason code before refusing); `src/features/server-boundary/personnel-actions.ts` (list, create, update, toggle — kept out of the B5-order-pinned `server-actions.ts`); `scripts/verify-personnel-directory.ts`. The byte-frozen `auth-guards.ts` and the shape-pinned `IPersonnelRepository` were not modified, and the verifier pinned both `auth-guards.ts` and `server-actions.ts` to their baseline `5eac3f7` hashes. The `server-actions.ts` whole-file pin was later found to be over-broad and was replaced; see the verifier pin repair recorded below. The `auth-guards.ts` pin is unchanged.
 
 Duplicate PRC licence numbers are reported as a **typed result** (`{ success: false, error: "DUPLICATE_PRC" }`) rather than a thrown error. This is deliberate and load-bearing: Next.js redacts messages thrown from Server Actions in production builds, so a thrown error would have degraded to the generic banner in the deployed application while appearing correct in development. Server action return values are not redacted, so the field-level error survives.
 
@@ -1284,3 +1287,17 @@ Object paths are server-generated and immutable — `personnel/<personnelUuid>/<
 **Username enumeration was evaluated and is not a risk on this path.** `userService.authenticate` records every attempt unconditionally, before any account-existence branch, so attempt history accumulates identically for usernames that do not exist; the status value therefore reflects only attacker-generated attempt history, never account state. The path performs no credential lookup and no password verification, so it carries no timing signal either. Input is canonicalized, malformed input and every internal failure return zero, and nothing is audited on this path so it cannot be used to amplify audit rows.
 
 **All deterministic gates and mutation proofs passed**, and **live acceptance passed with no blockers and no residuals**.
+
+## Personnel Verifier Pin Repair (2026-08-21)
+
+**`verify-personnel-directory.ts` and `verify-personnel-signatures.ts` were stale and failing from `be73565` until `b906954`.** Both pinned the whole of `src/features/server-boundary/server-actions.ts` by SHA-256 against baseline `5eac3f7`. That file is overwhelmingly session and workspace actions, and only two of its functions are personnel-relevant, so the pin was over-broad: unrelated session work tripped it. A History search parameter added in `be73565` broke it, and the draft-delete action added in `779481f` moved it further without originating the failure. Personnel production code was unchanged throughout — `listActivePersonnelAction` and `requireOperationalCaller` were both byte-identical to the pinned baseline the entire time.
+
+**The failure masked twelve later assertions.** Because the shared `assert` helper throws, the tripped pin ended each run before the assertions that followed it: **4 directory assertions** (the stable `DUPLICATE_PRC` result code, the create and update actions returning a typed result rather than throwing it, and the `PersonnelForm` field mapping) and **8 signature assertions** (PNG magic-byte validation inside `validatePngMagicBytes`, the 2 MB cap inside `validateMaxSize`, the absence of an anon client in `supabase-server.ts`, the Server Action body-size limit, the signature proxy pattern, validation-before-storage in `uploadSignatureObject`, storage-before-DB ordering, and `report_signatories` lookup-error handling). None of these executed for the whole period.
+
+**All twelve masked assertions were executed after the repair and all passed.** Nothing had regressed while they were dark, so the incident cost verification coverage rather than correctness.
+
+**The repair replaced the whole-file pin with narrow personnel-boundary assertions**, identical in both verifiers. `listActivePersonnelAction` is asserted to exist, to accept no client-controlled input, to invoke `await requireOperationalCaller()` before constructing the repository, to use `SupabasePersonnelRepository.findAllActive()`, to expose no write path, and to match an exact body hash. `requireOperationalCaller` is asserted to gate callers to exactly `Admin` or `User` and to match an exact body hash. In each pair the structural assertion runs first so a regression reports a readable message, with the hash behind it as the completeness backstop. **The `auth-guards.ts` pin was not touched**, and it remains byte-frozen by M6C. No production code changed.
+
+**The narrowing is a deliberate reduction in coupling, not in coverage of the boundary.** The pinned regions are the two personnel-relevant functions themselves, so every byte under pin is load-bearing and no incidental session or workspace content remains for unrelated work to trip on. Both pins are checkout- and platform-invariant, because `getSource` normalizes CRLF to LF before hashing.
+
+**A residual is carried forward.** Three pre-existing assertions — directory assertion 1 and signature assertions 1 and 17 — still establish ordering by substring position rather than by call form, so a guard reduced to a comment would satisfy them. They are unchanged since their baseline and were outside this repair. Closing them requires its own slice.

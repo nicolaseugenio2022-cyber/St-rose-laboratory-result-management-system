@@ -12,6 +12,7 @@ import {
   Search,
   ShieldCheck,
   UserCheck,
+  X,
 } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -60,6 +61,74 @@ const CATEGORY_OPTIONS: ReadonlyArray<{
   { label: "SessionReport", value: "SessionReport" },
   { label: "SecurityDenial", value: "SecurityDenial" },
 ];
+
+/** The filter state that means "nothing is being filtered". Used by Clear all and by the
+ *  active-filter derivation, so the two can never disagree about what "empty" means. */
+const EMPTY_FILTERS: AuditFilters = {
+  category: "ALL",
+  eventType: "",
+  from: "",
+  to: "",
+  search: "",
+};
+
+/**
+ * The filters currently narrowing the result set, in display order.
+ *
+ * `verb` states how the repository actually applies that field, because the five filters do NOT
+ * share one contract: Event type is equality against the RAW stored identifier, Search is a
+ * wildcard match over the username and target reference, and From/To are range bounds. Describing a
+ * range bound as "contains" would name a different operation, so each entry carries its own verb.
+ * `mono` marks the one value an operator must type character-for-character.
+ */
+type ActiveFilter = {
+  key: keyof AuditFilters;
+  label: string;
+  value: string;
+  verb: string;
+  mono: boolean;
+};
+
+function activeFilters(filters: AuditFilters): ReadonlyArray<ActiveFilter> {
+  const active: ActiveFilter[] = [];
+  if (filters.category !== "ALL") {
+    const option = CATEGORY_OPTIONS.find((candidate) => candidate.value === filters.category);
+    // Chosen from a fixed list, so this describes the operator's selection. It is not typed, and it
+    // is not always plain equality - AuthAccount also matches the legacy "Authentication" category.
+    active.push({
+      key: "category",
+      label: "Category",
+      value: option ? option.label : filters.category,
+      verb: "is",
+      mono: false,
+    });
+  }
+  if (filters.eventType.trim()) {
+    active.push({
+      key: "eventType",
+      label: "Event type",
+      value: filters.eventType.trim(),
+      verb: "is exactly",
+      mono: true,
+    });
+  }
+  if (filters.from) {
+    active.push({ key: "from", label: "From", value: filters.from, verb: "on or after", mono: false });
+  }
+  if (filters.to) {
+    active.push({ key: "to", label: "To", value: filters.to, verb: "on or before", mono: false });
+  }
+  if (filters.search.trim()) {
+    active.push({
+      key: "search",
+      label: "Search",
+      value: filters.search.trim(),
+      verb: "contains",
+      mono: false,
+    });
+  }
+  return active;
+}
 
 function toDateTimeLocalValue(value?: string): string {
   if (!value) return "";
@@ -344,6 +413,20 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     void loadPage(nextFilters, 0);
   };
 
+  // Removing a chip and clearing everything are ordinary filter changes: same single reload the
+  // controls already perform, so request behaviour is unchanged.
+  const clearFilter = (key: keyof AuditFilters) => {
+    changeFilter(key, EMPTY_FILTERS[key]);
+  };
+
+  const clearAllFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    void loadPage(EMPTY_FILTERS, 0);
+  };
+
+  const active = activeFilters(filters);
+  const eventTypeFilterActive = Boolean(filters.eventType.trim());
+
   const firstVisible = page.total === 0 ? 0 : offset + 1;
   const lastVisible = page.total === 0 ? 0 : Math.min(offset + page.events.length, page.total);
   const hasPrevious = offset > 0;
@@ -407,10 +490,52 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
       {/* Audit Filter Toolbar */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <span>Audit filters</span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <Filter className="h-4 w-4 text-slate-400" aria-hidden="true" />
+            <span>Audit filters</span>
+            {active.length > 0 && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                {active.length} active
+              </span>
+            )}
+          </div>
+          {active.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <X className="h-3 w-3 text-slate-500" aria-hidden="true" />
+              Clear all filters
+            </button>
+          )}
         </div>
+
+        {active.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Active filters">
+            {active.map((entry) => (
+              <li key={entry.key} className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => clearFilter(entry.key)}
+                  disabled={loading}
+                  aria-label={`Remove filter: ${entry.label} ${entry.verb} ${entry.value}`}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 py-1 pl-2.5 pr-2 text-[11px] text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <span className="font-semibold text-slate-500">
+                    {entry.label} {entry.verb}
+                  </span>
+                  <span className={`truncate ${entry.mono ? "font-mono" : ""}`} title={entry.value}>
+                    {entry.value}
+                  </span>
+                  <X className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Select
@@ -421,12 +546,20 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               changeFilter("category", event.target.value as AuditCategoryFilter)
             }
           />
-          <Input
-            label="Event type"
-            placeholder="Filter by event type"
-            value={filters.eventType}
-            onChange={(event) => changeFilter("eventType", event.target.value)}
-          />
+          <div className="w-full">
+            <Input
+              label="Event type"
+              placeholder="RecoveryLookupAttempted"
+              value={filters.eventType}
+              aria-describedby="audit-event-type-hint"
+              onChange={(event) => changeFilter("eventType", event.target.value)}
+            />
+            <p id="audit-event-type-hint" className="mt-1.5 text-[11px] text-slate-500">
+              Matched <span className="font-semibold">exactly</span>. Enter the raw identifier, such
+              as <span className="font-mono">RecoveryLookupAttempted</span> - the readable label
+              shown in the table is not accepted.
+            </p>
+          </div>
           <Input
             label="From"
             type="datetime-local"
@@ -445,9 +578,13 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               label="Performed by or target"
               placeholder="Search audit records"
               value={filters.search}
+              aria-describedby="audit-search-hint"
               onChange={(event) => changeFilter("search", event.target.value)}
               className="pl-10"
             />
+            <p id="audit-search-hint" className="mt-1.5 text-[11px] text-slate-500">
+              Matches any part of a username or target reference.
+            </p>
           </div>
         </div>
       </div>
@@ -461,9 +598,32 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         ) : (
           <EmptyState
             icon={ShieldCheck}
-            title="No audit events match these filters"
-            description="No recorded event matches the active filter selection. Adjust or clear the filters to widen the search."
+            title={
+              active.length === 0
+                ? "No audit events recorded"
+                : "No audit events match these filters"
+            }
+            description={
+              active.length === 0
+                ? "No audit events have been recorded yet. Events appear here as they are written to the audit log."
+                : eventTypeFilterActive
+                  ? "No recorded event matches the active filter selection. Event type is matched exactly, so a readable label such as \u201cRecovery lookup attempted\u201d finds nothing - the raw identifier RecoveryLookupAttempted is required."
+                  : "No recorded event matches the active filter selection. Remove a filter above to widen the search."
+            }
             headingLevel={3}
+            action={
+              active.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                  Clear all filters
+                </button>
+              ) : undefined
+            }
           />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>

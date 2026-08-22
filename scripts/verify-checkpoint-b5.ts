@@ -1505,7 +1505,7 @@ const completionOwnershipIndex = completeSessionSource.indexOf("this.assertExist
 const completionRetentionIndex = liveCodeIndexOf(completeSessionSource, "this.assertSessionWithinRetention(session.id)");
 assert(completionOwnershipIndex >= 0 && completionOwnershipIndex < completionRpcIndex, "completeSession verifies existing session ownership before the completion transaction RPC");
 assert(completionRetentionIndex > completionOwnershipIndex && completionRpcIndex > completionRetentionIndex, "completeSession rejects expired completed sessions after ownership verification and before the completion transaction RPC");
-assert(completeSessionSource.indexOf("autoSuggestionLearningService.learnSuggestionsFromSessionDemographics") > completionRpcIndex, "completeSession learns auto-suggestions only after the completion transaction RPC");
+assert(completeSessionSource.indexOf("serverAutoSuggestionLearningService.learnSuggestionsFromSessionDemographics") > completionRpcIndex, "completeSession learns auto-suggestions only after the completion transaction RPC");
 
 const replacementBodyStart = replacementFunctionSource.indexOf("\nBEGIN");
 const replacementBodySource = replacementBodyStart >= 0

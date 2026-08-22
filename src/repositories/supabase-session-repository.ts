@@ -4,7 +4,7 @@ import { IPatientReportSessionRepository } from "./interfaces";
 import { IPatientReportSession } from "../domain/models/interfaces";
 import { PatientReportSessionAggregate } from "../domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "../domain/models/laboratory-report-domain";
-import { autoSuggestionLearningService } from "../services/auto-suggestion-service";
+import { serverAutoSuggestionLearningService } from "../services/auto-suggestion-service-server";
 import { supabaseServer } from "../lib/supabase/server";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 
@@ -291,7 +291,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     const { data, error } = await supabaseServer.rpc("complete_patient_report_session", { payload });
     if (error) throw error;
 
-    await autoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
+    await serverAutoSuggestionLearningService.learnSuggestionsFromSessionDemographics(session.demographics);
 
     return this.withAssignedAccession(session, data as string);
   }

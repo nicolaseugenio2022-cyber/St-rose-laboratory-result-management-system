@@ -1,13 +1,29 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { IAutoSuggestion } from "../domain/models/interfaces";
 import { supabase } from "../lib/supabase/client";
 
 export class SupabaseAutoSuggestionRepository {
+  /**
+   * The Supabase client is injected so one repository serves two runtimes without either leaking
+   * into the other: the browser default below keeps the existing anon-client behaviour
+   * byte-compatible for client components, while the server-side learning path constructs this
+   * repository with the privileged `supabaseServer` (see auto-suggestion-service-server.ts) and
+   * thereby inherits the P2 transport policy - bounded read budget, single retry, no PostgREST
+   * status retry - instead of bypassing it. This module must NOT import the server client
+   * directly: it is also bundled for the browser, where `server-only` would (correctly) break the
+   * build.
+   */
+  private readonly client: SupabaseClient;
+
+  constructor(client: SupabaseClient = supabase) {
+    this.client = client;
+  }
   async getSuggestionsByCategory(
     category: "physician" | "referrer" | "company",
     query?: string
   ): Promise<IAutoSuggestion[]> {
     try {
-      let req = supabase
+      let req = this.client
         .from("auto_suggestions")
         .select("*")
         .eq("category", category)
@@ -39,7 +55,7 @@ export class SupabaseAutoSuggestionRepository {
 
     try {
       // 1. Check if existing suggestion exists
-      const { data } = await supabase
+      const { data } = await this.client
         .from("auto_suggestions")
         .select("id, usage_count")
         .eq("category", category)
@@ -48,7 +64,7 @@ export class SupabaseAutoSuggestionRepository {
 
       if (data) {
         // Increment usage count
-        await supabase
+        await this.client
           .from("auto_suggestions")
           .update({
             usage_count: Number(data.usage_count || 1) + 1,
@@ -57,7 +73,7 @@ export class SupabaseAutoSuggestionRepository {
           .eq("id", data.id);
       } else {
         // Insert new suggestion
-        await supabase.from("auto_suggestions").insert({
+        await this.client.from("auto_suggestions").insert({
           category,
           suggestion_text: trimmed,
           usage_count: 1,

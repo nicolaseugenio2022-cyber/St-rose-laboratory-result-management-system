@@ -1,22 +1,28 @@
 import { redirect } from "next/navigation";
 import React from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { getCurrentUserProfile } from "@/lib/auth-guards";
+import { AccountLoadError } from "@/features/auth/components/AccountLoadError";
+import { loadAuthenticatedShellProfile } from "@/lib/authenticated-shell";
 
 export default async function AppRouteGroupLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const currentUserProfile = await getCurrentUserProfile();
-  if (!currentUserProfile) {
+  const shellProfile = await loadAuthenticatedShellProfile();
+  if (shellProfile.status === "unavailable") {
+    // Fail-closed retry surface: a transient profile-read failure must not look like a logout,
+    // and no children or role-dependent chrome may render without a resolved profile.
+    return <AccountLoadError />;
+  }
+  if (shellProfile.status === "unauthenticated") {
     redirect("/login");
   }
 
   return (
     <AppShell
-      currentUserRole={currentUserProfile.role}
-      username={currentUserProfile.username}
+      currentUserRole={shellProfile.profile.role}
+      username={shellProfile.profile.username}
     >
       {children}
     </AppShell>

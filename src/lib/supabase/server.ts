@@ -125,6 +125,31 @@ export async function resilientFetch(
   throw lastError ?? new Error("Read request budget exhausted before any attempt completed.");
 }
 
+/**
+ * Classifies the value THROWN by a repository's `if (error) throw error` when a read failed at
+ * the transport layer, for callers that render a graceful retry surface (M6 resilience
+ * follow-up).
+ *
+ * This is a different layer from the attempt-level helpers above. When the fetch promise
+ * rejects, postgrest-js (2.112.2, shouldThrowOnError off) converts the rejection into a
+ * RESOLVED envelope whose error member is a PLAIN OBJECT LITERAL - not an Error instance -
+ * with message `"<Name>: <message>"` and `code`/`hint` both empty strings. A completed HTTP
+ * error response instead carries a nonempty PostgREST/SQLSTATE `code` (or, for a non-JSON
+ * body, no `code` member at all), and app-internal failures are real Error instances. Those
+ * facts make this predicate narrow: it accepts only the two rejection-conversion shapes our
+ * own read policy can produce (attempt timeout, undici transport failure).
+ *
+ * Deliberately fail-closed: if a future supabase-js/postgrest-js upgrade changes the envelope
+ * shape, values stop matching and callers fall through to their generic error path - the
+ * retryable classification silently narrows, never widens. Do not broaden it speculatively.
+ */
+export function isTransientSupabaseReadFailure(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || error instanceof Error) return false;
+  const { message, code, hint } = error as { message?: unknown; code?: unknown; hint?: unknown };
+  if (code !== "" || hint !== "" || typeof message !== "string") return false;
+  return message.startsWith("TimeoutError:") || message.startsWith("TypeError: fetch failed");
+}
+
 export const supabaseServer = createClient(supabaseUrl, supabaseSecretKey, {
   auth: {
     persistSession: false,

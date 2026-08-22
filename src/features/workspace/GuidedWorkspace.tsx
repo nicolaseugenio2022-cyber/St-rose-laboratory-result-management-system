@@ -835,7 +835,7 @@ export function GuidedWorkspace({
       )}
 
       {/* Main Workspace Dual-Pane Independent Scroll Layout */}
-      <main className={`flex-1 overflow-hidden p-3 sm:p-4 xl:px-6 ${WORKSPACE_CONTAINER}`}>
+      <main className={`flex-1 overflow-hidden p-3 sm:px-4 sm:py-3 xl:px-6 ${WORKSPACE_CONTAINER}`}>
         {workspaceMode === "encoding" ? (
           <div className="h-full flex flex-col lg:flex-row gap-3 items-stretch overflow-hidden">
             {/* Desktop Left Sidebar: Fixed 280px width Independently Scrollable */}
@@ -878,7 +878,7 @@ export function GuidedWorkspace({
             )}
 
             {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-32">
+            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-2.5 scroll-pt-16">
               {/* Patient Demographics Header Card */}
               <PatientDemographicsForm
                 demographics={session.demographics}
@@ -902,33 +902,16 @@ export function GuidedWorkspace({
 
               {/* Single-Line Horizontal Scrollable Examination Tab Strip */}
               {/* Persistent session context: patient identity + report tab strip (UX2-A) */}
-              <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-3 py-2 space-y-2">
-                <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-700">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <User aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
-                    <span className="truncate font-bold text-slate-900">
-                      {session.demographics.fullName || "New Patient Visit Session"}
-                    </span>
-                    {session.demographics.sex && session.demographics.age > 0 && (
-                      <span className="shrink-0 font-mono text-[11px] text-slate-500">
-                        • {session.demographics.sex}, {session.demographics.age} y/o
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]">
-                    <span
-                      className="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 font-bold text-slate-700"
-                      title={session.accessionNumber === null ? "Accession not assigned" : undefined}
-                    >
-                      {session.accessionNumber ?? "Not assigned"}
-                    </span>
-                    {activeSpec && (
-                      <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-bold text-blue-800">
-                        {activeSpec.template.templateCode}
-                      </span>
-                    )}
-                  </div>
-                </div>
+              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-3 py-1.5">
+                {session.demographics.sex && session.demographics.age > 0 && (
+                  <span
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-slate-500 sm:inline-flex"
+                    title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
+                  >
+                    <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
+                    {session.demographics.sex}, {session.demographics.age} y/o
+                  </span>
+                )}
                 <SelectedReportsPanel
                   selectedSpecs={selectedSpecs}
                   activeTemplateCode={activeTemplateCode}

@@ -20,15 +20,15 @@ export function PatientDemographicsForm({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm mb-4">
-      <div className="flex items-center gap-2 mb-2.5 pb-1.5 border-b border-slate-100">
+    <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm mb-3">
+      <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-slate-100">
         <User className="h-4 w-4 text-brand-primary" />
         <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
           Patient Demographics
         </h2>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8 gap-x-3 gap-y-2.5">
         {/* Full Name */}
         <div className="sm:col-span-2">
           <label htmlFor="patient-full-name" className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
@@ -83,7 +83,7 @@ export function PatientDemographicsForm({
         </div>
 
         {/* Examination Date */}
-        <div>
+        <div className="2xl:col-span-2">
           <label htmlFor="patient-examination-date" className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
             Examination Date <span className="text-rose-500">*</span>
           </label>

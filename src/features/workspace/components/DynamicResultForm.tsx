@@ -54,23 +54,21 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
     id={`report-panel-${definition.templateCode}`}
     role="tabpanel"
     aria-labelledby={`report-tab-${definition.templateCode}`}
-    className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+    className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
     data-encoding-report={definition.templateCode}
   >
-    <div className="border-b border-slate-200 bg-slate-50/90 px-4 py-3">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <div className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-brand-primary" /><h2 className="text-sm font-bold text-slate-800">{definition.templateTitle}</h2><span className="rounded border border-slate-200 bg-white px-1.5 text-[10px] font-bold">{definition.templateCode}</span></div>
-          <div className="mt-1 flex items-center gap-2"><div className="h-1.5 w-36 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} /></div><span className="text-[10px] font-bold text-slate-600">{completedCount}/{selectedResults.length}</span>{completionPercent === 100 && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}</div>
-        </div>
-        <button type="button" onClick={() => handleSelectAllToggle(!allSelected)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">{allSelected ? <Square className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}{allSelected ? "Deselect optional" : "Select optional"}</button>
+    <div className="border-b border-slate-200 bg-slate-50/90 px-3.5 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex min-w-0 items-center gap-2"><FileSpreadsheet className="h-4 w-4 shrink-0 text-brand-primary" /><h2 className="truncate text-sm font-bold text-slate-800">{definition.templateTitle}</h2><span className="shrink-0 rounded border border-slate-200 bg-white px-1.5 text-[10px] font-bold">{definition.templateCode}</span></div>
+        <div className="flex shrink-0 items-center gap-2"><div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 sm:w-36"><div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} /></div><span className="text-[10px] font-bold text-slate-600">{completedCount}/{selectedResults.length}</span>{completionPercent === 100 && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}</div>
+        <button type="button" onClick={() => handleSelectAllToggle(!allSelected)} className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{allSelected ? <Square className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}{allSelected ? "Deselect optional" : "Select optional"}</button>
       </div>
     </div>
-    <div className="space-y-3 p-3.5 sm:p-4">
+    <div className="space-y-2.5 p-3 sm:p-3.5">
       <RequestedBySection policy={definition.requestedByPolicy} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
       <section>
-        <div className="mb-2.5 flex items-center gap-2 border-b border-slate-100 pb-2"><FileSpreadsheet className="h-4 w-4 text-brand-primary" /><h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Laboratory Results Encoding</h3></div>
+        <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-1.5"><FileSpreadsheet className="h-4 w-4 text-brand-primary" /><h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Laboratory Results Encoding</h3></div>
         <div className="space-y-1">{sortedParameters.map((parameter) => {
           const result = report.results.find((item) => item.parameterCode === parameter.parameterCode);
           const value = getEditableResultValue(parameter, result?.resultValue || "");

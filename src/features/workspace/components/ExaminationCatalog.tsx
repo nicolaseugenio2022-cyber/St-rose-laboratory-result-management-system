@@ -103,7 +103,7 @@ export function ExaminationCatalog({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden">
       {/* Header & Search Bar with 2-Level Visual Hierarchy */}
-      <div className="p-3.5 border-b border-slate-100 bg-slate-50/70 shrink-0 space-y-2">
+      <div className="p-3 border-b border-slate-100 bg-slate-50/70 shrink-0 space-y-2">
         <div>
           <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
             <FlaskConical className="h-4 w-4 text-brand-primary" />
@@ -140,7 +140,7 @@ export function ExaminationCatalog({
       </div>
 
       {/* Dynamic Family Groups Container (+4px vertical spacing between categories) */}
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-3.5">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {Object.entries(groupedTemplates).map(([family, specs]) => {
           if (specs.length === 0) return null;
           const isCollapsed = collapsedFamilies[family];
@@ -219,7 +219,7 @@ export function ExaminationCatalog({
                     return (
                       <div
                         key={code}
-                        className={`group relative h-[62px] px-2.5 py-1.5 rounded-lg border transition-all flex items-center justify-between gap-1.5 shrink-0 ${
+                        className={`group relative h-[48px] px-2.5 py-1 rounded-lg border transition-all flex items-center justify-between gap-1.5 shrink-0 ${
                           isActive
                             ? "bg-blue-50/50 border-l-2 border-l-brand-primary border-y-slate-200/80 border-r-slate-200/80 shadow-sm"
                             : isSelected

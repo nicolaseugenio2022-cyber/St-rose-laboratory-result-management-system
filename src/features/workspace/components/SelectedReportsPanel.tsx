@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
-import { Layers, X, MoreVertical, Trash2, XCircle } from "lucide-react";
+import { X, MoreVertical, Trash2, XCircle } from "lucide-react";
 
 export interface SelectedReportsPanelProps {
   selectedSpecs: HydratedTemplateSpec[];
@@ -38,7 +38,7 @@ export function SelectedReportsPanel({
 
   if (selectedSpecs.length === 0) {
     return (
-      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 text-center">
+      <div className="min-w-0 flex-1 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 text-center">
         <p className="text-xs font-bold text-amber-800">No examinations selected.</p>
         <p className="text-xs text-amber-600 mt-1">
           Choose one or more laboratory examinations from the catalog to begin encoding laboratory results.
@@ -64,24 +64,9 @@ export function SelectedReportsPanel({
   };
 
   return (
-    <div>
-      {/* Header Info Bar & Actions Dropdown Menu */}
-      <div className="flex items-center justify-between px-1 mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <Layers aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
-          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Active Examination Tabs ({selectedSpecs.length})
-          </span>
-          {isDirty && (
-            <span
-              className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse"
-              title="Unsaved changes in active session"
-            />
-          )}
-        </div>
-
-        {/* Examination Actions Dropdown Menu */}
-        <div className="relative" ref={menuRef}>
+    <div className="flex min-w-0 flex-1 flex-row-reverse items-end gap-2">
+      {/* Examination Actions Dropdown Menu */}
+      <div className="relative shrink-0 pb-1" ref={menuRef}>
           <button
             type="button"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -136,14 +121,20 @@ export function SelectedReportsPanel({
               </button>
             </div>
           )}
-        </div>
       </div>
+
+      {isDirty && (
+        <span
+          className="mb-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500 animate-pulse"
+          title="Unsaved changes in active session"
+        />
+      )}
 
       {/* Browser-style Tab Strip */}
       <div
         role="tablist"
         aria-label="Selected examination reports"
-        className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200"
+        className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200"
       >
         {selectedSpecs.map((spec, index) => {
           const code = spec.template.templateCode;

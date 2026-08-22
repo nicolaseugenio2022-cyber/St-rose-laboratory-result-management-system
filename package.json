@@ -2,6 +2,9 @@
   "name": "st-rose-laboratory-result-management-system",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.3.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

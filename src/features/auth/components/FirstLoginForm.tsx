@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { AuthBrandMark } from "./AuthBrandMark";
 import { useState, useTransition } from "react";
 import { Eye, EyeOff, Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -48,17 +48,8 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
 
   return (
     <Card className="w-full max-w-md shadow-lg">
-      <CardHeader className="space-y-3 pb-6 text-center">
-        <div className="mx-auto flex items-center justify-center">
-          <Image
-            src="/st-rose-logo-official.png"
-            alt="St. Rose Diagnostic Laboratory"
-            width={48}
-            height={48}
-            className="h-12 w-12 object-contain"
-            priority
-          />
-        </div>
+      <CardHeader className="space-y-2 pb-5 text-center">
+        <AuthBrandMark />
         <div>
           <CardTitle className="text-2xl font-bold tracking-tight text-brand-text">
             St. Rose

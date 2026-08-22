@@ -30,12 +30,12 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
       {/* Sidebar Panel */}
       <aside
         className={cn(
-          "fixed top-0 bottom-0 left-0 z-50 flex w-64 flex-col border-r border-brand-border bg-brand-sidebar transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
+          "fixed top-0 bottom-0 left-0 z-50 flex w-64 flex-col border-r border-brand-border bg-brand-sidebar transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:bottom-auto lg:z-auto lg:h-[100dvh] lg:translate-x-0",
           isOpen ? "translate-x-0 shadow-md lg:shadow-none" : "-translate-x-full"
         )}
       >
         {/* Brand Header */}
-        <div className="flex h-16 items-center justify-between px-5 border-b border-brand-border">
+        <div className="flex h-16 shrink-0 items-center justify-between px-5 border-b border-brand-border">
           <Link href="/dashboard" className="flex items-center gap-3 group" onClick={onClose}>
             <Image
               src="/st-rose-logo-official.png"
@@ -60,12 +60,12 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
         </div>
 
         {/* Dynamic Navigation Menu */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <NavigationMenu onNavigate={onClose} currentUserRole={currentUserRole} />
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-brand-border bg-slate-50/50">
+        <div className="shrink-0 p-4 border-t border-brand-border bg-slate-50/50">
           <div className="rounded-lg border border-brand-border bg-brand-surface p-3 shadow-sm">
             <p className="text-xs font-semibold text-brand-text">Result Management System</p>
             <p className="text-[11px] text-brand-text-muted mt-0.5">Version {SYSTEM_CONSTANTS.APP.VERSION}</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronLeft,
@@ -54,6 +54,20 @@ const CATEGORY_OPTIONS: ReadonlyArray<{
   { label: "SessionReport", value: "SessionReport" },
   { label: "SecurityDenial", value: "SecurityDenial" },
 ];
+
+/**
+ * Trailing debounce for the two free-text filters, in milliseconds.
+ *
+ * Typing previously issued one request per keystroke - 23 for "RecoveryLookupAttempted" - and every
+ * intermediate request was guaranteed useless, because Event type is matched exactly and a prefix of
+ * an identifier matches nothing. Only the REQUEST is delayed; the visible input state always updates
+ * immediately. 300ms clears ordinary mid-word hesitation (inter-keystroke gaps run ~150-250ms, and
+ * pauses while recalling an identifier routinely exceed 250ms) while keeping the settle time well
+ * under the ~500ms threshold where a control starts to feel laggy. Structured controls - Category,
+ * From/To, chip removal, Clear all, pagination - stay immediate: each of those changes is a
+ * deliberate, complete value, not a partial one.
+ */
+const FILTER_DEBOUNCE_MS = 300;
 
 /** The filter state that means "nothing is being filtered". Used by Clear all and by the
  *  active-filter derivation, so the two can never disagree about what "empty" means. */
@@ -454,10 +468,26 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const pendingLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPendingLoad = useCallback(() => {
+    if (pendingLoad.current !== null) {
+      clearTimeout(pendingLoad.current);
+      pendingLoad.current = null;
+    }
+  }, []);
+
+  // A timer must not survive unmount: it would call setState on an unmounted component and issue a
+  // request nobody can see.
+  useEffect(() => cancelPendingLoad, [cancelPendingLoad]);
   const limit = initialCriteria.limit;
 
   const loadPage = useCallback(
     async (nextFilters: AuditFilters, nextOffset: number) => {
+      // Choke point: any load that actually starts invalidates whatever was still scheduled.
+      // Without this, an immediate control clicked during the debounce window would be followed
+      // 300ms later by the stale snapshot - older criteria applying after newer input.
+      cancelPendingLoad();
       const requestId = ++requestSequence.current;
       setLoading(true);
       setError(null);
@@ -482,19 +512,35 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         }
       }
     },
-    [limit]
+    [limit, cancelPendingLoad]
   );
 
   const changeFilter = <K extends keyof AuditFilters,>(key: K, value: AuditFilters[K]) => {
     const nextFilters = { ...filters, [key]: value };
     setFilters(nextFilters);
+
+    // Free-text fields debounce the request - never the visible state, which updated above. Each
+    // keystroke reschedules with its own snapshot, so the timer that finally fires always carries
+    // the last text typed. Structured controls load immediately; loadPage itself cancels any
+    // pending timer, so an immediate load can never be overtaken by a stale scheduled one.
+    if (key === "eventType" || key === "search") {
+      cancelPendingLoad();
+      pendingLoad.current = setTimeout(() => {
+        pendingLoad.current = null;
+        void loadPage(nextFilters, 0);
+      }, FILTER_DEBOUNCE_MS);
+      return;
+    }
     void loadPage(nextFilters, 0);
   };
 
-  // Removing a chip and clearing everything are ordinary filter changes: same single reload the
-  // controls already perform, so request behaviour is unchanged.
+  // Removing a chip is a click on a complete, deliberate value - not typing - so it stays
+  // immediate even for the two free-text fields whose typing is debounced. It therefore builds the
+  // next state itself instead of routing through changeFilter's debounce branch.
   const clearFilter = (key: keyof AuditFilters) => {
-    changeFilter(key, EMPTY_FILTERS[key]);
+    const nextFilters = { ...filters, [key]: EMPTY_FILTERS[key] };
+    setFilters(nextFilters);
+    void loadPage(nextFilters, 0);
   };
 
   const clearAllFilters = () => {

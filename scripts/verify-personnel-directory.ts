@@ -188,13 +188,13 @@ assert(
 );
 
 // ── Assertion 7: auth-guards.ts matches its committed baseline hash ──
-// Hashes derived from the published baseline 5eac3f7 via git show, normalized CRLF→LF.
-const EXPECTED_AUTH_GUARDS_HASH = "972a7614ade21c72f7ed96953c32a3b6b2ccb61192e1ca95166d1b0b18417181";
+// Pinned to the approved M6 P4 revision (request-scoped auth resolution), normalized CRLF→LF.
+const EXPECTED_AUTH_GUARDS_HASH = "73cfc5b7d08c270887147ed021128787635c8b6f553bb5739b6e49a795662856";
 
 const authGuardsHash = sha256(authGuardsSource);
 assert(
   authGuardsHash === EXPECTED_AUTH_GUARDS_HASH,
-  `auth-guards.ts must match baseline 5eac3f7 (expected ${EXPECTED_AUTH_GUARDS_HASH}, got ${authGuardsHash})`
+  `auth-guards.ts must match its approved P4 revision (expected ${EXPECTED_AUTH_GUARDS_HASH}, got ${authGuardsHash})`
 );
 
 // The server-actions.ts whole-file pin was miscalibrated: unrelated session/workspace changes
@@ -283,7 +283,7 @@ assert(
 );
 
 const EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH =
-  "fad982439891feee9cfee5422e46cc0f414b602be2d9b1726b44b44dad2c9ff2";
+  "76edad60505111ba64c51f6de79a9c9656920f9310c070af27192de9f40cb2bc";
 const requireOperationalCallerFunction = extractDeclaredFunction(
   serverActionsSource,
   "async function requireOperationalCaller"

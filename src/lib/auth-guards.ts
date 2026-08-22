@@ -1,17 +1,16 @@
 import { cache } from "react";
-import { getSession } from "@/lib/session";
+import { getSessionUser } from "@/lib/session";
 import {
   firstLoginRedirectPath,
   isFirstLoginPathAllowed,
 } from "@/lib/first-login-gate";
 import { securityService } from "@/services/security-service";
-import { userService } from "@/services/user-service-instance";
 import { UserProfile } from "@/types/user";
 
+// Returns the user row this request already validated, rather than re-reading it (M6 P4).
+// Same validation, same per-request freshness - one read instead of two.
 export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
-  const session = await getSession();
-  if (!session) return null;
-  return userService.getUserById(session.userId);
+  return getSessionUser();
 });
 
 export function checkRouteAccess(

@@ -345,17 +345,36 @@ function verifyRenamedContractsOnly(): void {
 
 function verifyBehaviouralFreeze(): void {
   for (const relativePath of [
-    "src/lib/auth-guards.ts",
     "src/lib/password.ts",
     "src/lib/username.ts",
     "src/lib/first-login-gate.ts",
-    "src/lib/session.ts",
   ]) {
     assert(
       read(relativePath) === readAtMilestone6B(relativePath),
       `${relativePath} must have no logic change from Milestone 6B`
     );
   }
+
+  // session.ts and auth-guards.ts carry one APPROVED post-6B change (M6 P4): the DB-backed
+  // authenticated-user validation now runs ONCE per request and is reused within that request,
+  // instead of the same user row being read two to five times per navigation. The validation
+  // itself is unchanged - signature and expiry, user existence, Active status, tokenVersion - and
+  // React cache() is request-scoped, so nothing is cached across requests. Both files therefore
+  // remain frozen at exact content; only the reference point moves from the 6B commit to the
+  // approved P4 revision, using the same exact-equality strength as the pins below.
+  const APPROVED_SESSION_SHA256 =
+    "43b46d05863a8cb15ba1f9367f4747cbf32915391a87bd4af60f79c3d4debf59";
+  assert(
+    normalizedSha256(read("src/lib/session.ts")) === APPROVED_SESSION_SHA256,
+    "session.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
+  );
+
+  const APPROVED_AUTH_GUARDS_SHA256 =
+    "73cfc5b7d08c270887147ed021128787635c8b6f553bb5739b6e49a795662856";
+  assert(
+    normalizedSha256(read("src/lib/auth-guards.ts")) === APPROVED_AUTH_GUARDS_SHA256,
+    "auth-guards.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
+  );
 
   const APPROVED_AUTH_ACTIONS_SHA256 =
     "a2020c3858e81fe53081c7ef54e85a58e42d7de0fa933690ea5e5b4e37b41c55";

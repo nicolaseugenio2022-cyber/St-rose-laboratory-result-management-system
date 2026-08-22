@@ -1,9 +1,8 @@
 import "server-only";
 
-import { getSession } from "@/lib/session";
+import { getSession, getSessionUser } from "@/lib/session";
 import { ForbiddenError } from "@/lib/errors";
 import { auditService } from "@/services/audit-service-instance";
-import { userService } from "@/services/user-service-instance";
 
 type PersonnelReaderProfile = {
   userId: string;
@@ -35,7 +34,7 @@ export async function requirePersonnelReader(): Promise<PersonnelReaderProfile> 
     throw new ForbiddenError("First-login account setup must be completed before accessing personnel data.");
   }
 
-  const profile = await userService.getUserById(session.userId);
+  const profile = await getSessionUser();
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",
@@ -88,7 +87,7 @@ export async function requirePersonnelAdmin(): Promise<PersonnelReaderProfile> {
     throw new ForbiddenError("First-login account setup must be completed before managing personnel.");
   }
 
-  const profile = await userService.getUserById(session.userId);
+  const profile = await getSessionUser();
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",

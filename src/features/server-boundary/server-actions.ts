@@ -4,12 +4,11 @@ import "server-only";
 
 import type { HydratedTemplateSpec } from "@/services/interfaces";
 import type { IPersonnel } from "@/domain/models/interfaces";
-import { getSession } from "@/lib/session";
+import { getSession, getSessionUser } from "@/lib/session";
 import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
 import { auditService } from "@/services/audit-service-instance";
 import { reportRegistryService } from "@/services/report-registry-service";
-import { userService } from "@/services/user-service-instance";
 import {
   parseEmptyActionInput,
   parseRecentSessionsInput,
@@ -58,7 +57,7 @@ async function requireOperationalCaller(): Promise<OperationalCaller> {
     throw new Error("First-login account setup must be completed before accessing laboratory data.");
   }
 
-  const profile = await userService.getUserById(session.userId);
+  const profile = await getSessionUser();
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",

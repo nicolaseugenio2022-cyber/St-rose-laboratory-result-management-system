@@ -10,6 +10,7 @@ import { canonicalizeUsername } from "@/lib/username";
 import { emitLogoutAuditForSession } from "@/features/auth/logout-audit";
 import { auditService } from "@/services/audit-service-instance";
 import { userService } from "@/services/user-service-instance";
+import { InvalidCredentialsError } from "@/services/userService";
 
 export type AuthActionResult = {
   success: false;
@@ -57,7 +58,21 @@ export async function loginAction(formData: FormData): Promise<AuthActionResult>
         error: "Too many login attempts. Please try again later.",
       };
     }
-    return { success: false, error: "Invalid username or password." };
+    // Only a genuine credential rejection may be reported as one. InvalidCredentialsError is the
+    // single class authenticate throws for a wrong password, an unknown username, and an inactive
+    // account - deliberately one message for all three, so nothing here can be used to enumerate
+    // accounts.
+    if (error instanceof InvalidCredentialsError) {
+      return { success: false, error: "Invalid username or password." };
+    }
+    // Anything else is an infrastructure failure - a stalled connection, a rate-limiter backend
+    // error, a session-write failure - and telling the user their password was wrong would be
+    // false. Log sanitized metadata only, following the established precedent: never the username,
+    // the credential material, or the raw error message.
+    console.error("Login failed for a non-credential reason.", {
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+    return { success: false, error: "Unable to sign in right now. Please try again." };
   }
 
   redirect(destination);

@@ -150,7 +150,7 @@ assert(
 
 // --- M6C-pinned authActions.ts remains unchanged ---
 const APPROVED_AUTH_ACTIONS_SHA256 =
-  "982bc087ba1214ac91e2109bc91cb59083ae4713290539bc8cfbe077e1aa04c6";
+  "a2020c3858e81fe53081c7ef54e85a58e42d7de0fa933690ea5e5b4e37b41c55";
 assert(
   normalizedSha256(authActionsSource) === APPROVED_AUTH_ACTIONS_SHA256,
   "authActions.ts must remain byte-for-byte unchanged (M6C pin)"

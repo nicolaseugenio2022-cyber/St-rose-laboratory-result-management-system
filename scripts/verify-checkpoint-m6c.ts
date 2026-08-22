@@ -358,7 +358,7 @@ function verifyBehaviouralFreeze(): void {
   }
 
   const APPROVED_AUTH_ACTIONS_SHA256 =
-    "982bc087ba1214ac91e2109bc91cb59083ae4713290539bc8cfbe077e1aa04c6";
+    "a2020c3858e81fe53081c7ef54e85a58e42d7de0fa933690ea5e5b4e37b41c55";
   // Persistent repository pins normalize line endings for portability; transient local candidate hashes may use raw bytes because they do not outlive the verification session.
   assert(
     normalizedSha256(read("src/features/auth/authActions.ts")) ===

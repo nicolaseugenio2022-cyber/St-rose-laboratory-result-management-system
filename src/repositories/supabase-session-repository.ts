@@ -17,11 +17,6 @@ type SessionOwnershipRow = {
   created_by_user_id: string;
 };
 
-type SessionOwnershipProjectionRow = {
-  id: string;
-  created_by_user_id: string;
-};
-
 type SessionRetentionRow = {
   status: string;
   expires_at: string | null;
@@ -42,6 +37,43 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     return query.or(
       `status.eq.Completed,and(status.eq.Draft,created_by_user_id.eq.${caller.userId})`
     );
+  }
+
+  /**
+   * The one recent-session read. Both recent-session callers share it so the retention-scoped
+   * query runs once per request: `getRecentSessions` maps the rows to aggregates, and
+   * `getRecentSessionsWithOwnership` additionally reads `created_by_user_id` off the same rows.
+   *
+   * Ownership used to cost a second round trip, because `mapToAggregate` deliberately drops the
+   * owner column and the aggregate must not carry it. Reading it here - before mapping - removes
+   * that trip without widening the domain model or the query.
+   */
+  private async fetchRecentSessionRows(
+    limit: number,
+    search?: string
+  ): Promise<Record<string, unknown>[]> {
+    const retentionTimestamp = new Date().toISOString();
+    const query = this.applyDraftOwnershipScope(
+      supabaseServer
+        .from("patient_report_sessions")
+        .select(`
+          *,
+          laboratory_reports (
+            *,
+            laboratory_results (*),
+            report_signatories (*)
+          )
+        `)
+        .order("created_at", { ascending: false })
+        .limit(limit)
+    ).or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`);
+    const { data, error } = await (search
+      ? query.like("accession_number", `${search}%`)
+      : query);
+
+    if (error) throw error;
+    if (!data) throw new Error("Supabase session history query returned no data.");
+    return data as Record<string, unknown>[];
   }
 
   private async assertExistingSessionOwnership(id: string): Promise<void> {
@@ -150,17 +182,10 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     search?: string
   ): Promise<{ session: PatientReportSessionAggregate; ownedByCaller: boolean }[]> {
     const caller = this.requireCaller();
-    const sessions = await this.getRecentSessions(limit, search);
-    const { data, error } = await supabaseServer
-      .from("patient_report_sessions")
-      .select("id, created_by_user_id")
-      .in("id", sessions.map((session) => session.id));
-
-    if (error) throw error;
-    if (!data) throw new Error("Supabase session ownership projection returned no data.");
-
+    const rows = await this.fetchRecentSessionRows(limit, search);
+    const sessions = rows.map((row) => this.mapToAggregate(row));
     const ownerBySessionId = new Map<string, string>(
-      (data as SessionOwnershipProjectionRow[]).map((row) => [row.id, row.created_by_user_id])
+      rows.map((row) => [String(row.id), String(row.created_by_user_id)])
     );
     return sessions.map((session) => ({
       session,
@@ -169,28 +194,8 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async getRecentSessions(limit = 50, search?: string): Promise<PatientReportSessionAggregate[]> {
-    const retentionTimestamp = new Date().toISOString();
-    const query = this.applyDraftOwnershipScope(
-      supabaseServer
-        .from("patient_report_sessions")
-        .select(`
-          *,
-          laboratory_reports (
-            *,
-            laboratory_results (*),
-            report_signatories (*)
-          )
-        `)
-        .order("created_at", { ascending: false })
-        .limit(limit)
-    ).or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`);
-    const { data, error } = await (search
-      ? query.like("accession_number", `${search}%`)
-      : query);
-
-    if (error) throw error;
-    if (!data) throw new Error("Supabase session history query returned no data.");
-    return data.map((row) => this.mapToAggregate(row));
+    const rows = await this.fetchRecentSessionRows(limit, search);
+    return rows.map((row) => this.mapToAggregate(row));
   }
 
   async saveDraft(session: IPatientReportSession): Promise<IPatientReportSession> {

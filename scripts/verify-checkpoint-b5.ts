@@ -1440,16 +1440,55 @@ const sessionConflictUpdateSource = (functionSource: string) =>
   functionSource.match(/INSERT INTO patient_report_sessions\s*\([\s\S]*?ON CONFLICT\s*\(id\)\s*DO UPDATE SET([\s\S]*?);/i)?.[1] || "";
 const saveDraftSessionConflictUpdateSource = sessionConflictUpdateSource(saveDraftFunctionSource);
 const completionSessionConflictUpdateSource = sessionConflictUpdateSource(completionFunctionSource);
+// The retention-scoped recent-session query lives in ONE shared private fetch, so both
+// recent-session callers issue a single database read per request. These assertions follow that
+// helper by DECLARATION, never by its position in the file: the region is located from the
+// helper's own declaration and ends at the next class member, and the delegation assertions below
+// prove both callers actually route through it.
+const fetchRecentSessionRowsDeclaration = "  private async fetchRecentSessionRows(";
+const fetchRecentSessionRowsStart = liveCodeIndexOf(
+  repositorySource,
+  fetchRecentSessionRowsDeclaration
+);
+assert(
+  fetchRecentSessionRowsStart >= 0,
+  "the repository defines a shared recent-session row fetch"
+);
+const fetchRecentSessionRowsEnd = (() => {
+  const after = fetchRecentSessionRowsStart + fetchRecentSessionRowsDeclaration.length;
+  const boundaries = ["\n  private ", "\n  async ", "\n  public "]
+    .map((marker) => repositorySource.indexOf(marker, after))
+    .filter((index) => index >= 0);
+  return boundaries.length > 0 ? Math.min(...boundaries) : repositorySource.length;
+})();
+const fetchRecentSessionRowsSource = repositorySource.slice(
+  fetchRecentSessionRowsStart,
+  fetchRecentSessionRowsEnd
+);
 const retentionPredicateIndex = liveCodeIndexOf(
-  getRecentSessionsSource,
+  fetchRecentSessionRowsSource,
   '.or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`)'
 );
 assert(
-  /const retentionTimestamp = new Date\(\)\.toISOString\(\);/.test(getRecentSessionsSource) &&
-    retentionPredicateIndex >= 0,
-  "getRecentSessions applies the retention predicate in the database query"
+  /const retentionTimestamp = new Date\(\)\.toISOString\(\);/.test(fetchRecentSessionRowsSource) && retentionPredicateIndex >= 0,
+  "the shared recent-session fetch applies the retention predicate in the database query"
 );
-assert(!/\.filter\s*\(/.test(getRecentSessionsSource), "getRecentSessions does not perform retention exclusion in JavaScript");
+assert(
+  !/\.filter\s*\(/.test(fetchRecentSessionRowsSource) &&
+    !/\.filter\s*\(/.test(getRecentSessionsSource) &&
+    !/\.filter\s*\(/.test(getRecentSessionsWithOwnershipSource),
+  "recent-session retention exclusion is never performed in JavaScript"
+);
+assert(
+  liveCodeIndexOf(getRecentSessionsSource, "this.fetchRecentSessionRows(") >= 0 &&
+    liveCodeIndexOf(getRecentSessionsSource, "supabaseServer") < 0,
+  "getRecentSessions reads sessions only through the shared retention-scoped fetch"
+);
+assert(
+  liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "this.fetchRecentSessionRows(") >= 0 &&
+    liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "supabaseServer") < 0,
+  "getRecentSessionsWithOwnership derives ownership from that same fetch and issues no query of its own"
+);
 assert(saveDraftSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(saveDraftSessionConflictUpdateSource), "save_draft_session keeps accession_number out of its session conflict update");
 assert(completionSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(completionSessionConflictUpdateSource), "complete_patient_report_session keeps accession_number out of its session conflict update");
 assert(!saveDraftSource.includes("accession_number") && !saveDraftSource.includes("session.accessionNumber") && !completeSessionSource.includes("accession_number") && !completeSessionSource.includes("session.accessionNumber"), "repository write payloads never submit or reference a client accession number");

@@ -143,6 +143,84 @@ const DETAIL_LABELS: Record<string, string> = {
   newTokenVersion: "New token version",
 };
 
+/**
+ * Outcome tone is presentation only. The label always carries the meaning, so the column stays
+ * fully readable without colour; the tint is a secondary cue, never the message.
+ */
+type OutcomeTone = "negative" | "caution" | "positive" | "neutral";
+
+/**
+ * Every outcome value the server actually records today, by tone.
+ *
+ * No current outcome is toned "positive". eligible / verified / completed describe progression
+ * through an UNAUTHENTICATED account-recovery flow - they record how far an attempt reached, not
+ * that it was legitimate. Colouring them green would make a successful hostile recovery the
+ * greenest sequence in the table, on rows whose actor column is blank. Emphasis is therefore
+ * reserved for outcomes the record itself reports as refusal, failure or throttling. The "positive"
+ * tone stays in the palette for a future outcome that genuinely reports a safe state; nothing may
+ * be toned by event-type NAME.
+ */
+const OUTCOME_TONES: Record<string, OutcomeTone> = {
+  unknown_username: "negative",
+  inactive_account: "negative",
+  invalid_password: "negative",
+  not_eligible: "negative",
+  not_verified: "negative",
+  throttled: "caution",
+  eligible: "neutral",
+  verified: "neutral",
+  completed: "neutral",
+};
+
+const OUTCOME_TONE_CLASS: Record<OutcomeTone, string> = {
+  negative: "border-rose-200 bg-rose-50 text-rose-800",
+  caution: "border-amber-200 bg-amber-50 text-amber-900",
+  positive: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  neutral: "border-slate-200 bg-slate-50 text-slate-600",
+};
+
+/**
+ * Report only what the record contains - never infer an outcome from the event name.
+ *   1. an explicit details.outcome -> that recorded value, humanized
+ *   2. category "SecurityDenial"   -> "Denied", which the category itself records
+ *   3. anything else               -> "Recorded", a neutral statement that claims nothing
+ * An outcome value added later still renders, humanized, instead of vanishing or being
+ * misclassified as a success or a failure.
+ */
+function resolveOutcome(event: {
+  category: AuditCategory;
+  details: Record<string, unknown> | null;
+}): { label: string; tone: OutcomeTone } {
+  const recorded = event.details?.outcome;
+  if (typeof recorded === "string" && recorded.trim() !== "") {
+    return {
+      label: humanizeIdentifier(recorded),
+      tone: Object.prototype.hasOwnProperty.call(OUTCOME_TONES, recorded)
+        ? OUTCOME_TONES[recorded]
+        : "neutral",
+    };
+  }
+  if (event.category === "SecurityDenial") {
+    return { label: "Denied", tone: "negative" };
+  }
+  return { label: "Recorded", tone: "neutral" };
+}
+
+function OutcomeBadge({
+  event,
+}: {
+  event: { category: AuditCategory; details: Record<string, unknown> | null };
+}) {
+  const { label, tone } = resolveOutcome(event);
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold ${OUTCOME_TONE_CLASS[tone]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 /** Turn a camelCase or PascalCase identifier into a readable phrase without altering its meaning. */
 function humanizeIdentifier(value: string): string {
   const spaced = value
@@ -393,8 +471,8 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               <TableHeader>
                 <TableRow>
                   <TableHead>Timestamp</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Event type</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Outcome</TableHead>
                   <TableHead>Performed by</TableHead>
                   <TableHead>Target reference</TableHead>
                   <TableHead className="text-right">Details</TableHead>
@@ -406,17 +484,25 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                     <TableCell className="whitespace-nowrap font-mono text-[11px] text-slate-500">
                       {formatOccurredAt(event.occurredAt)}
                     </TableCell>
-                    <TableCell>{getCategoryBadge(event.category)}</TableCell>
-                    <TableCell className="font-mono text-[11px] font-bold text-slate-900">
-                      {event.eventType}
+                    <TableCell className="min-w-0">
+                      <div className="font-semibold text-slate-900">
+                        {humanizeIdentifier(event.eventType)}
+                      </div>
+                      <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                        {getCategoryBadge(event.category)}
+                        <span
+                          className="truncate font-mono text-[10px] text-slate-500"
+                          title={event.eventType}
+                        >
+                          {event.eventType}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <OutcomeBadge event={event} />
                     </TableCell>
                     <TableCell className="font-medium text-slate-700">
-                      <div>{event.performedByUsername ?? "—"}</div>
-                      {event.performedByUserId && (
-                        <div className="mt-0.5 font-mono text-[10px] text-slate-400">
-                          {event.performedByUserId}
-                        </div>
-                      )}
+                      {event.performedByUsername ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-slate-600">
                       {event.targetReference ?? "—"}
@@ -496,12 +582,20 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                 <span className="ml-2 font-mono text-[11px] text-slate-500">{selectedEvent.eventType}</span>
               </DetailRow>
               <DetailRow label="Category">{getCategoryBadge(selectedEvent.category)}</DetailRow>
+              <DetailRow label="Outcome">
+                <OutcomeBadge event={selectedEvent} />
+              </DetailRow>
               <DetailRow label="Occurred">{formatOccurredAt(selectedEvent.occurredAt)}</DetailRow>
             </DetailSection>
 
             <DetailSection title="Performed by">
               <DetailRow label="User">{selectedEvent.performedByUsername ?? "Not recorded"}</DetailRow>
               <DetailRow label="Role">{selectedEvent.actorRole ?? "Not recorded"}</DetailRow>
+              <DetailRow label="User ID">
+                <span className="font-mono text-[11px] text-slate-500">
+                  {selectedEvent.performedByUserId ?? "Not recorded"}
+                </span>
+              </DetailRow>
             </DetailSection>
 
             <DetailSection title="Target">

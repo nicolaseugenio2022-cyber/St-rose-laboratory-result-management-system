@@ -58,7 +58,19 @@ const SharedRenderingEngine = dynamic(
 
 type WorkspaceConfirmation = "clearAll" | "complete" | "replace";
 
-export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string }) {
+export function GuidedWorkspace({
+  reopenSessionId,
+  initialTemplates,
+  initialPersonnel,
+}: {
+  reopenSessionId?: string;
+  /** Catalog and personnel fetched during server render (see workspace/page.tsx). When present,
+   *  the corresponding client fetches are skipped: the workspace paints with its catalog instead
+   *  of a loading state. When absent - including on any server-side fetch failure - the original
+   *  client fetches below run unchanged, so no error path is lost. */
+  initialTemplates?: HydratedTemplateSpec[];
+  initialPersonnel?: IPersonnel[];
+}) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
       id: crypto.randomUUID(),
@@ -79,9 +91,9 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
     });
   });
 
-  const [availablePersonnel, setAvailablePersonnel] = useState<IPersonnel[]>([]);
+  const [availablePersonnel, setAvailablePersonnel] = useState<IPersonnel[]>(() => initialPersonnel ?? []);
 
-  const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>([]);
+  const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>(() => initialTemplates ?? []);
 
   const router = useRouter();
   const registerNavigationInterceptor = useWorkspaceNavigationInterceptor();
@@ -122,6 +134,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
 
   // Load all active hydrated template specs through the authenticated server boundary.
   useEffect(() => {
+    if (initialTemplates) return; // server render already delivered the catalog
     async function loadTemplates() {
       try {
         const hydratedSpecs = await listRegistryTemplatesAction({});
@@ -133,9 +146,11 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
       }
     }
     loadTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    if (initialPersonnel) return; // server render already delivered the roster
     listActivePersonnelAction()
       .then(setAvailablePersonnel)
       .catch((error: unknown) => {
@@ -143,6 +158,7 @@ export function GuidedWorkspace({ reopenSessionId }: { reopenSessionId?: string 
           error instanceof Error ? error.message : "Active personnel could not be loaded."
         );
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

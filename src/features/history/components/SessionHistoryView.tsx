@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import {
   listRecentSessionsAction,
 } from "@/features/server-boundary/server-actions";
 import { fromSessionTransport } from "@/features/server-boundary/session-transport";
+import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 import { formatDateISO } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -187,9 +188,28 @@ function HistoryTableSkeleton() {
   );
 }
 
-export function SessionHistoryView() {
+/** The one place a transport entry becomes view state. Used by the server-rendered seed and by
+ *  every client refetch alike, so ownership-derived reopen rights always map the same way. */
+function toHistoryEntry(entry: SessionHistoryEntryTransport): SessionHistoryEntry {
+  return {
+    session: fromSessionTransport(entry.session),
+    canReopen: entry.canReopen,
+  };
+}
+
+export function SessionHistoryView({
+  initialEntries,
+}: {
+  /** Server-fetched first page. When present, the first client fetch is skipped: the rows arrive
+   *  with the HTML instead of after hydrate + a server-action round trip. Search, manual reload
+   *  and every later refetch behave exactly as before. */
+  initialEntries?: SessionHistoryEntryTransport[];
+} = {}) {
   const router = useRouter();
-  const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
+  const [entries, setEntries] = useState<SessionHistoryEntry[]>(
+    () => (initialEntries ?? []).map(toHistoryEntry)
+  );
+  const initialSeedConsumed = useRef(initialEntries === undefined);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const trimmedSearchQuery = searchQuery.trim();
   // Route to the server accession search only for input actually shaped like an accession
@@ -203,7 +223,7 @@ export function SessionHistoryView() {
   const [debouncedAccessionSearch, setDebouncedAccessionSearch] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Draft" | "Completed">("ALL");
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(initialEntries === undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<SessionHistoryEntry | null>(null);
@@ -226,6 +246,14 @@ export function SessionHistoryView() {
   useEffect(() => {
     let superseded = false;
 
+    // The server already rendered the first page; consuming the seed here instead of fetching
+    // again would otherwise duplicate that load. Only the very first run is skipped - a search,
+    // or a reload after a mutation, always fetches fresh.
+    if (!initialSeedConsumed.current) {
+      initialSeedConsumed.current = true;
+      return;
+    }
+
     const loadHistory = async () => {
       setLoading(true);
       try {
@@ -235,12 +263,7 @@ export function SessionHistoryView() {
             : { limit: 50 }
         );
         if (superseded) return;
-        setEntries(
-          data.map((entry) => ({
-            session: fromSessionTransport(entry.session),
-            canReopen: entry.canReopen,
-          }))
-        );
+        setEntries(data.map(toHistoryEntry));
         setLoadError(null);
       } catch (error: unknown) {
         if (superseded) return;

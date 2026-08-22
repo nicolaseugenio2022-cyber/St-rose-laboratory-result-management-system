@@ -1,21 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { IAutoSuggestion } from "../domain/models/interfaces";
-import { supabase } from "../lib/supabase/client";
 
 export class SupabaseAutoSuggestionRepository {
   /**
-   * The Supabase client is injected so one repository serves two runtimes without either leaking
-   * into the other: the browser default below keeps the existing anon-client behaviour
-   * byte-compatible for client components, while the server-side learning path constructs this
-   * repository with the privileged `supabaseServer` (see auto-suggestion-service-server.ts) and
-   * thereby inherits the P2 transport policy - bounded read budget, single retry, no PostgREST
-   * status retry - instead of bypassing it. This module must NOT import the server client
-   * directly: it is also bundled for the browser, where `server-only` would (correctly) break the
-   * build.
+   * The Supabase client is injected and has no default. Every suggestion query now runs on the
+   * server against `supabaseServer` (see auto-suggestion-service-server.ts), so it inherits the P2
+   * transport policy - bounded read budget, single retry, no PostgREST status retry. Requiring the
+   * client explicitly is what keeps this module out of the browser graph: with no anon-client
+   * default there is nothing here for a client component to reach for.
+   *
+   * This module must still NOT import the server client directly; the server module supplies it.
    */
   private readonly client: SupabaseClient;
 
-  constructor(client: SupabaseClient = supabase) {
+  constructor(client: SupabaseClient) {
     this.client = client;
   }
   async getSuggestionsByCategory(

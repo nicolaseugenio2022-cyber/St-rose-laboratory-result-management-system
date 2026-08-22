@@ -9,7 +9,10 @@ import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-r
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
 import { auditService } from "@/services/audit-service-instance";
 import { reportRegistryService } from "@/services/report-registry-service";
+import { serverAutoSuggestionLearningService } from "@/services/auto-suggestion-service-server";
+import type { IAutoSuggestion } from "@/domain/models/interfaces";
 import {
+  parseAutoSuggestionQueryInput,
   parseEmptyActionInput,
   parseRecentSessionsInput,
   parseRegistryTemplateInput,
@@ -219,6 +222,22 @@ export async function listActivePersonnelAction(): Promise<IPersonnel[]> {
   await requireOperationalCaller();
   const repository = new SupabasePersonnelRepository();
   return repository.findAllActive();
+}
+
+/**
+ * Suggestion lookups for the workspace.
+ *
+ * These used to run in the browser against the anon Supabase client, which put the whole
+ * supabase-js graph - GoTrue auth and the realtime transport this application never uses - into
+ * the workspace bundle, and which `auto_suggestions` row level security denied anyway. Reading
+ * them here keeps the query on the bounded server client, derives the caller from the verified
+ * session rather than from anything the page sends, and leaves no Supabase credential in the
+ * browser. This action only reads: learning still happens once, after the completion RPC.
+ */
+export async function listAutoSuggestionsAction(input: unknown): Promise<IAutoSuggestion[]> {
+  await requireOperationalCaller();
+  const { category } = parseAutoSuggestionQueryInput(input);
+  return serverAutoSuggestionLearningService.getSuggestionsByCategory(category);
 }
 
 export async function listRegistryTemplatesAction(

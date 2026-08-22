@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { RequestedByPolicySpec } from "@/domain/types/report-definition";
-import { autoSuggestionLearningService } from "@/services/auto-suggestion-service";
+import { listAutoSuggestionsAction } from "@/features/server-boundary/server-actions";
 import { Stethoscope } from "lucide-react";
 
 export function RequestedBySection({ policy, value, onChange }: {
@@ -10,9 +10,9 @@ export function RequestedBySection({ policy, value, onChange }: {
 }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   useEffect(() => {
-    autoSuggestionLearningService.getSuggestionsByCategory("physician").then((items) =>
-      setSuggestions(items.map((item) => item.suggestionText))
-    );
+    listAutoSuggestionsAction({ category: "physician" })
+      .then((items) => setSuggestions(items.map((item) => item.suggestionText)))
+      .catch(() => setSuggestions([]));
   }, []);
   const listId = `requested-by-${policy.fieldLabel || "physician"}`.replace(/\W+/g, "-").toLowerCase();
   return (

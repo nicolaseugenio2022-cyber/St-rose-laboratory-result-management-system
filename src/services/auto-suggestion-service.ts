@@ -5,8 +5,8 @@ import { SupabaseAutoSuggestionRepository } from "../repositories/supabase-auto-
 export class AutoSuggestionLearningService implements IAutoSuggestionLearningService {
   private repository: SupabaseAutoSuggestionRepository;
 
-  constructor(repository?: SupabaseAutoSuggestionRepository) {
-    this.repository = repository || new SupabaseAutoSuggestionRepository();
+  constructor(repository: SupabaseAutoSuggestionRepository) {
+    this.repository = repository;
   }
 
   async learnSuggestionsFromSessionDemographics(demographics: {
@@ -32,5 +32,3 @@ export class AutoSuggestionLearningService implements IAutoSuggestionLearningSer
     return this.repository.getSuggestionsByCategory(category, query);
   }
 }
-
-export const autoSuggestionLearningService = new AutoSuggestionLearningService();

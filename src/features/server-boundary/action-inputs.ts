@@ -92,6 +92,14 @@ const registryTemplateInputSchema = z.object({
 
 const sessionLoadInputSchema = z.object({ sessionId: z.uuid() }).strict();
 
+// Suggestion lookups take a closed enum and nothing else. The repository can filter by free text,
+// but no caller needs it, and an unanchored `%term%` LIKE would be the only input in this boundary
+// reaching a pattern matcher with its metacharacters intact - so the parameter is simply not
+// exposed. If a caller ever needs it, add it with the allowlist the search field above uses.
+const autoSuggestionQuerySchema = z.object({
+  category: z.enum(["physician", "referrer", "company"]),
+}).strict();
+
 const emptyActionInputSchema = z.object({}).strict();
 
 export function parseSessionMutationInput(input: unknown): IPatientReportSession {
@@ -112,6 +120,13 @@ export function parseRegistryTemplateInput(input: unknown): { templateCode: stri
 export function parseSessionLoadInput(input: unknown): { sessionId: string } {
   assertNoOwnershipFields(input);
   return sessionLoadInputSchema.parse(input);
+}
+
+export function parseAutoSuggestionQueryInput(input: unknown): {
+  category: "physician" | "referrer" | "company";
+} {
+  assertNoOwnershipFields(input);
+  return autoSuggestionQuerySchema.parse(input);
 }
 
 export function parseEmptyActionInput(input: unknown): void {

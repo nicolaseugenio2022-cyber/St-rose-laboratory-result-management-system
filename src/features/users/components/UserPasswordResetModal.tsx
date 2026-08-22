@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { UserProfile } from "@/types/user";
+import type { UserDirectoryEntry } from "./UserTable";
 import { resetUserPasswordSchema } from "@/lib/validations/userValidation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 
 export interface UserPasswordResetModalProps {
   isOpen: boolean;
-  targetUser: UserProfile | null;
+  targetUser: UserDirectoryEntry | null;
   onClose: () => void;
   onSubmit: (password: string) => Promise<void>;
   isLoading?: boolean;

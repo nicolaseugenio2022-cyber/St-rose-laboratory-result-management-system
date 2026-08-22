@@ -3,7 +3,7 @@
 import React, { useEffect } from "react";
 import { Resolver, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { UserProfile } from "@/types/user";
+import type { UserDirectoryEntry } from "./UserTable";
 import {
   createUserSchema,
   updateUserSchema,
@@ -19,7 +19,7 @@ import {
 } from "@/config/security-questions";
 
 export interface UserFormProps {
-  initialData?: UserProfile | null;
+  initialData?: UserDirectoryEntry | null;
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;

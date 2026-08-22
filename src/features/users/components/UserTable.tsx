@@ -1,17 +1,33 @@
 import React from "react";
 import { Edit2, KeyRound, Power } from "lucide-react";
-import { UserProfile } from "@/types/user";
+import { UserRole, UserStatus } from "@/types/user";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { RoleBadge } from "./RoleBadge";
 import { UserStatusBadge } from "./UserStatusBadge";
 
+/**
+ * The exact account fields the user directory renders.
+ *
+ * This is the shape that crosses the server/client boundary. An account row carries more on the
+ * server - token version, first-login flags, password timestamps - and none of it is needed to
+ * draw this table, so none of it is serialised. Consumers typed against this cannot read the
+ * omitted fields.
+ */
+export interface UserDirectoryEntry {
+  id: string;
+  username: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+}
+
 export interface UserTableProps {
-  users: UserProfile[];
-  onEdit: (user: UserProfile) => void;
-  onResetPassword: (user: UserProfile) => void;
-  onToggleStatus: (user: UserProfile) => void;
-  onDelete: (user: UserProfile) => void;
+  users: UserDirectoryEntry[];
+  onEdit: (user: UserDirectoryEntry) => void;
+  onResetPassword: (user: UserDirectoryEntry) => void;
+  onToggleStatus: (user: UserDirectoryEntry) => void;
+  onDelete: (user: UserDirectoryEntry) => void;
   currentUserId: string;
   activeAdminCount: number;
   deletingUserId?: string | null;

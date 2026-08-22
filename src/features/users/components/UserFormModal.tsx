@@ -1,5 +1,5 @@
 import React from "react";
-import { UserProfile } from "@/types/user";
+import type { UserDirectoryEntry } from "./UserTable";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
 import { Modal } from "@/components/ui/Modal";
 import { UserForm } from "./UserForm";
@@ -7,7 +7,7 @@ import { UserForm } from "./UserForm";
 export interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialData?: UserProfile | null;
+  initialData?: UserDirectoryEntry | null;
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   isLoading?: boolean;
 }

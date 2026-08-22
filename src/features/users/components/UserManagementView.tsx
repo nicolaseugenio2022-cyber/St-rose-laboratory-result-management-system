@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Search, Users } from "lucide-react";
-import { UserProfile, UserRole } from "@/types/user";
+import { UserRole } from "@/types/user";
 import { resetUserPasswordAction } from "@/features/server-boundary/user-account-actions";
 import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
 import { CreateUserFormValues, UpdateUserFormValues } from "@/lib/validations/userValidation";
@@ -12,25 +12,36 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { UserTable } from "./UserTable";
+import type { UserDirectoryEntry } from "./UserTable";
 import { UserFormModal } from "./UserFormModal";
 import { UserPasswordResetModal } from "./UserPasswordResetModal";
 
 export interface UserManagementViewProps {
   currentUserId: string;
   currentUserRole?: UserRole;
+  /**
+   * Server-rendered directory. When present the mount fetch is skipped, so the table paints with
+   * the page instead of after a second round trip. Every later refresh - and every refresh after a
+   * mutation - still reloads from the server through `loadUsers`.
+   */
+  initialUsers?: UserDirectoryEntry[];
 }
 
-export function UserManagementView({ currentUserId, currentUserRole }: UserManagementViewProps) {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+export function UserManagementView({
+  currentUserId,
+  currentUserRole,
+  initialUsers,
+}: UserManagementViewProps) {
+  const [users, setUsers] = useState<UserDirectoryEntry[]>(() => initialUsers ?? []);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editingUser, setEditingUser] = useState<UserDirectoryEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [pendingDeleteUser, setPendingDeleteUser] = useState<UserProfile | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<UserDirectoryEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [resetPasswordUser, setResetPasswordUser] = useState<UserProfile | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserDirectoryEntry | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const loadUsers = useCallback(async () => {
@@ -39,7 +50,11 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
   }, []);
 
   useEffect(() => {
+    // The server already delivered the first directory; fetching it again on mount would repeat
+    // that load. Only this mount fetch is skipped - mutations and refreshes call loadUsers directly.
+    if (initialUsers) return;
     loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadUsers]);
 
   const handleOpenCreate = () => {
@@ -47,7 +62,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (user: UserProfile) => {
+  const handleOpenEdit = (user: UserDirectoryEntry) => {
     setEditingUser(user);
     setIsModalOpen(true);
   };
@@ -75,7 +90,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     }
   };
 
-  const handleToggleStatus = async (user: UserProfile) => {
+  const handleToggleStatus = async (user: UserDirectoryEntry) => {
     setActionError(null);
     if (user.id === currentUserId && user.status === "Active") {
       setActionError("You cannot deactivate the currently authenticated account.");
@@ -93,7 +108,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     }
   };
 
-  const handleOpenPasswordReset = (user: UserProfile) => {
+  const handleOpenPasswordReset = (user: UserDirectoryEntry) => {
     if (user.role === "Developer") return;
     setResetPasswordUser(user);
   };
@@ -117,7 +132,7 @@ export function UserManagementView({ currentUserId, currentUserRole }: UserManag
     }
   };
 
-  const handleDeleteUser = (user: UserProfile) => {
+  const handleDeleteUser = (user: UserDirectoryEntry) => {
     setActionError(null);
     if (user.id === currentUserId) {
       setActionError("You cannot delete the currently authenticated account.");

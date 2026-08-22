@@ -315,6 +315,39 @@ const AUDIT_COLUMN_WIDTH = [
 // Fixed en-US parts rather than the browser default locale: the column has a budgeted width, and a
 // locale-dependent format makes that width vary per client. The instant itself is untouched, and
 // the full local timestamp stays available through `title` and the details panel.
+/**
+ * Native date-picker indicator for the two Audit date fields.
+ *
+ * The indicator normally sits at the END of the input's inline flow, so its position depends on the
+ * width of the datetime text before it. An `<input>` clips its inner editor, and `rounded-lg` cuts
+ * whatever reaches the right edge - which is why the glyph appeared sliced, and why adding right
+ * padding made it worse rather than better: a narrower content box pushes the in-flow indicator
+ * FURTHER into the clip boundary.
+ *
+ * Taking it out of flow removes that coupling entirely. The input becomes the containing block and
+ * the indicator is pinned to a fixed inset from the right border and centred vertically, so its
+ * position no longer depends on the text at all. `pr-7` then reserves the lane it occupies so the
+ * value can never run underneath it. The narrowest real case is a 1280px viewport: ~182px per
+ * field, leaving ~140px of text room against roughly 115px of `dd/mm/yyyy --:-- --`.
+ *
+ * The control itself is untouched - still the native picker, still keyboard-operable, still the same
+ * parsing and value semantics. Scoped to these two fields, not the shared Input primitive.
+ */
+const DATE_INPUT_CLASS =
+  "relative pr-7 " +
+  "[&::-webkit-calendar-picker-indicator]:absolute " +
+  "[&::-webkit-calendar-picker-indicator]:right-2.5 " +
+  "[&::-webkit-calendar-picker-indicator]:top-1/2 " +
+  "[&::-webkit-calendar-picker-indicator]:-translate-y-1/2 " +
+  "[&::-webkit-calendar-picker-indicator]:m-0 " +
+  "[&::-webkit-calendar-picker-indicator]:p-0 " +
+  "[&::-webkit-calendar-picker-indicator]:h-4 " +
+  "[&::-webkit-calendar-picker-indicator]:w-4 " +
+  "[&::-webkit-calendar-picker-indicator]:cursor-pointer " +
+  "[&::-webkit-calendar-picker-indicator]:opacity-60 " +
+  "hover:[&::-webkit-calendar-picker-indicator]:opacity-100 " +
+  "[&:focus::-webkit-calendar-picker-indicator]:opacity-100";
+
 const AUDIT_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -607,12 +640,14 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           <Input
             label="From"
             type="datetime-local"
+            className={DATE_INPUT_CLASS}
             value={filters.from}
             onChange={(event) => changeFilter("from", event.target.value)}
           />
           <Input
             label="To"
             type="datetime-local"
+            className={DATE_INPUT_CLASS}
             value={filters.to}
             onChange={(event) => changeFilter("to", event.target.value)}
           />

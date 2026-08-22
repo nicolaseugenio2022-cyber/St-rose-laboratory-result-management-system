@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Eye,
   FileText,
   Filter,
   Key,
@@ -21,14 +22,6 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/Table";
 import { readAuditPageAction } from "@/features/server-boundary/audit-actions";
 import type {
   AuditCategory,
@@ -281,6 +274,10 @@ function OutcomeBadge({
   event: { category: AuditCategory; details: Record<string, unknown> | null };
 }) {
   const { label, tone } = resolveOutcome(event);
+  if (tone === "neutral") {
+    // Quiet by design: the row records something, but the record makes no claim about it.
+    return <span className="whitespace-nowrap text-[11px] text-slate-500">{label}</span>;
+  }
   return (
     <span
       className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold ${OUTCOME_TONE_CLASS[tone]}`}
@@ -288,6 +285,54 @@ function OutcomeBadge({
       {label}
     </span>
   );
+}
+
+/**
+ * Column widths for the audit table.
+ *
+ * The table is `table-fixed`, so these proportions - not the widest cell content - decide column
+ * widths. That is what keeps the row inside its container: under auto layout a nowrap cell expands
+ * to its intrinsic width and pushes the table into horizontal scroll. Sized against the tightest
+ * shell budget, which occurs exactly at `lg`: the sidebar becomes static and claims 256px in one
+ * step, leaving roughly 704px of content width at a 1024px viewport.
+ *
+ * Outcome is the binding constraint - it is sized so the longest recorded value ("Unknown
+ * username") never truncates, because a clipped outcome would misreport what was recorded.
+ *
+ * These are arbitrary-value classes. A passing build does NOT prove Tailwind emitted them - when
+ * layout correctness depends on arbitrary width or spacing classes, check the built CSS for the
+ * generated rules rather than trusting the build exit code.
+ */
+const AUDIT_COLUMN_WIDTH = [
+  "w-[14%]", // timestamp - stacked date over time below 2xl
+  "w-[26%]", // event     - highest scan priority, label may wrap to two lines
+  "w-[19%]", // outcome   - never truncates
+  "w-[12%]", // performed by
+  "w-[19%]", // target reference
+  "w-[10%]", // details   - icon-only below 2xl
+];
+
+// Fixed en-US parts rather than the browser default locale: the column has a budgeted width, and a
+// locale-dependent format makes that width vary per client. The instant itself is untouched, and
+// the full local timestamp stays available through `title` and the details panel.
+const AUDIT_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const AUDIT_TIME_FORMAT = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function formatOccurredAtParts(value: string): { date: string; time: string; full: string } {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return { date: value, time: "", full: value };
+  return {
+    date: AUDIT_DATE_FORMAT.format(parsed),
+    time: AUDIT_TIME_FORMAT.format(parsed),
+    full: parsed.toLocaleString(),
+  };
 }
 
 /** Turn a camelCase or PascalCase identifier into a readable phrase without altering its meaning. */
@@ -336,11 +381,11 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
 function AuditTableSkeleton() {
   return (
     <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-xs">
+      <table className="w-full table-fixed border-collapse text-left text-xs">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50">
             {Array.from({ length: 6 }).map((_, columnIndex) => (
-              <th key={columnIndex} className="px-4 py-3">
+              <th key={columnIndex} className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
               </th>
             ))}
@@ -350,7 +395,7 @@ function AuditTableSkeleton() {
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <tr key={rowIndex}>
               {Array.from({ length: 6 }).map((__, columnIndex) => (
-                <td key={columnIndex} className="px-4 py-3">
+                <td key={columnIndex} className="px-2.5 py-3">
                   <Skeleton className="h-4 w-full" />
                 </td>
               ))}
@@ -436,25 +481,25 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     switch (category) {
       case "AuthAccount":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
             <Key className="h-3 w-3" aria-hidden="true" /> Auth / Account
           </span>
         );
       case "PersonnelCredential":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-purple-800 border border-purple-200">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-purple-800 border border-purple-200">
             <UserCheck className="h-3 w-3" aria-hidden="true" /> Personnel
           </span>
         );
       case "SessionReport":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
             <FileText className="h-3 w-3" aria-hidden="true" /> Session / Report
           </span>
         );
       case "SecurityDenial":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-rose-50 text-rose-800 border border-rose-200">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-rose-50 text-rose-800 border border-rose-200">
             <AlertTriangle className="h-3 w-3 text-rose-600" aria-hidden="true" /> Security Denial
           </span>
         );
@@ -489,7 +534,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
       </div>
 
       {/* Audit Filter Toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             <Filter className="h-4 w-4 text-slate-400" aria-hidden="true" />
@@ -537,7 +582,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           </ul>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-x-3 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <Select
             label="Category"
             options={[...CATEGORY_OPTIONS]}
@@ -555,9 +600,8 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               onChange={(event) => changeFilter("eventType", event.target.value)}
             />
             <p id="audit-event-type-hint" className="mt-1.5 text-[11px] text-slate-500">
-              Matched <span className="font-semibold">exactly</span>. Enter the raw identifier, such
-              as <span className="font-mono">RecoveryLookupAttempted</span> - the readable label
-              shown in the table is not accepted.
+              Matched <span className="font-semibold">exactly</span> on the raw identifier, not the
+              readable label.
             </p>
           </div>
           <Input
@@ -627,61 +671,132 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Outcome</TableHead>
-                  <TableHead>Performed by</TableHead>
-                  <TableHead>Target reference</TableHead>
-                  <TableHead className="text-right">Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {page.events.map((event) => (
-                  <TableRow key={event.id}>
-                    <TableCell className="whitespace-nowrap font-mono text-[11px] text-slate-500">
-                      {formatOccurredAt(event.occurredAt)}
-                    </TableCell>
-                    <TableCell className="min-w-0">
-                      <div className="font-semibold text-slate-900">
+            <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+              <table className="w-full table-fixed border-collapse text-left text-xs">
+                <caption className="sr-only">Audit event log</caption>
+                <thead className="border-b border-slate-200 bg-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                  <tr>
+                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
+                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
+                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[2]}`}>Outcome</th>
+                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[3]}`}>Performed by</th>
+                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[4]}`}>Target reference</th>
+                    <th className={`px-2.5 py-3 text-right ${AUDIT_COLUMN_WIDTH[5]}`}>Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {page.events.map((event) => {
+                    const occurred = formatOccurredAtParts(event.occurredAt);
+                    return (
+                      <tr key={event.id} className="transition-colors hover:bg-slate-50/80">
+                        <td className="px-2.5 py-3 align-middle">
+                          <span
+                            className="block whitespace-nowrap font-mono text-[11px] tabular-nums text-slate-500"
+                            title={occurred.full}
+                          >
+                            <span className="block 2xl:inline">{occurred.date}</span>
+                            <span className="hidden 2xl:inline"> · </span>
+                            <span className="block 2xl:inline">{occurred.time}</span>
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-3 align-middle">
+                          <div className="font-semibold text-slate-900">
+                            {humanizeIdentifier(event.eventType)}
+                          </div>
+                          <div
+                            className="mt-0.5 truncate font-mono text-[10px] text-slate-500"
+                            title={event.eventType}
+                          >
+                            {event.eventType}
+                          </div>
+                        </td>
+                        <td className="px-2.5 py-3 align-middle">
+                          <OutcomeBadge event={event} />
+                        </td>
+                        <td className="px-2.5 py-3 align-middle font-medium text-slate-700">
+                          <span className="block truncate" title={event.performedByUsername ?? undefined}>
+                            {event.performedByUsername ?? "—"}
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-3 align-middle">
+                          <span
+                            className="block truncate font-mono text-[11px] text-slate-600"
+                            title={event.targetReference ?? undefined}
+                          >
+                            {event.targetReference ?? "—"}
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-3 text-right align-middle">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 min-w-[2rem] px-2 2xl:px-3"
+                            onClick={() => setSelectedEvent(event)}
+                            aria-label={`View details for ${event.eventType} at ${occurred.full}`}
+                          >
+                            <span className="hidden 2xl:inline">View details</span>
+                            <Eye className="h-4 w-4 2xl:hidden" aria-hidden="true" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <ul
+              className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm md:hidden"
+              aria-label="Audit event log"
+            >
+              {page.events.map((event) => {
+                const occurred = formatOccurredAtParts(event.occurredAt);
+                return (
+                  <li key={event.id} className="space-y-2 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 font-semibold text-slate-900">
                         {humanizeIdentifier(event.eventType)}
-                      </div>
-                      <div className="mt-0.5 flex min-w-0 items-center gap-2">
-                        {getCategoryBadge(event.category)}
-                        <span
-                          className="truncate font-mono text-[10px] text-slate-500"
-                          title={event.eventType}
-                        >
-                          {event.eventType}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
+                      </p>
                       <OutcomeBadge event={event} />
-                    </TableCell>
-                    <TableCell className="font-medium text-slate-700">
-                      {event.performedByUsername ?? "—"}
-                    </TableCell>
-                    <TableCell className="font-mono text-[11px] text-slate-600">
-                      {event.targetReference ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </div>
+
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      {getCategoryBadge(event.category)}
+                      <span className="min-w-0 truncate font-mono text-[10px] text-slate-500">
+                        {event.eventType}
+                      </span>
+                    </div>
+
+                    <p className="font-mono text-[11px] tabular-nums text-slate-500">
+                      {occurred.date} · {occurred.time}
+                    </p>
+
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div className="min-w-0 space-y-0.5 text-[11px] text-slate-600">
+                        <p className="truncate">
+                          <span className="font-semibold text-slate-500">By</span>{" "}
+                          {event.performedByUsername ?? "Not recorded"}
+                        </p>
+                        <p className="truncate">
+                          <span className="font-semibold text-slate-500">Target</span>{" "}
+                          {event.targetReference ?? "Not recorded"}
+                        </p>
+                      </div>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedEvent(event)}
-                        aria-label={`View details for ${event.eventType} at ${formatOccurredAt(event.occurredAt)}`}
+                        aria-label={`View details for ${event.eventType} at ${occurred.full}`}
                       >
                         View details
                       </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
 
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center" aria-live="polite">

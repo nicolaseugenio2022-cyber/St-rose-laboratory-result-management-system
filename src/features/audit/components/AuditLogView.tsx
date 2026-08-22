@@ -106,6 +106,86 @@ function formatOccurredAt(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+// Labels for the detail keys the server currently emits. This is a presentation map only: it
+// renames nothing and invents no values. A key that is absent here still renders - see
+// humanizeIdentifier - so a future event type degrades to a readable label instead of vanishing.
+const DETAIL_LABELS: Record<string, string> = {
+  reasonCode: "Reason code",
+  clientIp: "Client IP",
+  failureCount: "Failure count",
+  lockoutExpiresAt: "Lockout expires at",
+  objectPath: "Object path",
+  previousObjectPath: "Previous object path",
+  purgedCount: "Purged count",
+  reportCount: "Report count",
+  sessionId: "Session ID",
+  templateCodes: "Template codes",
+  outcome: "Outcome",
+  method: "Method",
+  targetUserId: "Target user ID",
+  bootstrap: "Bootstrap",
+  personnelId: "Personnel ID",
+  personnelRole: "Personnel role",
+  status: "Status",
+  previousStatus: "Previous status",
+  isActive: "Active",
+  previousRole: "Previous role",
+  changedFields: "Changed fields",
+  deletedAt: "Deleted at",
+  executionTimestamp: "Executed at",
+  retentionWindowDays: "Retention window (days)",
+  selfService: "Self-service",
+  attemptCount: "Attempts",
+  ipAttemptCount: "Attempts from this IP",
+  usernameAttemptCount: "Attempts for this username",
+  tokenVersion: "Token version",
+  previousTokenVersion: "Previous token version",
+  newTokenVersion: "New token version",
+};
+
+/** Turn a camelCase or PascalCase identifier into a readable phrase without altering its meaning. */
+function humanizeIdentifier(value: string): string {
+  const spaced = value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+/** Render a stored value for reading. Structured values keep their JSON form rather than being
+ *  summarised, so nothing is silently dropped from the operator's view. */
+function formatDetailValue(value: unknown): string {
+  if (value === null || value === undefined) return "Not recorded";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "None";
+    return value
+      .map((item) => (item !== null && typeof item === "object" ? JSON.stringify(item) : String(item)))
+      .join(", ");
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  if (value === "") return "Empty";
+  return String(value);
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3 py-1.5">
+      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+      <dd className="min-w-0 break-words text-xs text-slate-900">{children}</dd>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
+      <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{title}</h3>
+      <dl className="divide-y divide-slate-100">{children}</dl>
+    </section>
+  );
+}
+
 function AuditTableSkeleton() {
   return (
     <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
@@ -196,25 +276,25 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
       case "AuthAccount":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
-            <Key className="h-3 w-3" /> Auth / Account
+            <Key className="h-3 w-3" aria-hidden="true" /> Auth / Account
           </span>
         );
       case "PersonnelCredential":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-purple-800 border border-purple-200">
-            <UserCheck className="h-3 w-3" /> Personnel
+            <UserCheck className="h-3 w-3" aria-hidden="true" /> Personnel
           </span>
         );
       case "SessionReport":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <FileText className="h-3 w-3" /> Session / Report
+            <FileText className="h-3 w-3" aria-hidden="true" /> Session / Report
           </span>
         );
       case "SecurityDenial":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-rose-50 text-rose-800 border border-rose-200">
-            <AlertTriangle className="h-3 w-3 text-rose-600" /> Security Denial
+            <AlertTriangle className="h-3 w-3 text-rose-600" aria-hidden="true" /> Security Denial
           </span>
         );
     }
@@ -347,8 +427,9 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedEvent(event)}
+                        aria-label={`View details for ${event.eventType} at ${formatOccurredAt(event.occurredAt)}`}
                       >
-                        Inspect JSON
+                        View details
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -396,17 +477,70 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         </div>
       </div>
 
-      {/* JSON Details Inspector Modal */}
+      {/* Audit event detail panel */}
       <Modal
         isOpen={selectedEvent !== null}
         onClose={() => setSelectedEvent(null)}
-        title={selectedEvent ? `${selectedEvent.eventType} — Event Inspection` : "Event Inspection"}
+        title={selectedEvent ? humanizeIdentifier(selectedEvent.eventType) : "Event details"}
         description="Server-redacted audit event details"
         className="max-w-2xl"
       >
-        <pre className="max-h-[65vh] overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-emerald-400">
-          {JSON.stringify(selectedEvent?.details ?? null, null, 2)}
-        </pre>
+        {selectedEvent && (
+          <div
+            tabIndex={0}
+            className="max-h-[65vh] space-y-3 overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+          >
+            <DetailSection title="Event">
+              <DetailRow label="Event">
+                <span className="font-semibold">{humanizeIdentifier(selectedEvent.eventType)}</span>
+                <span className="ml-2 font-mono text-[11px] text-slate-500">{selectedEvent.eventType}</span>
+              </DetailRow>
+              <DetailRow label="Category">{getCategoryBadge(selectedEvent.category)}</DetailRow>
+              <DetailRow label="Occurred">{formatOccurredAt(selectedEvent.occurredAt)}</DetailRow>
+            </DetailSection>
+
+            <DetailSection title="Performed by">
+              <DetailRow label="User">{selectedEvent.performedByUsername ?? "Not recorded"}</DetailRow>
+              <DetailRow label="Role">{selectedEvent.actorRole ?? "Not recorded"}</DetailRow>
+            </DetailSection>
+
+            <DetailSection title="Target">
+              <DetailRow label="Reference">
+                <span className="font-mono text-[11px]">{selectedEvent.targetReference ?? "Not recorded"}</span>
+              </DetailRow>
+              <DetailRow label="Role">{selectedEvent.targetRole ?? "Not recorded"}</DetailRow>
+            </DetailSection>
+
+            <DetailSection title="Recorded detail">
+              {selectedEvent.details && Object.keys(selectedEvent.details).length > 0 ? (
+                Object.entries(selectedEvent.details).map(([key, value]) => (
+                  <DetailRow key={key} label={Object.prototype.hasOwnProperty.call(DETAIL_LABELS, key) ? DETAIL_LABELS[key] : humanizeIdentifier(key)}>
+                    {formatDetailValue(value)}
+                  </DetailRow>
+                ))
+              ) : (
+                <p className="py-1.5 text-xs text-slate-500">
+                  This event carries no additional detail beyond the fields above.
+                </p>
+              )}
+            </DetailSection>
+
+            <details className="border-t border-slate-200 pt-3">
+              <summary
+                tabIndex={0}
+                className="cursor-pointer rounded text-[11px] font-bold uppercase tracking-wider text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              >
+                Raw detail payload
+              </summary>
+              <pre
+                tabIndex={0}
+                className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              >
+                {JSON.stringify(selectedEvent.details ?? null, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
       </Modal>
     </div>
   );

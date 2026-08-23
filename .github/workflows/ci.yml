@@ -1,0 +1,154 @@
+name: CI
+
+# Quality gates only. This workflow validates the application; it never deploys it, never writes to
+# a database, never starts an application server, and never contacts a real Supabase project.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only. Nothing here needs to write to the repository, and a fork pull request must never be
+# able to obtain a writable token through this workflow.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Type, lint, verifiers, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CI: "true"
+      # Compile-only placeholders. These are NOT credentials and must never be replaced with real
+      # ones: the host sits under the RFC 2606 reserved `.invalid` TLD, so it cannot resolve and any
+      # step that genuinely attempted live traffic would fail loudly instead of passing quietly.
+      # Every gate below was verified to pass with exactly these values and no network access.
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.invalid
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-fake-anon-key-not-a-real-credential
+      SUPABASE_SECRET_KEY: ci-fake-service-key-not-a-real-credential
+      # Only constraint the application places on this value is that it is non-empty; it is imported
+      # as an HMAC key and never compared against anything issued elsewhere.
+      SESSION_SECRET: ci-fake-session-secret-not-a-real-credential-0000000000
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          # No credential is persisted in the local git config. This workflow performs no git write.
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: node node_modules/typescript/bin/tsc --noEmit
+
+      - name: Lint
+        run: node node_modules/next/dist/bin/next lint
+
+      # The repository's verifiers are split by import graph, not by name. A verifier whose graph
+      # reaches a `server-only` module needs the react-server condition; one that renders markup
+      # through `react-dom/server` is forbidden it. Both arrays below were established by running
+      # every verifier BOTH ways and recording which invocation actually succeeds.
+      - name: Run checkpoint verifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Must run WITH --conditions=react-server.
+          REACT_SERVER=(
+            verify-admin-invariants.ts
+            verify-audit-presentation.ts
+            verify-checkpoint-b1.ts
+            verify-checkpoint-b2.ts
+            verify-checkpoint-b3.ts
+            verify-checkpoint-b5.ts
+            verify-checkpoint-c1.ts
+            verify-checkpoint-c2.ts
+            verify-checkpoint-c3.ts
+            verify-checkpoint-c5.ts
+            verify-checkpoint-m6a.ts
+            verify-checkpoint-m6b.ts
+            verify-checkpoint-m6c.ts
+            verify-checkpoint-m6d.ts
+            verify-dashboard-recent-work.ts
+            verify-developer-boundary.ts
+            verify-lockout-countdown.ts
+            verify-personnel-directory.ts
+            verify-personnel-signatures.ts
+            verify-recovery-flow.ts
+          )
+
+          # Must run WITHOUT the condition: these render through react-dom/server, which the
+          # react-server condition forbids, and they fail before any assertion runs.
+          PLAIN=(
+            verify-checkpoint-b4.ts
+            verify-checkpoint-c4-1.ts
+            verify-checkpoint-c4-2.ts
+            verify-checkpoint-c4.ts
+          )
+
+          # ---- coverage assertion -------------------------------------------------------------
+          # A verifier added later without being classified must fail this job rather than be
+          # silently skipped, which would leave a gate dark while the run still reported green.
+          mapfile -t DISCOVERED < <(cd scripts && ls verify-*.ts | sort)
+          mapfile -t CLASSIFIED < <(printf '%s\n' "${REACT_SERVER[@]}" "${PLAIN[@]}" | sort)
+
+          echo "discovered ${#DISCOVERED[@]} verifier(s); classified ${#CLASSIFIED[@]}"
+
+          DUPES=$(printf '%s\n' "${CLASSIFIED[@]}" | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "::error::verifier listed in more than one array, or twice in one array:"
+            printf '  %s\n' $DUPES
+            exit 1
+          fi
+
+          UNCLASSIFIED=$(comm -23 <(printf '%s\n' "${DISCOVERED[@]}") <(printf '%s\n' "${CLASSIFIED[@]}"))
+          if [ -n "$UNCLASSIFIED" ]; then
+            echo "::error::verifier present in scripts/ but not classified into an array:"
+            printf '  %s\n' $UNCLASSIFIED
+            echo "Add it to REACT_SERVER or PLAIN in .github/workflows/ci.yml."
+            exit 1
+          fi
+
+          MISSING=$(comm -13 <(printf '%s\n' "${DISCOVERED[@]}") <(printf '%s\n' "${CLASSIFIED[@]}"))
+          if [ -n "$MISSING" ]; then
+            echo "::error::verifier classified in ci.yml but absent from scripts/:"
+            printf '  %s\n' $MISSING
+            exit 1
+          fi
+
+          echo "coverage assertion passed: every verifier appears in exactly one array"
+          echo ""
+
+          # ---- execution ----------------------------------------------------------------------
+          for v in "${REACT_SERVER[@]}"; do
+            echo "--- $v (react-server)"
+            node node_modules/tsx/dist/cli.mjs --conditions=react-server "scripts/$v"
+          done
+
+          for v in "${PLAIN[@]}"; do
+            echo "--- $v (plain)"
+            node node_modules/tsx/dist/cli.mjs "scripts/$v"
+          done
+
+          echo ""
+          echo "all $(( ${#REACT_SERVER[@]} + ${#PLAIN[@]} )) verifiers passed"
+
+      - name: Production build
+        run: node node_modules/next/dist/bin/next build

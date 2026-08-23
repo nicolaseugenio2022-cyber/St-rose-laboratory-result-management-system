@@ -50,7 +50,9 @@ export function PersonnelTable({
   }
 
   return (
-    <Table>
+    // 950px is the summed intrinsic minimum of the six columns; below it the wrapper in
+    // Table scrolls instead of crushing the PRC and credential columns.
+    <Table className="min-w-[950px]">
       <TableHeader>
         <TableRow>
           <TableHead>Full Name</TableHead>
@@ -73,6 +75,7 @@ export function PersonnelTable({
                 <Badge
                   variant={person.role === "Pathologist" ? "indigo" : "neutral"}
                   size="sm"
+                  className="whitespace-nowrap"
                 >
                   {personnelRoleLabel(person.role)}
                 </Badge>
@@ -96,7 +99,7 @@ export function PersonnelTable({
                       disabled={isBusy}
                       title="Edit Personnel Details"
                     >
-                      <Edit2 className="h-4 w-4 text-brand-text-muted" />
+                      <Edit2 aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />
                       <span className="sr-only">Edit {formatPersonnelName(person)}</span>
                     </Button>
                     <Button
@@ -105,13 +108,14 @@ export function PersonnelTable({
                       onClick={() => onToggleStatus(person)}
                       disabled={isBusy}
                       title={person.isActive ? "Deactivate Personnel" : "Activate Personnel"}
+                      aria-label={`${person.isActive ? "Deactivate" : "Activate"} ${formatPersonnelName(person)}`}
                       className={
                         person.isActive
                           ? "text-brand-warning hover:border-brand-warning-border hover:bg-brand-warning-bg"
                           : "bg-brand-success text-brand-success-bg hover:opacity-90"
                       }
                     >
-                      <Power className="h-4 w-4" />
+                      <Power aria-hidden="true" className="h-4 w-4" />
                       <span className="text-xs">
                         {person.isActive ? "Deactivate" : "Activate"}
                       </span>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Plus, Search, UserCheck } from "lucide-react";
+import { Plus, Search, UserCheck } from "lucide-react";
 import type { IPersonnel } from "@/domain/models/interfaces";
 import {
   PersonnelFormValues,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/validations/personnelValidation";
 import { listPersonnelAction } from "@/features/server-boundary/personnel-actions";
 import type { PersonnelActionResult } from "@/features/server-boundary/personnel-actions";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -155,18 +156,9 @@ export function PersonnelDirectoryView({
         )}
       </div>
 
-      {notice && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-brand-info-border bg-brand-info-bg p-3.5">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-info" />
-          <p className="text-xs font-medium leading-relaxed text-brand-info">{notice}</p>
-        </div>
-      )}
+      {notice && <Alert variant="destructive">{notice}</Alert>}
 
-      {refreshError && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">
-          {refreshError}
-        </div>
-      )}
+      {refreshError && <Alert variant="destructive">{refreshError}</Alert>}
 
       {/* Filter Toolbar */}
       <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-sm sm:flex-row sm:items-center">
@@ -179,7 +171,7 @@ export function PersonnelDirectoryView({
             className="pl-10"
           />
         </div>
-        <div className="w-full sm:w-56">
+        <div className="w-full sm:w-48">
           <Select
             options={ROLE_FILTER_OPTIONS}
             value={roleFilter}

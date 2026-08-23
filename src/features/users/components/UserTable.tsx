@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit2, KeyRound, Power } from "lucide-react";
+import { Edit2, KeyRound, Power, Trash2, Users } from "lucide-react";
 import { UserRole, UserStatus } from "@/types/user";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -39,7 +39,7 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
     return (
       <div className="rounded-xl border border-brand-border bg-brand-surface p-12 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-brand-text-subtle mb-3">
-          <Edit2 className="h-6 w-6" />
+          <Users aria-hidden="true" className="h-6 w-6" />
         </div>
         <h3 className="text-base font-semibold text-brand-text">No users found</h3>
         <p className="text-sm text-brand-text-muted mt-1">
@@ -62,7 +62,9 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
   };
 
   return (
-    <Table>
+    // 800px is the summed intrinsic minimum of the five columns, the actions group
+    // (four controls at their widest labels) dominating it. Below that the wrapper scrolls.
+    <Table className="min-w-[800px]">
       <TableHeader>
         <TableRow>
           <TableHead>Username</TableHead>
@@ -115,7 +117,7 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
                     disabled={isLoading}
                     title="Edit User Details"
                   >
-                    <Edit2 className="h-4 w-4 text-brand-text-muted" />
+                    <Edit2 aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />
                     <span className="sr-only">Edit {user.username}</span>
                   </Button>
                   {user.role !== "Developer" && (
@@ -126,7 +128,7 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
                       disabled={isLoading}
                       title="Reset Password"
                     >
-                      <KeyRound className="h-4 w-4 text-brand-text-muted" />
+                      <KeyRound aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />
                       <span className="sr-only">Reset password for {user.username}</span>
                     </Button>
                   )}
@@ -136,9 +138,10 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
                     onClick={() => onToggleStatus(user)}
                     disabled={deactivateDisabled}
                     title={deactivateTitle}
+                    aria-label={`${isActive ? "Deactivate" : "Activate"} ${user.username}`}
                     className={isActive ? "text-brand-warning hover:bg-brand-warning-bg hover:border-brand-warning-border" : "text-brand-success-bg bg-brand-success hover:opacity-90"}
                   >
-                    <Power className="h-4 w-4" />
+                    <Power aria-hidden="true" className="h-4 w-4" />
                     <span className="text-xs">{isActive ? "Deactivate" : "Activate"}</span>
                   </Button>
                   <Button
@@ -147,8 +150,9 @@ export function UserTable({ users, onEdit, onResetPassword, onToggleStatus, onDe
                     onClick={() => onDelete(user)}
                     disabled={deleteDisabled}
                     title={deleteTitle}
+                    aria-label={`Delete ${user.username}`}
                   >
-                    <Power className="h-4 w-4" />
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
                     <span className="text-xs">Delete</span>
                   </Button>
                 </div>

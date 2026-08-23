@@ -42,6 +42,12 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v6
         with:
+          # Full history. verify-checkpoint-m6c.ts resolves its Milestone 6B baseline by scanning
+          # `git log --all` for a commit subject and then reading files out of that commit, which
+          # sits 143 commits behind main. The action's default shallow fetch supplies one commit, so
+          # the verifier fails with "committed Milestone 6B baseline must exist" before it can
+          # assert anything. No partial depth is safe: the baseline recedes as main advances.
+          fetch-depth: 0
           # No credential is persisted in the local git config. This workflow performs no git write.
           persist-credentials: false
 

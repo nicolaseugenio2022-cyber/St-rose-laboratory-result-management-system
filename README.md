@@ -80,19 +80,20 @@ Supported roles:
 * `Developer`
 * `User`
 
-Current prototype user persistence uses:
+Accounts are persisted in Supabase, in the `user_profiles` table, reached only through the
+server-side client in `src/lib/supabase/server.ts`. The prototype `data/users.json` file is gone and
+nothing reads from disk on the authentication path.
 
-`data/users.json`
-
-User data persists across navigations and server restarts for the current development setup.
+Passwords are hashed with **scrypt** (N=32768, r=8, p=1) in `src/lib/password.ts`, verified with a
+constant-time comparison. Recovery answers are hashed the same way.
 
 ### Production Security TODO
 
 Before production:
 
-* Hash passwords with bcrypt/Argon2.
-* Configure a strong `SESSION_SECRET`.
-* Replace file-backed user storage with a proper database/service.
+* Configure a strong `SESSION_SECRET` in the deployment environment.
+* Provision the retention purge schedule. `purgeExpiredSessions` is wired and reachable through the
+  Admin-guarded `POST /api/purge`, but no cron, platform schedule or `pg_cron` entry invokes it.
 
 ## Developer Monitoring Dashboard
 
@@ -172,13 +173,25 @@ It must remain protected by server-side authorization.
 
 Successfully completed:
 
+The PowerShell execution policy on the development machine blocks the `npm` and `npx` shims, so
+the toolchain is invoked through `node` directly:
+
 ```bash
-npx tsc --noEmit
-npm run lint
-npm run build
+node node_modules/typescript/bin/tsc --noEmit
+node node_modules/next/dist/bin/next lint
+node node_modules/next/dist/bin/next build
 ```
 
-All validations passed without TypeScript or ESLint errors. The production build was successfully generated.
+Checkpoint verifiers run the same way, through `tsx`:
+
+```bash
+node node_modules/tsx/dist/cli.mjs --conditions=react-server scripts/<name>.ts
+```
+
+`--conditions=react-server` is required by verifiers whose import graph reaches a `server-only`
+module and breaks the ones that render markup through `react-dom/server`. `CLAUDE.md` records which
+verifier needs which invocation; a verifier that fails to start has proved nothing and must not be
+reported as a gate result.
 
 ### Production Build
 
@@ -196,20 +209,32 @@ Only use this when sufficient RAM is available.
 ```text
 src/
 ├── app/
-│   ├── (app)/
+│   ├── (app)/          # dashboard, history, audit, users, personnel, developer
+│   ├── (dashboard)/    # workspace
 │   ├── api/
 │   └── login/
 ├── components/
 │   ├── layout/
-│   └── ui/
+│   └── ui/             # shared Table, Button, Badge, Alert, Input, Select, Modal
 ├── config/
-├── domain/
+├── domain/             # models, types, declarative report definitions
 ├── features/
+│   ├── audit/
+│   ├── auth/
 │   ├── dashboard/
-│   └── users/
+│   ├── developer-accounts/
+│   ├── history/
+│   ├── personnel/
+│   ├── server-boundary/
+│   ├── users/
+│   └── workspace/
+├── hooks/
 ├── lib/
+├── rendering/          # shared render engine, native layout families, A4 styles
+├── repositories/       # Supabase data access
 ├── services/
-└── types/
+├── types/
+└── utils/
 ```
 
 Architecture principles:
@@ -227,8 +252,18 @@ Architecture principles:
 
 Recent major performance improvements include:
 
-* **userService Disk-Read Caching**: A 2-second in-memory cache TTL prevents redundant `fs.readFileSync` calls during a single render path.
-* **Authentication Lookup Deduplication**: React `cache()` wraps `getCurrentUserProfile()` so that within a single request, the HMAC verification and disk lookup only execute once.
+* **Request-Scoped Authentication**: `resolveAuthenticatedRequest` validates the authenticated user once per request, keyed by cookie, and every guard reuses that result. It replaced an earlier
+  `getCurrentUserProfile()` cache that assumed a disk lookup; there is no disk read on this path.
+* **Single-Owner Read Transport**: `resilientFetch` in `src/lib/supabase/server.ts` bounds read
+  latency with an 8 s total budget across at most two attempts. Writes are delegated untouched with
+  no retry, because a client-side abort on a write leaves an ambiguous outcome. postgrest-js's own
+  retry layer is disabled so this wrapper is the only retry layer end to end.
+* **Server-Rendered Initial Data**: History, Workspace and the `/users` directory are delivered with
+  the page instead of being fetched after hydration. `/users` went from three reads across two
+  requests to one request, and recent sessions with their ownership now resolve in a single query.
+* **Workspace Bundle**: moving auto-suggestion reads to a server action removed the browser Supabase
+  client from the workspace graph, taking `/workspace` First Load JS from 213 kB to 149 kB with
+  GoTrue and Realtime absent from the initial chunks.
 * **Developer Dashboard Suspense Streaming**: The heavy `DeveloperDashboardSection` is wrapped in `<Suspense>`, allowing the main dashboard shell to render instantly while the diagnostics stream in.
 * **Supabase Monitoring Optimizations**: `getSupabaseCounts()` executes queries in parallel. Queries now have a 10-second `AbortController` timeout and a 30-second cache TTL to prevent hangs and repeated overhead.
 * **Route Loading Skeletons**: `loading.tsx` files across routes (dashboard, workspace, history, audit, users) provide immediate visual feedback.
@@ -247,19 +282,38 @@ Recent work includes:
 * Developer Monitoring Dashboard
 * Real Supabase health monitoring with 30s cache TTL and 10s timeout
 * Protected user APIs
-* User persistence improvements with 2s disk-read cache
 * README/handoff documentation
 * **Suspense streaming for Developer Dashboard**
 * **Next.js loading.tsx skeletons for responsive navigation**
 * **Workspace examination loading optimization (parallel Supabase template hydration)**
+* Milestone 6 read transport policy, request-scoped authentication, and removal of the
+  post-hydration read waterfalls on History, Workspace and `/users`
+* Login no longer reports an infrastructure failure as an invalid credential
+* The authenticated shell fails closed with a retryable account state when a profile read fails in
+  transit, rather than treating a transport fault as a signed-out session
+* UI consistency program across the encoding workspace, the Live Preview toolbar, the User and
+  Personnel directories, and the History and Audit viewers
+* `src/rendering/**` added to the Tailwind `content` globs, which had left twelve live-preview
+  classes uncompiled
 
 ## Known Issues / Pending Work
 
-1. `(dashboard)` route-group authentication layout is missing, falling back to middleware.
-2. Audit logs are purely in-memory and are not persistent across restarts.
-3. Prototype passwords must be hashed before production.
-4. File-backed user persistence must eventually be replaced with a proper database.
-5. Production session secret must be configured securely.
+1. Production session secret must be configured securely in the deployment environment.
+2. Retention purge has no scheduler. It runs only when `POST /api/purge` is invoked, and the
+   `AutomatedRetentionPurgeExecuted` event is emitted only when the run deleted something, so a
+   zero-count run leaves no evidence it executed.
+3. The page title is rendered twice on most routes: the global header derives it from
+   `src/config/navigation.ts` while each view also renders its own heading, with two different
+   subtitles. The pattern is app-wide, so it needs one decision rather than per-route fixes.
+4. Brand colours are defined as bare `var(...)` values, so Tailwind opacity modifiers on them
+   (`text-brand-text-muted/90`, `focus:ring-brand-primary/20`) compile to nothing and are silently
+   inert. Do not introduce new brand-token opacity utilities.
+5. One commit, `a16965d`, carries a pasted status line as its subject. History has not been
+   rewritten to correct it.
+
+Items 1 to 4 of the previous list are resolved: the `(dashboard)` route group has its own
+`layout.tsx`, audit logs persist to the Supabase `audit_logs` table, passwords are scrypt-hashed,
+and file-backed user storage was replaced by `user_profiles`.
 
 ## AI Handoff Rules
 

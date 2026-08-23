@@ -27,6 +27,10 @@ export function SharedRenderingEngine({
   const activeReports = session.reports;
   const resolvedSession = useMemo(() => resolveSessionRenderModel(session), [session]);
   const isAccessionAssigned = session.accessionNumber !== null;
+  // The house focus token is ring-brand-primary/30, which is unreadable on this slate-900
+  // toolbar. These controls take a white ring offset against their own surface instead.
+  const DARK_FOCUS_RING =
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900";
 
   // Handle Browser Print Target
   const handlePrint = () => {
@@ -114,7 +118,17 @@ export function SharedRenderingEngine({
               Shared Rendering Engine — Preview & Export Target
             </h3>
             <p className="text-[11px] text-slate-400">
-              Accession: <span className="font-mono text-blue-300 font-semibold">{session.accessionNumber}</span> | Total A4 Pages: {activeReports.length}
+              Accession:{" "}
+              <span
+                className={
+                  isAccessionAssigned
+                    ? "font-mono text-blue-300 font-semibold"
+                    : "font-semibold italic text-slate-400"
+                }
+              >
+                {session.accessionNumber ?? "Not assigned"}
+              </span>{" "}
+              | Total A4 Pages: {activeReports.length}
             </p>
           </div>
         </div>
@@ -122,11 +136,16 @@ export function SharedRenderingEngine({
         {/* Viewport Zoom & Actions */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Zoom Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 text-xs">
+          <div
+            role="group"
+            aria-label="Preview zoom level"
+            className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 text-xs"
+          >
             <button
               type="button"
               onClick={() => setZoomLevel(75)}
-              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+              aria-pressed={zoomLevel === 75}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
                 zoomLevel === 75 ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white"
               }`}
             >
@@ -135,7 +154,8 @@ export function SharedRenderingEngine({
             <button
               type="button"
               onClick={() => setZoomLevel(100)}
-              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+              aria-pressed={zoomLevel === 100}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
                 zoomLevel === 100 ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white"
               }`}
             >
@@ -149,7 +169,7 @@ export function SharedRenderingEngine({
             onClick={handlePrint}
             disabled={!isAccessionAssigned}
             title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before printing"}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-blue-700 transition-colors shadow-xs"
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:pointer-events-none ${DARK_FOCUS_RING}`}
           >
             <Printer className="h-3.5 w-3.5" />
             Print Report
@@ -160,7 +180,7 @@ export function SharedRenderingEngine({
             onClick={handleExportPDF}
             disabled={isExportingPDF || !isAccessionAssigned}
             title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before exporting"}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs disabled:opacity-50"
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:pointer-events-none ${DARK_FOCUS_RING}`}
           >
             {isExportingPDF ? (
               <>
@@ -179,8 +199,11 @@ export function SharedRenderingEngine({
 
       {/* Page Navigation Tabs (Suppressed during print) */}
       {activeReports.length > 1 && (
-        <div className="no-print flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider text-[10px] mr-1 inline-flex items-center gap-1">
+        <nav
+          aria-label="Report pages"
+          className="no-print flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200"
+        >
+          <span className="shrink-0 font-bold text-slate-500 uppercase tracking-wider text-[10px] mr-1 inline-flex items-center gap-1">
             <Layers className="h-3 w-3" /> PAGES:
           </span>
           {activeReports.map((rep, idx) => (
@@ -188,7 +211,8 @@ export function SharedRenderingEngine({
               key={rep.id || rep.templateCode}
               type="button"
               onClick={() => setActivePageIndex(idx)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
+              aria-current={activePageIndex === idx ? "page" : undefined}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
                 activePageIndex === idx
                   ? "bg-brand-primary text-white border-brand-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
@@ -197,7 +221,7 @@ export function SharedRenderingEngine({
               Page {idx + 1}: {rep.templateTitle}
             </button>
           ))}
-        </div>
+        </nav>
       )}
 
       {/* Render Pages Container */}

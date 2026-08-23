@@ -26,6 +26,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
@@ -164,19 +165,19 @@ function HistoryTableSkeleton() {
       <table className="w-full table-fixed border-collapse text-left text-xs">
         <caption className="sr-only">Loading patient report session history</caption>
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50">
+          <tr className="border-b border-brand-border bg-slate-100">
             {Array.from({ length: TABLE_COLUMN_COUNT }).map((_, columnIndex) => (
-              <th key={columnIndex} className={`px-2.5 py-3 ${COLUMN_WIDTH_CLASS[columnIndex]} ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
+              <th key={columnIndex} className={`px-2.5 py-3.5 ${COLUMN_WIDTH_CLASS[columnIndex]} ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-brand-border-subtle">
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <tr key={rowIndex}>
               {Array.from({ length: TABLE_COLUMN_COUNT }).map((__, columnIndex) => (
-                <td key={columnIndex} className={`px-2.5 py-3 ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
+                <td key={columnIndex} className={`px-2.5 py-4 ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
                   <Skeleton className="h-4 w-full" />
                 </td>
               ))}
@@ -371,15 +372,13 @@ export function SessionHistoryView({
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-50 text-brand-primary">
-              <History className="h-5 w-5" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Patient Report Session History</h2>
+            <History className="h-5 w-5 text-brand-primary" />
+            <h2 className="text-2xl font-bold text-brand-text tracking-tight">Patient Report Session History</h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-brand-text-muted mt-1.5 leading-relaxed">
             Search, preview, print, and manage patient laboratory report sessions within the 30-day retention window.
           </p>
         </div>
@@ -417,7 +416,7 @@ export function SessionHistoryView({
       </div>
 
       {/* Search Toolbar */}
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="space-y-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex min-w-0 flex-1 items-end gap-2 sm:max-w-md">
             <div className="min-w-0 flex-1 space-y-1.5">
@@ -426,13 +425,13 @@ export function SessionHistoryView({
               </label>
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <input
+                <Input
                   id="history-search"
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Accession prefix, patient name, or physician"
-                  className="h-10 w-full rounded-lg border border-slate-300 pl-10 pr-4 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                  className="pl-10 pr-4"
                 />
               </div>
             </div>
@@ -489,7 +488,7 @@ export function SessionHistoryView({
       )}
 
       {/* Session Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-brand-surface rounded-xl border border-brand-border overflow-hidden shadow-sm">
         {loading || serverSearchPending ? (
           <HistoryTableSkeleton />
         ) : loadError ? (
@@ -543,35 +542,35 @@ export function SessionHistoryView({
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <caption className="sr-only">Patient report session history</caption>
               <thead>
-                <tr className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[10px]">
-                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[0]}`} aria-sort={ariaSort("accession")}>
+                <tr className="bg-slate-100 text-slate-700 uppercase font-extrabold tracking-wider border-b border-brand-border text-[11px]">
+                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[0]}`} aria-sort={ariaSort("accession")}>
                     <button type="button" onClick={() => updateSort("accession")} aria-label="Sort by accession number" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
                       ACCESSION NO <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[1]}`} aria-sort={ariaSort("patient")}>
+                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[1]}`} aria-sort={ariaSort("patient")}>
                     <button type="button" onClick={() => updateSort("patient")} aria-label="Sort by patient name" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
                       PATIENT <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</th>
-                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[3]}`} aria-sort={ariaSort("retention")}>
+                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</th>
+                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[3]}`} aria-sort={ariaSort("retention")}>
                     <button type="button" onClick={() => updateSort("retention")} aria-label="Sort by retention expiry" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
                       STATUS <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </th>
-                  <th className={`py-3 px-2.5 ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</th>
+                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-brand-border-subtle">
                 {filteredEntries.map(({ session: sess, canReopen }) => {
                   const retention = getRetentionDetails(sess);
                   const RetentionIcon = retention?.icon;
 
                   return (
                     <tr key={sess.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-2.5 font-mono font-bold text-blue-900 tabular-nums break-all xl:whitespace-nowrap xl:break-normal">{sess.accessionNumber}</td>
-                      <td className="py-3 px-2.5">
+                      <td className="py-4 px-2.5 font-mono font-bold text-blue-900 tabular-nums break-all xl:whitespace-nowrap xl:break-normal">{sess.accessionNumber}</td>
+                      <td className="py-4 px-2.5">
                         <div className="font-bold text-slate-900 uppercase break-words">{sess.demographics.fullName || "Unnamed Patient"}</div>
                         {/* Secondary identity metadata: lowest scan priority, so it is the first thing
                             dropped as width tightens. Both values remain available in Preview. */}
@@ -592,7 +591,7 @@ export function SessionHistoryView({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-2.5">
+                      <td className="py-4 px-2.5">
                         <div className="flex flex-wrap gap-1">
                           {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
                             <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
@@ -611,7 +610,7 @@ export function SessionHistoryView({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-2.5">
+                      <td className="py-4 px-2.5">
                         <StatusBadge status={sess.status} size="sm" />
                         {retention ? (
                           <span className={`mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
@@ -625,7 +624,7 @@ export function SessionHistoryView({
                           {sess.demographics.examinationDate || "—"}
                         </div>
                       </td>
-                      <td className="py-3 px-2.5">
+                      <td className="py-4 px-2.5">
                         <HistorySessionActions
                           entry={{ session: sess, canReopen }}
                           variant="table"
@@ -645,7 +644,7 @@ export function SessionHistoryView({
           {/* Narrow-width presentation of the SAME filteredEntries and the SAME handlers.
               Presentation is duplicated; data and action semantics are not. Rendered inside this
               branch so loading, error and empty states replace it rather than stacking above it. */}
-          <ul className="divide-y divide-slate-100 md:hidden" aria-label="Patient report session history">
+          <ul className="divide-y divide-brand-border-subtle md:hidden" aria-label="Patient report session history">
             {filteredEntries.map(({ session: sess, canReopen }) => {
               const retention = getRetentionDetails(sess);
               const RetentionIcon = retention?.icon;

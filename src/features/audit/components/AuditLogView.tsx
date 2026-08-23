@@ -420,7 +420,7 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
   return (
     <section className="border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
       <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{title}</h3>
-      <dl className="divide-y divide-slate-100">{children}</dl>
+      <dl className="divide-y divide-brand-border-subtle">{children}</dl>
     </section>
   );
 }
@@ -430,19 +430,19 @@ function AuditTableSkeleton() {
     <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left text-xs">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50">
+          <tr className="border-b border-brand-border bg-slate-100">
             {Array.from({ length: 6 }).map((_, columnIndex) => (
-              <th key={columnIndex} className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[columnIndex]}`}>
+              <th key={columnIndex} className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-brand-border-subtle">
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <tr key={rowIndex}>
               {Array.from({ length: 6 }).map((__, columnIndex) => (
-                <td key={columnIndex} className="px-2.5 py-3">
+                <td key={columnIndex} className="px-2.5 py-4">
                   <Skeleton className="h-4 w-full" />
                 </td>
               ))}
@@ -588,32 +588,32 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-indigo-50 text-indigo-700">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Security Audit Log Viewer</h2>
+            <ShieldCheck className="h-5 w-5 text-brand-primary" />
+            <h2 className="text-2xl font-bold text-brand-text tracking-tight">Security Audit Log Viewer</h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-brand-text-muted mt-1.5 leading-relaxed">
             Inspect append-only security logs for administrative actions, personnel updates, session events, and access denials per SECURITY_MODEL.md.
           </p>
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => void loadPage(filters, offset)}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          className="shadow-sm"
         >
-          <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
           Refresh Logs
-        </button>
+        </Button>
       </div>
 
       {/* Audit Filter Toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-3">
+      <div className="bg-brand-surface rounded-xl border border-brand-border p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             <Filter className="h-4 w-4 text-slate-400" aria-hidden="true" />
@@ -738,39 +738,40 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             headingLevel={3}
             action={
               active.length > 0 ? (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={clearAllFilters}
                   disabled={loading}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                 >
                   <X className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
                   Clear all filters
-                </button>
+                </Button>
               ) : undefined
             }
           />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>
-            <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+            <div className="hidden overflow-x-auto rounded-xl border border-brand-border bg-brand-surface shadow-sm md:block">
               <table className="w-full table-fixed border-collapse text-left text-xs">
                 <caption className="sr-only">Audit event log</caption>
-                <thead className="border-b border-slate-200 bg-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                <thead className="border-b border-brand-border bg-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
                   <tr>
-                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
-                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
-                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[2]}`}>Outcome</th>
-                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[3]}`}>Performed by</th>
-                    <th className={`px-2.5 py-3 ${AUDIT_COLUMN_WIDTH[4]}`}>Target reference</th>
-                    <th className={`px-2.5 py-3 text-right ${AUDIT_COLUMN_WIDTH[5]}`}>Details</th>
+                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
+                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
+                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[2]}`}>Outcome</th>
+                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[3]}`}>Performed by</th>
+                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[4]}`}>Target reference</th>
+                    <th className={`px-2.5 py-3.5 text-right ${AUDIT_COLUMN_WIDTH[5]}`}>Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-brand-border-subtle">
                   {page.events.map((event) => {
                     const occurred = formatOccurredAtParts(event.occurredAt);
                     return (
                       <tr key={event.id} className="transition-colors hover:bg-slate-50/80">
-                        <td className="px-2.5 py-3 align-middle">
+                        <td className="px-2.5 py-4 align-middle">
                           <span
                             className="block whitespace-nowrap font-mono text-[11px] tabular-nums text-slate-500"
                             title={occurred.full}
@@ -780,7 +781,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             <span className="block 2xl:inline">{occurred.time}</span>
                           </span>
                         </td>
-                        <td className="px-2.5 py-3 align-middle">
+                        <td className="px-2.5 py-4 align-middle">
                           <div className="font-semibold text-slate-900">
                             {humanizeIdentifier(event.eventType)}
                           </div>
@@ -791,15 +792,15 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             {event.eventType}
                           </div>
                         </td>
-                        <td className="px-2.5 py-3 align-middle">
+                        <td className="px-2.5 py-4 align-middle">
                           <OutcomeBadge event={event} />
                         </td>
-                        <td className="px-2.5 py-3 align-middle font-medium text-slate-700">
+                        <td className="px-2.5 py-4 align-middle font-medium text-slate-700">
                           <span className="block truncate" title={event.performedByUsername ?? undefined}>
                             {event.performedByUsername ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-3 align-middle">
+                        <td className="px-2.5 py-4 align-middle">
                           <span
                             className="block truncate font-mono text-[11px] text-slate-600"
                             title={event.targetReference ?? undefined}
@@ -807,7 +808,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             {event.targetReference ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-3 text-right align-middle">
+                        <td className="px-2.5 py-4 text-right align-middle">
                           <Button
                             type="button"
                             variant="outline"
@@ -828,7 +829,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             </div>
 
             <ul
-              className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm md:hidden"
+              className="divide-y divide-brand-border-subtle rounded-xl border border-brand-border bg-brand-surface shadow-sm md:hidden"
               aria-label="Audit event log"
             >
               {page.events.map((event) => {
@@ -889,7 +890,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           </div>
         )}
 
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-brand-border bg-brand-surface px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500" aria-live="polite">
             Showing <span className="font-semibold text-slate-700">{firstVisible}–{lastVisible}</span> of{" "}
             <span className="font-semibold text-slate-700">{page.total}</span> events

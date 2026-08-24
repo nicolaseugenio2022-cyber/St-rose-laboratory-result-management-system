@@ -68,38 +68,72 @@ export function addSpecializedLines(options: {
   })));
 }
 
-function addFittedSignatoryText(
-  primitives: NativePagePrimitive[],
+/**
+ * Vertical step between wrapped signatory lines. It matches the established name-to-underline gap,
+ * so a wrapped column keeps the same visual rhythm as an unwrapped one. Note the nominal text boxes
+ * are 4 mm tall on this 3.6 mm step, so declared rectangles overlap slightly by design.
+ */
+const SIGNATORY_LINE_STEP_MM = 3.6;
+
+interface FittedSignatoryText {
+  lines: string[];
+  fontSizePt: number;
+}
+
+/**
+ * Pass-one fit. Emits nothing: the shared band cannot be computed until every column has been
+ * measured. The stable base ID is passed through so a composition failure names the real primitive
+ * rather than an anonymous fragment. A value that still cannot fit within its allowed line budget at
+ * the 6.25 pt floor throws, which is deliberate - identity text is never truncated or abbreviated.
+ */
+function fitSignatoryText(
   id: string,
   value: string,
-  x: number,
-  y: number,
   width: number,
-  bold = false
-): void {
-  if (!value) return;
-  const fitted = fitNativeTextLines({
+  bold: boolean,
+  maxLines: 2 | 3
+): FittedSignatoryText {
+  if (!value) return { lines: [], fontSizePt: 0 };
+  return fitNativeTextLines({
     id,
     text: value,
     font: STANDARD_FONT_ROLES.body,
     weight: bold ? "bold" : "normal",
     declaredFontSizePt: bold ? TYPE.signatoryNamePt : TYPE.signatoryDetailPt,
     availableWidthMm: width,
-    maxLines: 1,
+    maxLines,
     oneLineMinFontSizePt: 6.25,
+    twoLineMinFontSizePt: 6.25,
+    ...(maxLines >= 3 ? { threeLineMinFontSizePt: 6.25 } : {}),
   });
-  primitives.push(specializedText({
-    id,
-    text: fitted.lines[0],
+}
+
+/**
+ * Pass-two emit. The first line keeps the established base ID so every existing identifier and
+ * assertion stays valid; continuation lines take `-line-2` and `-line-3`. `y` is the text top of the
+ * first line, not a typographic baseline.
+ */
+function emitSignatoryText(
+  primitives: NativePagePrimitive[],
+  baseId: string,
+  fitted: FittedSignatoryText,
+  x: number,
+  y: number,
+  width: number,
+  bold: boolean
+): void {
+  fitted.lines.forEach((line, index) => primitives.push(specializedText({
+    id: index === 0 ? baseId : `${baseId}-line-${index + 1}`,
+    text: line,
     x,
-    y,
+    y: y + index * SIGNATORY_LINE_STEP_MM,
     width,
     height: 4,
     fontSizePt: fitted.fontSizePt,
     fontWeight: bold ? "bold" : "normal",
     align: "center",
     color: bold ? COLOR.text : COLOR.mutedText,
-  }));
+  })));
 }
 
 export interface SpecializedSignatoryColumn {
@@ -120,8 +154,32 @@ export function composeSpecializedSignatoryColumns(
   // drift apart again. They previously did: the position was computed from 24 while the frame
   // declared 22, leaving the image 1 mm left of its column centre.
   const signatureWidthMm = 22;
+  const textWidth = columnWidth - 4;
+
+  // PASS ONE - measure every column before emitting anything. A signatory identity longer than one
+  // line has to push the rows beneath it down, and those rows are shared across all three columns,
+  // so the expansion can only be known once every name and licence has been fitted.
+  const fittedNames = columns.map((column) => fitSignatoryText(
+    `${column.id}-name`, column.slot?.printedNameWithCredentials || "", textWidth, true, 3
+  ));
+  const fittedLicenses = columns.map((column) => fitSignatoryText(
+    `${column.id}-license`, column.slot?.licenseDisplay || "", textWidth, false, 2
+  ));
+  const sharedNameLineCount = Math.max(1, ...fittedNames.map((fitted) => fitted.lines.length));
+  const sharedLicenseLineCount = Math.max(1, ...fittedLicenses.map((fitted) => fitted.lines.length));
+  const nameExpansionMm = (sharedNameLineCount - 1) * SIGNATORY_LINE_STEP_MM;
+  const licenseExpansionMm = (sharedLicenseLineCount - 1) * SIGNATORY_LINE_STEP_MM;
+
+  // Text-top coordinates, not typographic baselines. The first name line keeps its established top;
+  // every row beneath it moves by the SHARED expansion, so one long identity can never leave a
+  // single column's underline, licence or role sitting at a different height from its neighbours.
   const nameY = y + 7.8;
-  let bottomMm = y;
+  const underlineY = nameY + 3.6 + nameExpansionMm;
+  const licenseY = nameY + 4 + nameExpansionMm;
+  const roleY = nameY + 7.3 + nameExpansionMm + licenseExpansionMm;
+  const bottomMm = nameY + 10.7 + nameExpansionMm + licenseExpansionMm;
+
+  // PASS TWO - emit from the pre-fitted content using the shared coordinates.
   columns.forEach((column, index) => {
     const x = STANDARD_PAGE.marginMm + index * columnWidth;
     if (column.heading) primitives.push(specializedText({
@@ -140,14 +198,13 @@ export function composeSpecializedSignatoryColumns(
       fit: "contain",
       failurePolicy: column.slot.signatureAsset.failurePolicy,
     });
-    addFittedSignatoryText(primitives, `${column.id}-name`, column.slot?.printedNameWithCredentials || "", x + 2, nameY, columnWidth - 4, true);
-    primitives.push(specializedLine(`${column.id}-line`, x + 7, nameY + 3.6, x + columnWidth - 7, nameY + 3.6, 0.1));
-    addFittedSignatoryText(primitives, `${column.id}-license`, column.slot?.licenseDisplay || "", x + 2, nameY + 4, columnWidth - 4);
+    emitSignatoryText(primitives, `${column.id}-name`, fittedNames[index], x + 2, nameY, textWidth, true);
+    primitives.push(specializedLine(`${column.id}-line`, x + 7, underlineY, x + columnWidth - 7, underlineY, 0.1));
+    emitSignatoryText(primitives, `${column.id}-license`, fittedLicenses[index], x + 2, licenseY, textWidth, false);
     primitives.push(specializedText({
-      id: `${column.id}-role`, text: column.roleLabel, x: x + 2, y: nameY + 7.3, width: columnWidth - 4, height: 3.4,
+      id: `${column.id}-role`, text: column.roleLabel, x: x + 2, y: roleY, width: textWidth, height: 3.4,
       fontSizePt: TYPE.signatoryDetailPt, fontWeight: "bold", color: COLOR.primary, align: "center",
     }));
-    bottomMm = Math.max(bottomMm, nameY + 10.7);
   });
   return { primitives, bottomMm };
 }

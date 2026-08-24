@@ -231,6 +231,137 @@ async function main(): Promise<void> {
   const pathSignature = hivPage.primitives.find((primitive) => primitive.id === "certificate-pathologist-signature");
   assert(pathSignature?.kind === "image" && pathSignature.failurePolicy === "OmitImage", "HIV Pathologist signature must remain optional");
 
+  // ---- QA-06N: multiline signatory identities -------------------------------------------------
+  // A signatory identity longer than one line previously failed composition outright. It now wraps
+  // to at most three name lines and two licence lines, never below 6.25 pt and never truncated.
+  const LIVE_PATHOLOGIST_IDENTITY = "ACCEPTANCE-EDITED P2-PATHOLOGIST";
+  const LIVE_PATHOLOGIST_CREDENTIALS = "MD, FPSP, PhD";
+  const THREE_LINE_IDENTITY = "MARIA THERESA DE LOS SANTOS DELA CRUZ VILLANUEVA GONZALES DE LEON";
+  const THREE_LINE_CREDENTIALS = "MD, FPSP, MSc, PhD";
+  const TWO_LINE_LICENSE = "PRC-0000123-4567890-ABCDEFG-HIJKLMNOP";
+
+  function hivPageWith(signatories: SignatorySnapshot[], label: string): NativeComposedPage {
+    const report = { ...reportFor(hivDefinition, { signature: "/missing-signature.png" }), signatories };
+    const draft = resolveDraftSessionRenderModel(sessionFor([report]));
+    try {
+      return compose(draft, draft.reports[0]);
+    } catch (error) {
+      // Caught deliberately. A composition throw has to surface as this named assertion, never as an
+      // undefined page, a TypeError, or an unrelated assertion further down the file.
+      assert(false, `${label} must compose completely without truncating identity text (${error instanceof Error ? error.message : String(error)})`);
+      throw error;
+    }
+  }
+
+  // Collect by the exact base/numbered pattern and keep going past a gap, so a missing middle line
+  // is caught as a contiguity failure rather than silently shortening the reconstruction.
+  function collectSignatoryLines(page: NativeComposedPage, baseId: string, maxLines: number): string[] {
+    // Scan EVERY text primitive against the exact ID contract instead of probing the ids we expect.
+    // Probing with find() can only confirm what it already looks for: a duplicate id, an index of 0
+    // or -1, or a continuation past the allowed maximum would all be stepped over silently.
+    const escapedBaseId = baseId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const continuationPattern = new RegExp(`^${escapedBaseId}-line-(-?\\d+)$`);
+    const collected: { index: number; text: string }[] = [];
+    for (const primitive of page.primitives) {
+      if (primitive.kind !== "text") continue;
+      const textPrimitive = primitive as NativeTextPrimitive;
+      if (textPrimitive.id === baseId) {
+        collected.push({ index: 1, text: textPrimitive.text });
+        continue;
+      }
+      const match = continuationPattern.exec(textPrimitive.id);
+      if (!match) continue;
+      collected.push({ index: Number(match[1]), text: textPrimitive.text });
+    }
+    assert(collected.length > 0, `${baseId} must render at least one line`);
+    assert(
+      collected.every((entry) => Number.isInteger(entry.index) && entry.index >= 1 && entry.index <= maxLines),
+      `${baseId} line identifiers must be whole numbers within 1..${maxLines}`
+    );
+    assert(new Set(collected.map((entry) => entry.index)).size === collected.length, `${baseId} line identifiers must be unique`);
+    collected.sort((left, right) => left.index - right.index);
+    assert(collected.every((entry, position) => entry.index === position + 1), `${baseId} line identifiers must be contiguous from 1, so -line-3 cannot exist without -line-2`);
+    return collected.map((entry) => entry.text);
+  }
+
+  // The fitter normalises repeated internal whitespace, so the expected source is normalised the
+  // same way and then walked with a cursor. The single boundary space is consumed only where it
+  // actually exists, which preserves the difference between "A-B" and "A- B". Production wrapping
+  // is never recomputed here.
+  function assertReconstructsExactly(lines: string[], source: string, label: string): void {
+    const normalized = source.trim().replace(/\s+/g, " ");
+    let cursor = 0;
+    lines.forEach((line, index) => {
+      if (index > 0 && normalized[cursor] === " ") cursor += 1;
+      assert(normalized.slice(cursor, cursor + line.length) === line, `${label} line ${index + 1} must continue the identity exactly at its wrap point`);
+      cursor += line.length;
+    });
+    assert(cursor === normalized.length, `${label} must reconstruct the complete source with nothing omitted or inserted`);
+    assert(!lines.some((line) => line.includes("\u2026") || line.includes("...")), `${label} must never render an ellipsis`);
+  }
+
+  const liveNamePage = hivPageWith(
+    [medtech(1), medtech(2), { ...pathologist("/missing-signature.png"), printedFullName: LIVE_PATHOLOGIST_IDENTITY, printedCredentials: LIVE_PATHOLOGIST_CREDENTIALS }],
+    "the live acceptance Pathologist identity"
+  );
+  const liveNameLines = collectSignatoryLines(liveNamePage, "certificate-pathologist-name", 3);
+  assert(liveNameLines.length === 2, `the live acceptance Pathologist identity must render on exactly two name lines, not ${liveNameLines.length}`);
+  assertReconstructsExactly(liveNameLines, `${LIVE_PATHOLOGIST_IDENTITY}, ${LIVE_PATHOLOGIST_CREDENTIALS}`, "the live acceptance Pathologist identity");
+
+  const threeLinePage = hivPageWith(
+    [medtech(1), medtech(2), { ...pathologist("/missing-signature.png"), printedFullName: THREE_LINE_IDENTITY, printedCredentials: THREE_LINE_CREDENTIALS }],
+    "a three-line Pathologist identity"
+  );
+  const threeLineNameLines = collectSignatoryLines(threeLinePage, "certificate-pathologist-name", 3);
+  assert(threeLineNameLines.length === 3, `a three-line Pathologist identity must render on exactly three name lines, not ${threeLineNameLines.length}`);
+  assertReconstructsExactly(threeLineNameLines, `${THREE_LINE_IDENTITY}, ${THREE_LINE_CREDENTIALS}`, "a three-line Pathologist identity");
+
+  const twoLineLicensePage = hivPageWith(
+    [medtech(1), { ...medtech(2), printedPrcLicenseNumber: TWO_LINE_LICENSE }, pathologist("/missing-signature.png")],
+    "a two-line Verifier licence"
+  );
+  const twoLineLicenseLines = collectSignatoryLines(twoLineLicensePage, "certificate-verifier-license", 2);
+  assert(twoLineLicenseLines.length === 2, `a hyphenated long licence must render on exactly two licence lines, not ${twoLineLicenseLines.length}`);
+  assertReconstructsExactly(twoLineLicenseLines, `License no. ${TWO_LINE_LICENSE}`, "a two-line Verifier licence");
+  assert(collectSignatoryLines(twoLineLicensePage, "certificate-pathologist-name", 3).length === 1, "an unrelated column's name must stay on one line when only a licence wraps");
+
+  // The long page must survive PDF export, and every continuation line must appear in the emitted
+  // page command stream - not only in the composed primitives.
+  const multilineLogoBytes = new Uint8Array(await readFile(path.join(process.cwd(), "public", "st-rose-logo-official.png")));
+  const threeLinePdf = await createNativeReportPdf(threeLinePage, {
+    async load(source) {
+      if (source === "/st-rose-logo-official.png") return { bytes: multilineLogoBytes, format: "PNG" };
+      throw new Error("signature failed");
+    },
+  }) as unknown as { getNumberOfPages(): number; internal?: { pages?: string[][] } };
+  assert(threeLinePdf.getNumberOfPages() === 1, "a three-line HIV identity must still export exactly one PDF page");
+  const threeLinePdfCommands = (threeLinePdf.internal?.pages?.[1] || []).join("\n");
+  for (const line of threeLineNameLines) {
+    assert(threeLinePdfCommands.includes(line), `the exported PDF page commands must contain the rendered name line "${line}"`);
+  }
+
+  // A reopened completed report renders through the current composer, but must read its frozen
+  // signatory identity and must not mutate the stored snapshot.
+  const FROZEN_LONG_NAME = "DISTINCTIVE FROZEN P2-PATHOLOGIST DELA CRUZ VILLANUEVA";
+  const FROZEN_LONG_CREDENTIALS = "MD, FPSP, MSc";
+  const frozenLongSnapshot = completedHivSnapshot("Frozen Long Address");
+  frozenLongSnapshot.reports[0].signatories = [
+    medtech(1),
+    medtech(2),
+    { ...pathologist(), printedFullName: FROZEN_LONG_NAME, printedCredentials: FROZEN_LONG_CREDENTIALS },
+  ];
+  const frozenSnapshotBytesBefore = JSON.stringify(frozenLongSnapshot);
+  const frozenLongModel = resolveCompletedSessionRenderModel(frozenLongSnapshot);
+  const frozenLongPage = compose(frozenLongModel, frozenLongModel.reports[0]);
+  const frozenLongLines = collectSignatoryLines(frozenLongPage, "certificate-pathologist-name", 3);
+  assert(frozenLongLines.length >= 2, "the frozen long Pathologist identity must wrap rather than fail composition");
+  assertReconstructsExactly(frozenLongLines, `${FROZEN_LONG_NAME}, ${FROZEN_LONG_CREDENTIALS}`, "a reopened completed HIV Pathologist identity");
+  assert(JSON.stringify(frozenLongSnapshot) === frozenSnapshotBytesBefore, "resolving and composing a completed HIV snapshot must leave its stored bytes byte-identical");
+  // The exact reconstruction above, together with the byte-identical snapshot serialization, is the
+  // proof that the frozen identity was rendered. No current-personnel value was supplied to this
+  // fixture, so no comparison against one would mean anything.
+  assert(frozenLongLines[0].startsWith("DISTINCTIVE FROZEN"), "a reopened completed report must render its own frozen signatory identity");
+
   const blankHivDraft = resolveDraftSessionRenderModel(sessionFor([reportFor(hivDefinition)], ""));
   const blankHivPage = compose(blankHivDraft, blankHivDraft.reports[0]);
   assert(blankHivDraft.demographics.address === "" && !pageText(blankHivPage).includes("STA. ROSA"), "blank draft HIV Address must remain blank without a rendering default");

@@ -321,6 +321,103 @@ async function main(): Promise<void> {
   assert(hivSignatureImage.height === 6.5, "the HIV Pathologist signature must retain its 6.5 mm frame height");
   assert(Math.abs(hivSignatureImage.y - (primitiveTopMm(hiv, "certificate-pathologist-name") - 7.4)) < 0.001, "the HIV Pathologist signature top must remain 0.4 mm below the signatory section origin, unchanged by the placement correction");
   assert(Math.abs(hiv.contentBottomMm - 120.8) < 0.001, "HIV contentBottomMm must remain exactly 120.80 mm after the placement correction");
+
+  // ---- QA-06N: multiline signatory bands ------------------------------------------------------
+  // Text-top (first-line Y) coordinates throughout, never typographic baselines.
+  const QA06N_STEP_MM = 3.6;
+  const hivDefinitionForBands = ReportDefinitionRegistry.getDefinition("HIV_RESULT")!;
+  const LONG_TWO_LINE_NAME = "ACCEPTANCE-EDITED P2-PATHOLOGIST";
+  const LONG_THREE_LINE_NAME = "MARIA THERESA DE LOS SANTOS DELA CRUZ VILLANUEVA GONZALES DE LEON";
+  const LONG_TWO_LINE_LICENSE = "PRC-0000123-4567890-ABCDEFG-HIJKLMNOP";
+
+  function hivBandPage(
+    label: string,
+    overrides: { examiner?: Partial<SignatorySnapshot>; verifier?: Partial<SignatorySnapshot>; pathologist?: Partial<SignatorySnapshot> }
+  ): NativeComposedPage {
+    const base = reportFor(hivDefinitionForBands);
+    const [examiner, verifier, pathologistSlot] = base.signatories as SignatorySnapshot[];
+    const report = { ...base, signatories: [
+      { ...examiner, ...(overrides.examiner || {}) },
+      { ...verifier, ...(overrides.verifier || {}) },
+      { ...pathologistSlot, ...(overrides.pathologist || {}) },
+    ] };
+    const resolvedBand = resolveDraftSessionRenderModel(sessionFor([report]));
+    try {
+      return composeNativeLivePreviewReportPage(resolvedBand, resolvedBand.reports[0]);
+    } catch (error) {
+      // Caught so a composition throw surfaces as this named assertion rather than an undefined page.
+      assert(false, `${label} must compose completely without truncating identity text (${error instanceof Error ? error.message : String(error)})`);
+      throw error;
+    }
+  }
+  const bandNameLineCount = (page: NativeComposedPage, columnId: string) =>
+    [`${columnId}-name`, `${columnId}-name-line-2`, `${columnId}-name-line-3`]
+      .filter((id) => textPrimitives(page).some((primitive) => primitive.id === id)).length;
+  const bandLicenseLineCount = (page: NativeComposedPage, columnId: string) =>
+    [`${columnId}-license`, `${columnId}-license-line-2`]
+      .filter((id) => textPrimitives(page).some((primitive) => primitive.id === id)).length;
+  const bandColumns = ["certificate-examiner", "certificate-pathologist", "certificate-verifier"];
+  const underlineY = (page: NativeComposedPage, columnId: string) =>
+    (page.primitives.find((primitive) => primitive.kind === "line" && primitive.id === `${columnId}-line`) as { y1: number }).y1;
+
+  // State 1: every column one name line and one licence line - geometry must be unchanged.
+  const bandShort = hivBandPage("the short HIV fixture", {});
+  assert(bandColumns.every((id) => bandNameLineCount(bandShort, id) === 1 && bandLicenseLineCount(bandShort, id) === 1), "the short HIV fixture must keep every name and licence on one line");
+  assert(Math.abs(bandShort.contentBottomMm - 120.8) < 0.001, "one name line and one licence line must keep HIV at exactly 120.80 mm");
+  assert(Math.abs(textCoordinates(bandShort, "certificate-pathologist-name").y - 110.1) < 0.001, "the first name line text top must remain 110.10 mm");
+
+  // State 2: exactly ONE column wraps to two name lines. An all-long fixture cannot prove this,
+  // because per-column offsets would still agree with each other.
+  const bandMixedName = hivBandPage("a mixed-length HIV name fixture", { pathologist: { printedFullName: LONG_TWO_LINE_NAME, printedCredentials: "MD, FPSP, PhD" } });
+  assert(bandNameLineCount(bandMixedName, "certificate-pathologist") === 2, "the mixed-name fixture must wrap exactly the Pathologist name to two lines");
+  assert(bandNameLineCount(bandMixedName, "certificate-examiner") === 1 && bandNameLineCount(bandMixedName, "certificate-verifier") === 1, "the mixed-name fixture must leave the other two names on one line");
+  assert(bandColumns.every((id) => bandLicenseLineCount(bandMixedName, id) === 1), "the mixed-name fixture must leave every licence on one line");
+  assert(new Set(bandColumns.map((id) => underlineY(bandMixedName, id))).size === 1, "one wrapped name must move ALL THREE underlines together, never just its own column");
+  assert(new Set(bandColumns.map((id) => textCoordinates(bandMixedName, `${id}-license`).y)).size === 1, "one wrapped name must move ALL THREE licence rows together");
+  assert(new Set(bandColumns.map((id) => textCoordinates(bandMixedName, `${id}-role`).y)).size === 1, "one wrapped name must move ALL THREE role rows together");
+  assert(Math.abs(underlineY(bandMixedName, "certificate-examiner") - (113.7 + QA06N_STEP_MM)) < 0.001, "a two-line name band must shift the shared underline by exactly one 3.6 mm step");
+  assert(Math.abs(bandMixedName.contentBottomMm - 124.4) < 0.001, "two name lines and one licence line must place HIV at exactly 124.40 mm");
+
+  // State 3: three name lines.
+  const bandThreeName = hivBandPage("a three-line HIV name fixture", { pathologist: { printedFullName: LONG_THREE_LINE_NAME, printedCredentials: "MD, FPSP, MSc, PhD" } });
+  assert(bandNameLineCount(bandThreeName, "certificate-pathologist") === 3, "the three-line fixture must render exactly three contiguous name primitives");
+  assert(!textPrimitives(bandThreeName).some((primitive) => primitive.id === "certificate-pathologist-name-line-4"), "a name must never render a fourth line");
+  assert(Math.abs(bandThreeName.contentBottomMm - 128) < 0.001, "three name lines and one licence line must place HIV at exactly 128.00 mm");
+
+  // State 4: three name lines and exactly ONE wrapped licence.
+  const bandThreeNameTwoLicense = hivBandPage("a three-line name with a two-line licence", {
+    pathologist: { printedFullName: LONG_THREE_LINE_NAME, printedCredentials: "MD, FPSP, MSc, PhD" },
+    verifier: { printedPrcLicenseNumber: LONG_TWO_LINE_LICENSE },
+  });
+  assert(bandLicenseLineCount(bandThreeNameTwoLicense, "certificate-verifier") === 2, "the mixed-licence fixture must wrap exactly the Verifier licence to two lines");
+  assert(bandLicenseLineCount(bandThreeNameTwoLicense, "certificate-examiner") === 1 && bandLicenseLineCount(bandThreeNameTwoLicense, "certificate-pathologist") === 1, "the mixed-licence fixture must leave the other two licences on one line");
+  assert(!textPrimitives(bandThreeNameTwoLicense).some((primitive) => primitive.id === "certificate-verifier-license-line-3"), "a licence must never render a third line");
+  assert(new Set(bandColumns.map((id) => textCoordinates(bandThreeNameTwoLicense, `${id}-role`).y)).size === 1, "one wrapped licence must move ALL THREE role rows together");
+  assert(Math.abs(bandThreeNameTwoLicense.contentBottomMm - 131.6) < 0.001, "three name lines and two licence lines must place HIV at exactly 131.60 mm");
+  assert(bandThreeNameTwoLicense.contentBottomMm <= 144.5, "the worst-case multiline HIV page must remain within the 144.5 mm client output boundary");
+
+  // The signature is unaffected by a band that grows downward.
+  const bandSignature = imageById(bandThreeNameTwoLicense, "certificate-pathologist-signature");
+  assert(bandSignature?.x === 94 && bandSignature.width === 22 && bandSignature.height === 6.5, "multiline signatory bands must not move or resize the Pathologist signature");
+
+  // Live Preview markup must carry every continuation line, not only the composed primitives.
+  const bandPreviewReport = { ...reportFor(hivDefinitionForBands) };
+  const bandPreviewSignatories = bandPreviewReport.signatories as SignatorySnapshot[];
+  bandPreviewReport.signatories = [
+    bandPreviewSignatories[0],
+    bandPreviewSignatories[1],
+    { ...bandPreviewSignatories[2], printedFullName: LONG_THREE_LINE_NAME, printedCredentials: "MD, FPSP, MSc, PhD" },
+  ];
+  const bandPreviewSession = resolveDraftSessionRenderModel(sessionFor([bandPreviewReport]));
+  const bandMarkup = renderToStaticMarkup(React.createElement(NativeLivePreviewPage, {
+    resolvedSession: bandPreviewSession,
+    resolvedReport: bandPreviewSession.reports[0],
+    reportTitle: "HIV_RESULT",
+  }));
+  for (const continuationId of ["certificate-pathologist-name-line-2", "certificate-pathologist-name-line-3"]) {
+    const continuation = textPrimitives(bandThreeName).find((primitive) => primitive.id === continuationId)!;
+    assert(bandMarkup.includes(continuation.text), `Live Preview markup must contain the rendered continuation line "${continuation.text}"`);
+  }
   assert(hiv.primitives.filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo").every((primitive) => primitive.id === "certificate-pathologist-signature"), "only the HIV Pathologist may render an image");
   assert(primitiveTopMm(hiv, "certificate-pathologist-name") - primitiveBottomByIdMm(hiv, "certificate-pathologist-signature") >= 0.899, "HIV Pathologist signature image must have added clearance above the unchanged name baseline");
   assert(primitiveTopMm(hiv, "certificate-test-label") - primitiveBottomByIdMm(hiv, "certificate-test-header") >= NATIVE_REPORT_THEME.sectionInsets.resultBodyTopMm - 0.001, "Certificate result content must use the shared internal inset below its header");

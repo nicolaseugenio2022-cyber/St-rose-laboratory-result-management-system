@@ -14,6 +14,11 @@ import { FormulaRegistry } from "./formula-registry";
 import { formatHalfUp, formatWithSuffix } from "./formatter-registry";
 import { EvaluationOutcome } from "@/domain/types";
 import { evaluateParameterValue, type EvaluationContext } from "./parameter-evaluation-service";
+import {
+  resolveCalculationMode,
+  type CalculationModeMap,
+  type ResultProvenance,
+} from "@/domain/calculation-mode";
 
 export function isValueValidForPolicy(val: number, policy: ValidationPolicy = "StrictPositive"): boolean {
   if (!Number.isFinite(val)) return false;
@@ -71,6 +76,8 @@ export function resolveComputedValidationMessage(
 export interface GenericResolverInput {
   definition: ClinicalReportDefinition;
   rawInputs: Record<string, string>; // parameterCode -> entered string
+  /** Operator intent per formula-bound parameter. Absent means every parameter resolves as Auto. */
+  calculationModes?: CalculationModeMap;
   evaluationContext?: EvaluationContext;
 }
 
@@ -88,21 +95,113 @@ export interface ResolvedParameterResult {
 
 export class GenericReportResolver {
   public static resolveReport(input: GenericResolverInput): ResolvedParameterResult[] {
-    const { definition, rawInputs, evaluationContext = {} } = input;
+    const { definition, rawInputs, evaluationContext = {}, calculationModes = {} } = input;
     const results: ResolvedParameterResult[] = [];
 
     for (const param of definition.parameters) {
-      const resolved = GenericReportResolver.resolveParameter(param, rawInputs, evaluationContext);
+      const resolved = GenericReportResolver.resolveParameter(
+        param,
+        rawInputs,
+        evaluationContext,
+        calculationModes,
+        definition.parameters
+      );
       results.push(resolved);
     }
 
     return results;
   }
 
+  /**
+   * Manual entry for a formula-bound parameter. The formula is never evaluated, so no formula
+   * metadata is produced and nothing here can overwrite what the operator typed.
+   *
+   * Order matters: syntax, then the binding's result policy, then clinical evaluation. Reference
+   * classification on its own would accept 0 and negatives as ordinary Low findings, because a
+   * reference range answers "is this normal", not "is this a valid result".
+   */
+  private static resolveManualEntry(
+    param: ParameterSpec,
+    rawInputs: Record<string, string>,
+    evaluationContext: EvaluationContext,
+    resultPolicy: ValidationPolicy
+  ): ResolvedParameterResult {
+    const precision = param.formulaBinding?.precision ?? param.displayPrecision ?? 2;
+    const entered = rawInputs[param.parameterCode] ?? "";
+    const trimmed = entered.trim();
+    const identity = {
+      parameterCode: param.parameterCode,
+      parameterName: param.parameterName,
+      displayOrder: param.displayOrder,
+    };
+    const metadata = (extra: Record<string, unknown>) => ({
+      calculationMode: "Manual" as const,
+      provenance: "Manual" as ResultProvenance,
+      precision,
+      resultValidationPolicy: resultPolicy,
+      ...extra,
+    });
+
+    if (trimmed === "") {
+      return {
+        ...identity,
+        resultValue: entered,
+        rawResultValue: null,
+        formattedResultValue: "",
+        evaluationOutcome: "NoEvaluation",
+        computationMetadata: metadata({ pending: true, isResultValid: false }),
+        isValid: false,
+      };
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      return {
+        ...identity,
+        resultValue: entered,
+        rawResultValue: entered,
+        formattedResultValue: "",
+        evaluationOutcome: "Invalid",
+        computationMetadata: metadata({ error: "Invalid number", isResultValid: false }),
+        isValid: false,
+      };
+    }
+
+    if (!isValueValidForPolicy(parsed, resultPolicy)) {
+      return {
+        ...identity,
+        resultValue: entered,
+        rawResultValue: entered,
+        formattedResultValue: "",
+        evaluationOutcome: "Invalid",
+        computationMetadata: metadata({
+          error: "Entered result " + getPolicyDescription(resultPolicy),
+          isResultValid: false,
+        }),
+        isValid: false,
+      };
+    }
+
+    // Valid entry: the parameter's own reference rules classify it, so a positive out-of-range
+    // value stays a real High/Low finding instead of becoming a validation error.
+    const evaluationOutcome = evaluateParameterValue(param, trimmed, evaluationContext, parsed);
+    return {
+      ...identity,
+      resultValue: entered,
+      rawResultValue: entered,
+      formattedResultValue: formatHalfUp(parsed, precision),
+      evaluationOutcome,
+      computationMetadata: metadata({ isResultValid: true }),
+      isValid: evaluationOutcome !== "Invalid",
+    };
+  }
+
   public static resolveParameter(
     param: ParameterSpec,
     rawInputs: Record<string, string>,
-    evaluationContext: EvaluationContext = {}
+    evaluationContext: EvaluationContext = {},
+    calculationModes: CalculationModeMap = {},
+    siblingParameters: readonly ParameterSpec[] = []
   ): ResolvedParameterResult {
     // 1. Computed Parameter Resolution
     if (param.formulaBinding) {
@@ -110,7 +209,12 @@ export class GenericReportResolver {
       const depPolicy = binding.dependencyValidationPolicy || binding.validationPolicy || "StrictPositive";
       const resultPolicy = binding.resultValidationPolicy || "StrictPositive";
 
+      if (resolveCalculationMode(binding, param.parameterCode, calculationModes) === "Manual") {
+        return GenericReportResolver.resolveManualEntry(param, rawInputs, evaluationContext, resultPolicy);
+      }
+
       const numericDependencies: Record<string, number | null> = {};
+      const manualInputs: Record<string, number> = {};
       let hasInvalidDependency = false;
       let hasMissingDependency = false;
 
@@ -131,6 +235,32 @@ export class GenericReportResolver {
         }
       }
 
+      // Active dependencies are formula-bound parameters this formula consumes only while THEY are
+      // Manual. While such a parameter is Auto it is skipped entirely and the formula derives the
+      // value itself, which is what preserves the exact unrounded intermediate. When it is Manual
+      // the entered value becomes a real dependency and is held to the same dependency policy, so a
+      // blank, non-numeric, zero or negative entry blocks the calculation exactly as any other
+      // missing or invalid dependency would.
+      for (const activeCode of binding.activeDependencies || []) {
+        const sibling = siblingParameters.find((item) => item.parameterCode === activeCode);
+        if (resolveCalculationMode(sibling?.formulaBinding, activeCode, calculationModes) !== "Manual") continue;
+        const rawActive = rawInputs[activeCode];
+        if (rawActive === undefined || rawActive === null || rawActive.trim() === "") {
+          hasMissingDependency = true;
+          numericDependencies[activeCode] = null;
+          continue;
+        }
+        const numActive = Number(rawActive);
+        if (!isValueValidForPolicy(numActive, depPolicy)) {
+          hasInvalidDependency = true;
+          numericDependencies[activeCode] = null;
+          continue;
+        }
+        numericDependencies[activeCode] = numActive;
+        manualInputs[activeCode] = numActive;
+      }
+      const effectiveDependencies = [...binding.dependencies, ...Object.keys(manualInputs)];
+
       if (hasMissingDependency && !hasInvalidDependency) {
         return {
           parameterCode: param.parameterCode,
@@ -141,6 +271,7 @@ export class GenericReportResolver {
           evaluationOutcome: "NoEvaluation",
           computationMetadata: {
             formulaId: binding.formulaId,
+            calculationMode: "Auto",
             pending: true,
             dependencies: numericDependencies,
             dependencyValidationPolicy: depPolicy,
@@ -160,6 +291,7 @@ export class GenericReportResolver {
           evaluationOutcome: "Invalid",
           computationMetadata: {
             formulaId: binding.formulaId,
+            calculationMode: "Auto",
             error: `Missing or invalid formula dependencies (${getPolicyDescription(depPolicy)}).`,
             dependencies: numericDependencies,
             dependencyValidationPolicy: depPolicy,
@@ -170,8 +302,22 @@ export class GenericReportResolver {
       }
 
       try {
-        const evaluationResult = FormulaRegistry.evaluateFormula(binding.formulaId, numericDependencies);
+        const evaluationResult = FormulaRegistry.evaluateFormula(
+          binding.formulaId,
+          numericDependencies,
+          manualInputs
+        );
         const { unroundedValue, computationMetadata } = evaluationResult;
+        // Provenance is derived here, never taken from the caller and never keyed off a template
+        // code. A formula that consumed an entered HDL reports hdlSource "Manual", which is the only
+        // case that may be described as the standard-input equation.
+        const hdlSource = (computationMetadata as Record<string, unknown> | undefined)?.hdlSource;
+        const provenance: ResultProvenance =
+          hdlSource === "Manual"
+            ? "StandardInputCalculation"
+            : hdlSource === "ClientFormula"
+              ? "ClientFormulaComposite"
+              : "ClientFormula";
 
         // Declarative result validation policy enforcement
         const isResultValid = isValueValidForPolicy(unroundedValue, resultPolicy);
@@ -190,7 +336,9 @@ export class GenericReportResolver {
           evaluationOutcome,
           computationMetadata: {
             ...computationMetadata,
-            dependencies: [...binding.dependencies],
+            calculationMode: "Auto",
+            provenance,
+            dependencies: effectiveDependencies,
             unroundedValue,
             formattedDisplay,
             precision,

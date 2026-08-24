@@ -9,6 +9,7 @@ import {
 } from "./completed-snapshot";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
+import { normalizeCalculationModes, resolveCalculationMode } from "@/domain/calculation-mode";
 import { stripFixedSuffix } from "@/services/formatter-registry";
 import { ValidationError } from "@/lib/errors";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
@@ -99,10 +100,12 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     const result = findResult(report, parameter);
     rawInputs[parameter.parameterCode] = rawInputValue(parameter, result?.resultValue || "");
   }
+  const calculationModes = normalizeCalculationModes(report.encodingData?.calculationModes);
   const resolved = GenericReportResolver.resolveReport({
     definition,
     rawInputs,
     evaluationContext: { sex: session.demographics.sex || null },
+    calculationModes,
   });
   const results: CompletedResultSnapshot[] = [];
 
@@ -124,7 +127,11 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
       if (!parameter.conditionalChoiceSpec.labelChoices.includes(label) || !parameter.conditionalChoiceSpec.resultOptions.includes(value)) errors[key] = `${parameter.parameterName} is incomplete or invalid.`;
     }
     if (selected && resolvedResult.evaluationOutcome === "Invalid") errors[key] = `${parameter.parameterName} is invalid.`;
-    if (parameter.inputType === "Computed" && (!resolvedResult.isValid || !nonBlank(resolvedResult.formattedResultValue))) errors[key] = `${parameter.parameterName} could not be computed from valid dependencies.`;
+    // Only an Auto result can fail to be COMPUTED. A Manual entry is already covered by the
+    // required and invalid checks above, and telling the operator their typed value "could not
+    // be computed" would be false - this assignment is last, so it would also mask those.
+    const calculationMode = resolveCalculationMode(parameter.formulaBinding, parameter.parameterCode, calculationModes);
+    if (parameter.inputType === "Computed" && calculationMode === "Auto" && (!resolvedResult.isValid || !nonBlank(resolvedResult.formattedResultValue))) errors[key] = `${parameter.parameterName} could not be computed from valid dependencies.`;
 
     if (!selected || (!nonBlank(rawValue) && !parameter.isRequired && parameter.blankOmission)) continue;
     results.push({

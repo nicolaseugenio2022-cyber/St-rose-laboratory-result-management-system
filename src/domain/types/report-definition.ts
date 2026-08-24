@@ -25,6 +25,17 @@ export interface FormulaBindingSpec {
   dependencyValidationPolicy?: ValidationPolicy;
   resultValidationPolicy?: ValidationPolicy;
   validationPolicy?: ValidationPolicy;
+  /**
+   * Opt-in. Only a binding that sets this may be switched to Manual operator entry, so adding a
+   * formula binding never makes a parameter editable on its own.
+   */
+  supportsManualEntry?: boolean;
+  /**
+   * Formula-bound parameters whose ACTIVE value this formula consumes when they are in Manual
+   * mode. While such a parameter is Auto it is omitted entirely and the formula derives the value
+   * itself, which is what keeps the exact unrounded intermediate rather than a display value.
+   */
+  activeDependencies?: string[];
 }
 
 export interface ConditionalChoiceSpec {

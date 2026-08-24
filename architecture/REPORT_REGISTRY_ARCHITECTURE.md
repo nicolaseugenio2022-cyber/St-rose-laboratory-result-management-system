@@ -80,7 +80,9 @@ Input styles strictly reflect client-confirmed template requirements:
 
 ## 5.2 Approved Computed Parameters
 
-Only computations explicitly documented in `LABORATORY_TEMPLATE_SPECIFICATION.md` are supported. External formulas (such as Friedewald LDL or arbitrary VLDL/ratios) are strictly excluded.
+Only computations explicitly documented in the authority documents mapped from `LABORATORY_TEMPLATE_SPECIFICATION.md` are supported. Undocumented external formulas and arbitrary VLDL or ratio calculations remain strictly excluded.
+
+The LDL calculation is an **approved** computation: see DEC-028 and ADR-009. Its operand order was verified against CDC and NHLBI / Philippine Heart Association references. LDL Auto over a client-calculated Auto HDL is a client-defined composite calculation and must not be described as standard Friedewald; LDL Auto over a manually entered HDL follows the standard-input equation, subject to its applicability limitations.
 
 - **Chemistry 10 (`CHEM_10`) & Lipid Profile (`HDL_LDL`)**:
   - `HDL_LDL` uses the **SAME** client-confirmed computation behavior explicitly documented for `CHEM_10`.

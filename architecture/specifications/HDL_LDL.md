@@ -61,8 +61,8 @@ Display order MUST remain exactly:
 |-----------|------------|
 | Cholesterol | NumericText |
 | Triglycerides | NumericText |
-| HDL | NumericText |
-| LDL | Computed |
+| HDL | Computed (Auto default; supports Manual entry mode) |
+| LDL | Computed (Auto default; supports Manual entry mode) |
 | Remarks | FreeText |
 
 ---
@@ -95,22 +95,69 @@ Display order MUST remain exactly:
 
 # 7. Computations
 
+## Calculation Mode
+
+Both HDL and LDL default to **Auto** and may be switched to **Manual** by the operator, independently
+of one another.
+
+- **HDL Auto** applies the client-defined calculation `Cholesterol × 40 ÷ 150`. Its provenance is
+  recorded as **Client Formula**. HDL is read-only while Auto.
+- **HDL Manual** is a directly operator-entered HDL result. Its persisted provenance
+  value is **Manual**, and a Manual result carries no formula metadata. The entered value may have
+  come from a direct measurement, but the system neither requires that nor records it as the
+  provenance.
+- **LDL Auto** applies `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`, where the *active HDL* is
+  the calculated HDL while HDL is Auto, and the operator-entered HDL while HDL is Manual.
+- **LDL Manual** is a directly operator-entered LDL result. Its persisted provenance
+  value is **Manual**, and a Manual result carries no formula metadata. The entered value may have
+  come from a direct measurement, but the system neither requires that nor records it as the
+  provenance.
+- Switching Auto → Manual clears the calculated value immediately. A calculated value is never
+  carried over or presented as a measured one.
+- Switching Manual → Auto is confirmed first, then discards the manual value and recalculates.
+- A Manual value is never overwritten by recalculation while Manual remains active.
+- Manual HDL and LDL accept only a finite value greater than 0. A valid value outside the reference
+  range remains a real High or Low finding, not a validation error.
+- Reference ranges, units and clinical thresholds are unchanged by calculation mode.
+
+## Applicability Limitation
+
+- The standard Friedewald calculation uses directly **measured** Total Cholesterol, Triglycerides and
+  HDL.
+- Its documented use is for Triglycerides **below 400 mg/dL**.
+- The current client-approved application intentionally retains **no automatic triglyceride cutoff**.
+- **Manual LDL** is the available operator path when automatic calculation is inappropriate.
+- **LDL Auto using client-calculated Auto HDL is a client-defined composite calculation and must not
+  be described as standard Friedewald.**
+- LDL Auto using a manually entered or measured HDL follows the standard-input equation, subject to
+  its applicability limitations.
+
+Supporting source: CDC NHANES triglyceride documentation
+<https://wwwn.cdc.gov/nchs/data/nhanes/public/2017/datafiles/p_trigly.htm>
+
+See `DECISIONS.md` DEC-028 and `ADR/ADR-009-Optional-Manual-Override-and-LDL-Calculation.md`.
+
 ## LDL Calculation
 
 The official client instruction states:
 
 > "Yung HDL and LDL nacocompute lang yung result."
 
-Formula documented in the template:
+Corrected operative formula approved under DEC-028 and ADR-009 (this operand order was not the
+one recorded in the historical template, and was not supplied in this form by the clinic):
 
 ```
-LDL = Triglycerides ÷ 5 + HDL − Cholesterol
+LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)
 ```
+
+> The source template recorded the operand order as
+> `LDL = Triglycerides ÷ 5 + HDL − Cholesterol`. That order was verified against CDC and
+> NHLBI / Philippine Heart Association references and corrected under DEC-028 / ADR-009.
 
 ### Inputs
 
 - Triglycerides
-- HDL
+- HDL (the active HDL: calculated while HDL is Auto, entered while HDL is Manual)
 - Cholesterol
 
 ### Output
@@ -119,9 +166,9 @@ LDL = Triglycerides ÷ 5 + HDL − Cholesterol
 
 ### Behavior
 
-- LDL is automatically computed.
-- LDL remains read-only.
-- Users do not manually encode LDL.
+- LDL is automatically computed while it is in Auto mode.
+- LDL remains read-only while Auto.
+- The operator may switch LDL to Manual and enter the result directly.
 
 ---
 
@@ -162,7 +209,13 @@ Available
 # 10. Validation Rules
 
 - All Lipid Profile parameters are required.
-- LDL is computed automatically and read-only.
+- HDL calculates automatically and remains read-only while HDL is in Auto.
+- LDL calculates automatically and remains read-only while LDL is in Auto.
+- HDL becomes operator-entered only while HDL is in Manual; LDL becomes operator-entered only
+  while LDL is in Manual.
+- A Manual HDL value and a Manual LDL value must each be finite and strictly greater than 0.
+- A positive Manual value outside its reference range remains a valid clinical Low/High outcome
+  under the existing evaluation rules.
 - Only numeric values are accepted.
 - Remarks remain editable.
 - Requested By remains editable.
@@ -210,8 +263,10 @@ Right
 
 # 14. Conditional Rules
 
-- LDL is automatically calculated after required inputs are available.
-- Manual editing of LDL is not permitted.
+- HDL is automatically calculated from Cholesterol while HDL is in Auto mode.
+- LDL is automatically calculated after required inputs are available while LDL is in Auto mode.
+- Manual editing of HDL is permitted only after the operator switches HDL to Manual.
+- Manual editing of LDL is permitted only after the operator switches LDL to Manual.
 
 ---
 
@@ -244,18 +299,23 @@ Preview, Browser Print, and PDF MUST produce identical output.
 
 > "Yung HDL and LDL nacocompute lang yung result."
 
-Formula provided:
+Corrected operative formula approved under DEC-028 and ADR-009 (not the operand order originally
+provided by the clinic):
 
 ```
-LDL = Triglycerides ÷ 5 + HDL − Cholesterol
+LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)
 ```
+
+> Operand order corrected under DEC-028 / ADR-009; the source template recorded
+> `LDL = Triglycerides ÷ 5 + HDL − Cholesterol`.
 
 ---
 
 # 18. Engineering Notes
 
-- LDL is the only computed parameter.
-- All remaining parameters are manually encoded.
+- HDL and LDL are formula-bound Computed parameters.
+- Both default to Auto mode and both support operator-selected Manual mode.
+- All other result parameters remain operator-entered according to their existing specifications.
 - Default values are convenience values only.
 - Reference values are printed exactly as shown.
 
@@ -267,17 +327,20 @@ AI MUST
 
 - Preserve parameter order.
 - Preserve reference values.
-- Automatically compute LDL.
-- Keep LDL read-only.
+- Automatically compute HDL and LDL while each is in Auto mode.
+- Keep each of HDL and LDL read-only while it is in Auto mode, and editable only after the
+  operator switches that parameter to Manual mode.
+- Allow the operator to switch either parameter back to Auto, which recalculates it.
 - Auto-populate default Address.
 - Auto-populate default Requested By.
 - Auto-populate default Remarks.
-- Allow editing of default values except LDL.
+- Allow editing of default values; direct entry of HDL or LDL is permitted only once the
+  operator has switched that parameter to Manual mode.
 - Preserve the official Word layout.
 
 AI MUST NOT
 
-- Allow manual LDL encoding.
+- Allow direct entry of HDL or LDL while that parameter remains in Auto mode.
 - Introduce additional computations.
 - Modify approved formula.
 - Modify reference values.
@@ -290,7 +353,8 @@ AI MUST NOT
 |-------------|--------|
 | Layout | Word Template |
 | Reference Values | Word Template |
-| LDL Formula | Client Word Comment |
+| Historical/source LDL formula wording | Client Word Comment |
+| Corrected operative LDL formula and calculation-mode policy | DEC-028 / ADR-009 |
 | Default Remarks | Word Template |
 | Renderer Family | REPORT_REGISTRY_ARCHITECTURE.md |
 
@@ -320,3 +384,4 @@ None.
 | Version | Date | Notes |
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
+| 1.1 | DEC-028 / ADR-009 | LDL operand order corrected to `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`; independent Auto/Manual calculation modes for formula-bound HDL and LDL; formula-source attribution corrected to separate the historical client wording from the approved operative contract |

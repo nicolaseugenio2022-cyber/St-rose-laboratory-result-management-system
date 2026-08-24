@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
-import { buildEncodingReport, applyEncodingResultValue, applyParameterSelection, applyAllSelectableParameters, reevaluateEncodingReport, addRepeatableFinding, updateRepeatableFinding, moveRepeatableFinding, removeRepeatableFinding, formatConditionalChoiceValue, parseConditionalChoiceValue } from "../src/features/workspace/encoding/report-encoding";
+import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, applyAllSelectableParameters, reevaluateEncodingReport, addRepeatableFinding, updateRepeatableFinding, moveRepeatableFinding, removeRepeatableFinding, formatConditionalChoiceValue, parseConditionalChoiceValue } from "../src/features/workspace/encoding/report-encoding";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "../src/domain/models/laboratory-report-domain";
 import { PatientDemographics, RendererFamily } from "../src/domain/types";
@@ -295,7 +295,9 @@ assert(evaluateParameterValue(cholesterol, "199", { sex: "Male" }) === "Normal" 
 assert(evaluateParameterValue(triglycerides, "325", { sex: "Male" }) === "High", "CHEM10 Triglycerides 325 is HIGH");
 const syntheticGreaterThan = { ...fbs, evaluationPolicy: { mode: "NumericAutomatic", strategy: "GreaterThan", boundary: { minValue: 10 } } } as typeof fbs;
 assert(evaluateParameterValue(syntheticGreaterThan, "10") === "Low" && evaluateParameterValue(syntheticGreaterThan, "11") === "Normal", "generic strict greater-than policy distinguishes LOW from NORMAL");
-const chemistryExample = GenericReportResolver.resolveReport({ definition: chemDefinition, rawInputs: { FBS: "110", CHOLESTEROL: "231", TRIGLYCERIDES: "325" }, evaluationContext: { sex: "Male" } });
+// TG=900 with CHOLESTEROL=231 is what yields a negative computed LDL under the corrected
+// equation, so the rejected-computed-result rendering below is still exercised.
+const chemistryExample = GenericReportResolver.resolveReport({ definition: chemDefinition, rawInputs: { FBS: "110", CHOLESTEROL: "231", TRIGLYCERIDES: "900" }, evaluationContext: { sex: "Male" } });
 assert(chemistryExample.find((result) => result.parameterCode === "HDL")?.formattedResultValue === "61.60" && chemistryExample.find((result) => result.parameterCode === "HDL")?.evaluationOutcome === "Normal", "computed HDL 61.60 is NORMAL through the same generic pipeline");
 assert(chemistryExample.find((result) => result.parameterCode === "LDL")?.formattedResultValue === "" && chemistryExample.find((result) => result.parameterCode === "LDL")?.evaluationOutcome === "Invalid", "negative client-formula LDL remains blank and INVALID");
 const ldlParameter = chemDefinition.parameters.find((parameter) => parameter.parameterCode === "LDL")!;
@@ -308,6 +310,89 @@ assert(pendingChemistry.find((result) => result.parameterCode === "HDL")?.evalua
 const pendingLdl = pendingChemistry.find((result) => result.parameterCode === "LDL")!;
 const pendingLdlMarkup = renderToStaticMarkup(React.createElement(ComputedInput, { parameter: ldlParameter, value: "", isSelected: true, evaluationOutcome: pendingLdl.evaluationOutcome, computationMetadata: pendingLdl.computationMetadata, onToggleSelect: noOp }));
 assert(pendingLdlMarkup.includes(">Pending</span>") && !pendingLdlMarkup.includes("data-validation-message") && !pendingLdlMarkup.includes("aria-describedby"), "blank computed dependencies remain PENDING without an error helper");
+
+// ---------------------------------------------------------------------------
+// Optional Auto/Manual calculation mode, and preservation of the clinic's reference contracts
+// ---------------------------------------------------------------------------
+const hdlSpec = chemDefinition.parameters.find((parameter) => parameter.parameterCode === "HDL")!;
+const ldlSpec = chemDefinition.parameters.find((parameter) => parameter.parameterCode === "LDL")!;
+const uricSpec = chemDefinition.parameters.find((parameter) => parameter.parameterCode === "URIC_ACID")!;
+
+// Adding a calculation mode must not move a clinical boundary. These pin the clinic-supplied
+// contracts exactly, so a future mode or formula change cannot quietly redefine a normal range.
+assert(hdlSpec.unit === "mg/dL" && (hdlSpec.referenceRule as Record<string, unknown> | null | undefined)?.normalRange === "0\u2013110", "HDL keeps its clinic reference range 0-110 mg/dL");
+const hdlPolicy = hdlSpec.evaluationPolicy as { mode: string; strategy?: string; boundary?: { minValue?: number; maxValue?: number } };
+assert(hdlPolicy.mode === "NumericAutomatic" && hdlPolicy.strategy === "NumericRange" && hdlPolicy.boundary?.minValue === 0 && hdlPolicy.boundary?.maxValue === 110, "HDL keeps NumericRange evaluation with its existing 0 and 110 boundaries");
+assert(ldlSpec.unit === "mg/dL" && (ldlSpec.referenceRule as Record<string, unknown> | null | undefined)?.normalRange === "< 150", "LDL keeps its clinic reference range < 150 mg/dL");
+const ldlPolicy = ldlSpec.evaluationPolicy as { mode: string; strategy?: string; boundary?: { maxValue?: number } };
+assert(ldlPolicy.mode === "NumericAutomatic" && ldlPolicy.strategy === "LessThan" && ldlPolicy.boundary?.maxValue === 150, "LDL keeps LessThan evaluation with its existing 150 boundary");
+const uricRule = uricSpec.referenceRule as Record<string, unknown> | null | undefined;
+assert(uricRule?.male === "3.4\u20137.0" && uricRule?.female === "2.4\u20135.7", "sex-specific Uric Acid Male and Female clinic ranges are unchanged");
+assert(evaluateParameterValue(uricSpec, "3.0", { sex: "Male" }) === "Low" && evaluateParameterValue(uricSpec, "3.0", { sex: "Female" }) === "Normal", "unrelated chemistry sex-specific classification thresholds still apply");
+assert(resolveReferenceDisplay(hdlSpec.referenceRule, "Female", "mg/dL") === resolveReferenceDisplay(hdlSpec.referenceRule, "Male", "mg/dL") && resolveReferenceDisplay(ldlSpec.referenceRule, null, "mg/dL") === "< 150 mg/dL", "displayed reference resolution for the computed chemistry parameters is unchanged");
+
+// Manual entry is opt-in on the binding, so a formula binding alone never makes a field editable.
+assert(hdlSpec.formulaBinding?.supportsManualEntry === true && ldlSpec.formulaBinding?.supportsManualEntry === true, "CHEM_10 HDL and LDL declare optional manual entry on their formula binding");
+assert(ldlSpec.formulaBinding?.activeDependencies?.join(",") === "HDL", "Auto LDL declares HDL as its active dependency");
+assert(chemDefinition.parameters.filter((parameter) => parameter.formulaBinding?.supportsManualEntry).length === 2, "only the two approved computed chemistry parameters opt into manual entry");
+
+// Default is Auto: with no mode supplied the control renders exactly as it did before.
+const autoComputedMarkup = renderToStaticMarkup(React.createElement(ComputedInput, { parameter: hdlSpec, value: "66.67", isSelected: true, onToggleSelect: noOp }));
+assert(autoComputedMarkup.includes('data-control-type="Computed"') && autoComputedMarkup.includes('data-calculation-mode="Auto"'), "a manual-capable parameter defaults to Auto and keeps the Computed control type");
+assert(autoComputedMarkup.includes("disabled=\"\"") && autoComputedMarkup.includes("readOnly=\"\""), "the default Auto computed control stays disabled and read-only");
+assert(autoComputedMarkup.includes('role="switch"') && autoComputedMarkup.includes('aria-checked="false"') && autoComputedMarkup.includes('aria-label="Manual entry for HDL"'), "Auto renders a mode switch whose checked state means Manual");
+assert(!/role="switch"[^>]*tabindex=/i.test(autoComputedMarkup), "the mode switch keeps its natural Tab order and adds no tabindex override");
+assert(autoComputedMarkup.includes('data-parameter-selector="true"') && autoComputedMarkup.includes('tabindex="-1"'), "the pinned selection checkbox stays out of Tab order beside the mode switch");
+
+// Manual: editable, still declaratively Computed, and disabled when its row is deselected.
+const manualComputedMarkup = renderToStaticMarkup(React.createElement(ComputedInput, { parameter: hdlSpec, value: "45", isSelected: true, calculationMode: "Manual", evaluationOutcome: "Normal", onToggleSelect: noOp, onChange: noOp }));
+assert(manualComputedMarkup.includes('data-control-type="Computed"') && manualComputedMarkup.includes('data-calculation-mode="Manual"'), "Manual mode keeps the Computed control type and exposes its mode separately");
+assert(!manualComputedMarkup.includes("readOnly=\"\"") && manualComputedMarkup.includes('inputMode="decimal"') && manualComputedMarkup.includes("data-encoding-input"), "the Manual computed control is editable, uses a decimal keypad, and keeps the shared encoding-input contract");
+assert(manualComputedMarkup.includes('aria-checked="true"'), "the mode switch reports checked for Manual");
+const manualDeselectedMarkup = renderToStaticMarkup(React.createElement(ComputedInput, { parameter: hdlSpec, value: "45", isSelected: false, calculationMode: "Manual", onToggleSelect: noOp, onChange: noOp }));
+assert(manualDeselectedMarkup.includes("disabled=\"\""), "a deselected Manual computed control is disabled");
+
+// The binding's StrictPositive RESULT policy governs a Manual entry. A reference range alone would
+// have accepted zero and negatives as ordinary Low findings.
+const manualHdlCase = (entered: string) => GenericReportResolver.resolveReport({ definition: chemDefinition, rawInputs: { CHOLESTEROL: "250", TRIGLYCERIDES: "700", HDL: entered }, calculationModes: { HDL: "Manual" } }).find((result) => result.parameterCode === "HDL")!;
+for (const rejected of ["0", "-5"]) {
+  const outcome = manualHdlCase(rejected);
+  assert(outcome.evaluationOutcome === "Invalid" && outcome.formattedResultValue === "" && outcome.computationMetadata?.error === "Entered result must be a finite number > 0", `a Manual computed entry of ${rejected} is rejected by the binding's StrictPositive result policy`);
+}
+assert(manualHdlCase("abc").computationMetadata?.error === "Invalid number", "a malformed Manual computed entry reports invalid syntax, not a failed calculation");
+assert(manualHdlCase("").evaluationOutcome === "NoEvaluation" && manualHdlCase("").computationMetadata?.pending === true, "a blank Manual computed entry stays pending rather than invalid");
+const manualHigh = manualHdlCase("130");
+assert(manualHigh.evaluationOutcome === "High" && manualHigh.formattedResultValue === "130.00", "a positive out-of-reference Manual entry remains a real HIGH finding, not a validation error");
+assert(manualHigh.computationMetadata?.provenance === "Manual" && manualHigh.computationMetadata?.formulaId === undefined && manualHigh.computationMetadata?.unroundedValue === undefined, "a Manual result carries no formula metadata implying it was calculated");
+
+// Auto LDL consumes the ACTIVE HDL, exactly, in both modes.
+const ldlOverManualHdl = GenericReportResolver.resolveReport({ definition: chemDefinition, rawInputs: { CHOLESTEROL: "210", TRIGLYCERIDES: "150", HDL: "45" }, calculationModes: { HDL: "Manual" } }).find((result) => result.parameterCode === "LDL")!;
+assert(ldlOverManualHdl.formattedResultValue === "135.00" && ldlOverManualHdl.computationMetadata?.activeHdl === 45 && ldlOverManualHdl.computationMetadata?.hdlSource === "Manual" && ldlOverManualHdl.computationMetadata?.provenance === "StandardInputCalculation", "Auto LDL consumes the exact entered Manual HDL and records standard-input provenance");
+assert(ldlOverManualHdl.computationMetadata?.unroundedHdlIntermediate === undefined, "an entered HDL leaves no computed-intermediate metadata behind");
+const ldlOverAutoHdl = GenericReportResolver.resolveReport({ definition: chemDefinition, rawInputs: { CHOLESTEROL: "250", TRIGLYCERIDES: "700" } }).find((result) => result.parameterCode === "LDL")!;
+assert(ldlOverAutoHdl.computationMetadata?.activeHdl === 66.66666666666667 && ldlOverAutoHdl.computationMetadata?.unroundedValue === 43.333333333333314, "Auto LDL consumes the exact unrounded client HDL rather than its two-decimal display");
+assert(ldlOverAutoHdl.computationMetadata?.provenance === "ClientFormulaComposite" && ldlOverAutoHdl.computationMetadata?.formulaExpression === "Cholesterol - active_HDL - Triglycerides / 5", "Auto LDL over Auto HDL records the client-defined composite calculation and its truthful expression");
+
+// Mode and its Manual value survive the encoding lifecycle, including a Replacement Mode reopen.
+let modeChem = build("CHEM_10");
+modeChem = applyEncodingResultValue(modeChem, chemDefinition, "CHOLESTEROL", "250", "Normal");
+modeChem = applyEncodingResultValue(modeChem, chemDefinition, "TRIGLYCERIDES", "700", "High");
+modeChem = applyCalculationMode(modeChem, chemDefinition, "HDL", "Manual");
+assert(modeChem.encodingData?.calculationModes?.HDL === "Manual" && modeChem.results.find((result) => result.parameterCode === "HDL")?.resultValue === "", "switching to Manual stores the mode and clears the previously calculated value");
+modeChem = applyEncodingResultValue(modeChem, chemDefinition, "HDL", "45", "Normal");
+const rehydratedChem = build("CHEM_10", modeChem);
+assert(rehydratedChem.encodingData?.calculationModes?.HDL === "Manual" && rehydratedChem.results.find((result) => result.parameterCode === "HDL")?.resultValue === "45", "mode and its Manual value survive report rehydration, which is the Replacement Mode reopen path");
+const unrelatedEdit = applyEncodingResultValue(modeChem, chemDefinition, "CHOLESTEROL", "300", "High");
+const unrelatedEditHdl = unrelatedEdit.results.find((result) => result.parameterCode === "HDL")!;
+// The stored string alone is not enough evidence: encoding preserves it independently, so this
+// also proves reevaluation RESOLVED the parameter through the Manual branch rather than
+// recomputing it and leaving Auto display and metadata behind.
+assert(unrelatedEditHdl.resultValue === "45" && unrelatedEditHdl.formattedResultValue === "45.00" && unrelatedEditHdl.computationMetadata?.calculationMode === "Manual" && unrelatedEditHdl.computationMetadata?.formulaId === undefined, "a Manual value is not overwritten when an unrelated dependency changes, and reevaluation still resolves it as Manual");
+const returnedToAuto = applyCalculationMode(unrelatedEdit, chemDefinition, "HDL", "Auto");
+assert(returnedToAuto.encodingData?.calculationModes?.HDL === "Auto" && returnedToAuto.results.find((result) => result.parameterCode === "HDL")?.resultValue === "80.00", "returning to Auto discards the manual value and recomputes immediately");
+for (const noOpReport of [applyCalculationMode(returnedToAuto, chemDefinition, "HDL", "Auto"), applyCalculationMode(returnedToAuto, chemDefinition, "CHOLESTEROL", "Manual"), applyCalculationMode(returnedToAuto, chemDefinition, "NOT_A_PARAMETER", "Manual")]) {
+  assert(noOpReport.encodingData?.calculationModes?.HDL === "Auto" && noOpReport.results.find((result) => result.parameterCode === "HDL")?.resultValue === "80.00", "an unknown parameter, an unsupported binding and an already-active mode all leave the report unchanged");
+}
 
 let sexAwareCbc = build("CBC");
 sexAwareCbc = applyEncodingResultValue(sexAwareCbc, ReportDefinitionRegistry.getDefinition("CBC")!, "HEMOGLOBIN", "120", "NoEvaluation", { sex: "Male" });
@@ -325,9 +410,9 @@ assert(evaluateParameterValue(esrParameter, "") === "NoEvaluation" && evaluatePa
 
 let chem = build("CHEM_10");
 chem = applyEncodingResultValue(chem, chemDefinition, "CHOLESTEROL", "100", "Normal");
-chem = applyEncodingResultValue(chem, chemDefinition, "TRIGLYCERIDES", "500", "Abnormal");
+chem = applyEncodingResultValue(chem, chemDefinition, "TRIGLYCERIDES", "300", "Abnormal");
 assert(chem.results.find((r) => r.parameterCode === "HDL")?.resultValue === "26.67", "HDL is computed read-only through the reusable resolver");
-assert(chem.results.find((r) => r.parameterCode === "LDL")?.resultValue === "26.67", "LDL uses unrounded HDL computation through the reusable resolver");
+assert(chem.results.find((r) => r.parameterCode === "LDL")?.resultValue === "13.33", "LDL uses unrounded HDL computation through the reusable resolver");
 
 const hbaDefinition = ReportDefinitionRegistry.getDefinition("HBA1C")!;
 const legacyHba = new LaboratoryReportDomain({ id: "legacy-hba", sessionId: "s", templateCode: "HBA1C", templateTitle: "HBA1C", rendererFamily: "SimpleResult", results: [new LaboratoryResultDomain({ id: "r", reportId: "legacy-hba", parameterCode: "HBA1C", parameterName: "HBA1C", resultValue: "7.2%", unit: "%", evaluationOutcome: "NoEvaluation", displayOrder: 1 })], signatories: [] });
@@ -377,6 +462,33 @@ const progressBaseCompleted = renderedCompletedCount(progressBaseReport);
 assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "AMORPHOUS_CRYSTAL", "Amorphous Urates", "Invalid")) === progressBaseCompleted, "a conditional finding chosen before its result does not advance the rendered progress counter");
 assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "AMORPHOUS_CRYSTAL", "Amorphous Urates: Rare", "Entered")) === progressBaseCompleted + 1, "completing the declared conditional pair advances the rendered progress counter exactly once");
 assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "TRANSPARENCY", "Clear", "Entered")) === progressBaseCompleted + 1, "an ordinary non-conditional result still advances the rendered progress counter exactly once");
+
+// The same rendered counter, now for Manual formula-bound parameters. A rejected Manual value keeps the
+// operator's exact string on the result, so "non-empty" stopped implying "complete" for it. Completion
+// already refuses these results; if the counter disagreed it would advertise progress that cannot be
+// completed. Both computed parameters are put in Manual and left blank first, so each assertion below
+// moves exactly one of them and the Auto LDL cascade cannot add a second increment.
+const chemProgressSpec = { template: chemDefinition, parameters: chemDefinition.parameters, signatoryRequirement: { requiredPathologistsCount: 1, requiredMedtechsCount: 1 } };
+const chemRenderedCompletedCount = (progressReport: unknown): number => {
+  const chemMarkup = renderToStaticMarkup(React.createElement(DynamicResultForm as never, { spec: chemProgressSpec, definition: chemDefinition, report: progressReport, availablePersonnel: [], patientSex: "Female", onChangeReport: () => {} } as never));
+  const chemCounter = chemMarkup.match(/>(\d+)\/(\d+)</);
+  assert(chemCounter !== null, "the Chemistry encoding form renders a completed/selected progress counter");
+  return Number(chemCounter![1]);
+};
+let chemProgress = build("CHEM_10");
+chemProgress = applyEncodingResultValue(chemProgress, chemDefinition, "CHOLESTEROL", "250", "Normal");
+chemProgress = applyEncodingResultValue(chemProgress, chemDefinition, "TRIGLYCERIDES", "700", "High");
+chemProgress = applyCalculationMode(chemProgress, chemDefinition, "HDL", "Manual");
+chemProgress = applyCalculationMode(chemProgress, chemDefinition, "LDL", "Manual");
+const chemManualBase = chemRenderedCompletedCount(chemProgress);
+assert(chemRenderedCompletedCount(applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "", "NoEvaluation")) === chemManualBase, "a blank Manual HDL does not advance the rendered progress counter");
+assert(chemRenderedCompletedCount(applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "0", "Normal")) === chemManualBase, "a Manual HDL of 0 resolving INVALID does not advance the rendered progress counter");
+assert(chemRenderedCompletedCount(applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "-5", "Normal")) === chemManualBase, "a negative Manual HDL resolving INVALID does not advance the rendered progress counter");
+assert(chemRenderedCompletedCount(applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "not-a-number", "Normal")) === chemManualBase, "a malformed Manual HDL does not advance the rendered progress counter");
+assert(chemRenderedCompletedCount(applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "45", "Normal")) === chemManualBase + 1, "a valid Manual HDL advances the rendered progress counter exactly once");
+const chemManualHighHdl = applyEncodingResultValue(chemProgress, chemDefinition, "HDL", "130", "Normal");
+assert(chemManualHighHdl.results.find((result) => result.parameterCode === "HDL")?.evaluationOutcome === "High", "the Manual HDL counter fixture is genuinely classified HIGH");
+assert(chemRenderedCompletedCount(chemManualHighHdl) === chemManualBase + 1, "a valid Manual HDL classified HIGH still advances the rendered progress counter exactly once");
 let findings = [] as ReturnType<typeof addRepeatableFinding>;
 for (let i = 0; i < 25; i += 1) findings = addRepeatableFinding(findings, "Additional Microscopic Findings", `f-${i}`);
 findings = updateRepeatableFinding(findings, "f-0", "Calcium Oxalate Crystals: Rare");

@@ -44,7 +44,7 @@ graph TD
 | `Architecture/REPORT_RENDERING_ARCHITECTURE.md` | Physical A4 layouts, shared rendering engine, 4 renderer families, page breaks | Level 6 | **FROZEN** |
 | `Architecture/UI_ARCHITECTURE.md` | AppShell, guided encoding workspace, dual branding, keyboard workflows | Level 7 | **FROZEN** |
 | `Architecture/SECURITY_MODEL.md` | Supabase Auth, RBAC roles (`Admin`/`User`), identity decoupling, signature security | Level 8 | **FROZEN** |
-| `Architecture/DECISIONS.md` | High-level index of confirmed architectural decisions (DEC-001 to DEC-026) | Level 9 | **FROZEN** |
+| `Architecture/DECISIONS.md` | High-level index of confirmed architectural decisions (DEC-001 to DEC-028) | Level 9 | **FROZEN** |
 | `Architecture/IMPLEMENTATION_GUIDELINES.md` | Engineering handbook, 8-phase implementation roadmap, Definition of Done | Level 10 | **FROZEN** |
 | `Architecture/ADR/ADR-*.md` | Contextual architectural decision records detailing historical trade-offs | Supporting | Active |
 
@@ -147,6 +147,7 @@ The following 8 core architecture specifications are explicitly **FROZEN** for M
 - **A4 Rendering Pipeline, Layouts & Fonts**: `Architecture/REPORT_RENDERING_ARCHITECTURE.md`
 - **AppShell, Guided Workspace & UI Tokens**: `Architecture/UI_ARCHITECTURE.md`
 - **Supabase Auth, RBAC & Signature Protection**: `Architecture/SECURITY_MODEL.md`
-- **Confirmed Decision Index (DEC-001 to DEC-027)**: `Architecture/DECISIONS.md`
+- **Confirmed Decision Index (DEC-001 to DEC-028)**: `Architecture/DECISIONS.md`
+- **Optional Manual Override and Corrected LDL Calculation (DEC-028)**: `Architecture/ADR/ADR-009-Optional-Manual-Override-and-LDL-Calculation.md`
 - **Folder Structure, Coding Rules & DoD**: `Architecture/IMPLEMENTATION_GUIDELINES.md`
 - **Historical Architectural Rationale**: `Architecture/ADR/`

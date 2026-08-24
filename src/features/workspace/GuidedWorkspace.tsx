@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation";
 import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
-import { buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
+import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 import {
   clearWorkspaceRecovery,
@@ -57,6 +57,9 @@ const SharedRenderingEngine = dynamic(
 );
 
 type WorkspaceConfirmation = "clearAll" | "complete" | "replace";
+
+/** A Manual -> Auto request awaiting confirmation, scoped to the report it came from. */
+type PendingModeChange = { templateCode: string; parameterCode: string; parameterName: string };
 
 export function GuidedWorkspace({
   reopenSessionId,
@@ -106,6 +109,7 @@ export function GuidedWorkspace({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationFocusTarget, setValidationFocusTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<WorkspaceConfirmation | null>(null);
+  const [pendingModeChange, setPendingModeChange] = useState<PendingModeChange | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [exitDestination, setExitDestination] = useState<string>("/dashboard");
@@ -552,7 +556,7 @@ export function GuidedWorkspace({
 
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
-  const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null;
+  const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null || pendingModeChange !== null;
 
   useEffect(() => {
     const interceptNavigation = (href: string) => {
@@ -566,6 +570,44 @@ export function GuidedWorkspace({
 
     return registerNavigationInterceptor(interceptNavigation);
   }, [isDirty, isWorkspaceDialogOpen, registerNavigationInterceptor]);
+
+  // Manual -> Auto discards an operator-entered clinical result, so it is confirmed. The pending
+  // request carries its own template code: a report switch or removal must never let a confirmation
+  // land on a different report than the one the operator was looking at.
+  const handleRequestManualToAuto = useCallback(
+    (templateCode: string, parameterCode: string, parameterName: string) => {
+      setPendingModeChange({ templateCode, parameterCode, parameterName });
+    },
+    []
+  );
+
+  const handleCancelModeChange = useCallback(() => {
+    setPendingModeChange(null);
+  }, []);
+
+  const handleConfirmModeChange = useCallback(() => {
+    const pending = pendingModeChange;
+    setPendingModeChange(null);
+    if (!pending || pending.templateCode !== activeTemplateCode) return;
+    const definition = ReportDefinitionRegistry.getDefinition(pending.templateCode);
+    const report = session.reports.find((item) => item.templateCode === pending.templateCode);
+    if (!definition || !report) return;
+    handleReportChange(
+      applyCalculationMode(report, definition, pending.parameterCode, "Auto", {
+        sex: session.demographics.sex || null,
+      })
+    );
+  }, [activeTemplateCode, handleReportChange, pendingModeChange, session.demographics.sex, session.reports]);
+
+  useEffect(() => {
+    setPendingModeChange((pending) => {
+      if (!pending) return pending;
+      const stillAddressable =
+        pending.templateCode === activeTemplateCode &&
+        session.reports.some((item) => item.templateCode === pending.templateCode);
+      return stillAddressable ? pending : null;
+    });
+  }, [activeTemplateCode, session.reports]);
 
   const handleCancelConfirmation = useCallback(() => {
     setPendingConfirmation(null);
@@ -932,6 +974,7 @@ export function GuidedWorkspace({
                   availablePersonnel={availablePersonnel}
                   patientSex={session.demographics.sex || null}
                   onChangeReport={handleReportChange}
+                  onRequestManualToAuto={handleRequestManualToAuto}
                 />
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 py-6 text-center shadow-sm flex flex-col items-center justify-center my-3">
@@ -1003,6 +1046,16 @@ export function GuidedWorkspace({
         description="Are you sure you want to remove all laboratory examinations from this visit session?"
         confirmLabel="Clear All"
         variant="destructive"
+      />
+
+      <ConfirmDialog
+        isOpen={pendingModeChange !== null}
+        onCancel={handleCancelModeChange}
+        onConfirm={handleConfirmModeChange}
+        title={`Switch ${pendingModeChange?.parameterName ?? ""} to Auto?`}
+        description={`The manually entered ${pendingModeChange?.parameterName ?? ""} result will be replaced by an automatically calculated value.`}
+        confirmLabel="Use Auto"
+        cancelLabel="Keep Manual"
       />
 
       {/* Unsaved Changes Exit Confirmation Modal */}

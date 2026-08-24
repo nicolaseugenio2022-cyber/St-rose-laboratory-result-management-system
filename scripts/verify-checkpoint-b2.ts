@@ -211,11 +211,12 @@ assert(hivResult.requestedByPolicy.defaultPhysician === null, `HIV_RESULT defaul
 console.log("\n--- Resolution Pipeline Integration ---");
 const chem10Resolved = GenericReportResolver.resolveReport({
   definition: chem10,
-  rawInputs: { CHOLESTEROL: "155", TRIGLYCERIDES: "700" },
+  rawInputs: { CHOLESTEROL: "250", TRIGLYCERIDES: "700" },
 });
 const hdlRes = chem10Resolved.find((r) => r.parameterCode === "HDL")!;
 const ldlRes = chem10Resolved.find((r) => r.parameterCode === "LDL")!;
-assert(hdlRes.formattedResultValue === "41.33", `CHEM_10 HDL formatted string = "41.33"`);
-assert(ldlRes.formattedResultValue === "26.33", `CHEM_10 LDL formatted string using unrounded HDL = "26.33"`);
+assert(hdlRes.formattedResultValue === "66.67", `CHEM_10 HDL formatted string = "66.67"`);
+assert(ldlRes.formattedResultValue === "43.33", `CHEM_10 LDL formatted string using unrounded HDL = "43.33"`);
+assert(ldlRes.computationMetadata?.activeHdl === 66.66666666666667, `CHEM_10 LDL consumes the exact unrounded HDL, not its two-decimal display`);
 
 console.log("\n=== ALL CHECKPOINT B2 AUDIT & REGRESSION VERIFICATION TESTS PASSED SUCCESSFULLY ===");

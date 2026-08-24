@@ -229,6 +229,14 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 ---
 
+### DEC-028: Optional Manual Override and Corrected LDL Calculation
+- **Decision**: HDL and LDL in `CHEM_10` and `HDL_LDL` default to **Auto** and may each be switched to **Manual** operator entry. Auto LDL uses `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`, where the *active HDL* is the client-calculated HDL while HDL is Auto and the operator-entered HDL while HDL is Manual. Manual eligibility is declared per formula binding (`supportsManualEntry`); operator intent persists in `encodingData.calculationModes`; per-result provenance is derived by the resolver into `computationMetadata`.
+- **Why**: The shipped operand order was the arithmetic negation of the approved equation, verified against CDC and NHLBI / Philippine Heart Association references. Correcting it alone would have stranded every existing completed lipid session on Replacement Mode reopen, because LDL was read-only and `StrictPositive`. Manual entry is the operator's remedy, and it is also the honest path when automatic calculation is clinically inappropriate.
+- **Consequence**: A Manual value is never overwritten while Manual is active and carries no formula metadata. Auto retains the exact unrounded active HDL. No triglyceride cutoff is introduced; the client-approved no-cutoff behaviour is retained and its verifier evidence preserved. Historical completed snapshots are never recomputed or backfilled. No schema change: both carriers are existing JSONB columns. DEC-017 stands unchanged, since this computation is now explicitly approved.
+- **Related Authority**: `ADR-009`, `specifications/CHEM_10.md`, `specifications/HDL_LDL.md`, `REPORT_REGISTRY_ARCHITECTURE.md`.
+
+---
+
 # 3. Unresolved Open Decisions
 
 > [!WARNING]

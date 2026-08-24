@@ -15,6 +15,12 @@ import {
 import { GenericReportResolver } from "@/services/generic-report-resolver";
 import type { EvaluationContext } from "@/services/parameter-evaluation-service";
 import { stripFixedSuffix } from "@/services/formatter-registry";
+import {
+  normalizeCalculationModes,
+  resolveCalculationMode,
+  type CalculationMode,
+  type CalculationModeMap,
+} from "@/domain/calculation-mode";
 
 export interface BuildEncodingReportInput {
   definition: ClinicalReportDefinition;
@@ -217,15 +223,20 @@ export function reevaluateEncodingReport(
   evaluationContext: EvaluationContext = {}
 ): LaboratoryReportDomain {
   const rawInputs = Object.fromEntries(report.results.map((result) => [result.parameterCode, result.resultValue]));
-  const resolved = GenericReportResolver.resolveReport({ definition, rawInputs, evaluationContext });
+  const calculationModes = normalizeCalculationModes(report.encodingData?.calculationModes);
+  const resolved = GenericReportResolver.resolveReport({ definition, rawInputs, evaluationContext, calculationModes });
   const results = report.results.map((result) => {
     const parameter = definition.parameters.find((item) => item.parameterCode === result.parameterCode);
     const resolvedResult = resolved.find((item) => item.parameterCode === result.parameterCode);
     if (!parameter || !resolvedResult) return new LaboratoryResultDomain({ ...result });
     if (parameter.inputType === "Computed") {
+      // A Manual value belongs to the operator, so the exact editable string is kept and
+      // formatting can never replace what is being typed. Auto keeps storing its formatted
+      // display, which is the existing behaviour.
+      const mode = resolveCalculationMode(parameter.formulaBinding, parameter.parameterCode, calculationModes);
       return new LaboratoryResultDomain({
         ...result,
-        resultValue: resolvedResult.formattedResultValue || "",
+        resultValue: mode === "Manual" ? result.resultValue : (resolvedResult.formattedResultValue || ""),
         rawResultValue: resolvedResult.rawResultValue,
         formattedResultValue: resolvedResult.formattedResultValue,
         evaluationOutcome: resolvedResult.evaluationOutcome,
@@ -239,6 +250,48 @@ export function reevaluateEncodingReport(
     });
   });
   return new LaboratoryReportDomain({ ...report, results });
+}
+
+/**
+ * Switch a formula-bound parameter between Auto and Manual.
+ *
+ * A real transition clears only that parameter's value and reevaluates in the same step, so the
+ * form never shows a calculated number relabelled as a manual entry, and never shows a stale
+ * manual number while Auto is active.
+ *
+ * No-op cases return a fresh LaboratoryReportDomain carrying the report unchanged, matching the
+ * applyParameterSelection convention - the caller always receives the declared domain type.
+ */
+export function applyCalculationMode(
+  report: ILaboratoryReport,
+  definition: ClinicalReportDefinition,
+  parameterCode: string,
+  nextMode: CalculationMode,
+  evaluationContext: EvaluationContext = {}
+): LaboratoryReportDomain {
+  const parameter = definition.parameters.find((item) => item.parameterCode === parameterCode);
+  if (!parameter?.formulaBinding?.supportsManualEntry) return new LaboratoryReportDomain({ ...report });
+
+  const modes = normalizeCalculationModes(report.encodingData?.calculationModes);
+  if (resolveCalculationMode(parameter.formulaBinding, parameterCode, modes) === nextMode) {
+    return new LaboratoryReportDomain({ ...report });
+  }
+
+  const nextModes: CalculationModeMap = { ...modes, [parameterCode]: nextMode };
+  const cleared = new LaboratoryReportDomain({
+    ...report,
+    encodingData: { ...(report.encodingData || {}), calculationModes: nextModes },
+    results: report.results.map((result) => result.parameterCode === parameterCode
+      ? new LaboratoryResultDomain({
+          ...result,
+          resultValue: "",
+          rawResultValue: null,
+          formattedResultValue: "",
+          computationMetadata: null,
+        })
+      : new LaboratoryResultDomain({ ...result })),
+  });
+  return reevaluateEncodingReport(cleared, definition, evaluationContext);
 }
 
 export function applyEncodingResultValue(

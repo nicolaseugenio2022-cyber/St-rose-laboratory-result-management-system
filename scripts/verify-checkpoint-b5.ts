@@ -2,7 +2,7 @@
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "../src/domain/models/laboratory-report-domain";
-import { buildEncodingReport, applyEncodingResultValue, applyParameterSelection } from "../src/features/workspace/encoding/report-encoding";
+import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection } from "../src/features/workspace/encoding/report-encoding";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
 import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import { ValidationError, DomainInvariantError } from "../src/lib/errors";
@@ -23,7 +23,7 @@ const demographics = (address = "EDITED STORED ADDRESS", patientStatus = "" as P
 
 function valueFor(parameter: ParameterSpec): string {
   if (parameter.defaultValue) return parameter.defaultValue;
-  if (parameter.parameterCode === "CHOLESTEROL") return "155";
+  if (parameter.parameterCode === "CHOLESTEROL") return "250";
   if (parameter.parameterCode === "TRIGLYCERIDES") return "700";
   if (parameter.inputType === "SingleSelect") return parameter.options?.[0] || "";
   if (parameter.inputType === "Combobox") return parameter.options?.[0] || "Encoded Value";
@@ -126,7 +126,9 @@ let invalidChem = validReport(chemistry);
 invalidChem = applyEncodingResultValue(invalidChem, chemistry, "TRIGLYCERIDES", "", "NoEvaluation");
 expectValidation(() => sessionFor(chemistry, invalidChem).completeSession(), "missing computed dependency", "LDL");
 invalidChem = validReport(chemistry);
-invalidChem = applyEncodingResultValue(invalidChem, chemistry, "TRIGLYCERIDES", "1", "NoEvaluation");
+// TG=1000 with CHOLESTEROL=250 is what produces a negative computed LDL under the corrected
+// equation, so the completion block being proved here is unchanged.
+invalidChem = applyEncodingResultValue(invalidChem, chemistry, "TRIGLYCERIDES", "1000", "NoEvaluation");
 expectValidation(() => sessionFor(chemistry, invalidChem).completeSession(), "negative computed LDL", "LDL");
 
 const chemistrySession = sessionFor(chemistry);
@@ -134,17 +136,19 @@ chemistrySession.completeSession();
 const chemistrySnapshot = chemistrySession.completedSnapshot!.reports[0];
 const hdl = chemistrySnapshot.results.find((result) => result.parameterCode === "HDL")!;
 const ldl = chemistrySnapshot.results.find((result) => result.parameterCode === "LDL")!;
-assert(hdl.formattedResultValue === "41.33" && hdl.rawResultValue === "41.333333333333336", "HDL freezes rounded display and unrounded raw value");
+assert(hdl.formattedResultValue === "66.67" && hdl.rawResultValue === "66.66666666666667", "HDL freezes rounded display and unrounded raw value");
 assert(hdl.computationMetadata?.formulaId === "hdl-client-formula" && Array.isArray(hdl.computationMetadata.dependencies) && hdl.computationMetadata.precision === 2, "HDL freezes formula ID, dependencies, precision, and computation evidence");
-assert(ldl.formattedResultValue === "26.33" && ldl.computationMetadata?.formulaId === "ldl-client-formula", "LDL freezes the exact client-formula display and identity");
-assert(ldl.computationMetadata?.unroundedHdlIntermediate === 41.333333333333336 && ldl.computationMetadata?.unroundedValue === 26.333333333333343, "LDL freezes its unrounded HDL dependency and unrounded result without a triglyceride cutoff");
+assert(ldl.formattedResultValue === "43.33" && ldl.computationMetadata?.formulaId === "ldl-client-formula", "LDL freezes the exact client-formula display and identity");
+assert(ldl.computationMetadata?.calculationMode === "Auto" && ldl.computationMetadata?.provenance === "ClientFormulaComposite" && ldl.computationMetadata?.hdlSource === "ClientFormula", "an Auto LDL over Auto HDL freezes client-defined composite provenance, never standard Friedewald");
+assert(hdl.computationMetadata?.calculationMode === "Auto" && hdl.computationMetadata?.provenance === "ClientFormula", "an Auto HDL freezes client-formula provenance");
+assert(ldl.computationMetadata?.unroundedHdlIntermediate === 66.66666666666667 && ldl.computationMetadata?.unroundedValue === 43.333333333333314, "LDL freezes its unrounded HDL dependency and unrounded result without a triglyceride cutoff");
 assert(chemistrySnapshot.results.find((result) => result.parameterCode === "FBS")?.evaluationOutcome === "Low", "B5 freezes resolved LOW manual Chemistry outcome");
 assert(chemistrySnapshot.results.find((result) => result.parameterCode === "TRIGLYCERIDES")?.evaluationOutcome === "High", "B5 freezes resolved HIGH manual Chemistry outcome");
 assert(hdl.evaluationOutcome === "Normal" && ldl.evaluationOutcome === "Normal", "B5 freezes computed clinical evaluation outcomes from unrounded values");
 
 let suppliedInvalidChem = validReport(chemistry);
 suppliedInvalidChem = applyEncodingResultValue(suppliedInvalidChem, chemistry, "CHOLESTEROL", "231", "NoEvaluation", { sex: "Female" });
-suppliedInvalidChem = applyEncodingResultValue(suppliedInvalidChem, chemistry, "TRIGLYCERIDES", "325", "NoEvaluation", { sex: "Female" });
+suppliedInvalidChem = applyEncodingResultValue(suppliedInvalidChem, chemistry, "TRIGLYCERIDES", "900", "NoEvaluation", { sex: "Female" });
 assert(suppliedInvalidChem.results.find((result) => result.parameterCode === "HDL")?.resultValue === "61.60" && suppliedInvalidChem.results.find((result) => result.parameterCode === "HDL")?.evaluationOutcome === "Normal", "supplied Chemistry example resolves HDL 61.60 as NORMAL");
 assert(suppliedInvalidChem.results.find((result) => result.parameterCode === "LDL")?.resultValue === "" && suppliedInvalidChem.results.find((result) => result.parameterCode === "LDL")?.evaluationOutcome === "Invalid", "supplied Chemistry example preserves blank INVALID negative LDL");
 expectValidation(() => sessionFor(chemistry, suppliedInvalidChem).completeSession(), "supplied negative LDL computation", "LDL");
@@ -263,6 +267,61 @@ assert(
 assert(
   recompletedSession.reports[0].signatories !== replacementSession.reports[0].signatories,
   "replacement re-completion isolates cloned report signatory arrays"
+);
+
+// Replacement Mode on a COMPUTED template. The CBC scenario above proves the aggregate mechanics; this
+// proves that calculation mode, the exact Manual value and Manual provenance survive the real computed
+// replacement path, and that the historical snapshot is untouched by it.
+const computedReplacementCtx = { sex: "Female" as const };
+let computedReplacementReport = validReport(chemistry);
+computedReplacementReport = applyCalculationMode(computedReplacementReport, chemistry, "HDL", "Manual", computedReplacementCtx);
+computedReplacementReport = applyEncodingResultValue(computedReplacementReport, chemistry, "HDL", "45", "Normal", computedReplacementCtx);
+const computedReplacementSession = sessionFor(chemistry, computedReplacementReport);
+computedReplacementSession.completeSession();
+const computedOriginalSnapshot = computedReplacementSession.completedSnapshot!;
+const computedOriginalSnapshotJson = JSON.stringify(computedOriginalSnapshot);
+const computedOriginalHdl = computedOriginalSnapshot.reports[0].results.find((result) => result.parameterCode === "HDL")!;
+assert(computedOriginalHdl.rawResultValue === "45" && computedOriginalHdl.computationMetadata?.calculationMode === "Manual", "the first completed computed snapshot freezes the Manual HDL it was completed with");
+const computedAnchors = {
+  id: computedReplacementSession.id,
+  accessionNumber: computedReplacementSession.accessionNumber,
+  createdAt: computedReplacementSession.createdAt,
+  completedAt: computedReplacementSession.completedAt,
+  expiresAt: computedReplacementSession.expiresAt,
+};
+
+// Rehydrate through the same buildEncodingReport path a Replacement Mode reopen uses.
+const rehydratedComputedReport = buildEncodingReport({
+  definition: chemistry,
+  sessionId: computedReplacementSession.id,
+  reportId: computedReplacementSession.reports[0].id,
+  rendererFamily: chemistry.rendererFamily as RendererFamily,
+  signatories: computedReplacementSession.reports[0].signatories,
+  existingReport: computedReplacementSession.reports[0] as LaboratoryReportDomain,
+  evaluationContext: computedReplacementCtx,
+});
+assert(rehydratedComputedReport.encodingData?.calculationModes?.HDL === "Manual" && rehydratedComputedReport.results.find((result) => result.parameterCode === "HDL")?.resultValue === "45", "computed Replacement Mode rehydration preserves the stored Manual mode and the exact editable HDL value");
+assert(rehydratedComputedReport.results.find((result) => result.parameterCode === "LDL")?.computationMetadata?.hdlSource === "Manual", "computed Replacement Mode rehydration keeps Auto LDL consuming the rehydrated Manual HDL");
+
+computedReplacementSession.reports[0] = applyEncodingResultValue(rehydratedComputedReport, chemistry, "HDL", "50", "Normal", computedReplacementCtx);
+const recompletedComputed = computedReplacementSession.recompleteSession();
+const replacedChemReport = recompletedComputed.completedSnapshot!.reports[0];
+const replacedHdl = replacedChemReport.results.find((result) => result.parameterCode === "HDL")!;
+const replacedLdl = replacedChemReport.results.find((result) => result.parameterCode === "LDL")!;
+assert(replacedHdl.rawResultValue === "50" && replacedHdl.formattedResultValue === "50.00" && replacedHdl.computationMetadata?.calculationMode === "Manual" && replacedHdl.computationMetadata?.provenance === "Manual", "the replacement snapshot freezes the exact Manual HDL raw value, its formatted display and Manual provenance");
+assert(replacedHdl.computationMetadata?.formulaId === undefined && replacedHdl.computationMetadata?.formulaExpression === undefined && replacedHdl.computationMetadata?.unroundedValue === undefined, "the replacement snapshot's Manual HDL carries no formulaId, formulaExpression or unroundedValue");
+assert(replacedLdl.computationMetadata?.hdlSource === "Manual" && replacedLdl.computationMetadata?.activeHdl === 50 && replacedLdl.computationMetadata?.provenance === "StandardInputCalculation", "the replacement snapshot's Auto LDL consumed the exact parsed Manual HDL and recorded standard-input provenance");
+assert(replacedLdl.formattedResultValue === "60.00" && replacedLdl.computationMetadata?.unroundedValue === 60 && replacedLdl.computationMetadata?.formulaExpression === "Cholesterol - active_HDL - Triglycerides / 5", "the replacement snapshot freezes the corrected LDL result and its truthful formula provenance");
+assert(computedReplacementSession.completedSnapshot === computedOriginalSnapshot && JSON.stringify(computedReplacementSession.completedSnapshot) === computedOriginalSnapshotJson, "the historical computed snapshot remains byte-for-byte unchanged by the computed replacement");
+assert(
+  recompletedComputed !== computedReplacementSession &&
+    recompletedComputed.completedSnapshot !== computedOriginalSnapshot &&
+    recompletedComputed.id === computedAnchors.id &&
+    recompletedComputed.accessionNumber === computedAnchors.accessionNumber &&
+    recompletedComputed.createdAt === computedAnchors.createdAt &&
+    recompletedComputed.completedAt === computedAnchors.completedAt &&
+    recompletedComputed.expiresAt === computedAnchors.expiresAt,
+  "computed replacement re-completion recomposes a new snapshot while preserving the existing Replacement Mode identity and completion anchors"
 );
 
 const nullCompletionAnchorSession = new PatientReportSessionAggregate({

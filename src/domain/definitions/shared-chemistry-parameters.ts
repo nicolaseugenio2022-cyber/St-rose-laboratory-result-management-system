@@ -59,6 +59,7 @@ export const HDL_PARAM: ParameterSpec = {
     precision: 2,
     dependencyValidationPolicy: "StrictPositive",
     resultValidationPolicy: "StrictPositive",
+    supportsManualEntry: true,
   },
 };
 
@@ -79,6 +80,8 @@ export const LDL_PARAM: ParameterSpec = {
     precision: 2,
     dependencyValidationPolicy: "StrictPositive",
     resultValidationPolicy: "StrictPositive",
+    supportsManualEntry: true,
+    activeDependencies: ["HDL"],
   },
 };
 

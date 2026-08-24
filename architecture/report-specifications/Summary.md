@@ -32,6 +32,14 @@ Yung HDL and LDL nacocompute lang yung result
 
 HDL = Cholesterol x 40 ÷ 150
 LDL = Triglycerides ÷ 5 + HDL – cholesterol
+
+> **Corrected under DEC-028 / ADR-009.** The operand order above was verified against CDC and
+> NHLBI / Philippine Heart Association references. The operative equation is
+> `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`, where the active HDL is the
+> client-calculated HDL while HDL is Auto and the operator-entered HDL while HDL is Manual.
+> HDL and LDL each default to Auto and may be switched to Manual. LDL Auto over Auto HDL is a
+> client-defined composite calculation and is not standard Friedewald.
+
 Sa chemistry automatic na si Dr. Heinz Roland Asperas sa requested by pero yung pwede pa rin iedit or itype kung sino doctor na iba
 FBS = Fasting Blood Sugar (If kasya sa template pakicomplete na)
 BUN = Blood Urea Nitrogen

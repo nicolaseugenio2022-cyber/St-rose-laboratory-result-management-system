@@ -15,6 +15,7 @@ import type { ClinicalReportDefinition, ParameterSpec } from "@/domain/types/rep
 import { resolveReferenceDisplay } from "@/domain/reference-display";
 import { stripFixedSuffix } from "@/services/formatter-registry";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
+import { normalizeCalculationModes } from "@/domain/calculation-mode";
 import {
   CANONICAL_REPORT_LOGO_SOURCE,
   type ResolvedDemographicsRenderModel,
@@ -208,10 +209,14 @@ function draftReport(
       ? stripFixedSuffix(source?.resultValue || "", parameter.suffixSpec.suffix)
       : source?.resultValue || "";
   }
+  // Draft rendering resolves through the same active modes as the encoding form, so a Manual
+  // value is not silently recalculated on its way to Preview, Browser Print or PDF. Completed
+  // snapshots take a different path entirely and are never re-derived here.
   const resolved = GenericReportResolver.resolveReport({
     definition,
     rawInputs,
     evaluationContext: { sex: demographics.sex || null },
+    calculationModes: normalizeCalculationModes(report.encodingData?.calculationModes),
   });
   const results: ResolvedResultRenderModel[] = [...definition.parameters]
     .sort((left, right) => left.displayOrder - right.displayOrder)

@@ -138,21 +138,24 @@ const hdlLdlDef: ClinicalReportDefinition = {
   ],
 };
 
-// Computed result = 0 (Triglycerides=550, Cholesterol=150 -> LDL = 550/5 + 40 - 150 = 0)
+// Computed result = 0 (Triglycerides=550, Cholesterol=150 -> LDL = 150 - 40 - 550/5 = 0)
+// Zero is the fixed point of the sign correction, so this rejection is unchanged by it.
 const resLdlZero = GenericReportResolver.resolveReport({ definition: hdlLdlDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "550" } }).find((r) => r.parameterCode === "LDL")!;
 assert(resLdlZero.isValid === false, `StrictPositive computed result = 0 must set isValid = false`);
 assert(resLdlZero.formattedResultValue === "", `StrictPositive computed result = 0 must produce blank formatted result ""`);
 assert(resLdlZero.evaluationOutcome === "Invalid", `StrictPositive computed result = 0 must have outcome "Invalid"`);
 
-// Computed result < 0 (Triglycerides=100, Cholesterol=150 -> LDL = -90)
-const resLdlNeg = GenericReportResolver.resolveReport({ definition: hdlLdlDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "100" } }).find((r) => r.parameterCode === "LDL")!;
+// Computed result < 0 (Triglycerides=700, Cholesterol=150 -> LDL = 150 - 40 - 140 = -30)
+// The inputs move, not the expectation: this case exists to prove StrictPositive REJECTS a
+// negative computed result, and under the corrected equation TG=700 is what produces one.
+const resLdlNeg = GenericReportResolver.resolveReport({ definition: hdlLdlDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "700" } }).find((r) => r.parameterCode === "LDL")!;
 assert(resLdlNeg.isValid === false, `StrictPositive computed result < 0 must set isValid = false`);
 assert(resLdlNeg.formattedResultValue === "", `StrictPositive computed result < 0 must produce blank formatted result ""`);
 
-// Computed result > 0 (Triglycerides=700, Cholesterol=150 -> LDL = 30)
-const resLdlPos = GenericReportResolver.resolveReport({ definition: hdlLdlDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "700" } }).find((r) => r.parameterCode === "LDL")!;
+// Computed result > 0 (Triglycerides=100, Cholesterol=150 -> LDL = 150 - 40 - 20 = 90)
+const resLdlPos = GenericReportResolver.resolveReport({ definition: hdlLdlDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "100" } }).find((r) => r.parameterCode === "LDL")!;
 assert(resLdlPos.isValid === true, `StrictPositive computed result > 0 must be accepted`);
-assert(resLdlPos.formattedResultValue === "30.00", `StrictPositive computed result > 0 produces "30.00"`);
+assert(resLdlPos.formattedResultValue === "90.00", `StrictPositive computed result > 0 produces "90.00"`);
 
 
 // ---------------------------------------------------------------------------
@@ -196,10 +199,11 @@ const anyFiniteZero = GenericReportResolver.resolveReport({ definition: anyFinit
 assert(anyFiniteZero.isValid === true, `AnyFinite computed result = 0 must be accepted`);
 assert(anyFiniteZero.formattedResultValue === "0.00", `AnyFinite computed result = 0 formats to "0.00"`);
 
-// AnyFinite result < 0 (Triglycerides=100, Cholesterol=150 -> LDL = -90)
-const anyFiniteNeg = GenericReportResolver.resolveReport({ definition: anyFiniteDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "100" } }).find((r) => r.parameterCode === "LDL_ANY_FINITE")!;
+// AnyFinite result < 0 (Triglycerides=700, Cholesterol=150 -> LDL = 150 - 40 - 140 = -30)
+// Inputs move so the case still exercises acceptance of a NEGATIVE finite result.
+const anyFiniteNeg = GenericReportResolver.resolveReport({ definition: anyFiniteDef, rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "700" } }).find((r) => r.parameterCode === "LDL_ANY_FINITE")!;
 assert(anyFiniteNeg.isValid === true, `AnyFinite computed result < 0 must be accepted`);
-assert(anyFiniteNeg.formattedResultValue === "-90.00", `AnyFinite computed result < 0 formats to "-90.00"`);
+assert(anyFiniteNeg.formattedResultValue === "-30.00", `AnyFinite computed result < 0 formats to "-30.00"`);
 
 
 // ---------------------------------------------------------------------------
@@ -209,16 +213,16 @@ console.log("\n--- Test 4: Unrounded HDL Intermediate in LDL ---");
 const hdlUnrounded = calculateHdl(155); // 155 * 40 / 150 = 41.333333333333336
 assert(hdlUnrounded !== 41.33, `Unrounded HDL in memory is exact float 41.333333333333336`);
 
-const ldlUnrounded = calculateLdl(700, hdlUnrounded, 155); // 700/5 + 41.333333333333336 - 155 = 26.333333333333336
-const expectedUnroundedLdl = 140 + (155 * 40 / 150) - 155;
+const ldlUnrounded = calculateLdl(400, hdlUnrounded, 155); // 155 - 41.333333333333336 - 400/5 = 33.66666666666666
+const expectedUnroundedLdl = 155 - (155 * 40 / 150) - 80;
 assert(ldlUnrounded === expectedUnroundedLdl, `LDL evaluates using exact unrounded HDL intermediate`);
 
 const validResolverResult = GenericReportResolver.resolveReport({
   definition: hdlLdlDef,
-  rawInputs: { CHOLESTEROL: "155", TRIGLYCERIDES: "700" },
+  rawInputs: { CHOLESTEROL: "155", TRIGLYCERIDES: "400" },
 });
 const ldlValid = validResolverResult.find((r) => r.parameterCode === "LDL")!;
-assert(ldlValid.formattedResultValue === "26.33", `GenericReportResolver formats computed LDL to 2 decimals half-up: "26.33"`);
+assert(ldlValid.formattedResultValue === "33.67", `GenericReportResolver formats computed LDL to 2 decimals half-up: "33.67"`);
 assert(ldlValid.rawResultValue === String(expectedUnroundedLdl), `GenericReportResolver stores unrounded string in rawResultValue`);
 
 
@@ -226,13 +230,16 @@ assert(ldlValid.rawResultValue === String(expectedUnroundedLdl), `GenericReportR
 // Test 5: No Triglyceride Cutoff
 // ---------------------------------------------------------------------------
 console.log("\n--- Test 5: No Triglyceride Cutoff ---");
+// Triglycerides well above the 400 mg/dL applicability limit still calculate: the client policy
+// deliberately applies no automatic cutoff, and this fixture is that evidence.
 const highTriglyceridesResult = GenericReportResolver.resolveReport({
   definition: hdlLdlDef,
-  rawInputs: { CHOLESTEROL: "150", TRIGLYCERIDES: "900" },
+  rawInputs: { CHOLESTEROL: "250", TRIGLYCERIDES: "700" },
 });
 const ldlHighTrig = highTriglyceridesResult.find((r) => r.parameterCode === "LDL")!;
-assert(ldlHighTrig.isValid === true, `High Triglycerides (900 mg/dL) calculates cleanly without a cutoff`);
-assert(ldlHighTrig.formattedResultValue === "70.00", `High Triglycerides computed LDL formatted as "70.00"`);
+assert(ldlHighTrig.isValid === true, `High Triglycerides (700 mg/dL) calculates cleanly without a cutoff`);
+assert(ldlHighTrig.formattedResultValue === "43.33", `High Triglycerides computed LDL formatted as "43.33"`);
+assert(ldlHighTrig.rawResultValue === "43.333333333333314", `no-cutoff LDL keeps its exact unrounded value`);
 
 
 // ---------------------------------------------------------------------------

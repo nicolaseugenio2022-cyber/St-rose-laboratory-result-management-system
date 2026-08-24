@@ -13,6 +13,7 @@ import {
   EvaluationOutcome 
 } from "../types";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
+import type { CalculationModeMap } from "@/domain/calculation-mode";
 
 export interface IUserProfile {
   id: string; // References auth.users(id)
@@ -106,6 +107,12 @@ export interface IReportEncodingData {
   requestedBy?: string;
   additionalFields?: Record<string, string>;
   repeatableFindings?: Record<string, IRepeatableFindingValue[]>;
+  /**
+   * Operator intent per formula-bound parameter. Absent map or absent key means Auto, so legacy
+   * reports need no migration. This lives in encodingData rather than on the result because
+   * reevaluation replaces a computed result's computationMetadata wholesale.
+   */
+  calculationModes?: CalculationModeMap;
 }
 
 export interface ILaboratoryReport {

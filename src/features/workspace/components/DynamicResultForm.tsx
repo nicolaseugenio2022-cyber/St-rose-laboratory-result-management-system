@@ -3,7 +3,8 @@ import { HydratedTemplateSpec } from "@/services/interfaces";
 import { ILaboratoryReport, IPersonnel } from "@/domain/models/interfaces";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "@/domain/models/laboratory-report-domain";
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
-import { applyAllSelectableParameters, applyEncodingResultValue, applyParameterSelection, getEditableResultValue, parseConditionalChoiceValue } from "../encoding/report-encoding";
+import { applyAllSelectableParameters, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, getEditableResultValue, parseConditionalChoiceValue } from "../encoding/report-encoding";
+import { normalizeCalculationModes, resolveCalculationMode, type CalculationMode } from "@/domain/calculation-mode";
 import type { PatientSex } from "@/domain/types";
 import { NumericTextInput } from "./controls/NumericTextInput";
 import { SingleSelectInput } from "./controls/SingleSelectInput";
@@ -26,10 +27,16 @@ export interface DynamicResultFormProps {
   availablePersonnel: IPersonnel[];
   patientSex?: PatientSex | null;
   onChangeReport: (updatedReport: ILaboratoryReport) => void;
+  /**
+   * Manual -> Auto discards an operator-entered clinical result, so the Workspace owns that
+   * confirmation. Auto -> Manual loses nothing and is applied here directly.
+   */
+  onRequestManualToAuto?: (templateCode: string, parameterCode: string, parameterName: string) => void;
 }
 
-export function DynamicResultForm({ spec, definition, report, availablePersonnel, patientSex, onChangeReport }: DynamicResultFormProps) {
+export function DynamicResultForm({ spec, definition, report, availablePersonnel, patientSex, onChangeReport, onRequestManualToAuto }: DynamicResultFormProps) {
   const sortedParameters = useMemo(() => [...definition.parameters].sort((a, b) => a.displayOrder - b.displayOrder), [definition]);
+  const calculationModes = useMemo(() => normalizeCalculationModes(report.encodingData?.calculationModes), [report.encodingData?.calculationModes]);
   const updateEncodingData = useCallback((patch: Partial<NonNullable<ILaboratoryReport["encodingData"]>>) => {
     onChangeReport(new LaboratoryReportDomain({ ...report, encodingData: { ...(report.encodingData || {}), ...patch } }));
   }, [report, onChangeReport]);
@@ -48,11 +55,20 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
   // progress. parseConditionalChoiceValue owns the parsing rules - it returns an empty half for
   // anything the spec does not declare - so both halves surviving it is the completeness test.
   // Every other parameter keeps the existing non-empty check unchanged.
-  const isCompletedResult = (result: { parameterCode: string; resultValue: string }) => {
+  const isCompletedResult = (result: { parameterCode: string; resultValue: string; evaluationOutcome?: LaboratoryResultDomain["evaluationOutcome"] }) => {
     if (result.resultValue.trim() === "") return false;
-    const choiceSpec = definition.parameters.find(
-      (parameter) => parameter.parameterCode === result.parameterCode
-    )?.conditionalChoiceSpec;
+    const parameter = definition.parameters.find((item) => item.parameterCode === result.parameterCode);
+    // A Manual formula-bound value keeps the operator's exact string even when it is rejected, so
+    // non-empty stops implying complete for it too. Completion already refuses these results, and
+    // the counter has to agree or it reports work that cannot be completed. Mode comes from the
+    // shared resolution rule, never from inbound computationMetadata. Auto is untouched: a rejected
+    // Auto result is already blanked by the resolver and excluded by the check above.
+    if (
+      parameter?.formulaBinding &&
+      resolveCalculationMode(parameter.formulaBinding, result.parameterCode, calculationModes) === "Manual" &&
+      result.evaluationOutcome === "Invalid"
+    ) return false;
+    const choiceSpec = parameter?.conditionalChoiceSpec;
     if (!choiceSpec) return true;
     const parsed = parseConditionalChoiceValue(result.resultValue, choiceSpec);
     return parsed.label !== "" && parsed.result !== "";
@@ -95,7 +111,20 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
           else if (parameter.inputType === "SingleSelect") control = <SingleSelectInput {...common} onChange={onChange} />;
           else if (parameter.inputType === "Combobox") control = <ComboboxInput {...common} onChange={onChange} />;
           else if (parameter.inputType === "FreeText") control = <FreeTextInput {...common} onChange={onChange} />;
-          else control = <ComputedInput {...common} evaluationOutcome={result?.evaluationOutcome} computationMetadata={result?.computationMetadata} />;
+          else control = <ComputedInput
+            {...common}
+            evaluationOutcome={result?.evaluationOutcome}
+            computationMetadata={result?.computationMetadata}
+            calculationMode={resolveCalculationMode(parameter.formulaBinding, parameter.parameterCode, calculationModes)}
+            onChange={onChange}
+            onRequestModeChange={(next: CalculationMode) => {
+              if (next === "Manual") {
+                onChangeReport(applyCalculationMode(report, definition, parameter.parameterCode, "Manual", { sex: patientSex }));
+                return;
+              }
+              onRequestManualToAuto?.(definition.templateCode, parameter.parameterCode, parameter.parameterName);
+            }}
+          />;
           return <div key={parameter.parameterCode} data-param-code={parameter.parameterCode}>{control}</div>;
         })}</div>
       </section>

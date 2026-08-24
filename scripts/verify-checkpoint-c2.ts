@@ -29,7 +29,7 @@ function rendererFamily(definition: ClinicalReportDefinition): RendererFamily {
 }
 
 function inputValue(parameter: ParameterSpec): string {
-  if (parameter.parameterCode === "CHOLESTEROL") return "150";
+  if (parameter.parameterCode === "CHOLESTEROL") return "250";
   if (parameter.parameterCode === "TRIGLYCERIDES") return "700";
   if (parameter.inputType === "Computed") return "";
   if (parameter.inputType === "NumericText") return "100";

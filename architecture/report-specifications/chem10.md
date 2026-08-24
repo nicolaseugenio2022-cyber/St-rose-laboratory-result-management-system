@@ -7,6 +7,16 @@
 > LDL = Triglycerides / 5 + HDL - Cholesterol
 > Standard 10 parameters (FBS, Cholesterol, Triglycerides, HDL, LDL, Uric Acid, Blood Urea Nitrogen, SGPT/ALT, SGOT/AST, Creatinine)
 
+**Correction — not part of the historical note above.**
+
+- The Original Client Notes are retained verbatim above for traceability.
+- The operative approved contract under DEC-028 / ADR-009 is:
+  `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`
+- Active HDL is the client-calculated HDL while HDL is in Auto mode, and the operator-entered
+  HDL while HDL is in Manual mode.
+- The application's combined Auto/Manual policy must not be represented as standard Friedewald
+  behaviour.
+
 ---
 
 ## Normalized Technical Specification (Final Gemini Implementation Contract Authority)
@@ -28,17 +38,33 @@
 1. **Fasting Blood Sugar** (`FBS`): `70–110` `mg/dL` (`NumericText`)
 2. **Cholesterol** (`CHOLESTEROL`): `< 200` `mg/dL` (`NumericText`)
 3. **Triglycerides** (`TRIGLYCERIDES`): `35–165` `mg/dL` (`NumericText`)
-4. **HDL** (`HDL`): `0–110` `mg/dL` (`Computed`: $Cholesterol \times 40 / 150$, 2 decimals half-up)
-5. **LDL** (`LDL`): `< 150` `mg/dL` (`Computed`: $Triglycerides / 5 + HDL_{unrounded} - Cholesterol$, 2 decimals half-up)
+4. **HDL** (`HDL`): `0–110` `mg/dL` (`Computed`, formula-bound; defaults to Auto and independently supports operator-selected Manual entry: $Cholesterol \times 40 / 150$, 2 decimals half-up)
+5. **LDL** (`LDL`): `< 150` `mg/dL` (`Computed`, formula-bound; defaults to Auto and independently supports operator-selected Manual entry: $Cholesterol - HDL_{active} - Triglycerides / 5$, 2 decimals half-up)
 6. **Uric Acid** (`URIC_ACID`): Male `3.4–7.0`, Female `2.4–5.7` `mg/dL` (`NumericText`)
 7. **Blood Urea Nitrogen** (`BUN`): `10–45` `mg/dL` (`NumericText`)
 8. **SGPT / ALT** (`SGPT_ALT`): `4–41` `U/L` (`NumericText`)
 9. **SGOT / AST** (`SGOT_AST`): `4–41` `U/L` (`NumericText`)
 10. **Creatinine** (`CREATININE`): `0.4–1.4` `mg/dL` (`NumericText`)
 
+Manual is an entry mode only: HDL and LDL each keep the declared `Computed` control type in both
+Auto and Manual mode.
+
 ### Reagent Kit Information
 - **Requires Kit Info:** No
 
 ### Remarks & Output Rules
 - **Remarks:** Supported, default empty.
-- **Output-Specific Behavior:** Auto-calculates read-only HDL and LDL from entered Cholesterol and Triglycerides.
+- **Output-Specific Behavior:**
+  - While HDL is in Auto, it is read-only and calculated from Cholesterol.
+  - While LDL is in Auto, it is read-only and calculated from Total Cholesterol, Triglycerides and
+    the active HDL.
+  - Active HDL is the exact unrounded calculated HDL while HDL is in Auto, or the parsed positive
+    operator-entered HDL while HDL is in Manual.
+  - While either parameter is in Manual, that parameter is editable under the approved validation
+    contract.
+  - Auto → Manual immediately clears the current calculated result, enters Manual mode, and
+    permits operator entry under the existing validation contract.
+  - Manual → Auto requires confirmation before the Manual value is discarded: confirming discards
+    the Manual result and recalculates in Auto, while cancelling preserves Manual mode and the
+    entered value.
+  - Both directions apply independently to HDL and to LDL.

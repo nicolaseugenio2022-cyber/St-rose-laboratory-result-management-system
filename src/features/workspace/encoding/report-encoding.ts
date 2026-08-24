@@ -309,7 +309,16 @@ export function getEditableResultValue(parameter: ParameterSpec, storedValue: st
 }
 
 export function formatConditionalChoiceValue(label: string, result: string): string {
-  return label && result ? `${label}: ${result}` : "";
+  // A label chosen before its result is a state the rest of the model already understands:
+  // parseConditionalChoiceValue below reads a separator-less value back as {label, result: ""},
+  // it evaluates as Invalid, and completion validation rejects it as "incomplete or invalid".
+  // It is an incomplete editing value: Replacement Mode reopens an already Completed session, so
+  // the value can exist transiently while editing, but completion/replacement validation prevents
+  // it from being persisted into a newly completed snapshot. Only this writer refused to emit it,
+  // which collapsed the selection to "" and left the dependent result control permanently disabled.
+  // No label still clears the whole pair, so a result can never be stored without its finding.
+  if (!label) return "";
+  return result ? `${label}: ${result}` : label;
 }
 
 export function parseConditionalChoiceValue(

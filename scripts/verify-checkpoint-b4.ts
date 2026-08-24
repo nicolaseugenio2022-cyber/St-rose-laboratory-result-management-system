@@ -3,6 +3,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import { buildEncodingReport, applyEncodingResultValue, applyParameterSelection, applyAllSelectableParameters, reevaluateEncodingReport, addRepeatableFinding, updateRepeatableFinding, moveRepeatableFinding, removeRepeatableFinding, formatConditionalChoiceValue, parseConditionalChoiceValue } from "../src/features/workspace/encoding/report-encoding";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
@@ -341,6 +342,41 @@ assert(migratedUrine.encodingData?.repeatableFindings?.["Additional Microscopic 
 
 const conditional = formatConditionalChoiceValue("Amorphous Urates", "Rare");
 assert(conditional === "Amorphous Urates: Rare" && parseConditionalChoiceValue(conditional, urineDefinition.parameters.find((p) => p.parameterCode === "AMORPHOUS_CRYSTAL")!.conditionalChoiceSpec!).result === "Rare", "Urinalysis conditional amorphous finding round-trips declaratively");
+// The operator picks the finding before its quantity, so that intermediate state has to survive
+// the writer. The reader and the completion service already model it; an all-or-nothing writer
+// collapsed it to "" instead, which discarded the selection and left the dependent result control
+// permanently disabled. It is an incomplete editing value: it evaluates Invalid, and
+// completion/replacement validation prevents it from being persisted into a newly completed snapshot.
+const amorphousParameter = urineDefinition.parameters.find((p) => p.parameterCode === "AMORPHOUS_CRYSTAL")!;
+const amorphousChoiceSpec = amorphousParameter.conditionalChoiceSpec!;
+const partialConditional = formatConditionalChoiceValue("Amorphous Urates", "");
+assert(partialConditional === "Amorphous Urates", "a declared conditional finding with no result yet is written as the bare label");
+const partialConditionalParsed = parseConditionalChoiceValue(partialConditional, amorphousChoiceSpec);
+assert(partialConditionalParsed.label === "Amorphous Urates" && partialConditionalParsed.result === "", "the bare conditional finding parses back with its label and an empty result");
+assert(formatConditionalChoiceValue("", "Rare") === "", "a conditional result is never written without its finding");
+assert(evaluateParameterValue(amorphousParameter, partialConditional, { sex: "Female" }) === "Invalid", "an incomplete conditional finding evaluates as Invalid, so it cannot reach completed output");
+// The rendered progress counter is part of the same behaviour: a finding chosen before its result
+// must not read as complete. This renders the shipped DynamicResultForm and reads the counter the
+// component actually draws, rather than recomputing the arithmetic here. RequestedBySection imports
+// the server-action module, which is an RPC boundary the browser never loads locally, so it is
+// stubbed the same way - leaving the server-only marker untouched and keeping the privileged
+// Supabase client out of this process entirely.
+const progressNodeRequire = createRequire(join(process.cwd(), "package.json"));
+const progressActionsId = progressNodeRequire.resolve(join(process.cwd(), "src/features/server-boundary/server-actions"));
+progressNodeRequire.cache[progressActionsId] = { id: progressActionsId, filename: progressActionsId, loaded: true, children: [], paths: [], exports: { listAutoSuggestionsAction: async () => [] } } as never;
+const { DynamicResultForm } = progressNodeRequire(join(process.cwd(), "src/features/workspace/components/DynamicResultForm")) as { DynamicResultForm: unknown };
+const progressSpec = { template: urineDefinition, parameters: urineDefinition.parameters, signatoryRequirement: { requiredPathologistsCount: 1, requiredMedtechsCount: 1 } };
+const progressBaseReport = buildEncodingReport({ definition: urineDefinition, sessionId: "s", reportId: "r", rendererFamily: "DiagnosticGrid", signatories: [] });
+const renderedCompletedCount = (progressReport: unknown): number => {
+  const progressMarkup = renderToStaticMarkup(React.createElement(DynamicResultForm as never, { spec: progressSpec, definition: urineDefinition, report: progressReport, availablePersonnel: [], patientSex: "Female", onChangeReport: () => {} } as never));
+  const progressCounter = progressMarkup.match(/>(\d+)\/(\d+)</);
+  assert(progressCounter !== null, "the encoding form renders a completed/selected progress counter");
+  return Number(progressCounter![1]);
+};
+const progressBaseCompleted = renderedCompletedCount(progressBaseReport);
+assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "AMORPHOUS_CRYSTAL", "Amorphous Urates", "Invalid")) === progressBaseCompleted, "a conditional finding chosen before its result does not advance the rendered progress counter");
+assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "AMORPHOUS_CRYSTAL", "Amorphous Urates: Rare", "Entered")) === progressBaseCompleted + 1, "completing the declared conditional pair advances the rendered progress counter exactly once");
+assert(renderedCompletedCount(applyEncodingResultValue(progressBaseReport, urineDefinition, "TRANSPARENCY", "Clear", "Entered")) === progressBaseCompleted + 1, "an ordinary non-conditional result still advances the rendered progress counter exactly once");
 let findings = [] as ReturnType<typeof addRepeatableFinding>;
 for (let i = 0; i < 25; i += 1) findings = addRepeatableFinding(findings, "Additional Microscopic Findings", `f-${i}`);
 findings = updateRepeatableFinding(findings, "f-0", "Calcium Oxalate Crystals: Rare");

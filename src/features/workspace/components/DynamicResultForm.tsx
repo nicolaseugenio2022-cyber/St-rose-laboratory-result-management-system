@@ -3,7 +3,7 @@ import { HydratedTemplateSpec } from "@/services/interfaces";
 import { ILaboratoryReport, IPersonnel } from "@/domain/models/interfaces";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "@/domain/models/laboratory-report-domain";
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
-import { applyAllSelectableParameters, applyEncodingResultValue, applyParameterSelection, getEditableResultValue } from "../encoding/report-encoding";
+import { applyAllSelectableParameters, applyEncodingResultValue, applyParameterSelection, getEditableResultValue, parseConditionalChoiceValue } from "../encoding/report-encoding";
 import type { PatientSex } from "@/domain/types";
 import { NumericTextInput } from "./controls/NumericTextInput";
 import { SingleSelectInput } from "./controls/SingleSelectInput";
@@ -43,7 +43,21 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
   }, [definition, report, onChangeReport]);
 
   const selectedResults = report.results.filter((result) => definition.parameters.some((parameter) => parameter.parameterCode === result.parameterCode) && ((result as LaboratoryResultDomain).isSelected ?? true));
-  const completedCount = selectedResults.filter((result) => result.resultValue.trim() !== "").length;
+  // A conditional choice stores one flat "Label: Result" string, so non-empty does not imply
+  // complete: a finding chosen before its result is now representable, and it must not advance
+  // progress. parseConditionalChoiceValue owns the parsing rules - it returns an empty half for
+  // anything the spec does not declare - so both halves surviving it is the completeness test.
+  // Every other parameter keeps the existing non-empty check unchanged.
+  const isCompletedResult = (result: { parameterCode: string; resultValue: string }) => {
+    if (result.resultValue.trim() === "") return false;
+    const choiceSpec = definition.parameters.find(
+      (parameter) => parameter.parameterCode === result.parameterCode
+    )?.conditionalChoiceSpec;
+    if (!choiceSpec) return true;
+    const parsed = parseConditionalChoiceValue(result.resultValue, choiceSpec);
+    return parsed.label !== "" && parsed.result !== "";
+  };
+  const completedCount = selectedResults.filter(isCompletedResult).length;
   const completionPercent = selectedResults.length ? Math.round(completedCount / selectedResults.length * 100) : 0;
   const allSelected = sortedParameters.every((parameter) => {
     if (!parameter.isSelectable) return true;

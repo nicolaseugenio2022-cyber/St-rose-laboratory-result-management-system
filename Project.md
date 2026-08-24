@@ -59,6 +59,13 @@ accessibility, navigation and client performance only: no clinical semantics, no
 retention rule, no authorization boundary and no schema were altered by it. See **UI/UX Improvement
 Program** below for what shipped and what remains deferred.
 
+**A subsequent client QA stabilization program is active.** It runs after the completed UX0–UX6
+program above and addresses client-reported production behaviour; it does not reopen, rename or
+extend that program. QA-02, QA-03 and QA-07 are published. QA-01 and QA-09 remain parked pending
+production evidence. QA-04 awaits an explicit output-contract decision. QA-05, QA-06 and QA-08 are
+queued. **UX-10**, the user-centered Workspace Encoding/Live Preview redesign, remains deferred
+until QA-01 through QA-09 are stable. See **Client QA Stabilization Program** below.
+
 ---
 
 # Authority Documents and Sources
@@ -1346,6 +1353,103 @@ Three commits changed how agents operate in this repository rather than what the
 **Three retry holes were identified and are recorded for whenever this recurs.** Writes bypass retry entirely by design; a completed 5xx is never retried at any layer, because `resilientFetch` returns any completed response untouched and postgrest-js's own 503/520 retry is disabled; and `ENOTFOUND` is absent from the transient transport set. Separately, `isTransientSupabaseReadFailure` exists and is used by `/users` and the authenticated shell but **not anywhere in the login path**, which is why a transient fault degrades into the generic message rather than a retry surface.
 
 **Temporary instrumentation was implemented, gated, independently reviewed and then removed byte-for-byte.** One properly cold, correct-credential login passed with no probe output. No failing stage was captured, so no fix is proposed and none should be inferred. The tree was verified identical to the pre-instrumentation baseline.
+
+## Client QA Stabilization Program (2026-08-24)
+
+A client-reported QA stabilization program running after the completed UX0–UX6 program. It addresses
+reported production behaviour only.
+
+### QA-07 – Conditional finding selection
+
+Published in `fff161a17d051ab026cb49539676a4b29f744ffc` (2026-08-24) –
+*fix(encoding): preserve conditional finding selection*.
+
+- The Amorphous Urates/Phosphates conditional finding selection is preserved while its paired result
+  remains incomplete.
+- Selecting the finding alone does not incorrectly advance the completion counter.
+- Completion and replacement validation still prevent incomplete paired data from entering a newly
+  completed snapshot.
+- Native result-input Tab-order behaviour remains unchanged.
+- No broader Urinalysis or report-rendering behaviour changed.
+
+### QA-02 – Optional Auto/Manual calculation modes
+
+Published in `9bc779a7b78118c0ff501c8d7a60ccb5225ccc57` (2026-08-24) –
+*fix(workspace): correct LDL calculation and support manual HDL/LDL modes*.
+
+- Formula-bound HDL and LDL remain declaratively `Computed` parameters.
+- Both default independently to Auto.
+- Operators can independently switch either parameter to Manual entry.
+- Auto → Manual clears the current calculated value.
+- Manual → Auto requires confirmation: confirming discards the Manual value and recalculates,
+  cancelling preserves Manual mode and the entered value.
+- A Manual value must be finite and strictly greater than zero.
+- A positive Manual value outside its reference range remains a valid Low/High outcome.
+- Persisted Manual provenance is `Manual`, carrying no formula metadata.
+- Calculation modes survive draft persistence, recovery, completion and Replacement Mode.
+- Existing historical completed snapshots are not recomputed.
+- No Supabase schema change was required.
+
+### QA-03 – LDL formula correction
+
+Published in `9bc779a7b78118c0ff501c8d7a60ccb5225ccc57` (2026-08-24), the same commit as QA-02.
+
+Auto HDL applies the client-defined formula:
+
+```
+HDL = Total Cholesterol × 40 ÷ 150
+```
+
+Auto LDL applies the approved operative formula:
+
+```
+LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)
+```
+
+**Active HDL** is the exact unrounded calculated HDL while HDL is in Auto, and the parsed positive
+operator-entered HDL while HDL is in Manual.
+
+- The historical client formula wording is preserved separately for traceability.
+- The corrected operand order and the calculation-mode policy are governed by **DEC-028**
+  (`architecture/DECISIONS.md`) and **ADR-009**
+  (`architecture/ADR/ADR-009-Optional-Manual-Override-and-LDL-Calculation.md`). This entry summarizes
+  them and is not a substitute for either.
+- The combined client-defined Auto-HDL/Auto-LDL behaviour must not be described as standard
+  Friedewald.
+- The approved client behaviour retains no triglyceride cutoff.
+- Existing clinic reference values were not changed.
+- Report rendering, completed-snapshot authority, signatories, persistence guarantees, authorization
+  and schema were all preserved.
+
+### Tracker
+
+| Item | State |
+|---|---|
+| QA-01 Transient login error | Evidence pending – parked inconclusive |
+| QA-02 Auto/Manual calculation | Published in `9bc779a` |
+| QA-03 LDL formula correction | Published in `9bc779a` |
+| QA-04 Abnormal markers in Preview/report | Blocked pending explicit output-contract decision |
+| QA-05 Official logo size | Queued |
+| QA-06 Signature size | Queued |
+| QA-07 Amorphous Urates/Phosphates | Published in `fff161a` |
+| QA-08 Encoding/Preview alignment and separators | Queued |
+| QA-09 Production Server Component error | Evidence pending – no captured production deployment evidence |
+| UX-10 Workspace Encoding/Live Preview redesign | Deferred until QA-01 through QA-09 are stable |
+
+QA-04's existing output-contract restrictions remain authoritative until the user rules otherwise.
+
+### Next actionable work
+
+**QA-05 + QA-06 – official logo and signature output sizing** is proposed as the next
+investigation and planning slice. They are proposed as one cohesive investigation because both concern
+asset sizing in the same Native rendering surface. **The combined implementation is not approved**, and
+the slice is not assumed to be low-risk. Its investigation must determine:
+
+- whether sizing tokens are shared by Preview, Browser Print and PDF;
+- whether changing them would affect previously completed report output;
+- which C-family rendering verifiers and visual-parity checks are implicated;
+- whether completed-snapshot/output authority requires an explicit ruling;
+- whether logo and signature changes can remain one coherent implementation slice.
 
 ## Carried Items From This Period
 

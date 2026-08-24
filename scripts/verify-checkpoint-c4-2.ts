@@ -180,7 +180,8 @@ async function main(): Promise<void> {
     assert(page.primitives.filter((primitive) => primitive.kind === "image").every((primitive) => primitive.source === "/st-rose-logo-official.png" || primitive.failurePolicy === "OmitImage"), `${report.templateCode} must not use a raster report background`);
     assert(!page.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist-signature")), `${report.templateCode} must not create Medical Technologist signature images`);
     const logo = imageById(page, "official-logo");
-    assert(logo?.width === 21 && logo.height === 15 && logo.fit === "contain", `${report.templateCode} must retain the declared physical logo box`);
+    assert(logo?.width === 18 && logo.height === 18 && logo.fit === "contain", `${report.templateCode} must retain the declared physical logo box`);
+    assert(logo.x === 15 && logo.y === 4 && logo.y + logo.height === 22, `${report.templateCode} logo must occupy the approved 18 x 18 mm header band at x = 15 mm, ending 1.5 mm above the divider`);
   }
 
   assert(JSON.stringify(familyCounts) === JSON.stringify({ StandardAdaptiveTabular: 6, CompactResultGrid: 9, Certificate: 1, MicroscopyTwoColumn: 1 }), "all four layout families must remain represented");

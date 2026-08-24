@@ -24,12 +24,16 @@ export const NATIVE_REPORT_THEME = {
   },
   header: {
     topMm: 4,
-    // The official mark is 1:1 and renders 15 x 15 mm contained inside the 21 x 15 mm box,
-    // so it sits 3 mm inboard of the box edge. Offsetting the box to 12 puts the mark's
-    // visible left edge at 15 mm — flush with the page content margin, like every other element.
-    logoXmm: 12,
-    logoWidthMm: 21,
-    logoHeightMm: 15,
+    // The official mark is 1:1 and the frame is square, so the contained bitmap fills the frame
+    // exactly and its left edge sits at 15 mm — flush with the page content margin, like every
+    // other element. Making the frame square keeps that alignment by construction rather than by
+    // the compensating offset the 21 x 15 box needed. The frame ends at y = 22 mm, 1.5 mm clear of
+    // the divider at 23.5, so the enlarged mark stays entirely inside the header band and no report
+    // body coordinate moves. The asset carries intrinsic white margins, so its coloured artwork is
+    // smaller than the 18 mm frame.
+    logoXmm: 15,
+    logoWidthMm: 18,
+    logoHeightMm: 18,
     identityXmm: 41,
     identityWidthMm: 153,
     dividerYmm: 23.5,

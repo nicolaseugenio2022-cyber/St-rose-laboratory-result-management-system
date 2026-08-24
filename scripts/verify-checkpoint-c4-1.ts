@@ -158,10 +158,13 @@ async function main(): Promise<void> {
     assert(page.widthMm === 210 && page.heightMm === 297, `${report.templateCode} must remain A4`);
     assert(page.contentBottomMm <= 148.5, `${report.templateCode} content must remain in the upper half`);
     assert(page.primitives.every((primitive) => nativePrimitiveBottomMm(primitive) <= 148.5001), `${report.templateCode} primitives must remain bounded`);
+    assert(page.contentBottomMm <= 144.5, `${report.templateCode} must stay within the stricter 144.5 mm client output boundary, which reserves 4 mm before the A4 midpoint`);
 
     const logo = imageById(page, "official-logo");
     assert(logo?.source === "/st-rose-logo-official.png", `${report.templateCode} must use the canonical logo`);
-    assert(logo.fit === "contain" && logo.width === 21 && logo.height === 15, `${report.templateCode} logo must preserve aspect ratio in the compact 21 x 15 mm box`);
+    assert(logo.fit === "contain" && logo.width === 18 && logo.height === 18, `${report.templateCode} logo must preserve aspect ratio in the compact 18 x 18 mm box`);
+    assert(logo.x === 15 && logo.y === 4, `${report.templateCode} logo must sit at the approved x = 15 mm, y = 4 mm origin`);
+    assert(logo.y + logo.height === 22 && 23.5 - (logo.y + logo.height) === 1.5, `${report.templateCode} logo must end at 22 mm, exactly 1.5 mm clear of the divider`);
     assert(logo.width >= 18 && logo.width <= 25, `${report.templateCode} logo must stay within the approved compact range`);
     const divider = page.primitives.find((primitive) => primitive.id === "header-divider");
     assert(divider?.kind === "line" && divider.y1 === 23.5, `${report.templateCode} header must use the shortened identity block`);
@@ -178,6 +181,23 @@ async function main(): Promise<void> {
   }
 
   assert(JSON.stringify(familyCounts) === JSON.stringify({ StandardAdaptiveTabular: 6, CompactResultGrid: 9, Certificate: 1, MicroscopyTwoColumn: 1 }), "all four layout families must retain their approved counts");
+
+  // The enlarged logo is contained entirely inside the header band, so every report bottom must be
+  // unchanged from the pre-enlargement geometry. These are the measured values, pinned exactly, so
+  // any future header change that pushes the body down fails here rather than silently eating the
+  // client's 4 mm reserve above the A4 midpoint.
+  const EXPECTED_REPORT_BOTTOMS_MM: Record<string, number> = {
+    FECALYSIS: 144.3, CHEM_10: 130.65, CBC: 130.65, HDL_LDL: 121.55, HIV_RESULT: 120.8,
+    CHEM_8: 112.45, URINALYSIS: 109.95, DENGUE_DUO: 104.2, OGTT: 98.8, HBA1C: 95.1,
+    HBSAG: 95.1, RPR: 95.1, PREG_TEST: 95.1, BLOOD_TYPING: 94.25, CT_BT: 94.25,
+    RBS: 89.7, ESR: 89.7,
+  };
+  assert(Object.keys(EXPECTED_REPORT_BOTTOMS_MM).length === 17 && pages.size === 17, "the report-bottom pin must cover all 17 reports");
+  for (const [code, expectedBottomMm] of Object.entries(EXPECTED_REPORT_BOTTOMS_MM)) {
+    const measuredBottomMm = pages.get(code)!.contentBottomMm;
+    assert(Math.abs(measuredBottomMm - expectedBottomMm) < 0.001, `${code} report bottom must remain exactly ${expectedBottomMm} mm after the logo enlargement (measured ${measuredBottomMm})`);
+  }
+  assert(Math.abs(pages.get("FECALYSIS")!.contentBottomMm - 144.3) < 0.001, "Fecalysis must remain the tightest report at exactly 144.30 mm");
   const cbc = pages.get("CBC")!;
   assert(cbc.compositionSource === "StandardAdaptiveTabular", "active CBC must use StandardAdaptiveTabular, never the legacy pilot");
   assert(!cbc.primitives.some((primitive) => primitive.id === "laboratory-logo" || primitive.id === "cbc-result-table"), "active CBC must contain no old-pilot primitive identifiers");
@@ -292,7 +312,7 @@ async function main(): Promise<void> {
   assert(!/(formula|evaluation-service|reference-display-resolver|patient-report-session-service)/i.test(presentationSource), "presentation modules must import no clinical or mutable-session services");
   assert(Object.values(NATIVE_REPORT_THEME.colors).includes("#0B6384") && Object.values(NATIVE_REPORT_THEME.colors).includes("#78AFC0"), "approved teal visual tokens must be centralized");
 
-  process.stdout.write(`C4.1 verification passed: 17 pages; families ${JSON.stringify(familyCounts)}; sparse bottoms ${JSON.stringify(sparseBottoms)}; compact 21 x 15 mm logo; upper-half, content, suffix, signature, overflow, and architecture contracts preserved.\n`);
+  process.stdout.write(`C4.1 verification passed: 17 pages; families ${JSON.stringify(familyCounts)}; sparse bottoms ${JSON.stringify(sparseBottoms)}; compact 18 x 18 mm logo at x=15,y=4; upper-half, content, suffix, signature, overflow, and architecture contracts preserved.\n`);
 }
 
 void main();

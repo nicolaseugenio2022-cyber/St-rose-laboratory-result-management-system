@@ -221,7 +221,13 @@ async function main(): Promise<void> {
   assert(normalizeDisplayWhitespace(textByPrefix(hivPage, "certificate-result-statement")) === normalizeDisplayWhitespace(resultNarrative), "HIV result narrative must preserve exact versioned wording and marks");
   assert(narrative.includes("C3 Patient of Edited HIV Address was examined"), "HIV narrative must use the edited stored Address");
   assert(!hivText.includes("SESSION COMPANY MUST NOT OVERRIDE"), "HIV Company must remain report-scoped");
-  assert(hivText.indexOf("MEDTECH 1") < hivText.indexOf("MEDTECH 2") && hivText.indexOf("MEDTECH 2") < hivText.indexOf("PATHOLOGIST"), "HIV signatory order must remain Examiner, Verifier, Pathologist");
+  // Presence is asserted before order: indexOf returns -1 for absent text, and a bare ordering
+  // comparison can be satisfied by a missing signatory rather than by a correct arrangement.
+  const hivExaminerIndex = hivText.indexOf("MEDTECH 1");
+  const hivPathologistIndex = hivText.indexOf("PATHOLOGIST");
+  const hivVerifierIndex = hivText.indexOf("MEDTECH 2");
+  assert(hivExaminerIndex >= 0 && hivPathologistIndex >= 0 && hivVerifierIndex >= 0, "HIV must render all three signatory identities before their order can be judged");
+  assert(hivExaminerIndex < hivPathologistIndex && hivPathologistIndex < hivVerifierIndex, "HIV signatory order must be Examiner, Pathologist, Verifier");
   const pathSignature = hivPage.primitives.find((primitive) => primitive.id === "certificate-pathologist-signature");
   assert(pathSignature?.kind === "image" && pathSignature.failurePolicy === "OmitImage", "HIV Pathologist signature must remain optional");
 

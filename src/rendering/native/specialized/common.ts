@@ -116,6 +116,10 @@ export function composeSpecializedSignatoryColumns(
 ): NativeFlowSectionResult {
   const primitives: NativePagePrimitive[] = [];
   const columnWidth = STANDARD_PAGE.contentWidthMm / columns.length;
+  // One source for the frame width, so the centring expression and the declared width cannot
+  // drift apart again. They previously did: the position was computed from 24 while the frame
+  // declared 22, leaving the image 1 mm left of its column centre.
+  const signatureWidthMm = 22;
   const nameY = y + 7.8;
   let bottomMm = y;
   columns.forEach((column, index) => {
@@ -129,9 +133,9 @@ export function composeSpecializedSignatoryColumns(
       kind: "image",
       id: `${column.id}-signature`,
       source: column.slot.signatureAsset.source,
-      x: x + (columnWidth - 24) / 2,
+      x: x + (columnWidth - signatureWidthMm) / 2,
       y: y + 0.4,
-      width: 22,
+      width: signatureWidthMm,
       height: 6.5,
       fit: "contain",
       failurePolicy: column.slot.signatureAsset.failurePolicy,

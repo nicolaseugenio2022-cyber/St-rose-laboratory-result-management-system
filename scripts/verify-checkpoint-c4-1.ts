@@ -264,9 +264,17 @@ async function main(): Promise<void> {
   assert(previewMarkup.includes("data-native-optional-image=\"true\"") && previewMarkup.includes("visibility:hidden"), "failed or pending optional images must show no broken-image state");
 
   const hiv = pages.get("HIV_RESULT")!;
-  const hivRoles = ["certificate-examiner-role", "certificate-verifier-role", "certificate-pathologist-role"];
+  const hivRoles = ["certificate-examiner-role", "certificate-pathologist-role", "certificate-verifier-role"];
   assert(hivRoles.every((id) => textPrimitives(hiv).some((primitive) => primitive.id === id)), "HIV must retain its three signatory roles");
-  assert(hivRoles.map((id) => textPrimitives(hiv).find((primitive) => primitive.id === id)!.x).join(",") === [...hivRoles.map((id) => textPrimitives(hiv).find((primitive) => primitive.id === id)!.x)].sort((a, b) => a - b).join(","), "HIV signatories must remain Examiner, Verifier, Pathologist from left to right");
+  // Exact coordinates, not a sorted-copy comparison: a sorted list equals itself when two or three
+  // columns share an x, so the previous form passed for a collapsed layout. These fail closed.
+  const hivRoleXs = hivRoles.map((id) => textPrimitives(hiv).find((primitive) => primitive.id === id)!.x);
+  assert(hivRoleXs.join(",") === "17,77,137", `HIV signatory roles must sit at exactly 17, 77 and 137 mm as Examiner, Pathologist, Verifier - measured ${hivRoleXs.join(",")}`);
+  assert(hivRoleXs[0] < hivRoleXs[1] && hivRoleXs[1] < hivRoleXs[2], "HIV signatory columns must be strictly left to right, with no two columns sharing a coordinate");
+  const hivSignature = imageById(hiv, "certificate-pathologist-signature");
+  assert(hivSignature?.width === 22 && hivSignature.height === 6.5 && hivSignature.fit === "contain", "the HIV Pathologist signature must retain its declared 22 x 6.5 mm contained frame");
+  assert(hivSignature.x === 94 && hivSignature.x + hivSignature.width / 2 === 105, "the HIV Pathologist signature must be truly centred in the middle column, on the A4 content centre line");
+  assert(hiv.primitives.filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo").every((primitive) => primitive.id === "certificate-pathologist-signature"), "only the HIV Pathologist may render a signatory image");
 
   await createNativeReportPdf(signaturePage, {
     async load(source) {

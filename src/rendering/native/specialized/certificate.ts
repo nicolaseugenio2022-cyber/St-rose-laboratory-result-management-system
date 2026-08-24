@@ -133,10 +133,14 @@ export function composeCertificateSpecializedBody(
   const examiner = report.signatories.find((slot) => slot.semanticRole === "Examiner");
   const verifier = report.signatories.find((slot) => slot.semanticRole === "Verifier");
   const pathologist = report.signatories.find((slot) => slot.semanticRole === "Pathologist");
+  // HIV_RESULT.md fixes the physical arrangement as Performed By left, Pathologist centre,
+  // Verified By right, and states it must be preserved. Only the rendered column order changes
+  // here: each slot still resolves from its own semanticRole above, and the model/registry
+  // signatory array order is untouched.
   const signatories = composeSpecializedSignatoryColumns([
     { id: "certificate-examiner", heading: content.signatoryLabels.performedBy, roleLabel: content.signatoryLabels.medicalTechnologist, slot: examiner, allowSignatureImage: false },
-    { id: "certificate-verifier", heading: content.signatoryLabels.verifiedBy, roleLabel: content.signatoryLabels.medicalTechnologist, slot: verifier, allowSignatureImage: false },
     { id: "certificate-pathologist", heading: "", roleLabel: content.signatoryLabels.pathologist, slot: pathologist, allowSignatureImage: true },
+    { id: "certificate-verifier", heading: content.signatoryLabels.verifiedBy, roleLabel: content.signatoryLabels.medicalTechnologist, slot: verifier, allowSignatureImage: false },
   ], cursorY + 2);
   primitives.push(...signatories.primitives);
   return { primitives, bottomMm: signatories.bottomMm };

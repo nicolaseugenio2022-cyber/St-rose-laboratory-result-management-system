@@ -287,11 +287,40 @@ async function main(): Promise<void> {
   assert(!signaturePresentPage.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist")), "Medical Technologist must remain text-only");
 
   const hiv = pages.get("HIV_RESULT")!;
-  const hivNameIds = ["certificate-examiner-name", "certificate-verifier-name", "certificate-pathologist-name"];
-  const hivRoleIds = ["certificate-examiner-role", "certificate-verifier-role", "certificate-pathologist-role"];
+  const hivNameIds = ["certificate-examiner-name", "certificate-pathologist-name", "certificate-verifier-name"];
+  const hivRoleIds = ["certificate-examiner-role", "certificate-pathologist-role", "certificate-verifier-role"];
+  assert(hivNameIds.every((id) => textPrimitives(hiv).some((primitive) => primitive.id === id)) && hivRoleIds.every((id) => textPrimitives(hiv).some((primitive) => primitive.id === id)), "HIV must render all three signatory names and roles before their order can be judged");
   assert(new Set(hivNameIds.map((id) => textCoordinates(hiv, id).y)).size === 1, "HIV signatory name baselines must align");
   assert(new Set(hivRoleIds.map((id) => textCoordinates(hiv, id).y)).size === 1, "HIV signatory role baselines must align");
-  assert(hivRoleIds.map((id) => textCoordinates(hiv, id).x).join(",") === [...hivRoleIds.map((id) => textCoordinates(hiv, id).x)].sort((a, b) => a - b).join(","), "HIV signatories must remain Examiner, Verifier, Pathologist from left to right");
+  // Exact coordinates, not a sorted-copy comparison: a sorted list equals itself when two or three
+  // columns share an x, so the previous form passed for a collapsed layout. These fail closed.
+  const hivNameXs = hivNameIds.map((id) => textCoordinates(hiv, id).x);
+  const hivRoleXs = hivRoleIds.map((id) => textCoordinates(hiv, id).x);
+  assert(hivNameXs.join(",") === "17,77,137", `HIV signatory names must sit at exactly 17, 77 and 137 mm as Examiner, Pathologist, Verifier - measured ${hivNameXs.join(",")}`);
+  assert(hivRoleXs.join(",") === "17,77,137", `HIV signatory roles must sit at exactly 17, 77 and 137 mm as Examiner, Pathologist, Verifier - measured ${hivRoleXs.join(",")}`);
+  assert(hivNameXs[0] < hivNameXs[1] && hivNameXs[1] < hivNameXs[2] && hivRoleXs[0] < hivRoleXs[1] && hivRoleXs[1] < hivRoleXs[2], "HIV signatory columns must be strictly left to right, with no two columns sharing a coordinate");
+
+  // Heading association. Ordering alone cannot detect swapped headings, because both headings keep
+  // their column coordinates when only their text is exchanged. The labels are read from the
+  // resolved static content rather than restated here, so no wording is invented or normalised.
+  const hivStaticContent = resolved.reports.find((report) => report.templateCode === "HIV_RESULT")!.staticContent;
+  assert(Boolean(hivStaticContent), "HIV must resolve its static certificate content before its headings can be judged");
+  const hivExaminerHeading = textPrimitives(hiv).find((primitive) => primitive.id === "certificate-examiner-heading");
+  const hivVerifierHeading = textPrimitives(hiv).find((primitive) => primitive.id === "certificate-verifier-heading");
+  assert(Boolean(hivExaminerHeading) && Boolean(hivVerifierHeading), "HIV must render both the Performed By and Verified By column headings");
+  assert(hivExaminerHeading!.text === hivStaticContent!.signatoryLabels.performedBy && hivExaminerHeading!.x === 16, `the Performed By heading must carry the resolved label and remain on the left Examiner column at 16 mm - measured "${hivExaminerHeading!.text}" at ${hivExaminerHeading!.x}`);
+  assert(hivVerifierHeading!.text === hivStaticContent!.signatoryLabels.verifiedBy && hivVerifierHeading!.x === 136, `the Verified By heading must carry the resolved label and remain on the right Verifier column at 136 mm - measured "${hivVerifierHeading!.text}" at ${hivVerifierHeading!.x}`);
+  assert(hivExaminerHeading!.text !== hivVerifierHeading!.text, "the two HIV signatory headings must remain distinct labels");
+  assert(!textPrimitives(hiv).some((primitive) => primitive.id === "certificate-pathologist-heading"), "the centre Pathologist column must carry no invented heading");
+  const hivSignatureImage = imageById(hiv, "certificate-pathologist-signature");
+  assert(hivSignatureImage?.x === 94 && hivSignatureImage.width === 22, "the HIV Pathologist signature must sit at x = 94 mm with its declared 22 mm frame");
+  assert(hivSignatureImage.x + hivSignatureImage.width / 2 === 105, "the HIV Pathologist signature centre must fall on the 105 mm A4 content centre line");
+  // Stated relative to the name baseline rather than as an absolute coordinate: the section origin
+  // is an accumulated float, so an exact literal would pin fixture arithmetic instead of the
+  // geometry. The image still sits 0.4 mm below the section origin, which is nameY - 7.8.
+  assert(hivSignatureImage.height === 6.5, "the HIV Pathologist signature must retain its 6.5 mm frame height");
+  assert(Math.abs(hivSignatureImage.y - (primitiveTopMm(hiv, "certificate-pathologist-name") - 7.4)) < 0.001, "the HIV Pathologist signature top must remain 0.4 mm below the signatory section origin, unchanged by the placement correction");
+  assert(Math.abs(hiv.contentBottomMm - 120.8) < 0.001, "HIV contentBottomMm must remain exactly 120.80 mm after the placement correction");
   assert(hiv.primitives.filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo").every((primitive) => primitive.id === "certificate-pathologist-signature"), "only the HIV Pathologist may render an image");
   assert(primitiveTopMm(hiv, "certificate-pathologist-name") - primitiveBottomByIdMm(hiv, "certificate-pathologist-signature") >= 0.899, "HIV Pathologist signature image must have added clearance above the unchanged name baseline");
   assert(primitiveTopMm(hiv, "certificate-test-label") - primitiveBottomByIdMm(hiv, "certificate-test-header") >= NATIVE_REPORT_THEME.sectionInsets.resultBodyTopMm - 0.001, "Certificate result content must use the shared internal inset below its header");

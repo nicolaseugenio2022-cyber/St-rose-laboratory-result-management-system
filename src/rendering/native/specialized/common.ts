@@ -192,9 +192,13 @@ export function composeSpecializedSignatoryColumns(
       id: `${column.id}-signature`,
       source: column.slot.signatureAsset.source,
       x: x + (columnWidth - signatureWidthMm) / 2,
-      y: y + 0.4,
+      // The frame grows upward into verified whitespace and deliberately overlaps the upper part
+      // of the name row by 0.95 mm, which is what gives a signed-document look without touching
+      // the licence or role rows. Width is unchanged: the asset is height-limited under contain,
+      // so height is the only dimension that enlarges the visible ink.
+      y: y - 1.25,
       width: signatureWidthMm,
-      height: 6.5,
+      height: 10,
       fit: "contain",
       failurePolicy: column.slot.signatureAsset.failurePolicy,
     });

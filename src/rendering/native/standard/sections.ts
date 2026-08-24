@@ -327,7 +327,7 @@ export function composeStandardSignatories(report: ResolvedReportRenderModel, y:
   const pathologist = slotBySemantic(report, "Pathologist");
   const medtech = slotBySemantic(report, "MedicalTechnologist");
   const nameY = y + 7.4;
-  if (pathologist?.signatureAsset) primitives.push({ kind: "image", id: "pathologist-signature", source: pathologist.signatureAsset.source, x: PAGE_X + (slotWidth - 24) / 2, y, width: 24, height: 6.6, fit: "contain", failurePolicy: pathologist.signatureAsset.failurePolicy });
+  if (pathologist?.signatureAsset) primitives.push({ kind: "image", id: "pathologist-signature", source: pathologist.signatureAsset.source, x: PAGE_X + (slotWidth - 24) / 2, y: y - 1.35, width: 24, height: 10, fit: "contain", failurePolicy: pathologist.signatureAsset.failurePolicy });
   const addSlot = (slot: ResolvedSignatorySlot | undefined, slotIndex: number, role: string) => {
     const x = PAGE_X + slotIndex * slotWidth;
     const key = role.toLowerCase().replaceAll(" ", "-");

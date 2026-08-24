@@ -260,6 +260,8 @@ async function main(): Promise<void> {
   const signaturePage = pages.get("CBC")!;
   const signature = imageById(signaturePage, "pathologist-signature");
   assert(signature?.failurePolicy === "OmitImage" && signature.fit === "contain", "valid optional Pathologist signatures must preserve aspect ratio and omit on failure");
+  assert(signature.width === 24 && signature.height === 10, "the Standard Pathologist signature must use the approved 24 x 10 mm contained frame");
+  assert(signature.x === 48 && signature.x + signature.width / 2 === 60, "the Standard Pathologist signature must stay centred in its column at x = 48 mm, centre 60 mm");
   const previewMarkup = renderToStaticMarkup(React.createElement(NativeReportPreview, { page: signaturePage, scale: 1 }));
   assert(previewMarkup.includes("data-native-optional-image=\"true\"") && previewMarkup.includes("visibility:hidden"), "failed or pending optional images must show no broken-image state");
 
@@ -272,7 +274,7 @@ async function main(): Promise<void> {
   assert(hivRoleXs.join(",") === "17,77,137", `HIV signatory roles must sit at exactly 17, 77 and 137 mm as Examiner, Pathologist, Verifier - measured ${hivRoleXs.join(",")}`);
   assert(hivRoleXs[0] < hivRoleXs[1] && hivRoleXs[1] < hivRoleXs[2], "HIV signatory columns must be strictly left to right, with no two columns sharing a coordinate");
   const hivSignature = imageById(hiv, "certificate-pathologist-signature");
-  assert(hivSignature?.width === 22 && hivSignature.height === 6.5 && hivSignature.fit === "contain", "the HIV Pathologist signature must retain its declared 22 x 6.5 mm contained frame");
+  assert(hivSignature?.width === 22 && hivSignature.height === 10 && hivSignature.fit === "contain", "the HIV Pathologist signature must retain its declared 22 x 10 mm contained frame");
   assert(hivSignature.x === 94 && hivSignature.x + hivSignature.width / 2 === 105, "the HIV Pathologist signature must be truly centred in the middle column, on the A4 content centre line");
   assert(hiv.primitives.filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo").every((primitive) => primitive.id === "certificate-pathologist-signature"), "only the HIV Pathologist may render a signatory image");
 

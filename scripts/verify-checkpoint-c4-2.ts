@@ -282,7 +282,16 @@ async function main(): Promise<void> {
     assert(JSON.stringify(textCoordinates(signatureAbsentPage, pathologistId)) === JSON.stringify(textCoordinates(signatureMalformedPage, pathologistId)), `malformed signatures must preserve Pathologist ${suffix} geometry`);
   }
   assert(imageById(signaturePresentPage, "pathologist-signature")?.failurePolicy === "OmitImage", "valid Pathologist signatures must retain optional omission behavior");
-  assert(primitiveTopMm(signaturePresentPage, "pathologist-name") - primitiveBottomByIdMm(signaturePresentPage, "pathologist-signature") >= 0.799, "standard Pathologist signature image must have added clearance above the unchanged name baseline");
+  // The enlarged frame deliberately overlaps the upper part of the name row, so a positive
+  // clearance below the image is no longer the contract. What is pinned instead is the exact
+  // overlap, which keeps the typed name readable and the licence and role rows untouched.
+  // Coordinates are text tops (first-line Y), never typographic baselines.
+  const standardSignature = imageById(signaturePresentPage, "pathologist-signature")!;
+  const standardNameTextTop = primitiveTopMm(signaturePresentPage, "pathologist-name");
+  assert(standardSignature.width === 24 && standardSignature.height === 10, "the Standard Pathologist signature must use the approved 24 x 10 mm frame");
+  assert(standardSignature.x === 48 && standardSignature.x + standardSignature.width / 2 === 60, "the Standard Pathologist signature must remain centred at x = 48 mm with centre 60 mm");
+  assert(Math.abs(standardSignature.y - (standardNameTextTop - 8.75)) < 0.001, "the Standard Pathologist signature top must sit exactly 8.75 mm above the name text top");
+  assert(Math.abs(primitiveBottomByIdMm(signaturePresentPage, "pathologist-signature") - standardNameTextTop - 1.25) < 0.001, "the Standard Pathologist signature must overlap the name row by exactly 1.25 mm");
   assert(!imageById(signatureAbsentPage, "pathologist-signature") && !imageById(signatureMalformedPage, "pathologist-signature"), "absent or malformed Pathologist signatures must create no image primitive");
   assert(!signaturePresentPage.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist")), "Medical Technologist must remain text-only");
 
@@ -315,11 +324,18 @@ async function main(): Promise<void> {
   const hivSignatureImage = imageById(hiv, "certificate-pathologist-signature");
   assert(hivSignatureImage?.x === 94 && hivSignatureImage.width === 22, "the HIV Pathologist signature must sit at x = 94 mm with its declared 22 mm frame");
   assert(hivSignatureImage.x + hivSignatureImage.width / 2 === 105, "the HIV Pathologist signature centre must fall on the 105 mm A4 content centre line");
-  // Stated relative to the name baseline rather than as an absolute coordinate: the section origin
-  // is an accumulated float, so an exact literal would pin fixture arithmetic instead of the
-  // geometry. The image still sits 0.4 mm below the section origin, which is nameY - 7.8.
-  assert(hivSignatureImage.height === 6.5, "the HIV Pathologist signature must retain its 6.5 mm frame height");
-  assert(Math.abs(hivSignatureImage.y - (primitiveTopMm(hiv, "certificate-pathologist-name") - 7.4)) < 0.001, "the HIV Pathologist signature top must remain 0.4 mm below the signatory section origin, unchanged by the placement correction");
+  // Stated relative to the first name-line text top rather than as an absolute coordinate: the
+  // section origin is an accumulated float, so a literal would pin fixture arithmetic instead of the
+  // geometry. The enlarged frame overlaps the upper part of the name row on purpose.
+  assert(hivSignatureImage.height === 10, "the HIV Pathologist signature must use the approved 10 mm frame height");
+  assert(Math.abs(hivSignatureImage.y - (primitiveTopMm(hiv, "certificate-pathologist-name") - 9.05)) < 0.001, "the HIV Pathologist signature top must sit exactly 9.05 mm above the first name-line text top");
+  assert(Math.abs(primitiveBottomByIdMm(hiv, "certificate-pathologist-signature") - primitiveTopMm(hiv, "certificate-pathologist-name") - 0.95) < 0.001, "the HIV Pathologist signature must overlap the first name line by exactly 0.95 mm");
+  // The overlap into the name row is pinned above. What was missing is the guard BENEATH the frame:
+  // nothing asserted the distance from the signature to the shared underline, so a later change that
+  // moved the underline up toward the name row would have gone unnoticed. This claims only what it
+  // proves - a minimum gap to the underline, not anything about the licence or role rows.
+  const hivUnderlineYmm = (hiv.primitives.find((primitive) => primitive.kind === "line" && primitive.id === "certificate-pathologist-line") as { y1: number }).y1;
+  assert(hivUnderlineYmm - primitiveBottomByIdMm(hiv, "certificate-pathologist-signature") >= 2.649, "the HIV Pathologist signature must keep at least 2.649 mm between its bottom and the shared signatory underline");
   assert(Math.abs(hiv.contentBottomMm - 120.8) < 0.001, "HIV contentBottomMm must remain exactly 120.80 mm after the placement correction");
 
   // ---- QA-06N: multiline signatory bands ------------------------------------------------------
@@ -398,7 +414,7 @@ async function main(): Promise<void> {
 
   // The signature is unaffected by a band that grows downward.
   const bandSignature = imageById(bandThreeNameTwoLicense, "certificate-pathologist-signature");
-  assert(bandSignature?.x === 94 && bandSignature.width === 22 && bandSignature.height === 6.5, "multiline signatory bands must not move or resize the Pathologist signature");
+  assert(bandSignature?.x === 94 && bandSignature.width === 22 && bandSignature.height === 10, "multiline signatory bands must not move or resize the enlarged Pathologist signature");
 
   // Live Preview markup must carry every continuation line, not only the composed primitives.
   const bandPreviewReport = { ...reportFor(hivDefinitionForBands) };
@@ -419,7 +435,6 @@ async function main(): Promise<void> {
     assert(bandMarkup.includes(continuation.text), `Live Preview markup must contain the rendered continuation line "${continuation.text}"`);
   }
   assert(hiv.primitives.filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo").every((primitive) => primitive.id === "certificate-pathologist-signature"), "only the HIV Pathologist may render an image");
-  assert(primitiveTopMm(hiv, "certificate-pathologist-name") - primitiveBottomByIdMm(hiv, "certificate-pathologist-signature") >= 0.899, "HIV Pathologist signature image must have added clearance above the unchanged name baseline");
   assert(primitiveTopMm(hiv, "certificate-test-label") - primitiveBottomByIdMm(hiv, "certificate-test-header") >= NATIVE_REPORT_THEME.sectionInsets.resultBodyTopMm - 0.001, "Certificate result content must use the shared internal inset below its header");
 
   const urinalysis = pages.get("URINALYSIS")!;

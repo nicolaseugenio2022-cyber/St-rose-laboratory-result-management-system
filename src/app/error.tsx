@@ -26,6 +26,12 @@ export default function ErrorPage({
             An unexpected error occurred while processing your request. All patient session data remains safely persisted.
           </p>
         </div>
+        {error.digest ? (
+          <p className="text-[11px] text-slate-400">
+            Support reference:{" "}
+            <span className="select-all font-mono text-slate-500">{error.digest}</span>
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => reset()}

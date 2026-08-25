@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/Button";
  * failing layout does not render. (2) For a page failure under a healthy shell, show a
  * restrained in-shell retry state instead of the full-screen root boundary. Server error
  * objects are redacted by Next.js in production, so no client-side classification is attempted
- * and no raw error text is rendered.
+ * and no raw error text is rendered. The only correlation handle shown is the opaque `digest`
+ * hash Next.js attaches, and only when it supplies one (QA-09A).
  */
 export default function AppRouteGroupError({
   error,
@@ -36,6 +37,12 @@ export default function AppRouteGroupError({
         <p className="text-xs text-brand-text-muted">
           Something went wrong while loading this page. Please try again.
         </p>
+        {error.digest ? (
+          <p className="text-[11px] text-brand-text-muted">
+            Support reference:{" "}
+            <span className="select-all font-mono">{error.digest}</span>
+          </p>
+        ) : null}
         <div className="pt-2">
           <Button variant="primary" size="sm" onClick={() => reset()}>
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />

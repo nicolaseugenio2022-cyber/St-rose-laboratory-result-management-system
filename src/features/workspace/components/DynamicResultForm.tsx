@@ -99,7 +99,7 @@ export function DynamicResultForm({ spec, definition, report, availablePersonnel
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
       <section>
         <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-1.5"><FileSpreadsheet className="h-4 w-4 text-brand-primary" /><h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Laboratory Results Encoding</h3></div>
-        <div className="space-y-1">{sortedParameters.map((parameter) => {
+        <div className="divide-y divide-slate-200">{sortedParameters.map((parameter) => {
           const result = report.results.find((item) => item.parameterCode === parameter.parameterCode);
           const value = getEditableResultValue(parameter, result?.resultValue || "");
           const isSelected = (result as LaboratoryResultDomain | undefined)?.isSelected ?? true;

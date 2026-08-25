@@ -255,7 +255,12 @@ function composeResultGrid(
   });
   let cursorY = y + 5 + INSET.resultBodyTopMm;
   const sectionByParameter = new Map(report.resultSections.map((section) => [section.beforeParameterCode, section]));
-  for (const result of report.results.filter((candidate) => candidate.omission === "Render")) {
+  const renderedResults = report.results.filter((candidate) => candidate.omission === "Render");
+  // Separators are collected and flushed after the loop. A striped row begins exactly at the
+  // boundary above it, so a fill emitted later would paint over that hairline - fully in the
+  // Preview DOM, half of it in the PDF. Flushing last keeps every divider on top of every fill.
+  const rowSeparators: NativePagePrimitive[] = [];
+  renderedResults.forEach((result, index) => {
     const section = sectionByParameter.get(result.parameterCode);
     if (section) {
       cursorY += 1.4;
@@ -267,14 +272,27 @@ function composeResultGrid(
     const lines = resultCellLines(result, label, widths);
     const lineCount = Math.max(1, lines.label.length, lines.value.length, lines.reference.length);
     const height = lineCount * RESULT_LINE_MM;
-    const addLines = (id: string, values: string[], cellX: number, width: number, align: NativeTextAlignment, weight: "normal" | "bold" = "normal", fontSizePt: number = TYPE.resultLabelPt, color: string = BODY) => values.forEach((value, index) => primitives.push(text({
+    // Striping starts white: an even row keeps the page background and emits no primitive at all,
+    // so the only fill ever introduced is the already-approved tint. The rect is pushed before the
+    // row text and sits at the row's existing coordinates, so it costs no vertical space.
+    if (index % 2 === 1) {
+      primitives.push({ kind: "rect", id: `result-${result.parameterCode}-stripe`, x: PAGE_X, y: cursorY, width: PAGE_WIDTH, height, fill: COLOR.tealTint });
+    }
+    const addLines =(id: string, values: string[], cellX: number, width: number, align: NativeTextAlignment, weight: "normal" | "bold" = "normal", fontSizePt: number = TYPE.resultLabelPt, color: string = BODY) => values.forEach((value, index) => primitives.push(text({
       id: `${id}-line-${index + 1}`, text: value, x: cellX, y: cursorY + index * RESULT_LINE_MM + 0.25, width, height: RESULT_LINE_MM - 0.25, fontSizePt, fontWeight: weight, color, align,
     })));
     addLines(`result-${result.parameterCode}-label`, lines.label, PAGE_X + 1.5, widths[0] - 3, "left", "bold", TYPE.resultLabelPt);
     addLines(`result-${result.parameterCode}-value`, lines.value, PAGE_X + widths[0], widths[1], "center", "bold", TYPE.resultValuePt, COLOR.primaryDark);
     addLines(`result-${result.parameterCode}-reference`, lines.reference, PAGE_X + widths[0] + widths[1] + 1.5, widths[2] - 3, "center", "normal", TYPE.referencePt, COLOR.mutedText);
     cursorY += height;
-  }
+    // QA-08 reverses the C4.2 group-only separator rule: adjacent result rows are divided at the
+    // boundary they already share. The last row is closed by result-grid-bottom instead, so no
+    // separator follows it and cursorY never advances - every report bottom is unchanged.
+    if (index < renderedResults.length - 1) {
+      rowSeparators.push(line(`result-${result.parameterCode}-bottom`, PAGE_X, cursorY, PAGE_X + PAGE_WIDTH, cursorY, 0.12));
+    }
+  });
+  primitives.push(...rowSeparators);
   primitives.push(line("result-grid-bottom", PAGE_X, cursorY, PAGE_X + PAGE_WIDTH, cursorY, 0.12));
   return { primitives, bottomMm: cursorY };
 }

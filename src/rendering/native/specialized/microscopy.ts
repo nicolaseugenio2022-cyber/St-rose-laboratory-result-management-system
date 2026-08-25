@@ -74,19 +74,35 @@ function composeColumn(
   ];
   let cursorY = y + 4.6 + INSET.resultBodyTopMm;
   const results = new Map(report.results.map((result) => [result.parameterCode, result]));
-  for (const parameterCode of section.parameterCodes) {
-    const result = results.get(parameterCode);
-    if (!result || result.omission === "Omit") continue;
+  // QA-08: an omitted row reserves no space, so the rendered set has to be resolved before the
+  // loop - only then is the final rendered row known, and only that row may be left unseparated.
+  const renderedResults = section.parameterCodes
+    .map((parameterCode) => results.get(parameterCode))
+    .filter((result): result is ResolvedResultRenderModel => result !== undefined && result.omission !== "Omit");
+  // Flushed after the loop so a striped row can never paint over the hairline above it.
+  const rowSeparators: NativePagePrimitive[] = [];
+  renderedResults.forEach((result, index) => {
     const row = composeMicroscopyResultRow(
       result,
       x,
       cursorY,
       section.id,
-      definition.conditionalParameterCodes.includes(parameterCode)
+      definition.conditionalParameterCodes.includes(result.parameterCode)
     );
+    // Striping restarts at white in each column, so the two columns stay independently readable
+    // rather than inheriting a parity from whichever column happened to render more rows.
+    if (index % 2 === 1) {
+      primitives.push({ kind: "rect", id: `microscopy-${section.id}-${result.parameterCode}-stripe`, x, y: cursorY, width: COLUMN_WIDTH_MM, height: row.bottomMm - cursorY, fill: COLOR.tealTint });
+    }
     primitives.push(...row.primitives);
     cursorY = row.bottomMm;
-  }
+    // Divides adjacent declared results only. The final row is closed by the column bottom rule,
+    // and repeatable findings below are deliberately left undivided.
+    if (index < renderedResults.length - 1) {
+      rowSeparators.push(specializedLine(`microscopy-${section.id}-${result.parameterCode}-bottom`, x, cursorY, x + COLUMN_WIDTH_MM, cursorY, 0.12));
+    }
+  });
+  primitives.push(...rowSeparators);
   if (includeFindings) {
     for (const category of definition.repeatableFindingCategories) {
       const findings = (report.repeatableFindings[category] || []).filter((finding) => finding.value.trim());

@@ -245,7 +245,25 @@ async function main(): Promise<void> {
   assert(approximately(primitiveTopMm(cbc, "demographic-name-label") - primitiveTopMm(cbc, "demographics-top-rule"), NATIVE_REPORT_THEME.sectionInsets.demographicsTopMm + 0.25), "the first demographic labels must use only the shared internal top inset below their rule");
   assert(approximately(primitiveTopMm(cbc, "result-header-fill"), primitiveTopMm(cbc, "demographics-row-3-bottom")), "title-less CBC must not retain the reverted broad inter-section gap");
   assert(approximately(primitiveTopMm(cbc, "result-HEMOGLOBIN-label-line-1") - primitiveTopMm(cbc, "result-header-rule"), NATIVE_REPORT_THEME.sectionInsets.resultBodyTopMm + 0.25), "the first CBC result row must use the shared internal inset below the header rule");
-  assert(!cbc.primitives.some((primitive) => /^result-(?!grid-).+-bottom$/.test(primitive.id)), "result rows must not draw a rule after every parameter");
+  // QA-08 deliberately reverses the C4.2 group-only separator rule this assertion used to encode.
+  // It is replaced, not dropped: both composition paths must now positively carry one zero-height
+  // hairline at every INTERNAL result-row boundary and none after the final row, so the divider can
+  // never cost vertical space and can never be confused with the closing rule asserted below.
+  const cbcRenderedResultCount = cbcReport.results.filter((result) => result.omission === "Render").length;
+  const cbcGridBottomMm = primitiveTopMm(cbc, "result-grid-bottom");
+  const cbcRowSeparators = cbc.primitives.filter((primitive) => /^result-(?!grid-).+-bottom$/.test(primitive.id));
+  assert(cbcRenderedResultCount > 1 && cbcRowSeparators.length === cbcRenderedResultCount - 1 && cbcRowSeparators.every((primitive) => primitive.kind === "line" && primitive.color === NATIVE_REPORT_THEME.colors.separator && primitive.widthMm === 0.12 && primitive.y1 === primitive.y2 && primitive.y1 < cbcGridBottomMm), "the shared Standard result grid must divide adjacent result rows with a zero-height hairline at every internal boundary and none after the final result");
+
+  const urinalysisColumns = pages.get("URINALYSIS")!;
+  const microscopySectionIds = urinalysisColumns.primitives
+    .filter((primitive) => /^microscopy-.+-header-rule$/.test(primitive.id))
+    .map((primitive) => primitive.id.slice("microscopy-".length, -"-header-rule".length));
+  assert(microscopySectionIds.length === 2 && microscopySectionIds.every((sectionId) => {
+    const rowCount = urinalysisColumns.primitives.filter((primitive) => new RegExp(`^microscopy-${sectionId}-.+-label-line-1$`).test(primitive.id)).length;
+    const columnBottomMm = primitiveTopMm(urinalysisColumns, `microscopy-${sectionId}-bottom`);
+    const separators = urinalysisColumns.primitives.filter((primitive) => new RegExp(`^microscopy-${sectionId}-.+-bottom$`).test(primitive.id));
+    return rowCount > 1 && separators.length === rowCount - 1 && separators.every((primitive) => primitive.kind === "line" && primitive.color === NATIVE_REPORT_THEME.colors.separator && primitive.widthMm === 0.12 && primitive.y1 === primitive.y2 && primitive.y1 < columnBottomMm);
+  }), "each Urinalysis microscopy column must divide adjacent declared result rows with a zero-height hairline at every internal boundary and none after its final result");
   assert(cbc.primitives.some((primitive) => primitive.id === "result-grid-bottom"), "result groups must retain one closing rule");
   assert(textPrimitives(cbc).find((primitive) => primitive.id === "result-HEMOGLOBIN-value-line-1")?.fontSizePt === NATIVE_REPORT_THEME.typography.resultValuePt, "result values must use the strengthened hierarchy");
   assert(!cbc.primitives.some((primitive) => primitive.kind === "rect" && ["#8064A2", "#DFD8E8", "#F8A8B8"].includes(primitive.fill || "")), "CBC must not use legacy purple or dominant pink fills");

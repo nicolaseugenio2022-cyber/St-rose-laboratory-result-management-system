@@ -38,10 +38,14 @@ export function ParameterRow({
     <div
       data-parameter-row
       className={cn(
-        "grid grid-cols-1 gap-2 rounded-lg border px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center xl:grid-cols-[minmax(260px,1fr)_minmax(200px,280px)_minmax(56px,auto)_minmax(88px,auto)]",
+        // QA-08: one flat result list. The row owns no border, radius or shadow of its own - the
+        // hairline between rows is the divider drawn by the encoding list container, so a result
+        // can no longer be read against the wrong neighbouring row. Padding, grid tracks, type
+        // scale and responsive stacking are unchanged from the card treatment.
+        "grid grid-cols-1 gap-2 px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center xl:grid-cols-[minmax(260px,1fr)_minmax(200px,280px)_minmax(56px,auto)_minmax(88px,auto)]",
         isSelected
-          ? "border-slate-200 bg-transparent shadow-sm hover:border-slate-300"
-          : "border-slate-200/80 bg-slate-50/80 opacity-60"
+          ? "bg-transparent hover:bg-slate-50/70"
+          : "bg-slate-50/80 opacity-60"
       )}
     >
       <div className="flex min-w-0 items-start gap-2">

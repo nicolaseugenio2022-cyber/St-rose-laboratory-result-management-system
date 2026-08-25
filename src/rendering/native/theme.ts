@@ -20,6 +20,12 @@ export const NATIVE_REPORT_THEME = {
     text: "#0F172A",
     mutedText: "#475569",
     separator: "#D6E4E9",
+    // QA-04 semantic abnormal-marker tones: red H for High, royal blue L for Low. Both are
+    // print-safe at small bold sizes on white and on the tealTint stripe, and they stay separable
+    // in greyscale and for red-green colour vision. The H / L letter carries the meaning on its
+    // own; these only reinforce it.
+    abnormalHigh: "#B91C1C",
+    abnormalLow: "#1D4ED8",
     background: "#FFFFFF",
   },
   header: {

@@ -206,6 +206,107 @@ async function main(): Promise<void> {
 
   const cbcReport = resolved.reports.find((report) => report.templateCode === "CBC")!;
   const cbc = pages.get("CBC")!;
+
+  // QA-04 abnormal markers. The corpus above cannot prove the Low branch on its own - its only two
+  // Low outcomes sit on CBC, which suppresses markers - so one dedicated CHEM_8 fixture drives every
+  // outcome reachable on that template, and a marker-free twin of identical string lengths makes the
+  // geometry claim falsifiable rather than merely asserted.
+  const chem8Definition = ReportDefinitionRegistry.getDefinition("CHEM_8")!;
+  const markedInputs: Record<string, string> = {
+    FBS: "50",            // 70-110 -> Low
+    CHOLESTEROL: "150",   // < 200  -> Normal
+    TRIGLYCERIDES: "700", // 35-165 -> High
+    URIC_ACID: "",        //        -> NoEvaluation
+    SGPT: "abc",          //        -> Invalid
+    CREATININE: "1.0",    // 0.4-1.4 -> Normal
+  };
+  // Same character counts as the marked pair, so the twin differs only in outcome, never in wrapping.
+  const unmarkedInputs: Record<string, string> = { ...markedInputs, FBS: "90", TRIGLYCERIDES: "100" };
+  const chem8With = (inputs: Record<string, string>): ILaboratoryReport => {
+    const base = reportFor(chem8Definition);
+    return {
+      ...base,
+      results: base.results.map((result) => ({ ...result, resultValue: inputs[result.parameterCode] ?? result.resultValue })),
+    };
+  };
+  const markedModel = resolveDraftSessionRenderModel(sessionFor([chem8With(markedInputs)]));
+  const markedReport = markedModel.reports[0];
+  const markedPage = composeNativeLivePreviewReportPage(markedModel, markedReport);
+  const unmarkedModel = resolveDraftSessionRenderModel(sessionFor([chem8With(unmarkedInputs)]));
+  const unmarkedPage = composeNativeLivePreviewReportPage(unmarkedModel, unmarkedModel.reports[0]);
+
+  const markerPrimitives = (page: NativeComposedPage): NativeTextPrimitive[] =>
+    textPrimitives(page).filter((primitive) => primitive.id.endsWith("-indicator"));
+  const markerFor = (page: NativeComposedPage, parameterCode: string): NativeTextPrimitive[] =>
+    markerPrimitives(page).filter((primitive) => primitive.id === `result-${parameterCode}-indicator`);
+
+  const markedOutcomes = new Map(markedReport.results.map((result) => [result.parameterCode, result.evaluationOutcome]));
+  assert(
+    markedOutcomes.get("FBS") === "Low" && markedOutcomes.get("TRIGLYCERIDES") === "High"
+      && markedOutcomes.get("CHOLESTEROL") === "Normal" && markedOutcomes.get("CREATININE") === "Normal"
+      && markedOutcomes.get("URIC_ACID") === "NoEvaluation" && markedOutcomes.get("SGPT") === "Invalid",
+    `the QA-04 fixture must actually reach Low, High, Normal, NoEvaluation and Invalid or the marker assertions prove nothing - measured ${JSON.stringify(Object.fromEntries(markedOutcomes))}`
+  );
+
+  assert(markerFor(markedPage, "FBS").length === 1 && markerFor(markedPage, "FBS")[0].text === "L", "a Low result must render exactly one L marker");
+  assert(markerFor(markedPage, "TRIGLYCERIDES").length === 1 && markerFor(markedPage, "TRIGLYCERIDES")[0].text === "H", "a High result must render exactly one H marker");
+  assert(markerPrimitives(markedPage).length === 2, `Normal, Invalid and NoEvaluation results must render no marker - measured ${markerPrimitives(markedPage).map((primitive) => primitive.id).join(", ")}`);
+
+  const fbs = markedReport.results.find((result) => result.parameterCode === "FBS")!;
+  const fbsUnitOwned = displayOwnsUnit(fbs.formattedValue, fbs.unitDisplay) || displayOwnsUnit(fbs.referenceDisplay, fbs.unitDisplay);
+  const fbsExpectedValueText = fbsUnitOwned ? fbs.formattedValue : `${fbs.formattedValue} ${fbs.unitDisplay}`;
+  assert(compactDisplay(textForPrefix(markedPage, "result-FBS-value")) === compactDisplay(fbsExpectedValueText), "the marker must never be concatenated into the RESULT value text");
+
+  for (const marker of markerPrimitives(markedPage)) {
+    const parameterCode = marker.id.slice("result-".length, -"-indicator".length);
+    const valueLine = textPrimitives(markedPage).find((primitive) => primitive.id === `result-${parameterCode}-value-line-1`);
+    assert(valueLine, `${parameterCode} must still render its own RESULT value line beside the marker`);
+    assert(marker.fontWeight === "bold" && marker.text === marker.text.toLocaleUpperCase(), `${parameterCode} marker must be bold and uppercase`);
+    const expectedTone = marker.text === "H" ? NATIVE_REPORT_THEME.colors.abnormalHigh : NATIVE_REPORT_THEME.colors.abnormalLow;
+    assert(marker.color === expectedTone, `${parameterCode} marker must carry its semantic QA-04 tone`);
+    assert(marker.width != null && valueLine.width != null, `${parameterCode} marker and value line must both declare a measurable box`);
+    assert(marker.x >= valueLine.x && marker.x + marker.width <= valueLine.x + valueLine.width, `${parameterCode} marker must sit inside the existing RESULT column and create no fourth column`);
+    assert(approximately(nativePrimitiveBottomMm(marker), nativePrimitiveBottomMm(valueLine)), `${parameterCode} marker must share the value line's vertical box so the row gains no height`);
+  }
+
+  assert(markerPrimitives(unmarkedPage).length === 0, "the marker-free twin must carry no marker or it cannot isolate the marker's geometric cost");
+  assert(approximately(markedPage.contentBottomMm, unmarkedPage.contentBottomMm), `markers must not move contentBottomMm - marked ${markedPage.contentBottomMm}, unmarked ${unmarkedPage.contentBottomMm}`);
+  assert(approximately(primitiveBottomByIdMm(markedPage, "result-grid-bottom"), primitiveBottomByIdMm(unmarkedPage, "result-grid-bottom")), "the result grid must close at the same y with and without markers");
+
+  // QA-04 retires CBC suppression: CBC now participates in the shared H / L output policy.
+  const cbcRendered = cbcReport.results.filter((result) => result.omission === "Render");
+  const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
+  const cbcLows = cbcRendered.filter((result) => result.evaluationOutcome === "Low");
+  assert(cbcHighs.length > 0 && cbcLows.length > 0, `the CBC fixture must genuinely produce both High and Low outcomes or the marker coverage proves nothing - measured High ${cbcHighs.length}, Low ${cbcLows.length}`);
+  assert(markerPrimitives(cbc).length === cbcHighs.length + cbcLows.length, `CBC must render exactly one marker per High or Low result - expected ${cbcHighs.length + cbcLows.length}, measured ${markerPrimitives(cbc).length}`);
+  for (const result of cbcRendered) {
+    const markers = markerFor(cbc, result.parameterCode);
+    if (result.evaluationOutcome === "High") {
+      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+    } else if (result.evaluationOutcome === "Low") {
+      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+    } else {
+      assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
+    }
+  }
+  // Every CBC marker stays inside the RESULT column and shares its row's first value line, so no
+  // fourth column appears and no row grows.
+  for (const marker of markerPrimitives(cbc)) {
+    const parameterCode = marker.id.slice("result-".length, -"-indicator".length);
+    const valueLine = textPrimitives(cbc).find((primitive) => primitive.id === `result-${parameterCode}-value-line-1`);
+    assert(valueLine && marker.width != null && valueLine.width != null, `CBC ${parameterCode} marker and value line must both declare a measurable box`);
+    assert(marker.x >= valueLine.x && marker.x + marker.width <= valueLine.x + valueLine.width, `CBC ${parameterCode} marker must sit inside the existing RESULT column and create no fourth column`);
+    assert(approximately(nativePrimitiveBottomMm(marker), nativePrimitiveBottomMm(valueLine)), `CBC ${parameterCode} marker must share the value line's vertical box so the row gains no height`);
+  }
+  // The pre-QA-04 CBC geometry and grid contracts must survive the markers untouched.
+  assert(approximately(cbc.contentBottomMm, 130.65), `CBC contentBottomMm must remain exactly 130.65 mm after QA-04 - measured ${cbc.contentBottomMm}`);
+  // The three-column heading contract is already pinned below; not duplicated here.
+  const cbcStripes = cbc.primitives.filter((primitive) => /^result-.+-stripe$/.test(primitive.id));
+  assert(cbcStripes.length === Math.floor(cbcRendered.length / 2) && cbcStripes.every((primitive) => primitive.kind === "rect" && primitive.fill === NATIVE_REPORT_THEME.colors.tealTint), `CBC zebra striping must remain one tealTint fill on every second row - expected ${Math.floor(cbcRendered.length / 2)}, measured ${cbcStripes.length}`);
+  // No template may reintroduce a suppression exception. Placed after the CBC marker assertions on
+  // purpose: restoring CBC suppression must surface as a missing marker, not as a flag mismatch.
+  const suppressingDefinitions = definitions.filter((definition) => definition.suppressAbnormalIndicators === true);
+  assert(definitions.length === 17 && suppressingDefinitions.length === 0, `no registered definition may declare an active abnormal-indicator suppression exception - measured ${suppressingDefinitions.map((definition) => definition.templateCode).join(", ") || "none"}`);
   const at100 = renderToStaticMarkup(React.createElement(NativeLivePreviewPage, { resolvedSession: resolved, resolvedReport: cbcReport, reportTitle: "CBC", zoomLevel: 100 }));
   const at75 = renderToStaticMarkup(React.createElement(NativeLivePreviewPage, { resolvedSession: resolved, resolvedReport: cbcReport, reportTitle: "CBC", zoomLevel: 75 }));
   const dimensions100 = pageDimensions(at100);

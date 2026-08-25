@@ -14,7 +14,7 @@ import { numericRange, sexSpecificRange, unresolvedEvaluation, validEntryOnly } 
  * CBC: 10 parameters (Hemoglobin, Hematocrit, RBC Count, WBC Count, Platelet Count, Neutrophil, Lymphocyte, Eosinophil, Monocyte, Basophil).
  * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
  * Default Remarks: "TEST/S RECHECKED; RESULT/S VERIFIED" (Editable)
- * Abnormal indicators: Suppressed entirely (suppressAbnormalIndicators: true)
+ * Abnormal indicators: Shared QA-04 H / L output policy; CBC declares no suppression.
  * Patient Status: No Encoding demographic collection (demographicCollection: false). Static label reserved for layout.
  */
 export const CBC_DEFINITION: ClinicalReportDefinition = {
@@ -36,7 +36,6 @@ export const CBC_DEFINITION: ClinicalReportDefinition = {
   },
   examinationFamily: "Hematology",
   rendererFamily: "Tabular",
-  suppressAbnormalIndicators: true,
   parameters: [
     {
       parameterCode: "HEMOGLOBIN",

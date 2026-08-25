@@ -30,7 +30,7 @@
 - **Requested By Policy:** Populates Dr. Ralph Roland Asperas if empty; editable by staff.
 - **Patient Status Collection Policy:** Omitted / Not collected for Encoding UI (New Confirmed Client Decision).
 - **Patient Status Output Policy:** Static report header label preserved as report content contract (independent from demographic collection).
-- **Abnormal Indicator Policy:** Never permitted (suppressed entirely on print/PDF).
+- **Abnormal Indicator Policy:** Follows the universal QA-04 H / L output policy (INV-009), with no CBC exception. A `High` result prints a bold red `H` (`#B91C1C`); a `Low` result prints a bold royal-blue `L` (`#1D4ED8`); `Normal`, `Abnormal`, `Invalid`, `Entered` and `NoEvaluation` print nothing. The former "never permitted" prohibition is retired and CBC declares no `suppressAbnormalIndicators` flag.
 
 ### Parameters & Reference Intervals
 1. **Hemoglobin** (`HEMOGLOBIN`): Male `130–160`, Female `120–140` `g/L` (Precision: 0)
@@ -49,4 +49,4 @@
 
 ### Remarks & Output Rules
 - **Remarks Default:** `TEST/S RECHECKED; RESULT/S VERIFIED` (Editable by staff)
-- **Output-Specific Behavior:** Omit report title header on document; suppress abnormal indicators (* / H / L) entirely.
+- **Output-Specific Behavior:** Omit report title header on document; render the universal QA-04 H / L abnormal markers per INV-009. The former instruction to suppress abnormal indicators (* / H / L) entirely is retired.

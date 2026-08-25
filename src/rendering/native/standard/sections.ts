@@ -26,6 +26,10 @@ const BODY = COLOR.text;
 const DEMOGRAPHIC_VALUE_LINE_MM = 3.6;
 const DEMOGRAPHIC_LABEL_HEIGHT_MM = 2.4;
 const RESULT_LINE_MM = 4.55;
+// QA-04 abnormal marker geometry. The marker is right-aligned inside the existing RESULT column,
+// so it introduces no fourth column and leaves the value's wrapping width (widths[1] - 2) untouched.
+const RESULT_INDICATOR_WIDTH_MM = 3.2;
+const RESULT_INDICATOR_INSET_MM = 1.5;
 
 function text(options: Omit<NativeTextPrimitive, "kind" | "fontRole"> & { fontRole?: string }): NativeTextPrimitive {
   return { kind: "text", fontRole: options.fontRole ?? "body", ...options };
@@ -228,6 +232,21 @@ function resolvedResultPresentation(result: ResolvedResultRenderModel): string {
   return result.formattedValue ? `${result.formattedValue} ${unit}` : unit;
 }
 
+/**
+ * QA-04. The printed abnormal marker is a pure projection of the outcome the result already carries -
+ * `evaluationOutcome` is read, never recomputed, so a completed report renders exactly the outcome
+ * frozen into its snapshot. Only the two directional numeric outcomes are marked: Normal, Abnormal,
+ * Invalid, Entered and NoEvaluation deliberately return null, so an unevaluated or malformed value can
+ * never acquire a clinical marker (DOMAIN_MODEL INVARIANT 3). The policy is shared by every registered
+ * examination that can reach High or Low - CBC included - and the letter, not the tone, is what makes
+ * the marker readable in monochrome.
+ */
+function abnormalIndicator(result: ResolvedResultRenderModel): { text: "H" | "L"; color: string } | null {
+  if (result.evaluationOutcome === "High") return { text: "H", color: COLOR.abnormalHigh };
+  if (result.evaluationOutcome === "Low") return { text: "L", color: COLOR.abnormalLow };
+  return null;
+}
+
 function resultCellLines(result: ResolvedResultRenderModel, label: string, widths: [number, number, number]) {
   return {
     label: fixedLines(`result-${result.parameterCode}-label`, label, widths[0] - 3, TYPE.resultLabelPt),
@@ -284,6 +303,26 @@ function composeResultGrid(
     addLines(`result-${result.parameterCode}-label`, lines.label, PAGE_X + 1.5, widths[0] - 3, "left", "bold", TYPE.resultLabelPt);
     addLines(`result-${result.parameterCode}-value`, lines.value, PAGE_X + widths[0], widths[1], "center", "bold", TYPE.resultValuePt, COLOR.primaryDark);
     addLines(`result-${result.parameterCode}-reference`, lines.reference, PAGE_X + widths[0] + widths[1] + 1.5, widths[2] - 3, "center", "normal", TYPE.referencePt, COLOR.mutedText);
+    // QA-04 emits the marker as its own primitive rather than folding it into the value text: the
+    // RESULT cell stays byte-identical to `resolvedResultPresentation`, and the marker occupies the
+    // column's right inset instead of the value's wrapping width. It is pinned to the row's first
+    // line and reuses that line's exact vertical box, so its bottom equals the bottom of the value
+    // line already present - the row gains no height and contentBottomMm cannot move.
+    const indicator = report.suppressAbnormalIndicators ? null : abnormalIndicator(result);
+    if (indicator) {
+      primitives.push(text({
+        id: `result-${result.parameterCode}-indicator`,
+        text: indicator.text,
+        x: PAGE_X + widths[0] + widths[1] - RESULT_INDICATOR_INSET_MM - RESULT_INDICATOR_WIDTH_MM,
+        y: cursorY + 0.25,
+        width: RESULT_INDICATOR_WIDTH_MM,
+        height: RESULT_LINE_MM - 0.25,
+        fontSizePt: TYPE.referencePt,
+        fontWeight: "bold",
+        color: indicator.color,
+        align: "right",
+      }));
+    }
     cursorY += height;
     // QA-08 reverses the C4.2 group-only separator rule: adjacent result rows are divided at the
     // boundary they already share. The last row is closed by result-grid-bottom instead, so no

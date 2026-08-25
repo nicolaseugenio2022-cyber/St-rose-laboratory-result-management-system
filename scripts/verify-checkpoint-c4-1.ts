@@ -203,7 +203,27 @@ async function main(): Promise<void> {
   assert(!cbc.primitives.some((primitive) => primitive.id === "laboratory-logo" || primitive.id === "cbc-result-table"), "active CBC must contain no old-pilot primitive identifiers");
   assert(cbc.primitives.filter((primitive) => primitive.kind === "rect").every((primitive) => !primitive.fill || [NATIVE_REPORT_THEME.colors.tealTint, NATIVE_REPORT_THEME.colors.sectionAccent].includes(primitive.fill as typeof NATIVE_REPORT_THEME.colors.tealTint | typeof NATIVE_REPORT_THEME.colors.sectionAccent)), "active CBC rectangles must use only the approved native clinical-report accents");
   assert(!cbc.primitives.some((primitive) => primitive.id === "report-title"), "CBC must remain title-free");
-  assert(!/(^|\s)(HIGH|LOW|ABNORMAL|H|L)(\s|$)/m.test(pageText(cbc)), "CBC must not introduce abnormal output indicators");
+  // QA-04 retires the former CBC abnormal-indicator prohibition. CBC now follows the shared H / L
+  // output policy, so the old negative assertion is replaced by positive coverage rather than
+  // deleted: the fixture must genuinely reach both outcomes, and every marker is checked for its
+  // letter, its semantic token and its one-per-result count.
+  const cbcModel = resolved.reports.find((report) => report.templateCode === "CBC")!;
+  const cbcRendered = cbcModel.results.filter((result) => result.omission === "Render");
+  const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
+  const cbcLows = cbcRendered.filter((result) => result.evaluationOutcome === "Low");
+  assert(cbcHighs.length > 0 && cbcLows.length > 0, `the CBC fixture must genuinely produce both High and Low outcomes or the marker coverage proves nothing - measured High ${cbcHighs.length}, Low ${cbcLows.length}`);
+  const cbcMarkers = cbc.primitives.flatMap((primitive) => primitive.kind === "text" && primitive.id.endsWith("-indicator") ? [primitive] : []);
+  assert(cbcMarkers.length === cbcHighs.length + cbcLows.length, `CBC must render exactly one marker per High or Low result - expected ${cbcHighs.length + cbcLows.length}, measured ${cbcMarkers.length}`);
+  for (const result of cbcRendered) {
+    const markers = cbcMarkers.filter((primitive) => primitive.id === `result-${result.parameterCode}-indicator`);
+    if (result.evaluationOutcome === "High") {
+      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+    } else if (result.evaluationOutcome === "Low") {
+      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+    } else {
+      assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
+    }
+  }
   assert(textPrimitives(cbc).some((primitive) => primitive.id === "demographic-status-label" && primitive.text === "Status"), "CBC must retain exact static Status text");
 
   const representativeSources = {
@@ -321,6 +341,7 @@ async function main(): Promise<void> {
   assert(!/templateCode\s*(?:===|!==|==|!=)\s*["']/.test(presentationSource) && !/switch\s*\([^)]*templateCode/.test(presentationSource), "generic composers must contain no report-code branches");
   assert(!/(formula|evaluation-service|reference-display-resolver|patient-report-session-service)/i.test(presentationSource), "presentation modules must import no clinical or mutable-session services");
   assert(Object.values(NATIVE_REPORT_THEME.colors).includes("#0B6384") && Object.values(NATIVE_REPORT_THEME.colors).includes("#78AFC0"), "approved teal visual tokens must be centralized");
+  assert(NATIVE_REPORT_THEME.colors.abnormalHigh === "#B91C1C" && NATIVE_REPORT_THEME.colors.abnormalLow === "#1D4ED8", "the QA-04 semantic marker tones must remain the approved print-safe values");
 
   process.stdout.write(`C4.1 verification passed: 17 pages; families ${JSON.stringify(familyCounts)}; sparse bottoms ${JSON.stringify(sparseBottoms)}; compact 18 x 18 mm logo at x=15,y=4; upper-half, content, suffix, signature, overflow, and architecture contracts preserved.\n`);
 }

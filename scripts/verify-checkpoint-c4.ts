@@ -19,6 +19,7 @@ import {
   getNativeLivePreviewCompositionDefinition,
   nativePrimitiveBottomMm,
 } from "../src/rendering/native";
+import { NATIVE_REPORT_THEME } from "../src/rendering/native/theme";
 import type { NativeComposedPage, NativeTextPrimitive } from "../src/rendering/native/types";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -195,7 +196,27 @@ async function main(): Promise<void> {
 
   const cbcText = pageText(pages.get("CBC")!);
   assert(pages.get("CBC")!.compositionSource === "StandardAdaptiveTabular", "active CBC preview must not resolve to the legacy native pilot");
-  assert(!pages.get("CBC")!.primitives.some((primitive) => primitive.id === "report-title") && cbcText.includes("Status") && !/(^|\s)(HIGH|LOW|ABNORMAL|H|L)(\s|$)/m.test(cbcText), "CBC native preview rules must remain intact");
+  assert(!pages.get("CBC")!.primitives.some((primitive) => primitive.id === "report-title") && cbcText.includes("Status"), "CBC native preview rules must remain intact");
+  // QA-04 retires the former CBC abnormal-indicator prohibition that this assertion also carried.
+  // CBC now follows the shared H / L output policy, so the negative clause is replaced by positive
+  // coverage rather than dropped.
+  const cbcModel = resolvedDraft.reports.find((report) => report.templateCode === "CBC")!;
+  const cbcRendered = cbcModel.results.filter((result) => result.omission === "Render");
+  const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
+  const cbcLows = cbcRendered.filter((result) => result.evaluationOutcome === "Low");
+  assert(cbcHighs.length > 0 && cbcLows.length > 0, `the CBC fixture must genuinely produce both High and Low outcomes or the marker coverage proves nothing - measured High ${cbcHighs.length}, Low ${cbcLows.length}`);
+  const cbcMarkers = pages.get("CBC")!.primitives.flatMap((primitive) => primitive.kind === "text" && primitive.id.endsWith("-indicator") ? [primitive] : []);
+  assert(cbcMarkers.length === cbcHighs.length + cbcLows.length, `CBC must render exactly one marker per High or Low result - expected ${cbcHighs.length + cbcLows.length}, measured ${cbcMarkers.length}`);
+  for (const result of cbcRendered) {
+    const markers = cbcMarkers.filter((primitive) => primitive.id === `result-${result.parameterCode}-indicator`);
+    if (result.evaluationOutcome === "High") {
+      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+    } else if (result.evaluationOutcome === "Low") {
+      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+    } else {
+      assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
+    }
+  }
   assert(!pageText(pages.get("BLOOD_TYPING")!).includes("Dr."), "Blood Typing blank Requested By must remain blank");
   assert(normalizedPageText(pages.get("HIV_RESULT")!).includes("C4 Patient of C4 Edited Address was examined"), "HIV preview must use the resolved Patient Address");
   const urineText = pageText(pages.get("URINALYSIS")!);

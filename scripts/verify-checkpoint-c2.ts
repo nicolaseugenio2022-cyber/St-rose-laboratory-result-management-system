@@ -7,6 +7,7 @@ import type { RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
 import { resolveDraftSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
 import { createNativeReportPdf, type NativePdfAssetResolver } from "../src/rendering/native/native-pdf-exporter";
+import { NATIVE_REPORT_THEME } from "../src/rendering/native/theme";
 import type { NativeComposedPage, NativePagePrimitive, NativeTextPrimitive } from "../src/rendering/native/types";
 import {
   NativeCompositionOverflowError,
@@ -198,7 +199,27 @@ async function main(): Promise<void> {
   assert(cbcText.includes("Status") && !cbcText.includes("OutPatient"), "CBC must print static Status only");
   assert(cbcText.includes("DIFFERENTIAL COUNT"), "CBC differential section must survive");
   assert(cbcText.includes("MIXED CASE PATIENT") && cbcText.includes("MIXED CASE ADDRESS"), "CBC demographic casing must survive");
-  assert(!/(^|\s)(H|L|HIGH|LOW|ABNORMAL)(\s|$)/m.test(cbcText), "CBC must contain no abnormal output indicator");
+  // QA-04 retires the former CBC abnormal-indicator prohibition. CBC now follows the shared H / L
+  // output policy, so the old negative assertion is replaced by positive coverage rather than
+  // deleted: the fixture must genuinely reach both outcomes, and every marker is checked for its
+  // letter, its semantic token and its one-per-result count.
+  const cbcModel = resolved.reports.find((report) => report.templateCode === "CBC")!;
+  const cbcRendered = cbcModel.results.filter((result) => result.omission === "Render");
+  const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
+  const cbcLows = cbcRendered.filter((result) => result.evaluationOutcome === "Low");
+  assert(cbcHighs.length > 0 && cbcLows.length > 0, `the CBC fixture must genuinely produce both High and Low outcomes or the marker coverage proves nothing - measured High ${cbcHighs.length}, Low ${cbcLows.length}`);
+  const cbcMarkers = cbcPage.primitives.flatMap((primitive) => primitive.kind === "text" && primitive.id.endsWith("-indicator") ? [primitive] : []);
+  assert(cbcMarkers.length === cbcHighs.length + cbcLows.length, `CBC must render exactly one marker per High or Low result - expected ${cbcHighs.length + cbcLows.length}, measured ${cbcMarkers.length}`);
+  for (const result of cbcRendered) {
+    const markers = cbcMarkers.filter((primitive) => primitive.id === `result-${result.parameterCode}-indicator`);
+    if (result.evaluationOutcome === "High") {
+      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+    } else if (result.evaluationOutcome === "Low") {
+      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+    } else {
+      assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
+    }
+  }
 
   const hba = resolved.reports.find((report) => report.templateCode === "HBA1C")!;
   const hbaPage = pages.get("HBA1C")!;

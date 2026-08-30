@@ -1,0 +1,211 @@
+import React, { useState } from "react";
+import { HydratedTemplateSpec } from "@/services/interfaces";
+import { ILaboratoryReport, IPersonnel } from "@/domain/models/interfaces";
+import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
+import { ClinicalReportDefinition } from "@/domain/types/report-definition";
+import { RepeatableFindingsSection } from "./RepeatableFindingsSection";
+import { SignatorySelectionSection } from "./SignatorySelectionSection";
+import { TemplateRemarksSection } from "./TemplateRemarksSection";
+import { ReagentKitInfoSection } from "./ReagentKitInfoSection";
+import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronUp, PanelBottom } from "lucide-react";
+
+export interface EncodingReportFooterProps {
+  spec: HydratedTemplateSpec;
+  definition: ClinicalReportDefinition;
+  report: ILaboratoryReport;
+  availablePersonnel: IPersonnel[];
+  onChangeReport: (updatedReport: ILaboratoryReport) => void;
+}
+
+/**
+ * The docked report footer: signatories, remarks, kit information and additional findings.
+ *
+ * These sections used to be appended after the last parameter, so reaching them meant scrolling
+ * past the whole grid. Docked here they stay reachable at any scroll position, and collapsed they
+ * cost one slim bar instead of several hundred pixels.
+ *
+ * It is rendered by the Workspace as a sibling of the report card rather than inside it, which is
+ * what lets `position: sticky` work at all - the card sets `overflow-hidden` for its rounded
+ * header, and a sticky descendant of a clipping ancestor is silently inert.
+ *
+ * **This component relocates and summarises. It changes no behaviour.** The four sections are
+ * rendered exactly as they were, with the same props and the same change handlers; none of their
+ * files is modified. In particular the signatory section keeps its own accordion and its
+ * deliberately sibling - never nested - Confirm control, whose nesting once caused a hydration
+ * failure (`e48967a`).
+ */
+
+/**
+ * Collapsed-bar status, derived only from what the report actually carries.
+ *
+ * Signatory readiness is read from `report.signatories`, the shape that is actually persisted -
+ * never from the signatory section's local `isConfirmed` flag, which is inert and must not be
+ * promoted into a more prominent surface than it already occupies. This summary therefore states
+ * whether the required signatories are present, and claims nothing about acknowledgement.
+ */
+function signatoriesAssigned(report: ILaboratoryReport, spec: HydratedTemplateSpec): boolean {
+  const pathologists = report.signatories.filter((signatory) => signatory.role === "Pathologist").length;
+  const medtechs = report.signatories.filter((signatory) => signatory.role === "MedicalTechnologist").length;
+  return (
+    pathologists >= spec.signatoryRequirement.requiredPathologistsCount &&
+    medtechs >= spec.signatoryRequirement.requiredMedtechsCount
+  );
+}
+
+function kitInfoComplete(report: ILaboratoryReport): boolean {
+  const kit = report.reagentKitInfo;
+  return Boolean(kit?.lotNumber?.trim() && kit?.expirationDate?.trim());
+}
+
+function findingsCount(report: ILaboratoryReport): number {
+  const findings = report.encodingData?.repeatableFindings || {};
+  return Object.values(findings).reduce((total, entries) => total + (entries?.length || 0), 0);
+}
+
+/**
+ * One inline status item, not a pill. The wording is the signal and is unchanged; colour only
+ * reinforces it, so the row still reads correctly in greyscale. Amber marks outstanding
+ * required content. It never blocks and never validates.
+ */
+function SummaryChip({ label, isSatisfied, isRequired }: { label: string; isSatisfied: boolean; isRequired: boolean }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 whitespace-nowrap text-[11px]",
+        isSatisfied
+          ? "font-medium text-slate-600"
+          : isRequired
+            ? "font-semibold text-amber-800"
+            : "font-medium text-slate-500"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function EncodingReportFooter({
+  spec,
+  definition,
+  report,
+  availablePersonnel,
+  onChangeReport,
+}: EncodingReportFooterProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const hasFindings = (definition.repeatableFindings?.length || 0) > 0;
+  const assigned = signatoriesAssigned(report, spec);
+  const kitComplete = kitInfoComplete(report);
+  const findings = findingsCount(report);
+  const hasRemarks = Boolean(report.remarks && report.remarks.trim() !== "");
+
+  return (
+    <section
+      data-encoding-footer={definition.templateCode}
+      aria-label="Report footer"
+      className="sticky bottom-0 z-20 rounded-lg border border-slate-200 bg-white shadow-[0_-1px_2px_rgba(15,23,42,0.05)]"
+    >
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        aria-controls="encoding-footer-content"
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary/40"
+      >
+        <PanelBottom aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
+        <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+          Report Details
+        </span>
+
+        {/* Status items wrap at narrow widths rather than clipping; the divide rule gives them
+            structure without turning each one into a chip. */}
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-slate-200 [&>*:not(:first-child)]:pl-2">
+          <SummaryChip
+            label={assigned ? "Signatories assigned" : "Signatories incomplete"}
+            isSatisfied={assigned}
+            isRequired
+          />
+          {definition.requiresKitInfo && (
+            <SummaryChip
+              label={kitComplete ? "Kit info complete" : "Kit info incomplete"}
+              isSatisfied={kitComplete}
+              isRequired
+            />
+          )}
+          {definition.supportsRemarks && (
+            <SummaryChip label={hasRemarks ? "Has remarks" : "No remarks"} isSatisfied={hasRemarks} isRequired={false} />
+          )}
+          {hasFindings && (
+            <SummaryChip
+              label={findings === 1 ? "1 additional finding" : `${findings} additional findings`}
+              isSatisfied={findings > 0}
+              isRequired={false}
+            />
+          )}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
+          {isExpanded ? "Hide" : "Show"}
+          {isExpanded ? (
+            <ChevronDown aria-hidden="true" className="h-4 w-4" />
+          ) : (
+            <ChevronUp aria-hidden="true" className="h-4 w-4" />
+          )}
+        </span>
+      </button>
+
+      {/* Always mounted, hidden by CSS when collapsed. Unmounting would change behaviour rather
+          than presentation: SignatorySelectionSection owns a mount effect that reconciles its
+          selections into report.signatories, and a collapsed footer that never mounted it would
+          leave a report unsynchronised. display:none also keeps the hidden controls out of the
+          Tab order, so the collapsed bar is a single stop. */}
+      <div
+        id="encoding-footer-content"
+        className={cn(
+          // Bounded height so an expanded footer can never cover the grid it is docked beneath.
+          "max-h-[50vh] space-y-2.5 overflow-y-auto border-t border-slate-200 bg-slate-50/50 p-3",
+          !isExpanded && "hidden"
+        )}
+      >
+          {hasFindings && (
+            <RepeatableFindingsSection
+              specs={definition.repeatableFindings || []}
+              values={report.encodingData?.repeatableFindings || {}}
+              onChange={(category, entries) =>
+                onChangeReport(
+                  new LaboratoryReportDomain({
+                    ...report,
+                    encodingData: {
+                      ...(report.encodingData || {}),
+                      repeatableFindings: { ...(report.encodingData?.repeatableFindings || {}), [category]: entries },
+                    },
+                  })
+                )
+              }
+            />
+          )}
+          {definition.requiresKitInfo && (
+            <ReagentKitInfoSection
+              kitInfo={report.reagentKitInfo}
+              onChange={(reagentKitInfo) => onChangeReport(new LaboratoryReportDomain({ ...report, reagentKitInfo }))}
+            />
+          )}
+          {definition.supportsRemarks && (
+            <TemplateRemarksSection
+              remarks={report.remarks}
+              onChange={(remarks) => onChangeReport(new LaboratoryReportDomain({ ...report, remarks }))}
+            />
+          )}
+          <SignatorySelectionSection
+            templateCode={definition.templateCode}
+            signatories={report.signatories}
+            requiredPathologistsCount={spec.signatoryRequirement.requiredPathologistsCount}
+            requiredMedtechsCount={spec.signatoryRequirement.requiredMedtechsCount}
+            availablePersonnel={availablePersonnel}
+            onChange={(signatories) => onChangeReport(new LaboratoryReportDomain({ ...report, signatories }))}
+        />
+      </div>
+    </section>
+  );
+}

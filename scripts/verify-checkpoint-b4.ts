@@ -166,7 +166,11 @@ assert(auditedParameterCount === 74, "all 74 parameters have an explicit evaluat
 assert(ReportDefinitionRegistry.getAllDefinitions().every((definition) => definition.parameters.every((parameter) => parameter.evaluationPolicy.mode !== "QualitativeAutomatic")), "no qualitative clinical classification is invented without an approved rule");
 
 const demographics: PatientDemographics = { fullName: "Test Patient", age: 21, ageUnit: "years", sex: "Male", address: "", patientStatus: "" as PatientDemographics["patientStatus"], examinationDate: "2026-08-09", requestingPhysician: "" };
-const demographicsMarkup = renderToStaticMarkup(React.createElement(PatientDemographicsForm, { demographics, onChange: noOp }));
+// UX-10B3-3: the section is collapsible and auto-collapses once demographics are valid, and this
+// fixture is valid. The expanded state is therefore passed explicitly - these assertions are about
+// which demographic fields exist, not about the collapse default, and must not silently start
+// testing whatever that default happens to be. Collapsed coverage is asserted separately below.
+const demographicsMarkup = renderToStaticMarkup(React.createElement(PatientDemographicsForm, { demographics, onChange: noOp, isExpanded: true }));
 assert(!demographicsMarkup.includes("Patient Status"), "Patient Status is absent from the Encoding demographics DOM");
 assert(!demographicsMarkup.includes("Requesting Physician"), "legacy shared Requesting Physician is absent from demographics");
 assert(demographicsMarkup.includes(">Address<") && !demographicsMarkup.includes("Patient Address"), "shared demographic field label is exactly Address");
@@ -176,7 +180,7 @@ assert(true, "Patient Status and legacy shared physician are never required by d
 assert(initializeNewSessionAddress("") === DEFAULT_NEW_SESSION_ADDRESS, "new blank session initializes Address to STA. ROSA, NUEVA ECIJA");
 assert(initializeNewSessionAddress("Existing Patient Address") === "Existing Patient Address", "new-session initialization never overwrites an existing non-empty address");
 let editedDemographics: PatientDemographics = { ...demographics, address: DEFAULT_NEW_SESSION_ADDRESS };
-const formTree = PatientDemographicsForm({ demographics: editedDemographics, onChange: (updated) => { editedDemographics = updated; } });
+const formTree = PatientDemographicsForm({ demographics: editedDemographics, onChange: (updated) => { editedDemographics = updated; }, isExpanded: true });
 function findAddressControl(node: React.ReactNode): React.ReactElement<Record<string, unknown>> | null {
   if (!React.isValidElement(node)) return null;
   const element = node as React.ReactElement<Record<string, unknown>>;
@@ -192,6 +196,34 @@ const addressControl = findAddressControl(formTree);
 assert(addressControl !== null && addressControl.props.readOnly !== true && addressControl.props.disabled !== true, "Address remains fully editable/typeable");
 (addressControl!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "CABANATUAN CITY" } });
 assert(editedDemographics.address === "CABANATUAN CITY", "staff may replace the initialized Address value");
+// UX-10B3-3 collapsed state. Collapsing hides the editors, never the data, and must not
+// reintroduce a retired demographic or strand the operator without a way back to the fields.
+function findByProp(node: React.ReactNode, prop: string): React.ReactElement<Record<string, unknown>> | null {
+  if (!React.isValidElement(node)) return null;
+  const element = node as React.ReactElement<Record<string, unknown>>;
+  if (element.props[prop] !== undefined) return element;
+  for (const child of React.Children.toArray((element.props as { children?: React.ReactNode }).children)) {
+    const found = findByProp(child, prop);
+    if (found) return found;
+  }
+  return null;
+}
+const collapsedDemographics: PatientDemographics = { ...demographics, address: "STA. ROSA, NUEVA ECIJA" };
+const collapsedMarkup = renderToStaticMarkup(React.createElement(PatientDemographicsForm, { demographics: collapsedDemographics, onChange: noOp, isExpanded: false }));
+assert(!collapsedMarkup.includes("Patient Status") && !collapsedMarkup.includes("Requesting Physician") && !collapsedMarkup.includes("Patient Address"), "collapsed demographics reintroduce no retired demographic field");
+// Anchored to rendered element content, not to raw markup: the summary also carries the address
+// in a title attribute, and a bare substring check matched that attribute and stayed green when
+// the visible value was removed. Mutation proof caught it. Matching the whole joined line means
+// dropping any single demographic breaks this assertion.
+assert(collapsedMarkup.includes(">Test Patient<") && collapsedMarkup.includes(">21 y/o · Male · 2026-08-09 · STA. ROSA, NUEVA ECIJA<"), "collapsed demographics restate every demographic value, so collapsing hides the editors and not the data");
+assert(findAddressControl(PatientDemographicsForm({ demographics: collapsedDemographics, onChange: noOp, isExpanded: false })) === null, "collapsed demographics expose no editable Address control");
+const expansion: { requested: boolean | null } = { requested: null };
+const collapsedTree = PatientDemographicsForm({ demographics: collapsedDemographics, onChange: noOp, isExpanded: false, onToggleExpanded: (next) => { expansion.requested = next; } });
+const editControl = findByProp(collapsedTree, "data-demographics-edit");
+assert(editControl !== null, "collapsed demographics offer an Edit control back to the fields");
+(editControl!.props.onClick as () => void)();
+assert(expansion.requested === true && collapsedDemographics.address === "STA. ROSA, NUEVA ECIJA", "the Edit control requests expansion and mutates no demographic value");
+assert(findAddressControl(PatientDemographicsForm({ demographics: collapsedDemographics, onChange: noOp })) !== null, "an uncontrolled render defaults to expanded, so no caller hides demographics by omission");
 
 const sessionWithAddress = new PatientReportSessionAggregate({ id: "address-session", accessionNumber: "address-accession", demographics: { ...demographics, address: "Saved Draft Address" }, reports: [] });
 const firstReport = build("CBC");

@@ -8,9 +8,12 @@ import { IPersonnel, ILaboratoryReport } from "@/domain/models/interfaces";
 import { PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
 import { DynamicResultForm } from "./components/DynamicResultForm";
+import { EncodingReportFooter } from "./components/EncodingReportFooter";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
+import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Modal } from "@/components/ui/Modal";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 import {
   completeSessionAction,
@@ -24,13 +27,14 @@ import {
   fromSessionTransport,
   toSessionTransport,
 } from "@/features/server-boundary/session-transport";
-import { formatDateISO } from "@/lib/utils";
+import { cn, formatDateISO } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History } from "lucide-react";
+import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History, PanelLeftOpen } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
+import { getSessionEncodingProgress } from "./encoding/encoding-progress";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 import {
   clearWorkspaceRecovery,
@@ -41,6 +45,35 @@ import { useWorkspaceNavigationInterceptor } from "@/components/layout/workspace
 
 // Shared workspace container: fluid width with a readability cap (UX2-A).
 const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
+
+// Tabbable descendants of the catalog drawer. This follows the NavRail drawer precedent but
+// excludes tabindex="-1" from every branch, not only the [tabindex] one: the catalog's own
+// per-examination selection control is deliberately kept out of the Tab order, and matching it
+// here would make it the trap's last element - a boundary Tab never actually reaches, letting
+// focus escape the drawer. NavRail's selector is safe only because its drawer has no such nodes.
+const CATALOG_DRAWER_FOCUSABLE =
+  'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * True for a target where the browser already owns the arrow keys.
+ *
+ * Ctrl/Cmd+Arrow is the platform word-jump inside a text field, so the report-switch
+ * shortcut must not consume it there. Deliberately scoped to the arrow bindings only:
+ * Ctrl/Cmd+S and Ctrl/Cmd+Enter keep their existing suppression rules unchanged.
+ * `isContentEditable` is used rather than a `[contenteditable]` ancestor lookup because
+ * it reflects inherited editability and correctly rejects `contenteditable="false"`.
+ */
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  ) {
+    return true;
+  }
+  return target.isContentEditable;
+}
 
 const SharedRenderingEngine = dynamic(
   () =>
@@ -119,6 +152,24 @@ export function GuidedWorkspace({
   );
   const [reopenError, setReopenError] = useState<string | null>(null);
   const submissionInFlightRef = useRef(false);
+  const [isCatalogCollapsed, setIsCatalogCollapsed] = useState(false);
+  const catalogRailToggleRef = useRef<HTMLButtonElement>(null);
+  const catalogCollapseToggleRef = useRef<HTMLButtonElement>(null);
+  // Focus intent is recorded by the click itself, never inferred from render count. A mount-count
+  // guard cannot express this: Strict Mode replays effects, so the guard is already spent on the
+  // replay and the catalog steals focus on load. An intent that only a real activation can set is
+  // null on every mount and every replay, so neither can focus anything.
+  const catalogFocusIntentRef = useRef<"collapsed" | "expanded" | null>(null);
+  const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(true);
+  const hasAutoCollapsedDemographicsRef = useRef(false);
+  const catalogToggleRef = useRef<HTMLButtonElement>(null);
+  const catalogDrawerRef = useRef<HTMLDivElement>(null);
+  const continueEditingRef = useRef<HTMLButtonElement>(null);
+
+  // The catalog drawer only exists inside Encoding. Deriving its open state here rather
+  // than reading isMobileCatalogOpen directly keeps the dialog semantics, the focus trap
+  // and the shortcut suppression from ever disagreeing with what is actually on screen.
+  const isCatalogDrawerOpen = isMobileCatalogOpen && workspaceMode === "encoding";
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
@@ -135,6 +186,85 @@ export function GuidedWorkspace({
     setShowExitModal(false);
     router.push(exitDestination);
   }, [exitDestination, router]);
+
+  // The safe dismissal for the unsaved-changes dialog. Escape, the backdrop and the
+  // close control all resolve here, so no dismissal path can discard or persist work.
+  const handleContinueEditing = useCallback(() => {
+    setShowExitModal(false);
+  }, []);
+
+  const handleCloseCatalogDrawer = useCallback(() => {
+    setIsMobileCatalogOpen(false);
+  }, []);
+
+  // Dialog behaviour for the catalog drawer, following the NavRail drawer precedent:
+  // initial focus inside the panel, Tab/Shift+Tab contained, Escape dismisses, and focus
+  // returns to the toggle on close. The drawer keeps its own presentation, so it does not
+  // route through the shared centred Modal.
+  useEffect(() => {
+    if (!isCatalogDrawerOpen) return;
+
+    const catalogToggle = catalogToggleRef.current;
+    const drawer = catalogDrawerRef.current;
+    drawer?.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE)[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCloseCatalogDrawer();
+        return;
+      }
+
+      if (event.key !== "Tab" || !drawer) return;
+
+      const focusableElements = Array.from(
+        drawer.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE)
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      catalogToggle?.focus();
+    };
+  }, [handleCloseCatalogDrawer, isCatalogDrawerOpen]);
+
+  const handleCollapseCatalog = useCallback(() => {
+    catalogFocusIntentRef.current = "collapsed";
+    setIsCatalogCollapsed(true);
+  }, []);
+
+  const handleExpandCatalog = useCallback(() => {
+    catalogFocusIntentRef.current = "expanded";
+    setIsCatalogCollapsed(false);
+  }, []);
+
+  // Collapsing hides the control that was just activated and expanding unmounts it, so without a
+  // handoff the keyboard operator is dropped onto document.body mid-task. Focus moves to whichever
+  // control is now on screen, and only ever after a real activation: the intent is consumed here,
+  // so a Strict Mode replay of this effect finds nothing to act on.
+  useEffect(() => {
+    const intent = catalogFocusIntentRef.current;
+    if (!intent) return;
+    catalogFocusIntentRef.current = null;
+    if (intent === "collapsed") catalogRailToggleRef.current?.focus();
+    else catalogCollapseToggleRef.current?.focus();
+  }, [isCatalogCollapsed]);
 
   // Load all active hydrated template specs through the authenticated server boundary.
   useEffect(() => {
@@ -554,9 +684,57 @@ export function GuidedWorkspace({
     return allActiveTemplates.filter((spec) => selectedTemplateCodes.includes(spec.template.templateCode));
   }, [allActiveTemplates, selectedTemplateCodes]);
 
+  // Session-level encoding progress. The completion rule itself lives in encoding-progress.ts and
+  // is the same one the per-report meter draws, so the two can never disagree. Only the pairing is
+  // done here, from state the Workspace already holds: a selected examination whose report is not
+  // built yet, or whose definition does not resolve, stays in the denominator and counts as
+  // incomplete rather than silently shrinking the total.
+  const sessionProgress = useMemo(
+    () =>
+      getSessionEncodingProgress(
+        selectedSpecs.map((spec) => ({
+          report: session.reports.find((item) => item.templateCode === spec.template.templateCode),
+          definition: ReportDefinitionRegistry.getDefinition(spec.template.templateCode),
+        }))
+      ),
+    [selectedSpecs, session.reports]
+  );
+
+  // Presentation trigger only. It reuses the aggregate's own demographic rule instead of
+  // restating one here, so the collapse condition can never drift into a private definition of
+  // "valid". That rule is exposed as a throwing validator, so the predicate reads it that way.
+  const areDemographicsValid = useMemo(() => {
+    try {
+      session.validateDemographics();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [session]);
+
+  // Collapse once, the first time the required demographics are satisfied - including on load for
+  // a draft that already carries them. After that the operator owns the state through Edit, and
+  // the Workspace only ever forces it back open.
+  useEffect(() => {
+    if (hasAutoCollapsedDemographicsRef.current || !areDemographicsValid) return;
+    hasAutoCollapsedDemographicsRef.current = true;
+    setIsDemographicsExpanded(false);
+  }, [areDemographicsValid]);
+
+  // A validation failure must never be reported against a field the operator cannot see. This
+  // keys on any workspace validation error rather than only the two that carry a focus target:
+  // the completion service rejects demographics this component never focuses - a non-positive age
+  // among them - and erring toward revealing a clinical input is the safe direction.
+  useEffect(() => {
+    if (validationError) setIsDemographicsExpanded(true);
+  }, [validationError]);
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
   const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null || pendingModeChange !== null;
+  // The catalog drawer is a modal surface too, so workspace shortcuts stay suppressed while
+  // it is open. Kept separate from isWorkspaceDialogOpen, which additionally governs the
+  // navigation interceptor: the drawer must not change how link navigation is guarded.
+  const areWorkspaceShortcutsSuppressed = isWorkspaceDialogOpen || isCatalogDrawerOpen;
 
   useEffect(() => {
     const interceptNavigation = (href: string) => {
@@ -620,7 +798,7 @@ export function GuidedWorkspace({
 
   useEffect(() => {
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
-      if ((!event.ctrlKey && !event.metaKey) || event.defaultPrevented || isWorkspaceDialogOpen) return;
+      if ((!event.ctrlKey && !event.metaKey) || event.defaultPrevented || areWorkspaceShortcutsSuppressed) return;
       if (event.target instanceof HTMLTextAreaElement) return;
 
       if (event.key.toLowerCase() === "s") {
@@ -644,6 +822,9 @@ export function GuidedWorkspace({
       }
 
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // Arrow bindings only: inside a text field Ctrl/Cmd+Arrow is the platform
+      // word-jump, and switching reports out from under the caret would lose it.
+      if (isEditableShortcutTarget(event.target)) return;
       const currentIndex = selectedSpecs.findIndex(
         (spec) => spec.template.templateCode === activeTemplateCode
       );
@@ -657,7 +838,7 @@ export function GuidedWorkspace({
 
     window.addEventListener("keydown", handleWorkspaceShortcut);
     return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
-  }, [activeTemplateCode, handleSaveDraft, isDirty, isReplacementMode, isWorkspaceDialogOpen, requestCompleteConfirmation, requestReplaceConfirmation, saveStatus, selectedSpecs, session.status]);
+  }, [activeTemplateCode, areWorkspaceShortcutsSuppressed, handleSaveDraft, isDirty, isReplacementMode, requestCompleteConfirmation, requestReplaceConfirmation, saveStatus, selectedSpecs, session.status]);
 
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different
@@ -716,128 +897,151 @@ export function GuidedWorkspace({
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-100/60">
-      {/* Fixed Workspace Top Navigation Bar */}
-      <header className="h-14 bg-white border-b border-slate-200 shadow-sm px-4 flex items-center shrink-0 z-30">
+      {/* Fixed Workspace command bar. One 56px line: navigation, then session identity, then
+          the mode switch and the session actions. The patient leads because that is the context
+          every decision in this screen is made against; accession, status and Replacement Mode
+          sit under the name as metadata rather than as three competing pills above it. */}
+      <header className="h-14 bg-white border-b border-slate-200 px-4 flex items-center shrink-0 z-30">
         <div className={`${WORKSPACE_CONTAINER} flex items-center justify-between gap-3`}>
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Back to Dashboard Navigation Button */}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleBackToDashboard}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 shrink-0"
+              aria-label="Back to Dashboard"
               title="Return to Dashboard"
+              className="shrink-0 whitespace-nowrap px-2 text-slate-600"
             >
-              <ArrowLeft className="h-3.5 w-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Back to Dashboard</span>
-            </button>
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden md:inline">Back</span>
+            </Button>
 
             {/* Mobile Catalog Drawer Button */}
             <button
+              ref={catalogToggleRef}
               type="button"
               onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
-              className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              className="lg:hidden inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
               aria-label="Toggle Catalog"
+              aria-expanded={isCatalogDrawerOpen}
+              aria-controls="workspace-catalog-drawer"
             >
-              <Menu className="h-5 w-5" />
+              <Menu aria-hidden="true" className="h-5 w-5" />
             </button>
 
+            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-slate-200 sm:block" />
+
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-[11px] font-bold font-mono bg-blue-100 text-blue-800 rounded" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
+              <h1 className="truncate text-sm font-semibold leading-tight text-slate-900">
+                {session.demographics.fullName || "New Patient Visit Session"}
+              </h1>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-none">
+                <span className="shrink-0 font-mono font-semibold text-slate-500" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
                   {session.accessionNumber ?? "Not assigned"}
                 </span>
+                <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
                 <span
-                  className={`px-2 py-0.5 text-[11px] font-semibold rounded-full ${
-                    session.status === "Completed"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"
+                  className={`shrink-0 font-semibold uppercase tracking-wide ${
+                    session.status === "Completed" ? "text-emerald-700" : "text-amber-700"
                   }`}
                 >
                   {session.status}
                 </span>
                 {isReplacementMode && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                    <RefreshCw className="h-3 w-3" />
-                    Replacement Mode
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">
+                    <RefreshCw aria-hidden="true" className="h-3 w-3" />
+                    <span className="hidden sm:inline">Replacement Mode</span>
+                    <span className="sm:hidden">Replacement</span>
                   </span>
                 )}
               </div>
-              <h1 className="text-xs sm:text-sm font-bold text-slate-800 leading-tight mt-0.5 truncate">
-                {session.demographics.fullName || "New Patient Visit Session"}
-              </h1>
             </div>
           </div>
 
-          {/* Sticky Action Toolbar */}
+          {/* Session actions: mode switch, then the secondary save, then the primary action. */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Workspace View Mode Switcher */}
-            <div className="bg-slate-100 p-1 rounded-lg flex items-center gap-1 border border-slate-200">
+            {/* Workspace View Mode Switcher. A two-state control, so each button reports its own
+                pressed state and keeps a full accessible name when the label collapses. */}
+            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-lg bg-slate-100 p-0.5">
               <button
                 type="button"
                 onClick={() => setWorkspaceMode("encoding")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                aria-pressed={workspaceMode === "encoding"}
+                aria-label="Encoding"
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
                   workspaceMode === "encoding"
-                    ? "bg-white text-slate-800 shadow-sm"
+                    ? "bg-white text-slate-900 ring-1 ring-slate-200"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <Edit3 className="h-3.5 w-3.5" />
+                <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Encoding</span>
               </button>
               <button
                 type="button"
                 onClick={() => setWorkspaceMode("preview")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                aria-pressed={workspaceMode === "preview"}
+                aria-label="Live Preview"
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
                   workspaceMode === "preview"
-                    ? "bg-white text-slate-800 shadow-sm"
+                    ? "bg-white text-slate-900 ring-1 ring-slate-200"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <Eye className="h-3.5 w-3.5" />
+                <Eye aria-hidden="true" className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Live Preview</span>
               </button>
             </div>
 
+            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-slate-200 sm:block" />
+
             {/* Save Draft Action — a completed session under replacement has no draft path */}
             {!isReplacementMode && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={handleSaveDraft}
                 disabled={saveStatus === "saving" || !isDirty}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                  isDirty
-                    ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm"
-                    : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
+                aria-keyshortcuts="Control+S Meta+S"
+                className="shrink-0 whitespace-nowrap"
               >
-                <Save className="h-3.5 w-3.5" />
+                <Save aria-hidden="true" className="h-3.5 w-3.5" />
                 {saveStatus === "saving" ? "Saving..." : "Save Draft"}
-              </button>
+              </Button>
             )}
 
-            {/* Replace Completed Report Action */}
+            {/* Replace Completed Report Action. Kept hand-styled rather than routed through
+                Button: amber is this action's established meaning and no Button variant carries
+                it. Geometry matches size="sm" so it sits on the same baseline as its neighbours. */}
             {isReplacementMode && (
               <button
                 type="button"
                 onClick={requestReplaceConfirmation}
                 disabled={saveStatus === "saving"}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 rounded-lg shadow-sm transition-colors"
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                 {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
               </button>
             )}
 
             {/* Complete Session Action */}
             {session.status !== "Completed" && (
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={requestCompleteConfirmation}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+                className="shrink-0 whitespace-nowrap"
               >
-                <CheckCircle2 className="h-3.5 w-3.5" />
+                <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
                 Complete Session
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -880,31 +1084,85 @@ export function GuidedWorkspace({
       <main className={`flex-1 overflow-hidden p-3 sm:px-4 sm:py-3 xl:px-6 ${WORKSPACE_CONTAINER}`}>
         {workspaceMode === "encoding" ? (
           <div className="h-full flex flex-col lg:flex-row gap-3 items-stretch overflow-hidden">
-            {/* Desktop Left Sidebar: Fixed 280px width Independently Scrollable */}
-            <div className="hidden lg:block w-[280px] shrink-0 h-full overflow-hidden">
-              <ExaminationCatalog
-                allTemplates={allActiveTemplates}
-                selectedTemplateCodes={selectedTemplateCodes}
-                activeTemplateCode={activeTemplateCode}
-                onSelectTemplate={setActiveTemplateCode}
-                onToggleTemplateSelection={handleToggleTemplateSelection}
-              />
+            {/* Desktop Left Sidebar: 280px expanded, 48px rail collapsed. The catalog itself is
+                never unmounted - only hidden - so search text, expanded families, selections and
+                the active examination all survive a collapse/expand round trip. The state is
+                deliberately local and non-persistent, and the mobile drawer below never uses it. */}
+            <div
+              className={cn(
+                "hidden lg:flex shrink-0 h-full flex-col overflow-hidden transition-[width] duration-200 motion-reduce:transition-none",
+                isCatalogCollapsed ? "w-12" : "w-[280px]"
+              )}
+            >
+              {isCatalogCollapsed && (
+                <div className="flex h-full flex-col items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-2 shadow-sm">
+                  <button
+                    type="button"
+                    ref={catalogRailToggleRef}
+                    onClick={handleExpandCatalog}
+                    aria-label="Expand examination catalog"
+                    aria-expanded={false}
+                    aria-controls="workspace-desktop-catalog"
+                    title="Expand examination catalog"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+                  >
+                    <PanelLeftOpen aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                  {selectedTemplateCodes.length > 0 && (
+                    <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-blue-100 px-1 text-[11px] font-bold tabular-nums text-blue-800">
+                      {selectedTemplateCodes.length}
+                    </span>
+                  )}
+                  <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                    Catalog
+                  </span>
+                </div>
+              )}
+              <div id="workspace-desktop-catalog" className={cn("h-full min-h-0", isCatalogCollapsed && "hidden")}>
+                <ExaminationCatalog
+                  allTemplates={allActiveTemplates}
+                  selectedTemplateCodes={selectedTemplateCodes}
+                  activeTemplateCode={activeTemplateCode}
+                  onSelectTemplate={setActiveTemplateCode}
+                  onToggleTemplateSelection={handleToggleTemplateSelection}
+                  onCollapse={handleCollapseCatalog}
+                  catalogRegionId="workspace-desktop-catalog"
+                  collapseControlRef={catalogCollapseToggleRef}
+                />
+              </div>
             </div>
 
             {/* Mobile/Tablet Catalog Overlay Drawer */}
-            {isMobileCatalogOpen && (
-              <div className="fixed inset-0 z-50 bg-slate-900/50 flex lg:hidden">
-                <div className="w-80 max-w-full bg-white h-full p-4 overflow-y-auto">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-700 uppercase">Select Examinations</span>
+            {isCatalogDrawerOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
+                  onClick={handleCloseCatalogDrawer}
+                  aria-hidden="true"
+                />
+                {/* Drawer shell only. The catalog is the content and carries its own heading, so
+                    the shell prints no title of its own - two stacked titles for one panel read as
+                    a nested card. The close control stays the first focusable node, which is what
+                    the focus trap places initial focus on. */}
+                <div
+                  ref={catalogDrawerRef}
+                  id="workspace-catalog-drawer"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Examination Catalog"
+                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-slate-200 bg-slate-100/70 lg:hidden"
+                >
+                  <div className="flex shrink-0 items-center justify-end border-b border-slate-200 bg-white px-2 py-1.5">
                     <button
                       type="button"
-                      onClick={() => setIsMobileCatalogOpen(false)}
-                      className="p-1 text-slate-500 hover:text-slate-800"
+                      onClick={handleCloseCatalogDrawer}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+                      aria-label="Close Examination Catalog"
                     >
-                      <X className="h-5 w-5" />
+                      <X aria-hidden="true" className="h-5 w-5" />
                     </button>
                   </div>
+                  <div className="min-h-0 flex-1 p-2">
                   <ExaminationCatalog
                     allTemplates={allActiveTemplates}
                     selectedTemplateCodes={selectedTemplateCodes}
@@ -915,14 +1173,17 @@ export function GuidedWorkspace({
                     }}
                     onToggleTemplateSelection={handleToggleTemplateSelection}
                   />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-2.5 scroll-pt-16">
+            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-2.5 scroll-pt-16 scroll-pb-16">
               {/* Patient Demographics Header Card */}
               <PatientDemographicsForm
+                isExpanded={isDemographicsExpanded}
+                onToggleExpanded={setIsDemographicsExpanded}
                 demographics={session.demographics}
                 onChange={(updated) => {
                   setSession((previous) => {
@@ -943,16 +1204,41 @@ export function GuidedWorkspace({
               />
 
               {/* Single-Line Horizontal Scrollable Examination Tab Strip */}
-              {/* Persistent session context: patient identity + report tab strip (UX2-A) */}
-              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-3 py-1.5">
+              {/* Clinical context rail: the reference-range context and session progress the
+                  operator must not lose while scrolling, then the report tabs. Solid white and
+                  unblurred so scrolled result rows never show through and reduce legibility. */}
+              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
                 {session.demographics.sex && session.demographics.age > 0 && (
                   <span
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-slate-500 sm:inline-flex"
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-slate-600 sm:inline-flex"
                     title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
                   >
                     <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
                     {session.demographics.sex}, {session.demographics.age} y/o
                   </span>
+                )}
+                {sessionProgress.totalReports > 0 && (
+                  <span
+                    data-session-progress
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium text-slate-500 sm:inline-flex"
+                    title="Reports in this session with every selected result encoded"
+                  >
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className={
+                        sessionProgress.completedReports === sessionProgress.totalReports
+                          ? "h-3.5 w-3.5 text-emerald-600"
+                          : "h-3.5 w-3.5 text-slate-400"
+                      }
+                    />
+                    {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
+                  </span>
+                )}
+                {/* One restrained rule instead of a second row of pills: it separates the
+                    session context from the report tabs and disappears when neither meta item
+                    is on screen. */}
+                {(sessionProgress.totalReports > 0 || (session.demographics.sex && session.demographics.age > 0)) && (
+                  <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-slate-200 sm:block" />
                 )}
                 <SelectedReportsPanel
                   selectedSpecs={selectedSpecs}
@@ -967,15 +1253,24 @@ export function GuidedWorkspace({
 
               {/* Dynamic Result Form Dispatcher */}
               {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
-                <DynamicResultForm
-                  spec={activeSpec}
-                  definition={activeDefinition}
-                  report={activeReport}
-                  availablePersonnel={availablePersonnel}
-                  patientSex={session.demographics.sex || null}
-                  onChangeReport={handleReportChange}
-                  onRequestManualToAuto={handleRequestManualToAuto}
-                />
+                <>
+                  <DynamicResultForm
+                    definition={activeDefinition}
+                    report={activeReport}
+                    patientSex={session.demographics.sex || null}
+                    onChangeReport={handleReportChange}
+                    onRequestManualToAuto={handleRequestManualToAuto}
+                  />
+                  {/* Docked as a sibling of the report card, not inside it: the card clips with
+                      overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}
+                  <EncodingReportFooter
+                    spec={activeSpec}
+                    definition={activeDefinition}
+                    report={activeReport}
+                    availablePersonnel={availablePersonnel}
+                    onChangeReport={handleReportChange}
+                  />
+                </>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 py-6 text-center shadow-sm flex flex-col items-center justify-center my-3">
                   <div className="p-2.5 bg-blue-50 text-brand-primary rounded-full mb-2 border border-blue-100">
@@ -1059,55 +1354,58 @@ export function GuidedWorkspace({
       />
 
       {/* Unsaved Changes Exit Confirmation Modal */}
-      {showExitModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-amber-100 text-amber-700 shrink-0">
-                <AlertCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">Unsaved Changes in Workspace</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  You have unsaved changes in this visit session. What would you like to do before exiting?
-                </p>
-              </div>
-            </div>
+      <Modal
+        isOpen={showExitModal}
+        onClose={handleContinueEditing}
+        title="Unsaved Changes in Workspace"
+        description="You have unsaved changes in this visit session. What would you like to do before exiting?"
+        role="alertdialog"
+        initialFocusRef={continueEditingRef}
+        closeLabel="Continue editing"
+        className="max-w-md"
+      >
+        {/* One column at every width, order unchanged. The two exit paths are grouped and the
+            stay-here path is separated by a rule, so the choice reads as leave-or-stay instead of
+            three equal buttons. Variants are untouched: Discard stays an outline, never a solid
+            danger button, so the destructive path is never the loudest thing in the dialog. */}
+        <div className="flex flex-col gap-2">
+          {!isReplacementMode && (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleSaveDraftAndExit}
+              disabled={saveStatus === "saving"}
+              className="w-full justify-start gap-2.5"
+            >
+              <Save className="h-4 w-4" aria-hidden="true" />
+              Save Draft & Exit
+            </Button>
+          )}
 
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-              {!isReplacementMode && (
-                <button
-                  type="button"
-                  onClick={handleSaveDraftAndExit}
-                  disabled={saveStatus === "saving"}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
-                >
-                  <Save className="h-4 w-4" />
-                  Save Draft & Exit
-                </button>
-              )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleDiscardAndExit}
+            disabled={saveStatus === "saving"}
+            className="w-full justify-start gap-2.5"
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            Discard Changes & Exit
+          </Button>
 
-              <button
-                type="button"
-                onClick={handleDiscardAndExit}
-                disabled={saveStatus === "saving"}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                Discard Changes & Exit
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowExitModal(false)}
-                className="w-full inline-flex items-center justify-center px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Continue Editing
-              </button>
-            </div>
+          <div className="mt-1 border-t border-slate-200 pt-2">
+            <Button
+              ref={continueEditingRef}
+              type="button"
+              variant="ghost"
+              onClick={handleContinueEditing}
+              className="w-full justify-start gap-2.5"
+            >
+              Continue Editing
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

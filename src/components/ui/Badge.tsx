@@ -7,7 +7,9 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 export function Badge({ className, variant = "neutral", size = "md", children, ...props }: BadgeProps) {
-  const baseStyles = "inline-flex items-center font-semibold rounded-full transition-colors duration-150";
+  // Square-cornered like StatusBadge, so the system has one badge shape. A pill is reserved
+  // for shapes that mean "bounded selector", not applied to every short label.
+  const baseStyles = "inline-flex items-center whitespace-nowrap rounded-md font-semibold transition-colors";
 
   const variants = {
     success: "bg-brand-success-bg text-brand-success border border-brand-success-border",
@@ -20,8 +22,8 @@ export function Badge({ className, variant = "neutral", size = "md", children, .
   };
 
   const sizes = {
-    sm: "px-2 py-0.5 text-[11px]",
-    md: "px-2.5 py-0.5 text-xs",
+    sm: "px-1.5 py-0.5 text-[10px]",
+    md: "px-2 py-0.5 text-[11px]",
   };
 
   return (

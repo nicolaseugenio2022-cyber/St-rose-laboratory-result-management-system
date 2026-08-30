@@ -24,7 +24,7 @@ export interface ComputedInputProps {
  *
  * It owns exactly one ParameterRow and swaps the field inside it. Manual does not delegate to
  * NumericTextInput, because that component owns a ParameterRow of its own and nesting them would
- * duplicate the whole four-column row; the shared clinical rules are reused through the resolver's
+ * duplicate the whole five-column row; the shared clinical rules are reused through the resolver's
  * evaluation instead, which is what already produces `evaluationOutcome` here.
  *
  * The declarative control type stays "Computed" in both modes - the parameter really is
@@ -57,7 +57,7 @@ export function ComputedInput({
       data-calculation-mode-switch={calculationMode}
       onClick={() => onRequestModeChange?.(isManual ? "Auto" : "Manual")}
       className={cn(
-        "inline-flex items-center gap-1 rounded border px-1.5 text-[9px] font-bold uppercase transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20",
+        "inline-flex items-center gap-1 rounded border px-1.5 text-[11px] font-bold uppercase transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20",
         isManual
           ? "border-amber-300 bg-amber-100 text-amber-800 hover:border-amber-400"
           : "border-blue-200 bg-blue-100 text-blue-700 hover:border-blue-300"
@@ -67,7 +67,7 @@ export function ComputedInput({
       {isManual ? "Manual" : "Auto"}
     </button>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-100 px-1.5 text-[9px] font-bold uppercase text-blue-700"><Lock className="h-3 w-3" />Auto-Calculated</span>
+    <span className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-100 px-1.5 text-[11px] font-bold uppercase text-blue-700"><Lock className="h-3 w-3" />Auto-Calculated</span>
   );
 
   const helpText = !supportsManualEntry
@@ -85,7 +85,7 @@ export function ComputedInput({
     validationMessage={validationMessage || undefined}
     validationMessageId={validationMessage ? errorId : undefined}
     labelAdornment={modeControl}
-    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[10px] font-medium", isManual ? "text-amber-700" : "text-blue-600")}><Info className={cn("h-3 w-3 shrink-0", isManual ? "text-amber-600" : "text-blue-500")} />{helpText}</span>}
+    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-amber-700" : "text-blue-600")}><Info className={cn("h-3 w-3 shrink-0", isManual ? "text-amber-600" : "text-blue-500")} />{helpText}</span>}
   >
     {isManual ? (
       <input
@@ -102,7 +102,7 @@ export function ComputedInput({
         onChange={(event) => onChange?.(event.target.value, evaluationOutcome)}
         placeholder="Enter result..."
         className={cn(
-          "w-full rounded-md border px-2.5 py-1 text-xs font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
+          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
           evaluationOutcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-slate-300 bg-white text-slate-900"
         )}
       />
@@ -119,7 +119,7 @@ export function ComputedInput({
         disabled
         aria-invalid={evaluationOutcome === "Invalid"}
         aria-describedby={validationMessage ? errorId : undefined}
-        className="w-full cursor-not-allowed rounded-md border border-blue-300 bg-blue-100/70 px-2.5 py-1 text-xs font-bold font-mono text-blue-900 placeholder:font-normal placeholder:text-blue-400"
+        className="h-8 w-full cursor-not-allowed rounded-md border border-blue-300 bg-blue-100/70 px-2.5 text-sm font-bold font-mono text-blue-900 placeholder:font-normal placeholder:text-blue-400"
       />
     )}
   </ParameterRow>;

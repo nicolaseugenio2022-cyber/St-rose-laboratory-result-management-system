@@ -141,7 +141,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 transition-opacity"
+        className="fixed inset-0 bg-slate-900/50 transition-opacity"
         onClick={dismissible ? onClose : undefined}
         aria-hidden="true"
       />
@@ -151,7 +151,7 @@ export function Modal({
         ref={dialogRef}
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-xl border border-brand-border bg-brand-surface p-6 shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+          "relative z-10 w-full max-w-lg rounded-lg border border-brand-border bg-brand-surface p-5 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
           className
         )}
         role={role}
@@ -159,9 +159,9 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
       >
-        <div className="flex items-start justify-between border-b border-brand-border-subtle pb-4">
+        <div className="flex items-start justify-between gap-3 border-b border-brand-border-subtle pb-3">
           <div>
-            <h3 id={titleId} className="text-base font-bold text-brand-text">
+            <h3 id={titleId} className="text-sm font-semibold text-brand-text">
               {title}
             </h3>
             {description && (
@@ -173,14 +173,14 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+            className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             aria-label={closeLabel}
           >
-            <X className="h-5 w-5" aria-hidden="true" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="pt-4">{children}</div>
+        <div className="pt-3">{children}</div>
       </div>
     </div>
   );

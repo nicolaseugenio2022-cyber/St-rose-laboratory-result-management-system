@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useId } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
-import { Search, ChevronDown, ChevronRight, Check, Plus, FlaskConical, Stethoscope, Microscope, ShieldCheck, HeartPulse, X } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
+import { Search, SearchX, ChevronDown, ChevronRight, Check, Plus, FlaskConical, Stethoscope, Microscope, ShieldCheck, HeartPulse, X, PanelLeftClose } from "lucide-react";
 
 export interface ExaminationCatalogProps {
   allTemplates: HydratedTemplateSpec[];
@@ -8,21 +11,30 @@ export interface ExaminationCatalogProps {
   activeTemplateCode: string | null;
   onSelectTemplate: (templateCode: string) => void;
   onToggleTemplateSelection: (templateCode: string) => void;
+  /**
+   * Desktop rail collapse. Optional by design: the mobile drawer renders this catalog without it
+   * and therefore shows no collapse control, so the drawer keeps exactly the UX-10B1 behaviour.
+   */
+  onCollapse?: () => void;
+  /** Id of the region the collapse control governs, so its aria-controls matches the rail control. */
+  catalogRegionId?: string;
+  /** Lets the Workspace move focus onto this control after an expand. */
+  collapseControlRef?: React.Ref<HTMLButtonElement>;
 }
 
-const FAMILY_ICONS: Record<string, React.ReactNode> = {
-  Hematology: <FlaskConical className="h-4 w-4 text-red-500" />,
-  "Clinical Chemistry": <Stethoscope className="h-4 w-4 text-blue-500" />,
-  "Clinical Microscopy": <Microscope className="h-4 w-4 text-amber-500" />,
-  "Serology & Immunology": <ShieldCheck className="h-4 w-4 text-emerald-500" />,
-  "Blood Bank": <HeartPulse className="h-4 w-4 text-rose-500" />,
-};
+/**
+ * One monochrome family glyph. The icons differentiate by shape, not by hue: a five-colour
+ * family palette competed with the only colours in this panel that carry meaning, which are
+ * the active and selected row states.
+ */
+const FAMILY_ICON_CLASS = "h-4 w-4 shrink-0 text-slate-500";
 
-const RENDERER_DISPLAY_LABELS: Record<string, string> = {
-  Tabular: "Tabular",
-  SimpleResult: "Simple",
-  DiagnosticGrid: "Diagnostic",
-  NarrativeCertificate: "Narrative",
+const FAMILY_ICONS: Record<string, React.ReactNode> = {
+  Hematology: <FlaskConical aria-hidden="true" className={FAMILY_ICON_CLASS} />,
+  "Clinical Chemistry": <Stethoscope aria-hidden="true" className={FAMILY_ICON_CLASS} />,
+  "Clinical Microscopy": <Microscope aria-hidden="true" className={FAMILY_ICON_CLASS} />,
+  "Serology & Immunology": <ShieldCheck aria-hidden="true" className={FAMILY_ICON_CLASS} />,
+  "Blood Bank": <HeartPulse aria-hidden="true" className={FAMILY_ICON_CLASS} />,
 };
 
 const ALIASES: Record<string, string[]> = {
@@ -51,9 +63,19 @@ export function ExaminationCatalog({
   activeTemplateCode,
   onSelectTemplate,
   onToggleTemplateSelection,
+  onCollapse,
+  catalogRegionId,
+  collapseControlRef,
 }: ExaminationCatalogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Two catalogs can be in the DOM at once - the CSS-hidden desktop instance and the mobile
+  // drawer instance - so every id this component mints has to be scoped to its own instance or
+  // the label and aria-controls references resolve to the wrong catalog.
+  const instanceId = useId();
+  const searchInputId = `catalog-search-${instanceId}`;
+  const isSearchActive = searchQuery.trim().length > 0;
 
   const groupedTemplates = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -70,6 +92,8 @@ export function ExaminationCatalog({
       const code = spec.template.templateCode;
       const aliases = ALIASES[code] || [];
 
+      // Renderer family stays in the predicate even though the row no longer prints it: it remains
+      // a searchable term, which is the only thing the badge's removal must not cost.
       const matchesSearch =
         query === "" ||
         code.toLowerCase().includes(query) ||
@@ -90,6 +114,11 @@ export function ExaminationCatalog({
   }, [allTemplates, searchQuery]);
 
   const toggleFamilyCollapse = (family: string) => {
+    // A search forces every matching family open, so a toggle while searching could only record a
+    // preference the operator never sees applied - and it would then surface as an unexplained
+    // change the moment they clear the query. The control is disabled during a search; this guard
+    // makes the invariant hold regardless of how the control is rendered.
+    if (isSearchActive) return;
     setCollapsedFamilies((prev) => ({ ...prev, [family]: !prev[family] }));
   };
 
@@ -98,168 +127,195 @@ export function ExaminationCatalog({
   }, [groupedTemplates]);
 
   const selectedCount = selectedTemplateCodes.length;
-  const isSearchActive = searchQuery.trim().length > 0;
+
+  // Clearing returns focus to the field the control belongs to. The clear button unmounts the
+  // moment the query empties, so without this the operator's focus would fall back to the body.
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    searchInputRef.current?.focus();
+  };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden">
-      {/* Header & Search Bar with 2-Level Visual Hierarchy */}
-      <div className="p-3 border-b border-slate-100 bg-slate-50/70 shrink-0 space-y-2">
-        <div>
-          <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <FlaskConical className="h-4 w-4 text-brand-primary" />
-            Examination Catalog
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+      {/* Header and search stay fixed; only the results list below scrolls. */}
+      <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <FlaskConical aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+            Examination catalog
           </h3>
-          <p className="text-[11px] font-medium text-slate-400 font-mono mt-0.5 pl-5">
-            {isSearchActive
-              ? `Showing ${totalMatchingTemplates} of ${allTemplates.length} examinations · ${selectedCount} selected`
-              : `${Math.max(0, allTemplates.length - selectedCount)} Available · ${selectedCount} Selected`}
-          </p>
+          {onCollapse && (
+            <button
+              type="button"
+              ref={collapseControlRef}
+              onClick={onCollapse}
+              aria-label="Collapse examination catalog"
+              aria-expanded
+              aria-controls={catalogRegionId}
+              className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+            >
+              <PanelLeftClose aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        {/* Enhanced Search Input with Clear Action */}
-        <div className="relative">
-          <Search aria-hidden="true" className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400/80" />
+        {/* One quiet operational line rather than a row of count badges. */}
+        <p className="mt-0.5 truncate text-[11px] text-slate-500">
+          {isSearchActive
+            ? `${totalMatchingTemplates} matching · ${selectedCount} selected`
+            : `${allTemplates.length} examinations · ${selectedCount} selected`}
+        </p>
+
+        <div className="relative mt-2">
+          <label htmlFor={searchInputId} className="sr-only">
+            Search examinations
+          </label>
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
           <input
+            id={searchInputId}
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search examinations..."
-            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50/60 border border-slate-200/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary/60 transition-colors placeholder:text-slate-500 font-medium text-slate-700"
+            placeholder="Name, code, or keyword"
+            className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-8 text-xs font-medium text-slate-700 transition-colors placeholder:text-slate-400 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
           />
-          {searchQuery && (
+          {isSearchActive && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-md transition-colors"
-              title="Clear search"
+              onClick={handleClearSearch}
+              aria-label="Clear search"
+              className="absolute right-1.5 top-1.5 inline-flex items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
             >
-              <X className="h-3 w-3" />
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Dynamic Family Groups Container (+4px vertical spacing between categories) */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {Object.entries(groupedTemplates).map(([family, specs]) => {
-          if (specs.length === 0) return null;
-          const isCollapsed = collapsedFamilies[family];
-          const selectedInFamily = specs.filter((s) => selectedTemplateCodes.includes(s.template.templateCode)).length;
-          const isAllSelected = selectedInFamily === specs.length && specs.length > 0;
-          const isPartialSelected = selectedInFamily > 0 && selectedInFamily < specs.length;
+      {/* scroll-pt clears the sticky family header, so a row reached by keyboard is never parked
+          underneath it (WCAG 2.2 Focus Not Obscured). */}
+      <div className="flex-1 overflow-y-auto scroll-pt-10">
+        {totalMatchingTemplates === 0 ? (
+          allTemplates.length === 0 ? (
+            <EmptyState
+              icon={FlaskConical}
+              title="No examinations available"
+              description="No active examination templates are published in the registry."
+            />
+          ) : (
+            <EmptyState
+              icon={SearchX}
+              title="No examinations match"
+              description={`Nothing in the catalog matches “${searchQuery.trim()}”.`}
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={handleClearSearch}>
+                  Clear search
+                </Button>
+              }
+            />
+          )
+        ) : (
+          Object.entries(groupedTemplates).map(([family, specs]) => {
+            if (specs.length === 0) return null;
+            // A family the operator collapsed must not swallow its own search matches. The
+            // operator preference is read, never written, while a search is active, so clearing
+            // the query restores exactly the collapsed/expanded arrangement they had before.
+            const isCollapsedByOperator = Boolean(collapsedFamilies[family]);
+            const isCollapsed = isSearchActive ? false : isCollapsedByOperator;
+            const contentId = `catalog-family-${instanceId}-${family.replace(/\W+/g, "-").toLowerCase()}`;
+            const selectedInFamily = specs.filter((s) => selectedTemplateCodes.includes(s.template.templateCode)).length;
+            const isAllSelected = selectedInFamily === specs.length && specs.length > 0;
 
-          const categoryHeaderClass = isAllSelected
-            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-emerald-50/95 border-l-4 border-l-emerald-500 border-b border-emerald-200/80 flex items-center justify-between text-left transition-all shadow-sm"
-            : isPartialSelected
-            ? "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-blue-50/95 border-l-4 border-l-brand-primary border-b border-blue-200/80 flex items-center justify-between text-left transition-all shadow-sm"
-            : "sticky top-0 z-10 w-full min-h-[38px] px-2 py-1 bg-slate-100/95 backdrop-blur-sm hover:bg-slate-200/90 border-b border-slate-200 flex items-center justify-between text-left transition-all shadow-sm";
-
-          const statsText = isAllSelected
-            ? `All ${specs.length} examinations selected ✓`
-            : isPartialSelected
-            ? `${specs.length} examinations · ${selectedInFamily} selected`
-            : `${specs.length} examinations`;
-
-          return (
-            <div key={family} className="border border-slate-200/70 rounded-lg overflow-hidden bg-slate-50/40">
-              {/* Sticky Progressive Category Header Accordion (Two-Level Compact Layout) */}
-              <button
-                type="button"
-                onClick={() => toggleFamilyCollapse(family)}
-                className={categoryHeaderClass}
-              >
-                <div className="flex flex-col min-w-0 flex-1">
-                  {/* Line 1: Category Icon + Primary Title (Vertically Centered Baseline) */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="flex items-center justify-center shrink-0">
-                      {FAMILY_ICONS[family] || <FlaskConical className="h-3.5 w-3.5 text-slate-600 shrink-0" />}
-                    </div>
-                    <span
-                      className={`text-xs font-extrabold tracking-tight leading-none ${
-                        isAllSelected
-                          ? "text-emerald-950"
-                          : isPartialSelected
-                          ? "text-blue-950"
-                          : "text-slate-900"
-                      }`}
-                    >
-                      {family}
-                    </span>
-                  </div>
-
-                  {/* Line 2: Secondary Descriptive Metadata Subtext (Subtle Contrast) */}
-                  <p
-                    className={`text-[9.5px] font-mono mt-0.25 pl-6 ${
-                      isAllSelected
-                        ? "font-bold text-emerald-700"
-                        : isPartialSelected
-                        ? "font-bold text-blue-700"
-                        : "font-medium text-slate-500"
-                    }`}
+            return (
+              <div key={family}>
+                {/* Family disclosure: sticky, compact, solid. No blur, no per-family card. */}
+                <button
+                  type="button"
+                  onClick={() => toggleFamilyCollapse(family)}
+                  disabled={isSearchActive}
+                  aria-expanded={!isCollapsed}
+                  aria-controls={contentId}
+                  title={isSearchActive ? "Expanded while a search is active" : undefined}
+                  className="sticky top-0 z-10 flex w-full items-center gap-2 border-y border-slate-200 bg-slate-100 px-2.5 py-1.5 text-left transition-colors hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary/40 disabled:cursor-default disabled:hover:bg-slate-100"
+                >
+                  <span className="flex shrink-0 items-center justify-center">
+                    {FAMILY_ICONS[family] || <FlaskConical aria-hidden="true" className="h-4 w-4 text-slate-500" />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">
+                    {family}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 font-mono text-[11px] tabular-nums",
+                      isAllSelected ? "font-semibold text-emerald-700" : "text-slate-500"
+                    )}
                   >
-                    {statsText}
-                  </p>
-                </div>
+                    {`${selectedInFamily}/${specs.length}`}
+                  </span>
+                  {isCollapsed ? (
+                    <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
+                  ) : (
+                    <ChevronDown aria-hidden="true" className={cn("h-4 w-4 shrink-0", isSearchActive ? "text-slate-300" : "text-slate-400")} />
+                  )}
+                </button>
 
-                <div className="flex items-center shrink-0 ml-1">
-                  {isCollapsed ? <ChevronRight className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-                </div>
-              </button>
-
-              {/* Examination Cards */}
-              {!isCollapsed && (
-                <div className="p-1 pt-1.5 space-y-1 bg-white">
+                {/* Always rendered, hidden by CSS when collapsed, so aria-controls always resolves
+                    to a real element. display:none also keeps hidden rows out of the Tab order. */}
+                <div id={contentId} className={cn("divide-y divide-slate-100", isCollapsed && "hidden")}>
                   {specs.map((spec) => {
                     const code = spec.template.templateCode;
                     const isSelected = selectedTemplateCodes.includes(code);
                     const isActive = activeTemplateCode === code;
-                    const rendererLabel = RENDERER_DISPLAY_LABELS[spec.template.rendererFamily] || spec.template.rendererFamily;
                     const displayTitle = spec.template.catalogTitle || spec.template.templateTitle;
 
                     return (
+                      // Three states, each carrying a text cue so none of them depends on colour:
+                      // active shows "Open" and a full-height brand rail, selected-inactive shows
+                      // "Added" against a muted rail, unselected shows "Add" against no rail.
                       <div
                         key={code}
-                        className={`group relative h-[48px] px-2.5 py-1 rounded-lg border transition-all flex items-center justify-between gap-1.5 shrink-0 ${
+                        className={cn(
+                          "group relative flex items-center gap-1.5 border-l-[3px] pr-1.5 transition-colors",
                           isActive
-                            ? "bg-blue-50/50 border-l-2 border-l-brand-primary border-y-slate-200/80 border-r-slate-200/80 shadow-sm"
+                            ? "border-l-brand-primary bg-blue-50"
                             : isSelected
-                            ? "bg-slate-50/70 border-slate-200/90 hover:border-slate-300"
-                            : "bg-white border-slate-200/80 hover:border-blue-300/80 hover:shadow-sm hover:bg-blue-50/10"
-                        }`}
+                              ? "border-l-slate-300 bg-white hover:bg-slate-50"
+                              : "border-l-transparent bg-white hover:bg-slate-50"
+                        )}
                       >
                         <button
                           type="button"
+                          aria-current={isActive ? "true" : undefined}
                           onClick={() => {
                             if (!isSelected) {
                               onToggleTemplateSelection(code);
                             }
                             onSelectTemplate(code);
                           }}
-                          className="flex min-w-0 flex-1 h-full cursor-pointer flex-col justify-between py-0.5 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+                          className="min-w-0 flex-1 cursor-pointer rounded-sm px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary/40"
                         >
-                          {/* Row 1: Primary Title (Catalog Display Title from Template Metadata) */}
                           <span
-                            className={`text-xs leading-tight block truncate ${
-                              isActive ? "font-extrabold text-blue-950" : "font-bold text-slate-800 group-hover:text-brand-primary"
-                            }`}
+                            className={cn(
+                              "block truncate text-xs leading-tight",
+                              isActive ? "font-bold text-slate-900" : "font-medium text-slate-800"
+                            )}
                             title={spec.template.templateTitle}
                           >
                             {displayTitle}
                           </span>
-
-                          {/* Row 2: Secondary Non-Wrapping Metadata (Softened Contrast Code • Renderer) */}
-                          <div className="flex items-center gap-2 whitespace-nowrap text-[9.5px] text-slate-500 font-mono overflow-hidden">
-                            <span className="font-semibold text-slate-600 bg-slate-100/70 px-1.5 py-0.5 rounded border border-slate-200/60 shrink-0">
-                              {code}
-                            </span>
-                            <span aria-hidden="true" className="text-slate-300/80">•</span>
-                            <span className="inline-flex items-center justify-center h-3.5 px-1.5 py-0 text-[8.5px] font-semibold text-indigo-600 bg-indigo-50/70 border border-indigo-100/60 rounded shrink-0 leading-none">
-                              {rendererLabel}
-                            </span>
-                          </div>
+                          <span className="mt-0.5 flex items-center gap-1.5 leading-tight">
+                            <span className="min-w-0 truncate font-mono text-[11px] text-slate-500">{code}</span>
+                            {isActive && (
+                              <span className="shrink-0 rounded-sm bg-brand-primary px-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                                Open
+                              </span>
+                            )}
+                          </span>
                         </button>
 
-                        {/* Softened Guidance Selection Control Button (~15% Weight Reduction) */}
+                        {/* Sibling of the activation button, never nested, and deliberately outside
+                            the Tab order: selection and activation are separate states. */}
                         <button
                           type="button"
                           tabIndex={-1}
@@ -267,24 +323,32 @@ export function ExaminationCatalog({
                             e.stopPropagation();
                             onToggleTemplateSelection(code);
                           }}
-                          className={`h-5 w-5 inline-flex items-center justify-center rounded-md transition-colors pointer-events-auto shrink-0 border ${
+                          className={cn(
+                            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] font-semibold transition-colors",
                             isSelected
-                              ? "bg-slate-100/70 text-brand-primary/80 border-slate-200/90 hover:bg-slate-200/60"
-                              : "bg-slate-50/80 text-slate-500 border-slate-200/60 hover:bg-slate-100 hover:text-slate-600"
-                          }`}
-                          title={isSelected ? "Deselect Examination" : "Select Examination"}
-                          aria-label={`${isSelected ? "Deselect" : "Select"} ${displayTitle}`}
+                              ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-brand-primary/50 hover:bg-blue-50 hover:text-brand-primary"
+                          )}
+                          // The accessible name contains the visible word, so the two never disagree
+                          // (WCAG 2.5.3), and it still states the action the control performs.
+                          title={isSelected ? `Added. Remove ${displayTitle}` : `Add ${displayTitle}`}
+                          aria-label={isSelected ? `Added. Remove ${displayTitle}` : `Add ${displayTitle}`}
                         >
-                          {isSelected ? <Check className="h-2.5 w-2.5 stroke-[2]" /> : <Plus className="h-2.5 w-2.5" />}
+                          {isSelected ? (
+                            <Check aria-hidden="true" className="h-3.5 w-3.5 stroke-[2.5] text-emerald-600" />
+                          ) : (
+                            <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                          )}
+                          {isSelected ? "Added" : "Add"}
                         </button>
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ export function NumericTextInput({ parameter, value, isSelected, patientSex, onC
         }}
         placeholder="Enter result..."
         className={cn(
-          "w-full rounded-md border px-2.5 py-1 text-xs font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
+          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
           outcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-slate-300 bg-white text-slate-900"
         )}
       />

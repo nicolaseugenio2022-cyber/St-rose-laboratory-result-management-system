@@ -5,6 +5,19 @@ import { resolveReferenceDisplay } from "@/domain/reference-display";
 import { cn } from "@/utils/cn";
 import { displayUnit } from "../../encoding/evaluate-encoding-result";
 
+/**
+ * The worksheet column tracks, exported so the header rendered by DynamicResultForm is laid out
+ * from the same definition as the rows beneath it. Two hand-kept copies would drift the first
+ * time either side is touched, and a header that does not line up is worse than no header.
+ *
+ * Narrow: Parameter and Result take the full width, then Unit | Reference | Status share one
+ * line, so a row stays one readable block instead of five detached stacked cells. Wide: the five
+ * tracks. Reference is minmax(0,auto) so a qualitative report, where no parameter carries a
+ * reference, collapses the track to nothing rather than leaving a dead column.
+ */
+export const PARAMETER_ROW_TRACKS =
+  "grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[minmax(180px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(0,auto)_minmax(70px,auto)] xl:grid-cols-[minmax(220px,1fr)_minmax(200px,260px)_minmax(56px,auto)_minmax(0,auto)_minmax(88px,auto)]";
+
 export interface ParameterRowProps {
   parameter: ParameterSpec;
   isSelected: boolean;
@@ -40,15 +53,22 @@ export function ParameterRow({
       className={cn(
         // QA-08: one flat result list. The row owns no border, radius or shadow of its own - the
         // hairline between rows is the divider drawn by the encoding list container, so a result
-        // can no longer be read against the wrong neighbouring row. Padding, grid tracks, type
-        // scale and responsive stacking are unchanged from the card treatment.
-        "grid grid-cols-1 gap-2 px-2.5 py-1 text-xs transition-all duration-150 sm:grid-cols-[minmax(210px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(70px,auto)] sm:items-center xl:grid-cols-[minmax(260px,1fr)_minmax(200px,280px)_minmax(56px,auto)_minmax(88px,auto)]",
+        // can no longer be read against the wrong neighbouring row. Row height is never fixed and
+        // nothing is clipped: a validation message, a wrapped sex-unset reference, a
+        // ConditionalChoice pair or a computed help line all expand the row.
+        "grid items-start gap-x-2 gap-y-1 px-2.5 py-1 text-xs transition-colors duration-150 sm:items-center",
+        PARAMETER_ROW_TRACKS,
+        // The row being edited is the one thing an encoder must never lose track of. A soft brand
+        // wash plus a narrow inset accent marks it without moving anything: the accent border is
+        // always present and only changes colour, so no row shifts by a pixel when focus arrives.
+        // The control keeps its own focus ring - this marks the row, it does not replace that.
+        "border-l-2 border-l-transparent focus-within:border-l-brand-primary focus-within:bg-blue-50/60",
         isSelected
-          ? "bg-transparent hover:bg-slate-50/70"
-          : "bg-slate-50/80 opacity-60"
+          ? "bg-transparent hover:bg-slate-100/60"
+          : "bg-slate-100/70 opacity-60"
       )}
     >
-      <div className="flex min-w-0 items-start gap-2">
+      <div className="col-span-3 flex min-w-0 items-start gap-2 sm:col-span-1">
         <input
           type="checkbox"
           tabIndex={-1}
@@ -61,26 +81,21 @@ export function ParameterRow({
         />
         <div className={cn("min-w-0", !isSelected && "opacity-50")}>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="block text-xs font-bold leading-tight text-slate-800">{parameter.parameterName}</span>
+            <span className="block text-xs font-semibold leading-tight text-slate-900">{parameter.parameterName}</span>
             {labelAdornment}
           </div>
-          {reference && (
-            <span data-reference-display className="mt-0.5 inline-block rounded border border-slate-200/60 bg-slate-100/90 px-1 text-[10px] font-mono text-slate-500">
-              Ref: {reference}
-            </span>
-          )}
           {labelHelp}
         </div>
       </div>
 
-      <div data-control-column className={cn("min-w-0", !isSelected && "pointer-events-none opacity-40")}>
+      <div data-control-column className={cn("col-span-3 min-w-0 sm:col-span-1", !isSelected && "pointer-events-none opacity-40")}>
         {children}
         {validationMessage && (
           <p
             id={validationMessageId}
             data-validation-message
             role="alert"
-            className="mt-1 text-[10px] font-semibold normal-case tracking-normal text-rose-700"
+            className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-rose-700"
           >
             {validationMessage}
           </p>
@@ -91,21 +106,41 @@ export function ParameterRow({
         {renderedUnit || ""}
       </span>
 
+      {/* Reference column. Rendered even when empty so the remaining cells keep their track:
+          grid items are placed in source order, so omitting this element would shift Status
+          into the reference track. An empty span contributes no width, which is what lets the
+          minmax(0,auto) track collapse for a qualitative report. */}
+      <span className="min-w-0">
+        {reference && (
+          <span
+            data-reference-display
+            className="inline-block max-w-[8rem] whitespace-normal break-words text-[11px] font-mono leading-snug text-slate-500 xl:max-w-[14rem]"
+          >
+            Ref: {reference}
+          </span>
+        )}
+      </span>
+
       <div data-status-column className="min-w-[70px]">
         <span
           className={cn(
-            "inline-block min-w-[70px] rounded-md border px-2 py-0.5 text-center text-[10px] font-extrabold uppercase tracking-wider",
+            // Same outcome mapping and same hues as before, with the badge weight taken down:
+            // a 1px inset ring instead of a filled border, so a column of statuses reads as a
+            // scannable stripe rather than a stack of buttons. Invalid keeps the loudest
+            // treatment because it is the only outcome that blocks completion. The text is
+            // always the primary signal - colour never carries the meaning alone.
+            "inline-block min-w-[70px] rounded px-1.5 py-0.5 text-center text-[11px] font-bold uppercase tracking-wide",
             outcome === "Invalid"
-              ? "border-rose-400 bg-rose-100 text-rose-900 shadow-sm"
+              ? "bg-rose-600 font-extrabold text-white"
               : outcome === "Abnormal" || outcome === "High"
-                ? "border-rose-300 bg-rose-100 text-rose-800"
+                ? "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-300"
                 : outcome === "Low"
-                  ? "border-amber-300 bg-amber-100 text-amber-900"
+                  ? "bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300"
                 : outcome === "Normal"
-                  ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                  ? "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-300"
                   : outcome === "Entered"
-                    ? "border-blue-200 bg-blue-50 text-blue-800"
-                  : "border-slate-200 bg-slate-100 font-normal text-slate-500"
+                    ? "bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-300"
+                  : "bg-transparent font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
           )}
         >
           {status}

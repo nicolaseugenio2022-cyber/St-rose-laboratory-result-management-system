@@ -6,10 +6,13 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Card({ className, variant = "default", children, ...props }: CardProps) {
-  const baseStyles = "rounded-xl bg-brand-card transition-all";
+  // A Card is a surface, not a control. The default variant no longer changes on hover:
+  // a static panel that reacts to the pointer reads as clickable and invites a click that
+  // does nothing. A consumer with a real interactive contract adds its own hover treatment.
+  const baseStyles = "rounded-lg bg-brand-card transition-colors";
   const variants = {
-    default: "border border-brand-card-border shadow-sm hover:border-slate-300",
-    flat: "bg-brand-surface-hover border border-brand-border-subtle",
+    default: "border border-brand-card-border shadow-sm",
+    flat: "border border-brand-border-subtle bg-brand-surface-hover",
     outline: "border border-brand-card-border",
   };
 
@@ -21,11 +24,11 @@ export function Card({ className, variant = "default", children, ...props }: Car
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-5 pb-2 flex flex-col space-y-1", className)} {...props} />;
+  return <div className={cn("flex flex-col space-y-0.5 p-4 pb-2", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("font-bold text-base text-brand-text leading-tight tracking-tight", className)} {...props} />;
+  return <h3 className={cn("text-sm font-semibold leading-tight tracking-tight text-brand-text", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
@@ -33,9 +36,9 @@ export function CardDescription({ className, ...props }: React.HTMLAttributes<HT
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-5 pt-0", className)} {...props} />;
+  return <div className={cn("p-4 pt-0", className)} {...props} />;
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-5 pt-0 flex items-center border-t border-brand-border-subtle mt-4", className)} {...props} />;
+  return <div className={cn("mt-3 flex items-center border-t border-brand-border-subtle p-4 pt-3", className)} {...props} />;
 }

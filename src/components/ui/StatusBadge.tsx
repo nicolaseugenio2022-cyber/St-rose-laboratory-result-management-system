@@ -38,22 +38,24 @@ export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> 
 export function StatusBadge({ status, label, size = "md", className, ...props }: StatusBadgeProps) {
   const tones: Record<StatusBadgeStatus, string> = {
     // EvaluationOutcome — mirrors ParameterRow's existing semantics
-    Invalid: "border-rose-400 bg-rose-100 text-rose-900",
-    Abnormal: "border-rose-300 bg-rose-100 text-rose-800",
-    High: "border-rose-300 bg-rose-100 text-rose-800",
-    Low: "border-amber-300 bg-amber-100 text-amber-900",
-    Normal: "border-emerald-300 bg-emerald-100 text-emerald-800",
-    Entered: "border-blue-200 bg-blue-50 text-blue-800",
-    Informational: "border-slate-200 bg-slate-100 text-slate-500",
-    NoEvaluation: "border-slate-200 bg-slate-100 text-slate-500",
+    // A light surface with a 1px inset ring, and Invalid alone solid, matching the
+    // worksheet exactly: Invalid is the only outcome that blocks completion.
+    Invalid: "bg-rose-600 text-white ring-rose-600",
+    Abnormal: "bg-rose-50 text-rose-800 ring-rose-300",
+    High: "bg-rose-50 text-rose-800 ring-rose-300",
+    Low: "bg-amber-50 text-amber-900 ring-amber-300",
+    Normal: "bg-emerald-50 text-emerald-800 ring-emerald-300",
+    Entered: "bg-blue-50 text-blue-800 ring-blue-300",
+    Informational: "bg-slate-50 text-slate-600 ring-slate-300",
+    NoEvaluation: "bg-slate-50 text-slate-600 ring-slate-300",
 
     // SessionStatus
-    Draft: "border-amber-300 bg-amber-100 text-amber-900",
-    Completed: "border-emerald-300 bg-emerald-100 text-emerald-800",
+    Draft: "bg-amber-50 text-amber-900 ring-amber-300",
+    Completed: "bg-emerald-50 text-emerald-800 ring-emerald-300",
 
     // Account lifecycle
-    Active: "border-emerald-300 bg-emerald-100 text-emerald-800",
-    Inactive: "border-slate-200 bg-slate-100 text-slate-500",
+    Active: "bg-emerald-50 text-emerald-800 ring-emerald-300",
+    Inactive: "bg-slate-50 text-slate-600 ring-slate-300",
   };
 
   const sizes = {
@@ -64,7 +66,7 @@ export function StatusBadge({ status, label, size = "md", className, ...props }:
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border font-semibold uppercase tracking-wider",
+        "inline-flex items-center whitespace-nowrap rounded-md font-semibold uppercase tracking-wide ring-1 ring-inset",
         tones[status],
         sizes[size],
         className

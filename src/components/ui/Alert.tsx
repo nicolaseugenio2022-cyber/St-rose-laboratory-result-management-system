@@ -54,7 +54,7 @@ export function Alert({
     <div
       role={isUrgent ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2 text-xs",
         surfaces[variant],
         className
       )}
@@ -74,7 +74,7 @@ export function Alert({
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="-mr-1 -mt-0.5 shrink-0 rounded p-1 text-current opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+          className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-current opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

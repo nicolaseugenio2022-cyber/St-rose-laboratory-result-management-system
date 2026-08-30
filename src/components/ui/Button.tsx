@@ -10,12 +10,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading = false, disabled, children, ...props }, ref) => {
     const baseStyles =
-      "inline-flex items-center justify-center font-medium transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+      "inline-flex items-center justify-center whitespace-nowrap rounded-md font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
 
     const variants = {
       primary: "bg-brand-primary text-brand-primary-foreground hover:bg-brand-primary-hover active:opacity-90 shadow-sm",
       secondary: "bg-brand-secondary text-brand-secondary-foreground hover:bg-brand-secondary-hover active:bg-slate-900 shadow-sm",
-      outline: "border border-brand-border bg-brand-surface text-brand-text hover:bg-brand-surface-hover hover:border-slate-300 active:bg-slate-100",
+      outline: "border border-brand-border bg-brand-surface text-brand-text hover:border-slate-400 hover:bg-brand-surface-hover active:bg-slate-100",
       ghost: "text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text active:bg-slate-200",
       danger: "bg-brand-danger text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm",
     };
@@ -36,7 +36,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {isLoading ? (
           <>
             <svg
-              className="animate-spin -ml-1 mr-2 h-4 w-4 text-current"
+              className="h-4 w-4 shrink-0 animate-spin text-current"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"

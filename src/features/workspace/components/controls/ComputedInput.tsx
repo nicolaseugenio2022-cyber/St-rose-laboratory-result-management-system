@@ -57,7 +57,7 @@ export function ComputedInput({
       data-calculation-mode-switch={calculationMode}
       onClick={() => onRequestModeChange?.(isManual ? "Auto" : "Manual")}
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
         isManual
           ? "border-brand-warning-border bg-brand-warning-bg text-brand-warning hover:border-brand-warning"
           : "border-brand-info-border bg-brand-tint text-brand-info hover:border-brand-primary"
@@ -67,7 +67,7 @@ export function ComputedInput({
       {isManual ? "Manual" : "Auto"}
     </button>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-md border border-brand-info-border bg-brand-tint px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-brand-info"><Lock className="h-3 w-3" />Auto-Calculated</span>
+    <span className="inline-flex items-center gap-1 rounded-md border border-brand-info-border bg-brand-tint px-1.5 py-px text-[11px] font-semibold uppercase tracking-wide text-brand-info"><Lock className="h-3 w-3" />Auto-Calculated</span>
   );
 
   const helpText = !supportsManualEntry
@@ -85,7 +85,7 @@ export function ComputedInput({
     validationMessage={validationMessage || undefined}
     validationMessageId={validationMessage ? errorId : undefined}
     labelAdornment={modeControl}
-    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-brand-warning" : "text-brand-info")}><Info className="h-3 w-3 shrink-0" />{helpText}</span>}
+    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-xs font-medium", isManual ? "text-brand-warning" : "text-brand-info")}><Info className="h-3 w-3 shrink-0" />{helpText}</span>}
   >
     {isManual ? (
       <input

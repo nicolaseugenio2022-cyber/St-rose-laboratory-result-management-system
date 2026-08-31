@@ -15,7 +15,7 @@ export function RepeatableFindingsSection({ specs, values, onChange }: {
   onChange: (category: string, findings: IRepeatableFindingValue[]) => void;
 }) {
   return <section className="space-y-3 rounded-lg border border-brand-border bg-brand-structural p-3" data-repeatable-findings>
-    <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Additional Findings</h3>
+    <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Additional Findings</h3>
     {specs.map((spec) => {
       const findings = [...(values[spec.findingCategory] || [])].sort((a, b) => a.displayOrder - b.displayOrder);
       const canAdd = spec.maxEntries == null || findings.length < spec.maxEntries;

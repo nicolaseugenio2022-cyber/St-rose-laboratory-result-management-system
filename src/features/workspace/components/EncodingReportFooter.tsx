@@ -10,6 +10,7 @@ import { TemplateRemarksSection } from "./TemplateRemarksSection";
 import { ReagentKitInfoSection } from "./ReagentKitInfoSection";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, PanelBottom } from "lucide-react";
+import { PanelIcon } from "./PanelIcon";
 
 export interface EncodingReportFooterProps {
   spec: HydratedTemplateSpec;
@@ -72,7 +73,7 @@ function SummaryChip({ label, isSatisfied, isRequired }: { label: string; isSati
   return (
     <span
       className={cn(
-        "shrink-0 whitespace-nowrap text-[11px]",
+        "shrink-0 whitespace-nowrap text-xs",
         isSatisfied
           ? "font-medium text-brand-text-muted"
           : isRequired
@@ -115,8 +116,8 @@ export function EncodingReportFooter({
         aria-controls="encoding-footer-content"
         className="flex w-full items-center gap-2.5 bg-brand-structural px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
       >
-        <PanelBottom aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <span className="shrink-0 text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">
+        <PanelIcon icon={PanelBottom} />
+        <span className="shrink-0 text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
           Report Details
         </span>
 
@@ -147,7 +148,7 @@ export function EncodingReportFooter({
           )}
         </span>
 
-        <span className="flex shrink-0 items-center gap-1 rounded-md border border-brand-border bg-brand-surface px-1.5 py-0.5 text-[11px] font-semibold text-brand-text-muted">
+        <span className="flex shrink-0 items-center gap-1 rounded-md border border-brand-border bg-brand-surface px-1.5 py-0.5 text-xs font-semibold text-brand-text-muted">
           {isExpanded ? "Hide" : "Show"}
           {isExpanded ? (
             <ChevronDown aria-hidden="true" className="h-4 w-4" />

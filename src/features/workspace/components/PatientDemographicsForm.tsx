@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { User, MapPin, Pencil, ChevronUp } from "lucide-react";
+import { PanelIcon } from "./PanelIcon";
 
 export interface PatientDemographicsFormProps {
   demographics: PatientDemographics;
@@ -51,18 +52,21 @@ export function PatientDemographicsForm({
    * so the operator can confirm patient identity and the sex/age that select the reference
    * ranges without reopening the section. Values are shown exactly as stored; this summary
    * formats nothing and validates nothing.
+   *
+   * Flat, with no frame of its own: the Workspace renders it as the first row of the sticky
+   * context strip, which is the frame. A bordered card here would be a card inside a card.
    */
   if (!isExpanded) {
     return (
       <div
         data-demographics-summary
-        className="mb-3 flex items-center gap-2.5 rounded-lg border border-brand-border bg-brand-card px-3.5 py-2 shadow-low"
+        className="flex min-w-0 items-center gap-2.5"
       >
         <User aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
         <span className="shrink-0 text-[13px] font-semibold text-brand-navy">
           {demographics.fullName || "Unnamed patient"}
         </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-brand-text-muted" title={demographics.address || undefined}>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-brand-text-muted" title={demographics.address || undefined}>
           {[
             demographics.age ? `${demographics.age} y/o` : null,
             demographics.sex || null,
@@ -90,10 +94,13 @@ export function PatientDemographicsForm({
   }
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
-      <div className="flex items-center gap-2 border-b border-brand-border bg-brand-structural px-4 py-2.5">
-        <User aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <h2 className="text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">
+    // The panel header carries the same icon tile the dashboard's sections draw beside their
+    // titles, so a Workspace panel reads as the same family of surface. Spacing below the card is
+    // the pane's own rhythm, not a margin of this component's.
+    <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
+      <div className="flex items-center gap-2.5 border-b border-brand-border bg-brand-structural px-4 py-2.5">
+        <PanelIcon icon={User} />
+        <h2 className="text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
           Patient Demographics
         </h2>
         {onToggleExpanded && (

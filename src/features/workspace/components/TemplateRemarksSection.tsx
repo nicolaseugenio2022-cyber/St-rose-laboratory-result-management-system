@@ -21,7 +21,7 @@ export function TemplateRemarksSection({ remarks, onChange }: TemplateRemarksSec
       >
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 text-brand-primary" />
-          <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Laboratory Remarks</h3>
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Laboratory Remarks</h3>
         </div>
         <div className="flex items-center gap-2">
           {remarks && remarks.trim() !== "" && (

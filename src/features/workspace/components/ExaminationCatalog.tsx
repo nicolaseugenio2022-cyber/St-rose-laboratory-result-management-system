@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 import { Search, SearchX, ChevronDown, ChevronRight, Check, Plus, FlaskConical, Stethoscope, Microscope, ShieldCheck, HeartPulse, X, PanelLeftClose } from "lucide-react";
+import { PanelIcon } from "./PanelIcon";
 
 export interface ExaminationCatalogProps {
   allTemplates: HydratedTemplateSpec[];
@@ -143,9 +144,9 @@ export function ExaminationCatalog({
     <div className="flex h-full flex-col overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
       {/* Header and search stay fixed; only the results list below scrolls. */}
       <div className="shrink-0 border-b border-brand-border bg-brand-structural px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <FlaskConical aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-          <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">
+        <div className="flex items-center gap-2.5">
+          <PanelIcon icon={FlaskConical} />
+          <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
             Examination catalog
           </h3>
           {onCollapse && (
@@ -164,7 +165,7 @@ export function ExaminationCatalog({
         </div>
 
         {/* One quiet operational line rather than a row of count badges. */}
-        <p className="mt-0.5 truncate text-[11px] text-brand-text-muted">
+        <p className="mt-1 truncate text-xs text-brand-text-muted">
           {isSearchActive
             ? `${totalMatchingTemplates} matching · ${selectedCount} selected`
             : `${allTemplates.length} examinations · ${selectedCount} selected`}
@@ -256,7 +257,7 @@ export function ExaminationCatalog({
                   <span className="flex shrink-0 items-center justify-center">
                     {FAMILY_ICONS[family] || <FlaskConical aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
                     {family}
                   </span>
                   <Badge variant={isAllSelected ? "success" : "neutral"} size="sm" className="font-mono tabular-nums">
@@ -286,7 +287,7 @@ export function ExaminationCatalog({
                       <div
                         key={code}
                         className={cn(
-                          "group relative flex min-h-9 items-center gap-1.5 border-l-2 pr-1.5 transition-colors",
+                          "group relative flex min-h-10 items-center gap-1.5 border-l-2 pr-1.5 transition-colors",
                           isActive
                             ? "border-l-brand-primary bg-brand-sidebar-active"
                             : isSelected
@@ -315,9 +316,9 @@ export function ExaminationCatalog({
                             {displayTitle}
                           </span>
                           <span className="mt-0.5 flex items-center gap-1.5 leading-tight">
-                            <span className="min-w-0 truncate font-mono text-[11px] text-brand-text-muted">{code}</span>
+                            <span className="min-w-0 truncate font-mono text-xs text-brand-text-muted">{code}</span>
                             {isActive && (
-                              <span className="shrink-0 rounded-sm bg-brand-primary px-1 text-[10px] font-semibold uppercase tracking-wide text-brand-primary-foreground">
+                              <span className="shrink-0 rounded-sm bg-brand-primary px-1 text-[11px] font-semibold uppercase tracking-wide text-brand-primary-foreground">
                                 Open
                               </span>
                             )}
@@ -334,7 +335,7 @@ export function ExaminationCatalog({
                             onToggleTemplateSelection(code);
                           }}
                           className={cn(
-                            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+                            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                             isSelected
                               ? "border-transparent bg-transparent text-brand-primary hover:border-brand-border hover:bg-brand-surface"
                               : "border-brand-border bg-brand-surface text-brand-text hover:border-brand-primary hover:bg-brand-tint hover:text-brand-primary"

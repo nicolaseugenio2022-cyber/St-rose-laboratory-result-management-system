@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, Database, ServerCog } from "lucide-react";
+import { Activity, ChartBar, Database, HeartPulse, ServerCog } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DashboardSection } from "./primitives/DashboardSection";
@@ -70,13 +70,17 @@ export default async function DeveloperDashboardSection({
 
   return (
     <div className="space-y-4">
+      {/* The two figure strips share one row on a wide screen: both are four small cells
+          that read at a glance, and stacking them left the lower half of the page empty. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
       <DashboardSection
         title="System health"
         description="Live indicators for the application stack"
+        icon={HeartPulse}
       >
-        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4 xl:grid-cols-2">
           {health.map((entry) => (
-            <div key={entry.label} className="flex flex-col gap-1.5 bg-brand-card px-3.5 py-3">
+            <div key={entry.label} className="flex flex-col gap-2 bg-brand-card px-4 py-3.5">
               {/* Wraps rather than truncates: "Authentication" is a fixed label, and at
                   two cells per row on a narrow screen clipping it teaches nothing. */}
               <dt className="text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-brand-text-muted">
@@ -88,10 +92,43 @@ export default async function DeveloperDashboardSection({
         </dl>
       </DashboardSection>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <DashboardSection
+        title="System statistics"
+        description="Counts from existing persisted records"
+        icon={ChartBar}
+      >
+        {/* `unavailable` is passed wherever the service returned null, so an outage
+            renders as muted prose instead of a bold tabular figure. "Unavailable" set
+            in the same weight as a count reads as a value that was measured. */}
+        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4 xl:grid-cols-2">
+          <MetricTile className="bg-brand-card" label="Total users" value={formatMetric(data.totalUsers)} />
+          <MetricTile
+            className="bg-brand-card"
+            label="Total personnel"
+            value={formatMetric(data.totalPersonnel)}
+            unavailable={data.totalPersonnel === null}
+          />
+          <MetricTile
+            className="bg-brand-card"
+            label="Audit log entries"
+            value={formatMetric(data.totalAuditLogs)}
+            unavailable={data.totalAuditLogs === null}
+          />
+          <MetricTile
+            className="bg-brand-card"
+            label="Lab results"
+            value={formatMetric(data.totalLaboratoryResults)}
+            unavailable={data.totalLaboratoryResults === null}
+          />
+        </dl>
+      </DashboardSection>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
         <DashboardSection
           title="Supabase database"
           description="Server-side connectivity check"
+          icon={Database}
         >
           <div className="divide-y divide-brand-border-subtle">
             <div className="flex items-center justify-between gap-3 px-3.5 py-2">
@@ -122,6 +159,7 @@ export default async function DeveloperDashboardSection({
         <DashboardSection
           title="Environment"
           description="Runtime details safe for Developer visibility"
+          icon={ServerCog}
         >
           <div className="divide-y divide-brand-border-subtle">
             <div className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-brand-navy">
@@ -137,42 +175,13 @@ export default async function DeveloperDashboardSection({
         </DashboardSection>
       </div>
 
-      <DashboardSection
-        title="System statistics"
-        description="Counts from existing persisted records"
-      >
-        {/* `unavailable` is passed wherever the service returned null, so an outage
-            renders as muted prose instead of a bold tabular figure. "Unavailable" set
-            in the same weight as a count reads as a value that was measured. */}
-        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
-          <MetricTile className="bg-brand-card" label="Total users" value={formatMetric(data.totalUsers)} />
-          <MetricTile
-            className="bg-brand-card"
-            label="Total personnel"
-            value={formatMetric(data.totalPersonnel)}
-            unavailable={data.totalPersonnel === null}
-          />
-          <MetricTile
-            className="bg-brand-card"
-            label="Audit log entries"
-            value={formatMetric(data.totalAuditLogs)}
-            unavailable={data.totalAuditLogs === null}
-          />
-          <MetricTile
-            className="bg-brand-card"
-            label="Lab results"
-            value={formatMetric(data.totalLaboratoryResults)}
-            unavailable={data.totalLaboratoryResults === null}
-          />
-        </dl>
-      </DashboardSection>
-
       {/* Full width. The Administration card list restated destinations that are already
           permanent entries in the Developer navigation, and it was taking two fifths of the
           row from the only diagnostic list on this screen. */}
         <DashboardSection
           title="Recent system activity"
           description="Recent audit events"
+          icon={Activity}
           action={<SectionLink href="/audit">View audit logs</SectionLink>}
         >
           {recentActivity.length === 0 ? (

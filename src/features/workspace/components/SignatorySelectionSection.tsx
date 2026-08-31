@@ -44,7 +44,7 @@ function toOption(person: WorkspacePersonnelEntry) {
 function PrcLicenseRow({ person }: { person: WorkspacePersonnelEntry }) {
   return (
     <div className="flex items-baseline justify-between gap-3 px-1 py-1">
-      <span className="text-[11px] text-brand-text-muted">PRC License:</span>
+      <span className="text-xs text-brand-text-muted">PRC License:</span>
       <span className="font-mono text-xs font-medium tabular-nums text-brand-text">{person.prcLicenseNumber}</span>
     </div>
   );
@@ -188,10 +188,10 @@ export function SignatorySelectionSection({
           <div className="flex items-center gap-2">
             <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
             <div>
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
                 Assigned Signatories & Approval
               </h3>
-              <p className="text-[11px] text-brand-text-muted">
+              <p className="text-xs text-brand-text-muted">
                 PRC-licensed medical personnel authorizing this laboratory report
               </p>
             </div>

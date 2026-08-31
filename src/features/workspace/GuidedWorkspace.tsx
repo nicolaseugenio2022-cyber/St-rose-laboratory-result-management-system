@@ -10,7 +10,7 @@ import type {
   WorkspaceSignatureAssetMap,
 } from "@/features/workspace/signatory-contracts";
 import { listWorkspacePersonnelAction } from "@/features/server-boundary/workspace-personnel-actions";
-import { PatientSex, PatientStatus } from "@/domain/types";
+import { PatientDemographics, PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
 import { DynamicResultForm } from "./components/DynamicResultForm";
 import { EncodingReportFooter } from "./components/EncodingReportFooter";
@@ -18,6 +18,7 @@ import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -37,7 +38,7 @@ import {
 import { cn, formatDateISO } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History, PanelLeftOpen } from "lucide-react";
+import { Save, CheckCircle2, AlertCircle, FileText, FlaskConical, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History, PanelLeftOpen } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
@@ -900,6 +901,42 @@ export function GuidedWorkspace({
     return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
   }, [activeTemplateCode, areWorkspaceShortcutsSuppressed, handleSaveDraft, isDirty, isReplacementMode, requestCompleteConfirmation, requestReplaceConfirmation, saveStatus, selectedSpecs, session.status]);
 
+  // Demographic edits update the aggregate and, when Sex changes, re-evaluate every report's
+  // sex-specific references. Hoisted out of the form's inline prop because the form now renders
+  // from two places - expanded above the context strip, collapsed inside it - and this rule must
+  // not exist twice. The body is the previous inline handler, unchanged.
+  const handleDemographicsChange = useCallback((updated: PatientDemographics) => {
+    setSession((previous) => {
+      const sexChanged = previous.demographics.sex !== updated.sex;
+      const reports = sexChanged
+        ? previous.reports.map((report) => {
+            const definition = ReportDefinitionRegistry.getDefinition(report.templateCode);
+            return definition
+              ? reevaluateEncodingReport(report, definition, { sex: updated.sex || null })
+              : report;
+          })
+        : previous.reports;
+      return new PatientReportSessionAggregate({ ...previous, demographics: updated, reports });
+    });
+    setIsDirty(true);
+    setSaveStatus("unsaved");
+  }, []);
+
+  // The empty state's one action. On a desktop the catalog is already on screen: expand it if
+  // it was collapsed (focus then lands on its collapse control, beside the search field), or
+  // move focus into its search field. Below lg the catalog exists only in the drawer, so open it.
+  const handleBrowseCatalog = useCallback(() => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      if (isCatalogCollapsed) {
+        handleExpandCatalog();
+        return;
+      }
+      document.getElementById("workspace-desktop-catalog")?.querySelector<HTMLInputElement>("input")?.focus();
+      return;
+    }
+    setIsMobileCatalogOpen(true);
+  }, [handleExpandCatalog, isCatalogCollapsed]);
+
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different
   // session than the one requested.
@@ -922,7 +959,7 @@ export function GuidedWorkspace({
                 <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" />
               </span>
               <div>
-                <h2 className="text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">Reopening Session</h2>
+                <h2 className="text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">Reopening Session</h2>
                 <p className="mt-1 text-xs leading-relaxed text-brand-text-muted">
                   Loading the saved patient report session from the laboratory record.
                 </p>
@@ -935,7 +972,7 @@ export function GuidedWorkspace({
                   <AlertCircle aria-hidden="true" className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">Session Could Not Be Reopened</h2>
+                  <h2 className="text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">Session Could Not Be Reopened</h2>
                   <p className="mt-1 text-xs leading-relaxed text-brand-text-muted">
                     {reopenError ?? "This session could not be reopened."}
                   </p>
@@ -1005,25 +1042,19 @@ export function GuidedWorkspace({
 
             <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
-            {/* Session identity: the patient in navy, the accession / status / mode line in
-                muted 11px underneath. Status colour comes from the semantic tokens. */}
+            {/* Session identity: the patient in navy at the command-bar scale, then the accession
+                and the session status underneath. Status is the shared StatusBadge - the same
+                Draft / Completed vocabulary the dashboard rows and History carry - rather than a
+                third, local colouring of the word. */}
             <div className="min-w-0">
-              <h1 className="truncate text-[15px] font-bold leading-tight tracking-tight text-brand-navy">
+              <h1 className="truncate text-base font-bold leading-tight tracking-tight text-brand-navy">
                 {session.demographics.fullName || "New Patient Visit Session"}
               </h1>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-none text-brand-text-muted">
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs leading-none text-brand-text-muted">
                 <span className="shrink-0 font-mono font-semibold tabular-nums" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
                   {session.accessionNumber ?? "Not assigned"}
                 </span>
-                <span aria-hidden="true" className="shrink-0 text-brand-text-subtle">/</span>
-                <span
-                  className={cn(
-                    "shrink-0 font-semibold uppercase tracking-wide",
-                    session.status === "Completed" ? "text-brand-success" : "text-brand-warning"
-                  )}
-                >
-                  {session.status}
-                </span>
+                <StatusBadge status={session.status} size="sm" className="shrink-0" />
                 {isReplacementMode && (
                   <Badge variant="warning" size="sm" className="shrink-0 gap-1">
                     <RefreshCw aria-hidden="true" className="h-3 w-3" />
@@ -1224,11 +1255,11 @@ export function GuidedWorkspace({
                   </div>
                   <div className="flex flex-col items-center gap-2.5 py-2.5">
                     {selectedTemplateCodes.length > 0 && (
-                      <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-[11px] font-semibold tabular-nums text-brand-primary">
+                      <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-xs font-semibold tabular-nums text-brand-primary">
                         {selectedTemplateCodes.length}
                       </span>
                     )}
-                    <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+                    <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
                       Catalog
                     </span>
                   </div>
@@ -1300,85 +1331,102 @@ export function GuidedWorkspace({
             )}
 
             {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-16 scroll-pb-16">
-              {/* Patient Demographics Header Card */}
-              <PatientDemographicsForm
-                isExpanded={isDemographicsExpanded}
-                onToggleExpanded={setIsDemographicsExpanded}
-                invalidFieldId={validationError ? validationFieldTarget : null}
-                demographics={session.demographics}
-                onChange={(updated) => {
-                  setSession((previous) => {
-                    const sexChanged = previous.demographics.sex !== updated.sex;
-                    const reports = sexChanged
-                      ? previous.reports.map((report) => {
-                          const definition = ReportDefinitionRegistry.getDefinition(report.templateCode);
-                          return definition
-                            ? reevaluateEncodingReport(report, definition, { sex: updated.sex || null })
-                            : report;
-                        })
-                      : previous.reports;
-                    return new PatientReportSessionAggregate({ ...previous, demographics: updated, reports });
-                  });
-                  setIsDirty(true);
-                  setSaveStatus("unsaved");
-                }}
-              />
-
-              {/* Single-Line Horizontal Scrollable Examination Tab Strip */}
-              {/* Clinical context rail: the reference-range context and session progress the
-                  operator must not lose while scrolling, then the report tabs. Solid white and
-                  unblurred so scrolled result rows never show through and reduce legibility. */}
-              {/* Structural, and deliberately so: this rail carries context ABOUT the work
-                  (patient, session progress, which report is active), never the work itself.
-                  Tinting it is what lets the active tab lift onto the white working surface
-                  and read as selected without a heavier border. */}
-              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2 shadow-low">
-                {session.demographics.sex && session.demographics.age > 0 && (
-                  <span
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold tabular-nums text-brand-text-muted sm:inline-flex"
-                    title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
-                  >
-                    <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
-                    {session.demographics.sex}, {session.demographics.age} y/o
-                  </span>
-                )}
-                {sessionProgress.totalReports > 0 && (
-                  <span
-                    data-session-progress
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium tabular-nums text-brand-text-muted sm:inline-flex"
-                    title="Reports in this session with every selected result encoded"
-                  >
-                    {/* Progress vocabulary: the check turns teal once every report is complete,
-                        and stays muted while any is pending. */}
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className={
-                        sessionProgress.completedReports === sessionProgress.totalReports
-                          ? "h-3.5 w-3.5 text-brand-primary"
-                          : "h-3.5 w-3.5 text-brand-text-subtle"
-                      }
-                    />
-                    {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
-                  </span>
-                )}
-                {/* One restrained rule instead of a second row of pills: it separates the
-                    session context from the report tabs and disappears when neither meta item
-                    is on screen. */}
-                {(sessionProgress.totalReports > 0 || (session.demographics.sex && session.demographics.age > 0)) && (
-                  <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-brand-border-strong sm:block" />
-                )}
-                <SelectedReportsPanel
-                  selectedSpecs={selectedSpecs}
-                  activeTemplateCode={activeTemplateCode}
-                  onSelectActiveTemplate={setActiveTemplateCode}
-                  onRemoveTemplate={handleRemoveTemplate}
-                  onCloseOtherTemplates={handleCloseOtherTemplates}
-                  onClearAllTemplates={() => setPendingConfirmation("clearAll")}
-                  isDirty={isDirty}
-                  progressByTemplateCode={progressByTemplateCode}
+            {/* scroll-padding clears the sticky strip, so a control reached by keyboard is never
+                parked underneath it (WCAG 2.2 Focus Not Obscured). The strip is two rows tall
+                while the demographics summary lives in it, one row otherwise. */}
+            <div
+              className={cn(
+                "flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pb-16",
+                isDemographicsExpanded ? "scroll-pt-16" : "scroll-pt-24"
+              )}
+            >
+              {/* Patient demographics, expanded: a white working card above the context strip. It
+                  scrolls with the pane - while the operator is editing the patient, the fields ARE
+                  the work. Collapsed, the same component renders its summary inside the strip
+                  below, so the data never leaves the screen. */}
+              {isDemographicsExpanded && (
+                <PatientDemographicsForm
+                  isExpanded
+                  onToggleExpanded={setIsDemographicsExpanded}
+                  invalidFieldId={validationError ? validationFieldTarget : null}
+                  demographics={session.demographics}
+                  onChange={handleDemographicsChange}
                 />
-              </div>
+              )}
+
+              {/* Sticky context strip. Structural, and deliberately so: it carries context ABOUT
+                  the work - who the patient is, how far the session is, which report is open -
+                  never the work itself. Tinting it is what lets the active tab lift onto the white
+                  worksheet and read as selected without a heavier border. Solid and unblurred so
+                  scrolled result rows never show through.
+
+                  Row one is the collapsed demographics summary: patient, the sex and age that
+                  select the reference ranges, the date and the address stay in view while a
+                  twenty-row report scrolls beneath. It used to be a separate band above this strip
+                  that scrolled away with the form. Row two is the report tab strip. Each row
+                  renders only when it has content, so a fresh session shows no empty strip and no
+                  second empty state above the one in the pane. */}
+              {(!isDemographicsExpanded || selectedSpecs.length > 0) && (
+                <div className="sticky top-0 z-20 rounded-lg border border-brand-border bg-brand-structural shadow-low">
+                  {!isDemographicsExpanded && (
+                    <div className={cn("px-3 py-2", selectedSpecs.length > 0 && "border-b border-brand-border")}>
+                      <PatientDemographicsForm
+                        isExpanded={false}
+                        onToggleExpanded={setIsDemographicsExpanded}
+                        demographics={session.demographics}
+                        onChange={handleDemographicsChange}
+                      />
+                    </div>
+                  )}
+                  {selectedSpecs.length > 0 && (
+                    <div className="flex items-end gap-2.5 px-3 py-2">
+                      {/* Sex and age here only while the form above is expanded, where it can scroll
+                          out of view. Collapsed, the summary row already states both. */}
+                      {isDemographicsExpanded && session.demographics.sex && session.demographics.age > 0 && (
+                        <span
+                          className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-xs font-semibold tabular-nums text-brand-text-muted sm:inline-flex"
+                          title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
+                        >
+                          <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
+                          {session.demographics.sex}, {session.demographics.age} y/o
+                        </span>
+                      )}
+                      {sessionProgress.totalReports > 0 && (
+                        <span
+                          data-session-progress
+                          className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-xs font-medium tabular-nums text-brand-text-muted sm:inline-flex"
+                          title="Reports in this session with every selected result encoded"
+                        >
+                          {/* Progress vocabulary: the check turns teal once every report is complete,
+                              and stays muted while any is pending. */}
+                          <CheckCircle2
+                            aria-hidden="true"
+                            className={
+                              sessionProgress.completedReports === sessionProgress.totalReports
+                                ? "h-3.5 w-3.5 text-brand-primary"
+                                : "h-3.5 w-3.5 text-brand-text-subtle"
+                            }
+                          />
+                          {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
+                        </span>
+                      )}
+                      {/* One restrained rule instead of a second row of pills: it separates the
+                          session context from the report tabs. */}
+                      <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-brand-border-strong sm:block" />
+                      <SelectedReportsPanel
+                        selectedSpecs={selectedSpecs}
+                        activeTemplateCode={activeTemplateCode}
+                        onSelectActiveTemplate={setActiveTemplateCode}
+                        onRemoveTemplate={handleRemoveTemplate}
+                        onCloseOtherTemplates={handleCloseOtherTemplates}
+                        onClearAllTemplates={() => setPendingConfirmation("clearAll")}
+                        isDirty={isDirty}
+                        progressByTemplateCode={progressByTemplateCode}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Dynamic Result Form Dispatcher */}
               {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
@@ -1411,12 +1459,19 @@ export function GuidedWorkspace({
                 </div>
               ) : (
                 /* The shared EmptyState as shipped: a quiet structural-tint region on the canvas,
-                   not another white card competing with the panels above it. */
+                   not another white card competing with the panels above it. Its one action is
+                   the only route to the catalog a phone or tablet operator can see from here. */
                 <EmptyState
                   icon={FileText}
                   title="No examination selected"
                   description="Choose a laboratory examination from the catalog to begin encoding patient results."
                   headingLevel={2}
+                  action={
+                    <Button type="button" variant="primary" size="sm" onClick={handleBrowseCatalog}>
+                      <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />
+                      Browse catalog
+                    </Button>
+                  }
                 />
               )}
             </div>

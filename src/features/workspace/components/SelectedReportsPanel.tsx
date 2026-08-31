@@ -129,7 +129,7 @@ export function SelectedReportsPanel({
               key={code}
               role="presentation"
               className={cn(
-                "group relative flex shrink-0 items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-1.5 text-xs transition-colors duration-150",
+                "group relative flex shrink-0 items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-1.5 text-[13px] transition-colors duration-150",
                 isActive
                   ? "border-b-brand-primary bg-brand-surface font-semibold text-brand-navy"
                   : "border-b-transparent font-medium text-brand-text-muted hover:bg-brand-structural-hover hover:text-brand-navy"
@@ -161,7 +161,7 @@ export function SelectedReportsPanel({
                       className="h-3.5 w-3.5 shrink-0 stroke-[2.5] text-brand-primary"
                     />
                   ) : (
-                    <span className="shrink-0 font-mono text-[11px] font-normal tabular-nums text-brand-text-muted">
+                    <span className="shrink-0 font-mono text-xs font-normal tabular-nums text-brand-text-muted">
                       {progress.completedCount}/{progress.selectedCount}
                     </span>
                   )

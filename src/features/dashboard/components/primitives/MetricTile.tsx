@@ -18,9 +18,9 @@ export interface MetricTileProps {
 /**
  * Compact operational figure. One term/description pair of the enclosing <dl>.
  *
- * Deliberately small: a dashboard is a place to read several numbers at a
- * glance, not four oversized KPI cards. The label always states the meaning in
- * words, so the figure is never carried by size or colour alone.
+ * A dashboard is a place to read several numbers at a glance: the figure is the
+ * one bold navy element, the label above it always states the meaning in words,
+ * so the figure is never carried by size or colour alone.
  *
  * Grid rather than nested flex so <dt> and <dd> stay direct children of this
  * tile's wrapper div, which is what makes the strip a valid description list.
@@ -37,14 +37,14 @@ export function MetricTile({
   return (
     <div
       className={cn(
-        "grid items-center gap-x-2.5 px-3.5 py-3",
+        "grid items-center gap-x-3 px-4 py-3.5",
         Icon ? "grid-cols-[auto_minmax(0,1fr)]" : "grid-cols-1",
         className
       )}
     >
       {Icon && (
-        <span className="row-span-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-tint text-brand-primary">
-          <Icon className="h-4 w-4" aria-hidden="true" />
+        <span className="row-span-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-tint text-brand-primary">
+          <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
         </span>
       )}
       {/* Wraps rather than truncates: at two tiles per row on a 320px screen a
@@ -58,12 +58,12 @@ export function MetricTile({
           "min-w-0 leading-tight",
           unavailable
             ? "text-sm font-medium text-brand-text-muted"
-            : "text-xl font-bold tabular-nums text-brand-navy"
+            : "text-2xl font-bold tabular-nums tracking-tight text-brand-navy"
         )}
       >
         {value}
         {hint && (
-          <span className="mt-0.5 block truncate text-[11px] font-normal text-brand-text-subtle">
+          <span className="mt-0.5 block truncate text-[11px] font-normal tracking-normal text-brand-text-muted">
             {hint}
           </span>
         )}

@@ -34,7 +34,7 @@ export function ActionCard({
     <Link
       href={href}
       className={cn(
-        "group flex items-center gap-3 rounded-lg border px-3.5 py-2.5",
+        "group flex items-center gap-3.5 rounded-lg border px-4 py-3",
         // 150ms sits in the feedback band. Only the scale moves, so only the scale
         // is withdrawn under reduced motion; the colour step still answers the press.
         "transition-[color,background-color,border-color,transform] duration-150",
@@ -51,15 +51,15 @@ export function ActionCard({
       {Icon && (
         <span
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-md",
             isPrimary ? "bg-white/15" : "bg-brand-tint text-brand-primary"
           )}
         >
-          <Icon className="h-4 w-4" aria-hidden="true" />
+          <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-[13px] font-semibold", isPrimary ? "" : "text-brand-navy")}>
+        <span className={cn("block text-[15px] font-semibold leading-tight tracking-tight", isPrimary ? "" : "text-brand-navy")}>
           {title}
         </span>
         {description && (
@@ -74,7 +74,10 @@ export function ActionCard({
         )}
       </span>
       <ArrowRight
-        className={cn("h-4 w-4 shrink-0", isPrimary ? "opacity-80" : "text-brand-text-subtle")}
+        className={cn(
+          "h-4 w-4 shrink-0 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transform-none",
+          isPrimary ? "opacity-80" : "text-brand-text-muted"
+        )}
         aria-hidden="true"
       />
     </Link>

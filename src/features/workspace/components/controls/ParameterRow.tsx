@@ -73,7 +73,7 @@ export function ParameterRow({
         // can no longer be read against the wrong neighbouring row. Row height is never fixed and
         // nothing is clipped: a validation message, a wrapped sex-unset reference, a
         // ConditionalChoice pair or a computed help line all expand the row.
-        "grid items-start gap-x-2 gap-y-1 px-3 py-1 text-xs transition-colors duration-150 sm:items-center",
+        "grid items-start gap-x-2 gap-y-1 px-3 py-1.5 text-xs transition-colors duration-150 sm:items-center",
         PARAMETER_ROW_TRACKS,
         // The row being edited is the one thing an encoder must never lose track of. The brand
         // tint plus a narrow inset teal rail marks it without moving anything: the rail is always
@@ -119,14 +119,14 @@ export function ParameterRow({
             id={validationMessageId}
             data-validation-message
             role="alert"
-            className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-brand-danger"
+            className="mt-1 text-xs font-semibold normal-case tracking-normal text-brand-danger"
           >
             {validationMessage}
           </p>
         )}
       </div>
 
-      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-[11px] text-brand-text-muted">
+      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-xs text-brand-text-muted">
         {renderedUnit || ""}
       </span>
 
@@ -141,7 +141,7 @@ export function ParameterRow({
         {reference && (
           <span
             data-reference-display
-            className="inline-block w-full whitespace-normal break-words font-mono text-[11px] leading-snug text-brand-text-muted"
+            className="inline-block w-full whitespace-normal break-words font-mono text-xs leading-snug text-brand-text-muted"
           >
             Ref: {reference}
           </span>

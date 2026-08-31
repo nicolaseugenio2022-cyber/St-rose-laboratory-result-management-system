@@ -16,6 +16,7 @@ import { ConditionalChoiceInput } from "./ConditionalChoiceInput";
 import { PARAMETER_ROW_TRACKS } from "./controls/ParameterRow";
 import { RequestedBySection } from "./RequestedBySection";
 import { AdditionalEncodingFieldsSection } from "./AdditionalEncodingFieldsSection";
+import { PanelIcon } from "./PanelIcon";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/utils/cn";
 import { CheckCircle2, CheckSquare, FileSpreadsheet, Square } from "lucide-react";
@@ -91,10 +92,10 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
         chrome for the grid below, so they recede while the results stay the brightest
         thing in the panel. */}
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-brand-border bg-brand-structural px-4 py-2.5">
-      <div className="flex min-w-0 items-center gap-2">
-        <FileSpreadsheet aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <h2 className="truncate text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">{definition.templateTitle}</h2>
-        <span className="shrink-0 font-mono text-[11px] text-brand-text-muted">{definition.templateCode}</span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <PanelIcon icon={FileSpreadsheet} />
+        <h2 className="truncate text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">{definition.templateTitle}</h2>
+        <span className="shrink-0 font-mono text-xs text-brand-text-muted">{definition.templateCode}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {/* Deliberately not animated. This advances on almost every keystroke, and a
@@ -110,7 +111,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
         >
           <div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} />
         </div>
-        <span className="font-mono text-[11px] font-semibold tabular-nums text-brand-text-muted">{completedCount}/{selectedCount}</span>
+        <span className="font-mono text-xs font-semibold tabular-nums text-brand-text-muted">{completedCount}/{selectedCount}</span>
         {completionPercent === 100 && <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />}
       </div>
       {/* Was a hand-rolled button with no hover and no focus ring at all. */}

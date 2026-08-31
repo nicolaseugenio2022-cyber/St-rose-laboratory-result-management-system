@@ -11,9 +11,13 @@ export interface LaboratoryUserDashboardProps {
   recentWork: RecentWork;
 }
 
-/** Rows inside a panel: hairlines between them, and no outer border of their own. */
+/**
+ * Rows inside a panel: hairlines between them, and no outer border of their own. The list
+ * is a size container, so each SessionRow lays itself out against the panel width rather
+ * than the viewport - the narrow side column and the full-width list get the right shape.
+ */
 function RowList({ children }: { children: React.ReactNode }) {
-  return <div className="divide-y divide-brand-border-subtle">{children}</div>;
+  return <div className="divide-y divide-brand-border-subtle [container-type:inline-size]">{children}</div>;
 }
 
 const viewAllHistory = <SectionLink href="/history">View all history</SectionLink>;
@@ -46,7 +50,7 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
           contextual "View all history" link on each completed list, where the operator
           is already looking at completed work - it does not compete with starting a
           session, which is the only thing this screen exists to launch. */}
-      <DashboardSection title="Start laboratory work" variant="bare">
+      <DashboardSection title="Start laboratory work" variant="bare" icon={PlayCircle}>
         <ActionCard
           href="/workspace"
           icon={PlayCircle}
@@ -56,12 +60,15 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
         />
       </DashboardSection>
 
-      {/* Asymmetric on wide screens: unfinished work leads, because it is the
-          only list on this page the operator is expected to act on. */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr]">
+      {/* Asymmetric on wide screens: unfinished work leads, because it is the only list on
+          this page the operator is expected to act on. `items-start` keeps each panel the
+          height of its own rows - a three-row list must not be stretched to match a five-row
+          one with a blank white tail. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr] xl:items-start">
         <DashboardSection
           title="Continue your work"
           description="Unfinished sessions you started"
+          icon={Inbox}
         >
           {drafts.length === 0 ? (
             <EmptyState
@@ -82,6 +89,7 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
         <DashboardSection
           title="Recently completed"
           description="Newest first"
+          icon={FileEdit}
           action={viewAllHistory}
         >
           {completed.length === 0 ? (

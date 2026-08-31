@@ -1,5 +1,5 @@
 import React from "react";
-import { History, PlayCircle, ShieldCheck, Users } from "lucide-react";
+import { History, PlayCircle, ShieldCheck, UserCheck, Users, UserX } from "lucide-react";
 import { SessionRow } from "../primitives/SessionRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { RecentWork } from "@/features/dashboard/recent-work";
@@ -26,6 +26,10 @@ export interface AdminDashboardProps {
  * the material the navigation cannot give: one action to start work, the account figures, and
  * the recent activity list.
  *
+ * On a wide screen the activity list and the account figures share one row - the list takes
+ * the wider column because it is the operational content; the figures sit beside it as a 2x2
+ * strip. Below `xl` they stack in that same order.
+ *
  * Recent laboratory activity is read through the same authorized operational path the
  * Laboratory User uses. Administrators see completed activity, but the repository query scopes
  * drafts to their owner, so an Administrator never sees another user's unfinished work and
@@ -46,7 +50,7 @@ export function AdminDashboard({
       {/* One action, full width, and no panel around it: the action card is already the
           surface. Completed history stays reachable from the navigation and from the
           contextual link on the activity list. */}
-      <DashboardSection title="Start laboratory work" variant="bare">
+      <DashboardSection title="Start laboratory work" variant="bare" icon={PlayCircle}>
         <ActionCard
           href="/workspace"
           icon={PlayCircle}
@@ -56,44 +60,49 @@ export function AdminDashboard({
         />
       </DashboardSection>
 
-      <DashboardSection
-        title="Account overview"
-        description="Login accounts visible to your role"
-      >
-        {/* A strip of labelled figures is a description list, inside the panel: the 1px
-            gaps draw the separators against the panel border colour.
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-start">
+        <DashboardSection
+          title="Recent laboratory activity"
+          description="Most recent completed sessions"
+          icon={History}
+          action={<SectionLink href="/history">View all history</SectionLink>}
+        >
+          {completed.length === 0 ? (
+            <EmptyState
+              icon={History}
+              title="No recent laboratory activity"
+              description="Completed patient sessions will appear here."
+              className="rounded-none border-0"
+            />
+          ) : (
+            // The list is a size container, so each SessionRow lays itself out against the
+            // panel width rather than the viewport.
+            <div className="divide-y divide-brand-border-subtle [container-type:inline-size]">
+              {completed.map((item) => (
+                <SessionRow key={item.id} item={item} showResume />
+              ))}
+            </div>
+          )}
+        </DashboardSection>
 
-            Total is not redundant against Active + Inactive: they answer different questions
-            at a glance - how large the estate is, versus how much of it is live. */}
-        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
-          <MetricTile className="bg-brand-card" label="Total accounts" value={totalUsers} icon={Users} />
-          <MetricTile className="bg-brand-card" label="Active" value={activeUsers} />
-          <MetricTile className="bg-brand-card" label="Inactive" value={inactiveUsers} />
-          <MetricTile className="bg-brand-card" label="Administrators" value={adminUsers} icon={ShieldCheck} />
-        </dl>
-      </DashboardSection>
+        <DashboardSection
+          title="Account overview"
+          description="Login accounts visible to your role"
+          icon={Users}
+        >
+          {/* A strip of labelled figures is a description list, inside the panel: the 1px
+              gaps draw the separators against the panel border colour.
 
-      {/* Full width: the activity list is the only operational content on this screen. */}
-      <DashboardSection
-        title="Recent laboratory activity"
-        description="Most recent completed sessions"
-        action={<SectionLink href="/history">View all history</SectionLink>}
-      >
-        {completed.length === 0 ? (
-          <EmptyState
-            icon={History}
-            title="No recent laboratory activity"
-            description="Completed patient sessions will appear here."
-            className="rounded-none border-0"
-          />
-        ) : (
-          <div className="divide-y divide-brand-border-subtle">
-            {completed.map((item) => (
-              <SessionRow key={item.id} item={item} showResume />
-            ))}
-          </div>
-        )}
-      </DashboardSection>
+              Total is not redundant against Active + Inactive: they answer different questions
+              at a glance - how large the estate is, versus how much of it is live. */}
+          <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4 xl:grid-cols-2">
+            <MetricTile className="bg-brand-card" label="Total accounts" value={totalUsers} icon={Users} />
+            <MetricTile className="bg-brand-card" label="Active" value={activeUsers} icon={UserCheck} />
+            <MetricTile className="bg-brand-card" label="Inactive" value={inactiveUsers} icon={UserX} />
+            <MetricTile className="bg-brand-card" label="Administrators" value={adminUsers} icon={ShieldCheck} />
+          </dl>
+        </DashboardSection>
+      </div>
     </div>
   );
 }

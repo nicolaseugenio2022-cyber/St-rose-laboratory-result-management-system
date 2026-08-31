@@ -29,7 +29,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
     <div className="rounded-lg border border-brand-border bg-brand-structural p-3">
       <div className="mb-3 flex items-center gap-2">
         <Package aria-hidden="true" className="h-4 w-4 text-brand-primary" />
-        <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

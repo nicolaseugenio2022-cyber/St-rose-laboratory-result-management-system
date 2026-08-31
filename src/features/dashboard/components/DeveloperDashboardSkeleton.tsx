@@ -15,13 +15,30 @@ function PanelSkeleton({ rows }: { rows: number }) {
   );
 }
 
-/** The panel shell: a structural header band above the body, as DashboardSection draws it. */
+/** A 2x2 (4-across below xl) strip of figure cells, matching the real description lists. */
+function StripSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4 xl:grid-cols-2">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex flex-col gap-2 bg-brand-card px-4 py-3.5">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-6 w-14" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The panel shell: a structural header band with the icon disc, as DashboardSection draws it. */
 function SectionSkeleton({ children }: { children: React.ReactNode }) {
   return (
     <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
-      <div className="space-y-1.5 border-b border-brand-border bg-brand-structural px-4 py-2.5">
-        <Skeleton className="h-3.5 w-36" />
-        <Skeleton className="h-3 w-52 max-w-full" />
+      <div className="flex items-center gap-2.5 border-b border-brand-border bg-brand-structural px-4 py-2.5">
+        <Skeleton className="h-7 w-7 shrink-0" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-3.5 w-36" />
+          <Skeleton className="h-3 w-52 max-w-full" />
+        </div>
       </div>
       {children}
     </div>
@@ -31,31 +48,29 @@ function SectionSkeleton({ children }: { children: React.ReactNode }) {
 /**
  * Placeholder for the Developer technical surface.
  *
- * Mirrors the finished composition region for region - health strip, two
- * diagnostics panels, a statistics strip, then activity - so nothing jumps
- * when the awaited data resolves. Decorative throughout: the Suspense boundary
- * conveys the loading state.
+ * Mirrors the finished composition region for region - health beside statistics,
+ * the two diagnostics panels, then activity - so nothing jumps when the awaited
+ * data resolves. Decorative throughout: the Suspense boundary conveys the loading
+ * state.
  */
 export function DeveloperDashboardSkeleton() {
   return (
     // SkeletonRegion announces the loading state once, semantically, while the
     // placeholders inside stay decorative and hidden from assistive technology.
     <SkeletonRegion isLoading label="Loading developer dashboard" className="space-y-4">
-      <SectionSkeleton>
-        {/* Geometry, not semantics: the placeholder stays decorative divs so it never
-            announces an empty description list, while matching the real strip cell for
-            cell so nothing shifts when the data resolves. */}
-        <div className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex flex-col gap-1.5 bg-brand-card px-3.5 py-3">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-4 w-16" />
-            </div>
-          ))}
-        </div>
-      </SectionSkeleton>
+      {/* Geometry, not semantics: the placeholders stay decorative divs so they never
+          announce an empty description list, while matching the real strips cell for
+          cell so nothing shifts when the data resolves. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+        <SectionSkeleton>
+          <StripSkeleton />
+        </SectionSkeleton>
+        <SectionSkeleton>
+          <StripSkeleton />
+        </SectionSkeleton>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
         <SectionSkeleton>
           <PanelSkeleton rows={4} />
         </SectionSkeleton>
@@ -63,17 +78,6 @@ export function DeveloperDashboardSkeleton() {
           <PanelSkeleton rows={5} />
         </SectionSkeleton>
       </div>
-
-      <SectionSkeleton>
-        <div className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex flex-col gap-1.5 bg-brand-card px-3.5 py-3">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-5 w-12" />
-            </div>
-          ))}
-        </div>
-      </SectionSkeleton>
 
       {/* Recent System Activity is full width, so the placeholder must be too or the page
           jumps on resolve. */}

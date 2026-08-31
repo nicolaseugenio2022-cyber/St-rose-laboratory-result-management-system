@@ -98,6 +98,8 @@ jobs:
             verify-personnel-directory.ts
             verify-personnel-signatures.ts
             verify-recovery-flow.ts
+            verify-signatory-resolution.ts
+            verify-workspace-signatory-boundary.ts
           )
 
           # Must run WITHOUT the condition: these render through react-dom/server, which the

@@ -36,7 +36,7 @@ function formatMetric(value: number | null) {
 /** One label/value line in the diagnostics panels. */
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 px-3 py-1.5">
+    <div className="flex items-baseline justify-between gap-3 px-3.5 py-1.5">
       <span className="shrink-0 text-[11px] text-brand-text-muted">{label}</span>
       {/* Wraps rather than truncating: a timestamp or a Supabase status string is
           diagnostic content, and an ellipsis destroys the part that matters on a narrow
@@ -69,17 +69,17 @@ export default async function DeveloperDashboardSection({
   ] as const;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <DashboardSection
         title="System health"
         description="Live indicators for the application stack"
       >
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-brand-card-border bg-brand-card-border md:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
           {health.map((entry) => (
-            <div key={entry.label} className="flex flex-col gap-1.5 bg-brand-structural px-3 py-2.5">
+            <div key={entry.label} className="flex flex-col gap-1.5 bg-brand-card px-3.5 py-3">
               {/* Wraps rather than truncates: "Authentication" is a fixed label, and at
                   two cells per row on a narrow screen clipping it teaches nothing. */}
-              <dt className="text-[11px] font-medium leading-tight text-brand-text-muted">
+              <dt className="text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-brand-text-muted">
                 {entry.label}
               </dt>
               <dd>{statusBadge(entry.status)}</dd>
@@ -88,15 +88,15 @@ export default async function DeveloperDashboardSection({
         </dl>
       </DashboardSection>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <DashboardSection
           title="Supabase database"
           description="Server-side connectivity check"
         >
-          <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
-            <div className="flex items-center justify-between gap-3 border-b border-brand-border-subtle bg-brand-structural px-3 py-2">
-              <span className="flex items-center gap-2 text-xs font-semibold text-brand-text">
-                <Database aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-subtle" />
+          <div className="divide-y divide-brand-border-subtle">
+            <div className="flex items-center justify-between gap-3 px-3.5 py-2">
+              <span className="flex items-center gap-2 text-xs font-semibold text-brand-navy">
+                <Database aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-muted" />
                 Connection
               </span>
               {statusBadge(data.systemHealth.database)}
@@ -113,7 +113,7 @@ export default async function DeveloperDashboardSection({
               }
             />
             <DetailRow label="Last checked" value={humanizeTimestamp(data.supabaseHealth.checkedAt)} />
-            <p className="px-3 py-2 text-[11px] leading-relaxed text-brand-text-muted">
+            <p className="bg-brand-structural px-3.5 py-2 text-[11px] leading-relaxed text-brand-text-muted">
               {data.supabaseHealth.message}
             </p>
           </div>
@@ -123,9 +123,9 @@ export default async function DeveloperDashboardSection({
           title="Environment"
           description="Runtime details safe for Developer visibility"
         >
-          <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
-            <div className="flex items-center gap-2 border-b border-brand-border-subtle bg-brand-structural px-3 py-2 text-xs font-semibold text-brand-text">
-              <ServerCog aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-subtle" />
+          <div className="divide-y divide-brand-border-subtle">
+            <div className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-brand-navy">
+              <ServerCog aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-muted" />
               Technical information
             </div>
             <DetailRow label="Application" value={data.technicalInfo.appName} />
@@ -144,22 +144,22 @@ export default async function DeveloperDashboardSection({
         {/* `unavailable` is passed wherever the service returned null, so an outage
             renders as muted prose instead of a bold tabular figure. "Unavailable" set
             in the same weight as a count reads as a value that was measured. */}
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-brand-card-border bg-brand-card-border md:grid-cols-4">
-          <MetricTile className="bg-brand-structural" label="Total users" value={formatMetric(data.totalUsers)} />
+        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
+          <MetricTile className="bg-brand-card" label="Total users" value={formatMetric(data.totalUsers)} />
           <MetricTile
-            className="bg-brand-structural"
+            className="bg-brand-card"
             label="Total personnel"
             value={formatMetric(data.totalPersonnel)}
             unavailable={data.totalPersonnel === null}
           />
           <MetricTile
-            className="bg-brand-structural"
+            className="bg-brand-card"
             label="Audit log entries"
             value={formatMetric(data.totalAuditLogs)}
             unavailable={data.totalAuditLogs === null}
           />
           <MetricTile
-            className="bg-brand-structural"
+            className="bg-brand-card"
             label="Lab results"
             value={formatMetric(data.totalLaboratoryResults)}
             unavailable={data.totalLaboratoryResults === null}
@@ -180,10 +180,10 @@ export default async function DeveloperDashboardSection({
               icon={Activity}
               title="No recent activity"
               description="Recent audit events will appear here."
-              className="rounded-lg border border-brand-card-border bg-brand-card"
+              className="rounded-none border-0"
             />
           ) : (
-            <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
+            <div className="divide-y divide-brand-border-subtle">
               {recentActivity.map((log) => {
                 // The event's own category is the label. Marking an ordinary audit
                 // event "Healthy" would assert a verdict the audit trail never made;
@@ -191,9 +191,9 @@ export default async function DeveloperDashboardSection({
                 // the visible text is still the category itself.
                 const isDenial = log.category === "SecurityDenial";
                 return (
-                  <div key={log.id} className="flex items-start justify-between gap-3 px-3 py-2">
+                  <div key={log.id} className="flex items-start justify-between gap-3 px-3.5 py-2">
                     <div className="min-w-0">
-                      <div className="break-words text-xs font-semibold text-brand-text" title={log.eventType}>
+                      <div className="break-words text-[13px] font-semibold text-brand-navy" title={log.eventType}>
                         {log.eventType}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-brand-text-muted">

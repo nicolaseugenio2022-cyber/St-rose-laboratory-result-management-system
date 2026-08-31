@@ -113,13 +113,15 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
       {/* Mobile Backdrop Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar Panel */}
+      {/* Sidebar Panel. Structural body under a navy brand block: navigation is chrome,
+          and the one navy block at the top-left is where the identity of the whole shell
+          lives - every other surface can then stay quiet. */}
       <aside
         ref={panelRef}
         id="app-navigation-sidebar"
@@ -130,29 +132,31 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
           // `invisible` while closed is what keeps the off-screen drawer out of the
           // Tab order: translate alone leaves every link focusable behind the page.
           // `lg:visible` hands the panel straight back to the desktop layout.
-          isOpen ? "translate-x-0 shadow-lg lg:shadow-none" : "invisible -translate-x-full lg:visible"
+          isOpen ? "translate-x-0 shadow-overlay lg:shadow-none" : "invisible -translate-x-full lg:visible"
         )}
       >
-        {/* Brand Header */}
-        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-brand-border px-3">
+        {/* Brand block */}
+        <div className="flex h-14 shrink-0 items-center gap-2 bg-brand-navy pl-3 pr-2 text-brand-navy-foreground">
           <Link
             href="/dashboard"
-            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
             onClick={onClose}
           >
+            {/* The official mark is a teal disc on a white square. Clipping the square to a
+                circle leaves a thin white ring around the disc, which is how it sits on navy. */}
             <Image
               src="/st-rose-logo-official.png"
               alt="St. Rose Diagnostic Laboratory Logo"
               width={36}
               height={36}
-              className="h-9 w-auto shrink-0 object-contain"
+              className="h-9 w-9 shrink-0 rounded-full object-cover"
               priority
             />
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold leading-tight text-brand-text">
+              <span className="block truncate text-[15px] font-bold leading-tight tracking-tight text-white">
                 St. Rose
               </span>
-              <span className="block truncate text-[11px] leading-tight text-brand-text-muted">
+              <span className="block truncate text-[11px] font-medium leading-tight text-brand-navy-muted">
                 Diagnostic Laboratory
               </span>
             </span>
@@ -160,7 +164,7 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-text-subtle transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-navy-muted transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 lg:hidden"
             aria-label="Close Navigation Sidebar"
           >
             <X aria-hidden="true" className="h-5 w-5" />
@@ -173,11 +177,11 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
         </div>
 
         {/* Sidebar Footer. Plain text on the surface, not a card: nothing here is actionable. */}
-        <div className="shrink-0 border-t border-brand-border px-3 py-2">
-          <p className="truncate text-[11px] font-medium text-brand-text-muted">
+        <div className="shrink-0 border-t border-brand-border px-4 py-2.5">
+          <p className="truncate text-[11px] font-semibold text-brand-text-muted">
             Result Management System
           </p>
-          <p className="truncate font-mono text-[10px] text-brand-text-subtle">
+          <p className="truncate font-mono text-[10px] text-brand-text-muted">
             v{SYSTEM_CONSTANTS.APP.VERSION}
           </p>
         </div>

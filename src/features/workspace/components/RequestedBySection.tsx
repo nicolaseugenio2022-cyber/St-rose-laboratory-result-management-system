@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { RequestedByPolicySpec } from "@/domain/types/report-definition";
 import { listAutoSuggestionsAction } from "@/features/server-boundary/server-actions";
+import { Input } from "@/components/ui/Input";
 import { Stethoscope } from "lucide-react";
 
 export function RequestedBySection({ policy, value, onChange }: {
@@ -19,14 +20,14 @@ export function RequestedBySection({ policy, value, onChange }: {
     // No frame of its own. The enclosing setup band already separates this from the
     // results, and a bordered card here made the report card a card inside a card.
     <section className="max-w-lg" data-requested-by-section>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted" htmlFor={listId}>
-        {policy.fieldLabel || "Requested By"}{policy.isRequired && <span className="text-rose-500"> *</span>}
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted" htmlFor={listId}>
+        {policy.fieldLabel || "Requested By"}{policy.isRequired && <span className="text-brand-danger"> *</span>}
       </label>
       <div className="relative">
-        <input id={listId} list={`${listId}-options`} type="text" value={value} onChange={(event) => onChange(event.target.value)}
+        <Input id={listId} list={`${listId}-options`} type="text" value={value} onChange={(event) => onChange(event.target.value)}
           readOnly={!policy.isEditable} required={policy.isRequired} data-requested-by-input data-encoding-input
-          className="w-full rounded-md border border-brand-border bg-brand-card px-2.5 py-1.5 pr-8 text-xs font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring" />
-        <Stethoscope aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2 h-3.5 w-3.5 text-brand-text-subtle" />
+          className="pr-9" />
+        <Stethoscope aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-brand-text-subtle" />
         <datalist id={`${listId}-options`}>{suggestions.map((item) => <option key={item} value={item} />)}</datalist>
       </div>
     </section>

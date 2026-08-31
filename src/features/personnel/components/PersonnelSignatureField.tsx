@@ -238,12 +238,14 @@ export function PersonnelSignatureField({
 
   return (
     <>
+      {/* A structural tint block inside the white form: the drop zone is a grouping of the
+          record's signature facts and controls, not a second card. */}
       <div
         aria-disabled={isBusy || undefined}
         className={[
-          "rounded-lg border transition-colors",
+          "rounded-lg border p-3 transition-colors",
           isDragOver && !isBusy
-            ? "border-brand-primary border-dashed bg-brand-info-bg"
+            ? "border-dashed border-brand-primary bg-brand-info-bg"
             : "border-brand-border bg-brand-structural",
           // Reduced emphasis while a write runs, matching the state the controls inside it are
           // already in. No drag-over highlight can appear on top of it.
@@ -256,7 +258,7 @@ export function PersonnelSignatureField({
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
       >
-        <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
@@ -264,22 +266,23 @@ export function PersonnelSignatureField({
               </span>
               {/* Stated, never flagged. The image is optional, so its absence is a fact about the
                   record and not a defect in it - same vocabulary and same neutral treatment the
-                  directory row uses, so the two never disagree in a reader's memory. */}
+                  directory row uses, so the two never disagree in a reader's memory. The fact
+                  sits on a white chip, lifted off the tint the way the form's fields are. */}
               {hasSignature ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-text-muted">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-brand-border bg-brand-surface px-2 py-0.5 text-[11px] text-brand-text-muted">
                   <PenLine aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                   <span aria-hidden="true">On file</span>
                   <span className="sr-only">Signature on file</span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-text-muted">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-brand-border bg-brand-surface px-2 py-0.5 text-[11px] text-brand-text-muted">
                   <PenOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                   <span aria-hidden="true">No image</span>
                   <span className="sr-only">No signature image</span>
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-brand-text-muted">
+            <p className="mt-1.5 text-[11px] leading-relaxed text-brand-text-muted">
               Optional. PNG only, maximum 2 MB. Drag a file here or use the button. Without an
               image, reports carry the printed name, credentials and PRC licence instead. Applied
               to reports completed from now on; previously completed reports keep the signature
@@ -338,7 +341,7 @@ export function PersonnelSignatureField({
         </p>
 
         {error && (
-          <div className="px-3 pb-3">
+          <div className="mt-2.5">
             <Alert variant="destructive" onDismiss={() => setError(null)}>
               {error}
             </Alert>

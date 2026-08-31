@@ -37,7 +37,7 @@ export function MetricTile({
   return (
     <div
       className={cn(
-        "grid items-center gap-x-2.5 px-3 py-2.5",
+        "grid items-center gap-x-2.5 px-3.5 py-3",
         Icon ? "grid-cols-[auto_minmax(0,1fr)]" : "grid-cols-1",
         className
       )}
@@ -50,7 +50,7 @@ export function MetricTile({
       {/* Wraps rather than truncates: at two tiles per row on a 320px screen a
           truncated label read "Total acc...", and these labels are short, fixed
           and known - there is nothing to gain by clipping them. */}
-      <dt className="min-w-0 text-[11px] font-medium leading-tight text-brand-text-muted">
+      <dt className="min-w-0 text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-brand-text-muted">
         {label}
       </dt>
       <dd
@@ -58,7 +58,7 @@ export function MetricTile({
           "min-w-0 leading-tight",
           unavailable
             ? "text-sm font-medium text-brand-text-muted"
-            : "text-base font-semibold tabular-nums text-brand-text"
+            : "text-xl font-bold tabular-nums text-brand-navy"
         )}
       >
         {value}

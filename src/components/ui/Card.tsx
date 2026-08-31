@@ -2,20 +2,31 @@ import React from "react";
 import { cn } from "@/utils/cn";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * default - a working surface: white, bordered, low shadow.
+   * flat    - a structural grouping tint with no shadow; for a region inside a surface.
+   * outline - white and bordered with no shadow; for a surface nested in another surface.
+   */
   variant?: "default" | "flat" | "outline";
 }
 
+/**
+ * A panel, not a decoration.
+ *
+ * The panel is the unit of section grouping: one white working surface with an optional
+ * structural header band (CardHeader) and an optional structural footer band (CardFooter).
+ * Content inside a panel is grouped by bands, hairlines and tints - never by another card,
+ * so a card inside a card cannot be reached through this API by accident.
+ *
+ * A Card is a surface, not a control: it never reacts to hover. A consumer with a real
+ * interactive contract adds its own treatment.
+ */
 export function Card({ className, variant = "default", children, ...props }: CardProps) {
-  // A Card is a surface, not a control. The default variant no longer changes on hover:
-  // a static panel that reacts to the pointer reads as clickable and invites a click that
-  // does nothing. A consumer with a real interactive contract adds its own hover treatment.
-  const baseStyles = "rounded-lg bg-brand-card transition-colors";
+  const baseStyles = "rounded-lg border border-brand-border";
   const variants = {
-    default: "border border-brand-card-border",
-    // --color-border-subtle and --color-surface-hover are both #f1f5f9, so this
-    // border was invisible against its own fill.
-    flat: "border border-brand-card-border bg-brand-surface-hover",
-    outline: "border border-brand-card-border",
+    default: "bg-brand-card shadow-low",
+    flat: "bg-brand-structural",
+    outline: "bg-brand-card",
   };
 
   return (
@@ -25,22 +36,47 @@ export function Card({ className, variant = "default", children, ...props }: Car
   );
 }
 
+/**
+ * Structural header band. A row: the title (and description) on the left and any
+ * actions on the right; it wraps on narrow screens.
+ */
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-0.5 p-4 pb-2", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-t-lg border-b border-brand-border bg-brand-structural px-4 py-2.5",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("text-sm font-semibold leading-tight tracking-tight text-brand-text", className)} {...props} />;
+  return (
+    <h3
+      className={cn("text-[13px] font-semibold leading-tight tracking-tight text-brand-navy", className)}
+      {...props}
+    />
+  );
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-xs text-brand-text-muted leading-relaxed", className)} {...props} />;
+  return <p className={cn("mt-0.5 text-[11px] leading-snug text-brand-text-muted", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-4 pt-0", className)} {...props} />;
+  return <div className={cn("p-4", className)} {...props} />;
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-center border-t border-brand-border-subtle p-4 pt-3", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-b-lg border-t border-brand-border bg-brand-structural px-4 py-2.5",
+        className
+      )}
+      {...props}
+    />
+  );
 }

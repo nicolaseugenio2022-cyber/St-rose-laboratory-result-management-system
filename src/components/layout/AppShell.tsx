@@ -24,7 +24,7 @@ export function AppShell({ children, currentUserRole, username }: AppShellProps)
       {/* Correction 4: skip link, following the WorkspaceShell precedent. Visually hidden
           until focused, so it adds no permanent clutter, and it lands on PageContainer's
           <main id="main-content">, which is the only main landmark in this shell. */}
-      <a href="#main-content" inert={sidebarOpen || undefined} className={"sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:border focus:border-brand-border focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-brand-text focus:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-focus-ring"}>
+      <a href="#main-content" inert={sidebarOpen || undefined} className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:border focus:border-brand-border-strong focus:bg-brand-surface focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-brand-navy focus:shadow-overlay focus:outline-none focus:ring-2 focus:ring-brand-focus-ring">
         Skip to main content
       </a>
 

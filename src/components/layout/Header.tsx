@@ -32,11 +32,12 @@ export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuB
   const pageTitle = currentNav ? currentNav.title : "St. Rose Laboratory";
   const pageDescription = currentNav?.description || "Result Management System";
 
-  // Structural, not working surface: the header is chrome. Sharing the sidebar's surface
-  // and a border that reads against the canvas makes the shell one connected frame
-  // instead of a white bar floating over white content.
+  // Structural, not working surface: the header is chrome. It shares the sidebar's surface
+  // and a border that reads against the canvas, so the shell is one connected frame. The
+  // page title is the one navy element here - the page's own name, set in the identity
+  // colour - and every module inherits it, so no module repeats its title in the body.
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-brand-border-strong bg-brand-structural px-4 sm:px-5 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-brand-border-strong bg-brand-structural px-3 sm:px-5 lg:px-6">
       {/* min-w-0 on the identity side is what stops the account controls from
           crushing the page title as the viewport narrows. */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -44,7 +45,7 @@ export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuB
           type="button"
           ref={menuButtonRef}
           onClick={onMenuToggle}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
+          className="-ml-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:bg-brand-structural-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
           aria-label="Toggle Navigation Drawer"
           aria-expanded={isMenuOpen}
           aria-controls="app-navigation-sidebar"
@@ -53,24 +54,28 @@ export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuB
         </button>
 
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold leading-tight text-brand-text">{pageTitle}</h1>
+          <h1 className="truncate text-[15px] font-bold leading-tight tracking-tight text-brand-navy">
+            {pageTitle}
+          </h1>
           <p className="hidden truncate text-[11px] leading-tight text-brand-text-muted sm:block">
             {pageDescription}
           </p>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1">
         {username && (
           <div
-            className="hidden min-w-0 max-w-48 flex-col items-end border-r border-brand-border pr-3 sm:flex"
+            className="mr-1 hidden min-w-0 max-w-52 items-center gap-2 border-r border-brand-border-strong pr-3 sm:flex"
             aria-label={`Signed in as ${username}`}
           >
-            <span className="max-w-full truncate text-xs font-semibold text-brand-text" title={username}>
-              {username}
-            </span>
-            <span className="whitespace-nowrap text-[11px] text-brand-text-muted">
-              {formatRoleLabel(role)}
+            <span className="min-w-0">
+              <span className="block max-w-full truncate text-xs font-semibold leading-tight text-brand-navy" title={username}>
+                {username}
+              </span>
+              <span className="block whitespace-nowrap text-[11px] leading-tight text-brand-text-muted">
+                {formatRoleLabel(role)}
+              </span>
             </span>
           </div>
         )}
@@ -84,7 +89,7 @@ export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuB
           size="sm"
           onClick={() => setIsChangePasswordOpen(true)}
           aria-label="Change Password"
-          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-3"
+          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-2.5"
         >
           <KeyRound aria-hidden="true" className="h-4 w-4" />
           <span className="hidden sm:inline">Change Password</span>
@@ -101,7 +106,7 @@ export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuB
             import("@/features/auth/authActions").then((m) => m.logoutAction());
           }}
           aria-label="Logout"
-          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-3"
+          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-2.5"
         >
           <LogOut aria-hidden="true" className="h-4 w-4" />
           <span className="hidden sm:inline">Logout</span>

@@ -23,18 +23,22 @@ export function ChemistryTestGroupMenu({
   ];
 
   return (
-    <div className="bg-slate-50/80 rounded-xl border border-slate-200 p-3 mb-4">
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <FlaskConical className="h-4 w-4 text-brand-primary" />
-        <h3 className="text-xs font-bold text-slate-800">Chemistry Shared Workflow Menu</h3>
+    // A structural tint group with an eyebrow label; the panel tiles are the only white in it.
+    <div className="mb-4 rounded-lg border border-brand-border bg-brand-structural p-3">
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <FlaskConical aria-hidden="true" className="h-4 w-4 text-brand-primary" />
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Chemistry Shared Workflow Menu</h3>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {chemistryTests.map((test) => {
           const isSelected = selectedTemplateCodes.includes(test.code);
           const isActive = activeTemplateCode === test.code;
 
           return (
+            // Active: the brand tint with a teal edge and a navy label; selected: white with the
+            // teal check; unselected: white and muted. The check is the selected cue, the fill
+            // is the active cue, so neither state relies on colour alone.
             <div
               key={test.code}
               onClick={() => {
@@ -42,28 +46,21 @@ export function ChemistryTestGroupMenu({
                 onSelectActiveTest(test.code);
               }}
               className={cn(
-                "p-2.5 rounded-lg border text-left cursor-pointer transition-all duration-150 relative",
+                "relative cursor-pointer rounded-md border p-2.5 text-left transition-colors duration-150",
                 isActive
-                  ? "bg-brand-primary text-white border-brand-primary shadow-sm"
+                  ? "border-brand-primary bg-brand-tint text-brand-navy"
                   : isSelected
-                  ? "bg-blue-50/70 border-blue-300 text-brand-text hover:bg-blue-100/70"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100/70"
+                  ? "border-brand-border bg-brand-surface text-brand-text hover:bg-brand-surface-hover"
+                  : "border-brand-border bg-brand-surface text-brand-text-muted hover:bg-brand-surface-hover"
               )}
             >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-xs font-bold truncate">{test.name}</span>
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <span className="truncate text-xs font-semibold">{test.name}</span>
                 {isSelected && (
-                  <span
-                    className={cn(
-                      "h-4 w-4 rounded-full flex items-center justify-center shrink-0 text-[10px]",
-                      isActive ? "bg-white text-brand-primary" : "bg-brand-primary text-white"
-                    )}
-                  >
-                    <Check className="h-3 w-3 stroke-[3]" />
-                  </span>
+                  <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 stroke-[2.5] text-brand-primary" />
                 )}
               </div>
-              <p className={cn("text-[10px] line-clamp-1", isActive ? "text-blue-100" : "text-slate-400")}>
+              <p className="line-clamp-1 text-[10px] text-brand-text-muted">
                 {test.desc}
               </p>
             </div>

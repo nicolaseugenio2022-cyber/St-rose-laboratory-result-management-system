@@ -2,16 +2,18 @@ import React from "react";
 import { cn } from "@/utils/cn";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: "success" | "warning" | "neutral" | "indigo" | "purple" | "blue" | "danger";
+  variant?: "success" | "warning" | "neutral" | "indigo" | "purple" | "blue" | "danger" | "navy";
   size?: "sm" | "md";
 }
 
+/**
+ * Short categorical label.
+ *
+ * Square-cornered like StatusBadge, so the system has one badge shape, and ringed
+ * rather than bordered so a size="sm" Badge and a size="sm" StatusBadge are the same
+ * height. `navy` is the identity chip - a role label beside a username, never a status.
+ */
 export function Badge({ className, variant = "neutral", size = "md", children, ...props }: BadgeProps) {
-  // Square-cornered like StatusBadge, so the system has one badge shape. A pill is reserved
-  // for shapes that mean "bounded selector", not applied to every short label.
-  // An inset ring rather than a border, matching StatusBadge and the dashboard
-  // pills: a border adds 2px to the box, so a size="sm" Badge and a size="sm"
-  // StatusBadge were different heights despite identical padding and type.
   const baseStyles =
     "inline-flex items-center whitespace-nowrap rounded-md font-semibold ring-1 ring-inset transition-colors";
 
@@ -22,7 +24,8 @@ export function Badge({ className, variant = "neutral", size = "md", children, .
     indigo: "bg-indigo-50 text-indigo-700 ring-indigo-200",
     purple: "bg-indigo-50 text-indigo-700 ring-indigo-200",
     blue: "bg-brand-info-bg text-brand-info ring-brand-info-border",
-    neutral: "bg-slate-100 text-slate-700 ring-slate-200",
+    neutral: "bg-brand-structural text-brand-text-muted ring-brand-border",
+    navy: "bg-brand-navy text-brand-navy-foreground ring-brand-navy",
   };
 
   const sizes = {

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -117,24 +118,12 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
       title="Change Password"
       description="Update the password for your account."
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {serverError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700"
-          >
-            {serverError}
-          </div>
-        )}
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* The shared Alert keeps the same live-region semantics the hand-rolled boxes had:
+            destructive is role="alert", success is role="status". Messages are unchanged. */}
+        {serverError && <Alert variant="destructive">{serverError}</Alert>}
 
-        {successMessage && (
-          <div
-            role="status"
-            className="rounded-lg border border-brand-success-border bg-brand-success-bg p-3 text-xs font-medium text-brand-success"
-          >
-            {successMessage}
-          </div>
-        )}
+        {successMessage && <Alert variant="success">{successMessage}</Alert>}
 
         <Input
           label="Current Password"
@@ -177,11 +166,18 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-          <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
+        {/* Dialog footer: Cancel first in DOM (and below on a phone), primary on the right. */}
+        <div className="mt-4 flex flex-col-reverse gap-2 border-t border-brand-border pt-3 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={handleClose}
+            disabled={isSubmitting}
+          >
             Cancel
           </Button>
-          <Button type="submit" isLoading={isSubmitting}>
+          <Button type="submit" className="w-full sm:w-auto" isLoading={isSubmitting}>
             Change Password
           </Button>
         </div>

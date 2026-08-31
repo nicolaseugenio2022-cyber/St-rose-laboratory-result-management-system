@@ -154,10 +154,10 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      {/* Backdrop: navy at 55%, so the page recedes into the brand ground rather than grey. */}
       <div
-        className="fixed inset-0 bg-slate-900/50 transition-opacity"
+        className="fixed inset-0 bg-[rgb(13_43_64_/_0.55)] transition-opacity"
         onClick={dismissible ? onClose : undefined}
         aria-hidden="true"
       />
@@ -167,7 +167,9 @@ export function Modal({
         ref={dialogRef}
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-lg border border-brand-border bg-brand-surface p-5 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+          // The dialog is a column capped to the viewport: the header band stays put and only
+          // the body scrolls, so a long form never pushes its own footer off screen.
+          "relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-brand-border bg-brand-surface shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:max-h-[calc(100dvh-3rem)]",
           className
         )}
         role={role}
@@ -175,13 +177,15 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-brand-border-subtle pb-3">
-          <div>
-            <h3 id={titleId} className="text-sm font-semibold text-brand-text">
+        {/* Structural header band: the dialog is a working surface with the same header
+            vocabulary as a page panel, so a modal reads as part of the system. */}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-brand-border bg-brand-structural px-4 py-3">
+          <div className="min-w-0">
+            <h3 id={titleId} className="text-[13px] font-semibold leading-tight text-brand-navy">
               {title}
             </h3>
             {description && (
-              <p id={descriptionId} className="text-xs text-brand-text-muted mt-0.5">
+              <p id={descriptionId} className="mt-0.5 text-[11px] leading-snug text-brand-text-muted">
                 {description}
               </p>
             )}
@@ -194,7 +198,7 @@ export function Modal({
             <button
               type="button"
               onClick={onClose}
-              className="-mr-2 -mt-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              className="-my-1.5 -mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:bg-brand-structural-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-8 sm:w-8"
               aria-label={closeLabel}
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -202,7 +206,7 @@ export function Modal({
           )}
         </div>
 
-        <div className="pt-3">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
       </div>
     </div>
   );

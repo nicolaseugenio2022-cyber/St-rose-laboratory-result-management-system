@@ -63,14 +63,18 @@ function toFormValues(personnel?: PersonnelDirectoryEntry | null): PersonnelForm
  * A real `fieldset`/`legend` rather than a styled heading, so the grouping is announced as a
  * grouping instead of being purely visual. Seven flat controls in a column give a reader no
  * structure to hold on to; three named groups do.
+ *
+ * The body is a six-track grid from `sm` up: a field spanning three tracks takes half the
+ * row, six the whole of it, and the first-name / middle-initial pair splits four to two, so
+ * a two-character initial never takes half the width beside a full given name.
  */
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <fieldset className="min-w-0">
-      <legend className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-text-subtle">
+      <legend className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
         {title}
       </legend>
-      <div className="space-y-3">{children}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-6">{children}</div>
     </fieldset>
   );
 }
@@ -218,7 +222,7 @@ export function PersonnelForm({
     <form
       onSubmit={handleSubmit(handleFormSubmit)}
       aria-busy={isSubmitting || undefined}
-      className="space-y-5"
+      className="space-y-4"
     >
       {serverError && (
         <Alert variant="destructive" onDismiss={() => setServerError(null)}>
@@ -227,45 +231,45 @@ export function PersonnelForm({
       )}
 
       <FieldGroup title="Role and identity">
-        <Select
-          label="Personnel Role"
-          options={[...PERSONNEL_ROLE_OPTIONS]}
-          error={errors.role?.message}
-          {...register("role")}
-        />
+        <div className="sm:col-span-6">
+          <Select
+            label="Personnel Role"
+            options={[...PERSONNEL_ROLE_OPTIONS]}
+            error={errors.role?.message}
+            {...register("role")}
+          />
+        </div>
 
         {/* Last name is the sort key and the widest value, so it gets its own row rather than
             being squeezed into a third of the width beside a two-character initial. */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-6">
-          <div className="sm:col-span-4">
-            <Input
-              label="First Name"
-              placeholder="e.g. Maria"
-              error={errors.firstName?.message}
-              {...register("firstName")}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <Input
-              label="Middle Initial"
-              placeholder="Optional"
-              error={errors.middleInitial?.message}
-              {...register("middleInitial")}
-            />
-          </div>
-          <div className="sm:col-span-6">
-            <Input
-              label="Last Name"
-              placeholder="e.g. Santos"
-              error={errors.lastName?.message}
-              {...register("lastName")}
-            />
-          </div>
+        <div className="sm:col-span-4">
+          <Input
+            label="First Name"
+            placeholder="e.g. Maria"
+            error={errors.firstName?.message}
+            {...register("firstName")}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Input
+            label="Middle Initial"
+            placeholder="Optional"
+            error={errors.middleInitial?.message}
+            {...register("middleInitial")}
+          />
+        </div>
+        <div className="sm:col-span-6">
+          <Input
+            label="Last Name"
+            placeholder="e.g. Santos"
+            error={errors.lastName?.message}
+            {...register("lastName")}
+          />
         </div>
       </FieldGroup>
 
       <FieldGroup title="Licensing">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-3">
           <Input
             label="Credentials"
             placeholder={isPathologist ? "e.g. MD, FPSP" : "e.g. RMT"}
@@ -273,6 +277,8 @@ export function PersonnelForm({
             error={errors.credentials?.message}
             {...register("credentials")}
           />
+        </div>
+        <div className="sm:col-span-3">
           <Input
             label="PRC License Number"
             placeholder="e.g. 0012345"
@@ -283,28 +289,32 @@ export function PersonnelForm({
       </FieldGroup>
 
       <FieldGroup title="Directory status">
-        <Select
-          label="Directory Status"
-          options={[...PERSONNEL_STATUS_OPTIONS]}
-          helperText="Inactive personnel are excluded from new report signatory selection."
-          error={errors.status?.message}
-          {...register("status")}
-        />
+        <div className="sm:col-span-3">
+          <Select
+            label="Directory Status"
+            options={[...PERSONNEL_STATUS_OPTIONS]}
+            helperText="Inactive personnel are excluded from new report signatory selection."
+            error={errors.status?.message}
+            {...register("status")}
+          />
+        </div>
 
         {/* Signature management needs a saved record to attach to, so it appears only when
             editing. On create, say so rather than showing a control that cannot work yet. */}
         {isPathologist &&
           (initialData?.id ? (
-            <PersonnelSignatureField
-              personnelId={initialData.id}
-              personnelName={personnelName}
-              hasSignature={initialData.hasSignature}
-              onSignatureChanged={onSignatureChanged}
-              onConfirmationOpenChange={setIsSignatureConfirmOpen}
-              onBusyChange={setIsSignatureBusy}
-            />
+            <div className="sm:col-span-6">
+              <PersonnelSignatureField
+                personnelId={initialData.id}
+                personnelName={personnelName}
+                hasSignature={initialData.hasSignature}
+                onSignatureChanged={onSignatureChanged}
+                onConfirmationOpenChange={setIsSignatureConfirmOpen}
+                onBusyChange={setIsSignatureBusy}
+              />
+            </div>
           ) : (
-            <p className="rounded-lg border border-dashed border-brand-border bg-brand-structural px-3 py-2.5 text-[11px] leading-relaxed text-brand-text-muted">
+            <p className="rounded-lg border border-dashed border-brand-border bg-brand-structural px-3 py-2.5 text-[11px] leading-relaxed text-brand-text-muted sm:col-span-6">
               Create this record first, then reopen it to upload an optional signature image.
             </p>
           ))}
@@ -316,14 +326,15 @@ export function PersonnelForm({
       </p>
 
       {/* Sticky so the primary action stays reachable while a long form scrolls inside the
-          dialog, rather than being stranded below the fold on a short viewport. */}
-      <div className="sticky bottom-0 -mx-1 flex flex-col-reverse gap-2 border-t border-brand-border bg-brand-surface px-1 pb-1 pt-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          dialog, rather than being stranded below the fold on a short viewport. It bleeds to
+          the dialog body's edges so its hairline runs the full width of the surface. */}
+      <div className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-2 border-t border-brand-border bg-brand-surface px-4 pt-3 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
           disabled={isSubmitting || isSignatureBusy}
-          className="min-h-11 w-full sm:min-h-10 sm:w-auto"
+          className="min-h-11 w-full sm:min-h-9 sm:w-auto"
         >
           Cancel
         </Button>
@@ -333,7 +344,7 @@ export function PersonnelForm({
           type="submit"
           isLoading={isSubmitting}
           disabled={isSignatureBusy}
-          className="min-h-11 w-full sm:min-h-10 sm:w-auto"
+          className="min-h-11 w-full sm:min-h-9 sm:w-auto"
         >
           {isEditing ? "Save Changes" : "Create Personnel"}
         </Button>

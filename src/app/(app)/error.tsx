@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -31,23 +31,30 @@ export default function AppRouteGroupError({
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-4 text-center">
       <div
         role="alert"
-        className="max-w-md space-y-4 rounded-lg border border-brand-card-border bg-brand-card p-6"
+        className="w-full max-w-md rounded-lg border border-brand-border bg-brand-card shadow-low"
       >
-        <h2 className="text-sm font-semibold text-brand-text">Unable to load this page</h2>
-        <p className="text-xs text-brand-text-muted">
-          Something went wrong while loading this page. Please try again.
-        </p>
-        {error.digest ? (
-          <p className="text-[11px] text-brand-text-muted">
-            Support reference:{" "}
-            <span className="select-all font-mono">{error.digest}</span>
+        <div className="flex items-center gap-3 rounded-t-lg border-b border-brand-border bg-brand-structural px-4 py-3 text-left">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-danger-border bg-brand-danger-bg text-brand-danger">
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h2 className="text-[13px] font-semibold text-brand-navy">Unable to load this page</h2>
+        </div>
+        <div className="space-y-3 px-4 py-4">
+          <p className="text-xs leading-relaxed text-brand-text-muted">
+            Something went wrong while loading this page. Please try again.
           </p>
-        ) : null}
-        <div className="pt-2">
-          <Button variant="primary" size="sm" onClick={() => reset()}>
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            Try Again
-          </Button>
+          {error.digest ? (
+            <p className="text-[11px] text-brand-text-muted">
+              Support reference:{" "}
+              <span className="select-all font-mono text-brand-text">{error.digest}</span>
+            </p>
+          ) : null}
+          <div className="pt-1">
+            <Button variant="primary" size="sm" onClick={() => reset()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     </div>

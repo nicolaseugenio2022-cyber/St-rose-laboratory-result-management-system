@@ -27,7 +27,7 @@ export function Skeleton({ className, circle = false, ...props }: SkeletonProps)
     <div
       aria-hidden="true"
       className={cn(
-        "bg-slate-200/70 motion-safe:animate-pulse",
+        "bg-brand-border motion-safe:animate-pulse",
         circle ? "rounded-full" : "rounded-md",
         className
       )}

@@ -162,16 +162,16 @@ export function NavRail({
         className={cn(
           "flex items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring",
           variant === "rail"
-            ? "h-10 w-10 justify-center rounded-md border-l-2"
-            : "min-h-11 w-full gap-2.5 border-l-2 py-2.5 pl-3 pr-3 text-xs",
+            ? "h-10 w-10 justify-center rounded-md border-l-[3px]"
+            : "min-h-11 w-full gap-2.5 border-l-[3px] py-2.5 pl-3.5 pr-3 text-[13px]",
           isActive
             ? "border-l-brand-primary bg-brand-sidebar-active font-semibold text-brand-sidebar-active-text"
-            : "border-l-transparent font-medium text-brand-sidebar-text hover:bg-brand-surface-hover hover:text-brand-text"
+            : "border-l-transparent font-medium text-brand-sidebar-text hover:bg-brand-structural-hover hover:text-brand-navy"
         )}
       >
         <Icon
           aria-hidden="true"
-          className={cn("h-4 w-4 shrink-0", isActive && "text-brand-primary")}
+          className={cn("h-4 w-4 shrink-0", isActive ? "text-brand-primary" : "text-brand-text-muted")}
         />
         {variant === "drawer" && <span className="truncate">{item.title}</span>}
       </Link>
@@ -188,33 +188,38 @@ export function NavRail({
         aria-expanded={isDrawerOpen}
         aria-controls="workspace-nav-drawer"
         inert={isDrawerOpen || undefined}
-        className="no-print fixed bottom-4 left-4 z-30 flex h-11 w-11 items-center justify-center rounded-md border border-brand-border bg-brand-sidebar text-brand-sidebar-text shadow-sm transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring print:hidden lg:hidden"
+        className="no-print fixed bottom-4 left-4 z-30 flex h-11 w-11 items-center justify-center rounded-md bg-brand-navy text-white shadow-overlay transition-colors hover:bg-brand-navy-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 print:hidden lg:hidden"
       >
         <Menu aria-hidden="true" className="h-5 w-5" />
       </button>
 
       <nav
         aria-label="Workspace Navigation"
-        className="no-print hidden h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-brand-border-strong bg-brand-sidebar py-2 print:hidden lg:flex"
+        className="no-print hidden h-full w-14 shrink-0 flex-col items-center border-r border-brand-border-strong bg-brand-sidebar print:hidden lg:flex"
       >
-        {/* Brand mark only. Deliberately not a link: a logo shortcut here would be a
-            navigation path that bypasses the unsaved-work guard entirely. */}
-        <Image
-          src="/st-rose-logo-official.png"
-          alt=""
-          aria-hidden="true"
-          width={28}
-          height={28}
-          className="mb-1 h-7 w-auto shrink-0 object-contain"
-        />
-        <span aria-hidden="true" className="mb-1 h-px w-8 shrink-0 bg-brand-border" />
-        {items.map((item) => renderLink(item, "rail"))}
+        {/* Brand block: the same navy block the full sidebar carries, compressed to the rail
+            width, so the Workspace is recognisably the same application. Brand mark only, and
+            deliberately not a link: a logo shortcut here would be a navigation path that
+            bypasses the unsaved-work guard entirely. */}
+        <div className="flex h-14 w-full shrink-0 items-center justify-center bg-brand-navy">
+          <Image
+            src="/st-rose-logo-official.png"
+            alt=""
+            aria-hidden="true"
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0 rounded-full object-cover"
+          />
+        </div>
+        <div className="flex flex-col items-center gap-1 py-2">
+          {items.map((item) => renderLink(item, "rail"))}
+        </div>
       </nav>
 
       {isDrawerOpen && (
         <>
           <div
-            className="no-print fixed inset-0 z-40 bg-slate-900/50 print:hidden lg:hidden"
+            className="no-print fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] print:hidden lg:hidden"
             onClick={onCloseDrawer}
             aria-hidden="true"
           />
@@ -226,23 +231,28 @@ export function NavRail({
             aria-label="Workspace Navigation"
             className="no-print fixed bottom-0 left-0 top-0 z-50 flex w-[min(16rem,82vw)] max-w-full flex-col border-r border-brand-border-strong bg-brand-sidebar shadow-overlay print:hidden lg:hidden"
           >
-            <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-brand-border px-3">
+            <div className="flex h-14 shrink-0 items-center gap-2.5 bg-brand-navy pl-3 pr-2">
               <Image
                 src="/st-rose-logo-official.png"
                 alt=""
                 aria-hidden="true"
-                width={28}
-                height={28}
-                className="h-7 w-auto shrink-0 object-contain"
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-full object-cover"
               />
-              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-brand-text">
-                St. Rose
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-bold leading-tight tracking-tight text-white">
+                  St. Rose
+                </span>
+                <span className="block truncate text-[11px] font-medium leading-tight text-brand-navy-muted">
+                  Diagnostic Laboratory
+                </span>
               </span>
               <button
                 type="button"
                 onClick={onCloseDrawer}
                 aria-label="Close Workspace Navigation"
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-sidebar-text transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-navy-muted transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
               >
                 <X aria-hidden="true" className="h-5 w-5" />
               </button>

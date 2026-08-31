@@ -16,7 +16,7 @@ export interface PageContainerProps extends React.HTMLAttributes<HTMLDivElement>
 export function PageContainer({ className, children, ...props }: PageContainerProps) {
   return (
     <main
-      // Correction 4: a stable, focusable landing target for the shell skip link.
+      // A stable, focusable landing target for the shell skip link.
       // tabIndex={-1} makes it programmatically focusable without entering the Tab order.
       // Both sit before the prop spread, so a caller can still override either.
       id="main-content"
@@ -25,7 +25,7 @@ export function PageContainer({ className, children, ...props }: PageContainerPr
         // The skip link lands here programmatically, so the landing must be visible:
         // suppressing the ring entirely left a keyboard user with no confirmation that
         // the jump had happened at all.
-        "mx-auto w-full min-w-0 max-w-[1680px] flex-1 p-4 sm:p-5 lg:p-6",
+        "mx-auto w-full min-w-0 max-w-[1680px] flex-1 p-4 sm:p-5 lg:px-6 lg:py-5",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring",
         className
       )}

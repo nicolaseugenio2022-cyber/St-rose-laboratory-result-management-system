@@ -41,6 +41,11 @@ const config: Config = {
           "primary-hover": "var(--color-primary-hover)",
           "primary-foreground": "var(--color-primary-foreground)",
           tint: "var(--color-tint)",
+          // Deep navy identity colour and its on-navy text pair.
+          navy: "var(--color-navy)",
+          "navy-hover": "var(--color-navy-hover)",
+          "navy-foreground": "var(--color-navy-foreground)",
+          "navy-muted": "var(--color-navy-muted)",
           "decorative-pink": "var(--color-decorative-pink)",
           "accessible-rose": "var(--color-accessible-rose)",
           secondary: "var(--color-secondary)",

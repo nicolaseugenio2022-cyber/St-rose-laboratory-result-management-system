@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef, useId } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 import { Search, SearchX, ChevronDown, ChevronRight, Check, Plus, FlaskConical, Stethoscope, Microscope, ShieldCheck, HeartPulse, X, PanelLeftClose } from "lucide-react";
 
@@ -135,20 +137,15 @@ export function ExaminationCatalog({
     searchInputRef.current?.focus();
   };
 
-  // Structural: the catalog is how you get to work, not the work. Against the canvas it
-  // reads as a distinct region, and against the white report card beside it the result
-  // grid stays the brighter, primary surface.
+  // A white panel: the header band and every family header are structural, the list itself is
+  // the working surface, and the three row states carry the only colour in the panel.
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-brand-card-border bg-brand-structural">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
       {/* Header and search stay fixed; only the results list below scrolls. */}
-      {/* Structural, not canvas. The header and every family header used to share the darkest
-          tone, so with a few families collapsed the catalog was mostly that one colour. The tint
-          stays - this is chrome - but a step lighter, and the stronger rule below carries the
-          separation the extra darkness used to. */}
-      <div className="shrink-0 border-b border-brand-border-strong bg-brand-structural px-3 py-2">
+      <div className="shrink-0 border-b border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex items-center gap-2">
           <FlaskConical aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-brand-text">
+          <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">
             Examination catalog
           </h3>
           {onCollapse && (
@@ -159,7 +156,7 @@ export function ExaminationCatalog({
               aria-label="Collapse examination catalog"
               aria-expanded
               aria-controls={catalogRegionId}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-structural-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             >
               <PanelLeftClose aria-hidden="true" className="h-4 w-4" />
             </button>
@@ -177,22 +174,22 @@ export function ExaminationCatalog({
           <label htmlFor={searchInputId} className="sr-only">
             Search examinations
           </label>
-          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-brand-text-subtle" />
-          <input
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-brand-text-subtle" />
+          <Input
             id={searchInputId}
             ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Name, code, or keyword"
-            className="h-9 w-full rounded-md border border-brand-border bg-brand-card pl-8 pr-9 text-xs font-medium text-brand-text transition-colors placeholder:text-brand-text-muted focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+            className="pl-8 pr-9"
           />
           {isSearchActive && (
             <button
               type="button"
               onClick={handleClearSearch}
               aria-label="Clear search"
-              className="absolute right-0.5 top-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-brand-text-subtle transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-brand-text-subtle transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-structural-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             >
               <X aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
@@ -214,12 +211,14 @@ export function ExaminationCatalog({
               icon={FlaskConical}
               title="No examinations available"
               description="No active examination templates are published in the registry."
+              className="rounded-none border-0"
             />
           ) : (
             <EmptyState
               icon={SearchX}
               title="No examinations match"
               description={`Nothing in the catalog matches “${searchQuery.trim()}”.`}
+              className="rounded-none border-0"
               action={
                 <Button type="button" variant="outline" size="sm" onClick={handleClearSearch}>
                   Clear search
@@ -240,8 +239,11 @@ export function ExaminationCatalog({
             const isAllSelected = selectedInFamily === specs.length && specs.length > 0;
 
             return (
-              <div key={family}>
-                {/* Family disclosure: sticky, compact, solid. No blur, no per-family card. */}
+              // -mt-px on the first family lets its top rule sit on the header band's bottom
+              // rule instead of doubling it.
+              <div key={family} className="first:-mt-px">
+                {/* Family disclosure: a sticky structural band with an eyebrow label, so a section
+                    header cannot be mistaken for a selectable row. */}
                 <button
                   type="button"
                   onClick={() => toggleFamilyCollapse(family)}
@@ -249,33 +251,21 @@ export function ExaminationCatalog({
                   aria-expanded={!isCollapsed}
                   aria-controls={contentId}
                   title={isSearchActive ? "Expanded while a search is active" : undefined}
-                  // A tinted band on the white list, which is what makes it read as a section
-                  // divider. The type does the rest of that work - see the label below.
-                  className="sticky top-0 z-10 flex min-h-9 w-full items-center gap-2 border-y border-brand-card-border bg-brand-structural px-2.5 text-left transition-colors duration-150 hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring disabled:cursor-default disabled:hover:bg-brand-structural"
+                  className="sticky top-0 z-10 flex min-h-9 w-full items-center gap-2 border-y border-brand-border bg-brand-structural px-3 text-left transition-colors duration-150 hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring disabled:cursor-default disabled:hover:bg-brand-structural"
                 >
                   <span className="flex shrink-0 items-center justify-center">
                     {FAMILY_ICONS[family] || <FlaskConical aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />}
                   </span>
-                  {/* Smaller, tracked, uppercase and muted. Previously this was text-xs
-                      font-semibold text-brand-text - character for character the treatment used by
-                      the examination titles beneath it - so a family header read as just another
-                      row, and a highlighted one at that. A section label should not look like
-                      anything that can be selected. */}
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
+                  <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
                     {family}
                   </span>
-                  <span
-                    className={cn(
-                      "shrink-0 font-mono text-[11px] tabular-nums",
-                      isAllSelected ? "font-semibold text-emerald-700" : "text-brand-text-muted"
-                    )}
-                  >
+                  <Badge variant={isAllSelected ? "success" : "neutral"} size="sm" className="font-mono tabular-nums">
                     {`${selectedInFamily}/${specs.length}`}
-                  </span>
+                  </Badge>
                   {isCollapsed ? (
                     <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-text-subtle" />
                   ) : (
-                    <ChevronDown aria-hidden="true" className={cn("h-4 w-4 shrink-0", isSearchActive ? "text-brand-text-subtle" : "text-brand-text-subtle")} />
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-text-subtle" />
                   )}
                 </button>
 
@@ -290,17 +280,18 @@ export function ExaminationCatalog({
 
                     return (
                       // Three states, each carrying a text cue so none of them depends on colour:
-                      // active shows "Open" and a full-height brand rail, selected-inactive shows
-                      // "Added" against a muted rail, unselected shows "Add" against no rail.
+                      // active shows "Open" on the stronger selection fill, selected-inactive shows
+                      // "Added" on the brand tint, unselected shows "Add" on white. Both selected
+                      // states carry the teal rail and a navy label.
                       <div
                         key={code}
                         className={cn(
-                          "group relative flex items-center gap-1.5 border-l-[3px] pr-1.5 transition-colors",
+                          "group relative flex min-h-9 items-center gap-1.5 border-l-2 pr-1.5 transition-colors",
                           isActive
                             ? "border-l-brand-primary bg-brand-sidebar-active"
                             : isSelected
-                              ? "border-l-brand-border-strong bg-brand-card hover:bg-brand-structural-hover"
-                              : "border-l-transparent bg-brand-card hover:bg-brand-structural-hover"
+                              ? "border-l-brand-primary bg-brand-tint hover:bg-brand-sidebar-active"
+                              : "border-l-transparent bg-brand-card hover:bg-brand-surface-hover"
                         )}
                       >
                         <button
@@ -312,12 +303,12 @@ export function ExaminationCatalog({
                             }
                             onSelectTemplate(code);
                           }}
-                          className="min-w-0 flex-1 cursor-pointer rounded-sm px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+                          className="min-w-0 flex-1 cursor-pointer rounded-sm px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
                         >
                           <span
                             className={cn(
-                              "block truncate text-xs leading-tight",
-                              isActive ? "font-bold text-brand-text" : "font-medium text-brand-text"
+                              "block truncate text-[13px] leading-tight",
+                              isActive || isSelected ? "font-semibold text-brand-navy" : "font-medium text-brand-text"
                             )}
                             title={spec.template.templateTitle}
                           >
@@ -326,7 +317,7 @@ export function ExaminationCatalog({
                           <span className="mt-0.5 flex items-center gap-1.5 leading-tight">
                             <span className="min-w-0 truncate font-mono text-[11px] text-brand-text-muted">{code}</span>
                             {isActive && (
-                              <span className="shrink-0 rounded-sm bg-brand-primary px-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                              <span className="shrink-0 rounded-sm bg-brand-primary px-1 text-[10px] font-semibold uppercase tracking-wide text-brand-primary-foreground">
                                 Open
                               </span>
                             )}
@@ -343,10 +334,10 @@ export function ExaminationCatalog({
                             onToggleTemplateSelection(code);
                           }}
                           className={cn(
-                            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100",
+                            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                             isSelected
-                              ? "border-brand-border bg-brand-card text-brand-text-muted hover:bg-brand-surface-hover"
-                              : "border-brand-border bg-brand-card text-brand-text hover:border-brand-primary hover:bg-brand-tint hover:text-brand-primary"
+                              ? "border-transparent bg-transparent text-brand-primary hover:border-brand-border hover:bg-brand-surface"
+                              : "border-brand-border bg-brand-surface text-brand-text hover:border-brand-primary hover:bg-brand-tint hover:text-brand-primary"
                           )}
                           // The accessible name contains the visible word, so the two never disagree
                           // (WCAG 2.5.3), and it still states the action the control performs.
@@ -354,7 +345,7 @@ export function ExaminationCatalog({
                           aria-label={isSelected ? `Added. Remove ${displayTitle}` : `Add ${displayTitle}`}
                         >
                           {isSelected ? (
-                            <Check aria-hidden="true" className="h-3.5 w-3.5 stroke-[2.5] text-emerald-600" />
+                            <Check aria-hidden="true" className="h-3.5 w-3.5 stroke-[2.5]" />
                           ) : (
                             <Plus aria-hidden="true" className="h-3.5 w-3.5" />
                           )}

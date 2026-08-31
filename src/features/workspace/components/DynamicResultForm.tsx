@@ -82,7 +82,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     // report footer, so remarks, kit information and signatories belong to the same labelled
     // panel as the results they sign off. Declaring it here would leave the footer outside
     // the panel, or create a second nested tabpanel for the same tab.
-    className="mb-3 overflow-hidden rounded-lg border border-brand-card-border bg-brand-card shadow-low"
+    className="mb-3 overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
   >
     {/* One heading per report. The active tab already names this report AND labels this
         panel, and the worksheet used to carry a third "Laboratory Results Encoding"
@@ -90,11 +90,11 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     {/* Structural header band on a white card: the report identity and its progress are
         chrome for the grid below, so they recede while the results stay the brightest
         thing in the panel. */}
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-brand-card-border bg-brand-structural px-3.5 py-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-brand-border bg-brand-structural px-4 py-2.5">
       <div className="flex min-w-0 items-center gap-2">
         <FileSpreadsheet aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <h2 className="truncate text-sm font-semibold text-brand-text">{definition.templateTitle}</h2>
-        <span className="shrink-0 font-mono text-[11px] font-semibold text-brand-text-subtle">{definition.templateCode}</span>
+        <h2 className="truncate text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">{definition.templateTitle}</h2>
+        <span className="shrink-0 font-mono text-[11px] text-brand-text-muted">{definition.templateCode}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {/* Deliberately not animated. This advances on almost every keystroke, and a
@@ -106,12 +106,12 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
           aria-valuemin={0}
           aria-valuemax={selectedCount}
           aria-label={`${definition.templateTitle} results encoded`}
-          className="h-1.5 w-24 overflow-hidden rounded-full bg-brand-border-subtle sm:w-36"
+          className="h-1.5 w-24 overflow-hidden rounded-full bg-brand-border sm:w-36"
         >
           <div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} />
         </div>
-        <span className="text-[11px] font-semibold tabular-nums text-brand-text-muted">{completedCount}/{selectedCount}</span>
-        {completionPercent === 100 && <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-emerald-600" />}
+        <span className="font-mono text-[11px] font-semibold tabular-nums text-brand-text-muted">{completedCount}/{selectedCount}</span>
+        {completionPercent === 100 && <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />}
       </div>
       {/* Was a hand-rolled button with no hover and no focus ring at all. */}
       <Button type="button" variant="outline" size="sm" onClick={() => handleSelectAllToggle(!allSelected)} className="ml-auto shrink-0">
@@ -121,7 +121,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     </div>
     {/* Report setup in one recessed band, then the worksheet full-bleed to the card
         edges - the grid gets the whole width instead of losing it to a nested frame. */}
-    <div className="space-y-2.5 border-b border-brand-card-border bg-brand-background px-3.5 py-2.5">
+    <div className="space-y-3 border-b border-brand-border bg-brand-structural px-4 py-3">
       <RequestedBySection policy={definition.requestedByPolicy} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
     </div>
@@ -134,8 +134,9 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
         <div
           aria-hidden="true"
           className={cn(
-            // Column header is structural too - it labels the grid, it is not part of it.
-            "hidden gap-x-2 border-b border-l-2 border-l-transparent border-b-brand-card-border bg-brand-structural px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-text-muted sm:grid sm:items-center",
+            // Column header is structural too - it labels the grid, it is not part of it. Same
+            // band and navy uppercase labels as the shared Table header.
+            "hidden gap-x-2 border-b border-l-2 border-l-transparent border-b-brand-border bg-brand-structural px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-navy sm:grid sm:items-center",
             PARAMETER_ROW_TRACKS
           )}
         >
@@ -181,9 +182,9 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
           />;
           // Zebra lives on the row wrapper, not inside ParameterRow: a selected row paints no
           // background of its own so the stripe shows through, while a deselected row keeps its
-          // muted fill and a focused row keeps its brand wash. Quiet enough that no text loses
-          // contrast against it.
-          return <div key={parameter.parameterCode} data-param-code={parameter.parameterCode} className="even:bg-brand-background">{control}</div>;
+          // muted fill and a focused row keeps its brand wash. The stripe is the same quiet
+          // tone the shared striped Table uses, so no text loses contrast against it.
+          return <div key={parameter.parameterCode} data-param-code={parameter.parameterCode} className="even:bg-[#F8FAFC]">{control}</div>;
         })}</div>
     </div>
   </div>;

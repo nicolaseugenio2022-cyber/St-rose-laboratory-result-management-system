@@ -17,6 +17,7 @@ import { EncodingReportFooter } from "./components/EncodingReportFooter";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -904,42 +905,46 @@ export function GuidedWorkspace({
   // session than the one requested.
   if (reopenStatus === "loading" || reopenStatus === "failed") {
     return (
-      <div className="h-full min-h-0 w-full flex items-center justify-center bg-brand-canvas p-4">
+      <div className="flex h-full min-h-0 w-full items-center justify-center bg-brand-canvas p-4">
         {/* Both branches announce themselves: the reopen can outlast the spinner's
             usefulness, and under reduced motion the spinner does not turn at all, so the
             words have to carry the state. */}
+        {/* One white working surface on the canvas: the state body, then - on failure only -
+            a structural footer band holding the two routes out. */}
         <div
           role={reopenStatus === "failed" ? "alert" : "status"}
           aria-live={reopenStatus === "failed" ? "assertive" : "polite"}
-          className="w-full max-w-md space-y-4 rounded-lg border border-brand-card-border bg-brand-card p-6 text-center"
+          className="w-full max-w-md overflow-hidden rounded-lg border border-brand-border bg-brand-card text-center shadow-low"
         >
           {reopenStatus === "loading" ? (
-            <>
-              <div className="mx-auto w-fit rounded-full bg-brand-tint p-2.5 text-brand-primary">
-                <RefreshCw aria-hidden="true" className="h-6 w-6 animate-spin" />
-              </div>
+            <div className="flex flex-col items-center gap-3 px-6 py-8">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-tint text-brand-primary">
+                <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" />
+              </span>
               <div>
-                <h2 className="text-sm font-semibold text-brand-text">Reopening Session</h2>
-                <p className="mt-1 text-xs text-brand-text-muted">
+                <h2 className="text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">Reopening Session</h2>
+                <p className="mt-1 text-xs leading-relaxed text-brand-text-muted">
                   Loading the saved patient report session from the laboratory record.
                 </p>
               </div>
-            </>
+            </div>
           ) : (
             <>
-              <div className="mx-auto w-fit rounded-full bg-brand-danger-bg p-2.5 text-brand-danger">
-                <AlertCircle aria-hidden="true" className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-brand-text">Session Could Not Be Reopened</h2>
-                <p className="mt-1 text-xs text-brand-text-muted">
-                  {reopenError ?? "This session could not be reopened."}
-                </p>
+              <div className="flex flex-col items-center gap-3 px-6 py-8">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-danger-bg text-brand-danger">
+                  <AlertCircle aria-hidden="true" className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">Session Could Not Be Reopened</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-brand-text-muted">
+                    {reopenError ?? "This session could not be reopened."}
+                  </p>
+                </div>
               </div>
               {/* Both routes out were hand-rolled buttons with no focus ring at all - on a
                   screen a keyboard operator can be dropped onto, with nothing else to
                   focus. They are shared Buttons now. */}
-              <div className="flex flex-col gap-2 border-t border-brand-border-subtle pt-3">
+              <div className="flex flex-col gap-2 border-t border-brand-border bg-brand-structural px-4 py-3">
                 <Button type="button" variant="primary" onClick={() => router.push("/history")} className="w-full">
                   <History aria-hidden="true" className="h-4 w-4" />
                   Return to Session History
@@ -982,43 +987,49 @@ export function GuidedWorkspace({
               <span className="hidden md:inline">Back</span>
             </Button>
 
-            {/* Mobile Catalog Drawer Button */}
-            <button
+            {/* Mobile Catalog Drawer Button. The shared ghost Button, squared to a 36px icon
+                target; every attribute the drawer's focus trap and disclosure state rely on
+                is unchanged. */}
+            <Button
               ref={catalogToggleRef}
               type="button"
+              variant="ghost"
               onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
+              className="h-9 w-9 shrink-0 px-0 lg:hidden"
               aria-label="Toggle Catalog"
               aria-expanded={isCatalogDrawerOpen}
               aria-controls="workspace-catalog-drawer"
             >
               <Menu aria-hidden="true" className="h-5 w-5" />
-            </button>
+            </Button>
 
-            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-brand-border-strong sm:block" />
+            <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
+            {/* Session identity: the patient in navy, the accession / status / mode line in
+                muted 11px underneath. Status colour comes from the semantic tokens. */}
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold leading-tight text-brand-text">
+              <h1 className="truncate text-[15px] font-bold leading-tight tracking-tight text-brand-navy">
                 {session.demographics.fullName || "New Patient Visit Session"}
               </h1>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-none">
-                <span className="shrink-0 font-mono font-semibold text-brand-text-muted" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-none text-brand-text-muted">
+                <span className="shrink-0 font-mono font-semibold tabular-nums" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
                   {session.accessionNumber ?? "Not assigned"}
                 </span>
                 <span aria-hidden="true" className="shrink-0 text-brand-text-subtle">/</span>
                 <span
-                  className={`shrink-0 font-semibold uppercase tracking-wide ${
-                    session.status === "Completed" ? "text-emerald-700" : "text-amber-700"
-                  }`}
+                  className={cn(
+                    "shrink-0 font-semibold uppercase tracking-wide",
+                    session.status === "Completed" ? "text-brand-success" : "text-brand-warning"
+                  )}
                 >
                   {session.status}
                 </span>
                 {isReplacementMode && (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">
+                  <Badge variant="warning" size="sm" className="shrink-0 gap-1">
                     <RefreshCw aria-hidden="true" className="h-3 w-3" />
                     <span className="hidden sm:inline">Replacement Mode</span>
                     <span className="sm:hidden">Replacement</span>
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
@@ -1032,17 +1043,20 @@ export function GuidedWorkspace({
           <div className="flex items-center gap-2 shrink-0">
             {/* Workspace View Mode Switcher. A two-state control, so each button reports its own
                 pressed state and keeps a full accessible name when the label collapses. */}
-            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-md bg-brand-surface-hover p-0.5">
+            {/* The system's segmented control: a bordered structural track, the active
+                segment lifted onto white in navy with the low shadow. */}
+            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-md border border-brand-border bg-brand-structural p-0.5">
               <button
                 type="button"
                 onClick={() => setWorkspaceMode("encoding")}
                 aria-pressed={workspaceMode === "encoding"}
                 aria-label="Encoding"
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                   workspaceMode === "encoding"
-                    ? "bg-brand-card text-brand-text shadow-sm ring-1 ring-brand-card-border"
-                    : "text-brand-text-muted hover:text-brand-text"
-                }`}
+                    ? "bg-brand-surface text-brand-navy shadow-low"
+                    : "text-brand-text-muted hover:text-brand-navy"
+                )}
               >
                 <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Encoding</span>
@@ -1052,18 +1066,19 @@ export function GuidedWorkspace({
                 onClick={() => setWorkspaceMode("preview")}
                 aria-pressed={workspaceMode === "preview"}
                 aria-label="Live Preview"
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                   workspaceMode === "preview"
-                    ? "bg-brand-card text-brand-text shadow-sm ring-1 ring-brand-card-border"
-                    : "text-brand-text-muted hover:text-brand-text"
-                }`}
+                    ? "bg-brand-surface text-brand-navy shadow-low"
+                    : "text-brand-text-muted hover:text-brand-navy"
+                )}
               >
                 <Eye aria-hidden="true" className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Live Preview</span>
               </button>
             </div>
 
-            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-brand-border-strong sm:block" />
+            <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
             {/* Save Draft Action — a completed session under replacement has no draft path */}
             {!isReplacementMode && (
@@ -1096,7 +1111,7 @@ export function GuidedWorkspace({
                 aria-keyshortcuts="Control+Enter Meta+Enter"
                 aria-label={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
                 title={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 sm:px-3"
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-brand-warning px-2 text-xs font-semibold text-white shadow-low transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:bg-amber-900 active:scale-[0.98] active:bg-amber-950 active:shadow-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-60 sm:px-3"
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">
@@ -1127,7 +1142,7 @@ export function GuidedWorkspace({
 
       {/* Replacement Mode Notice */}
       {isReplacementMode && (
-        <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
+        <div className={`${WORKSPACE_CONTAINER} mt-3 shrink-0 px-3 sm:px-4 xl:px-6`}>
           {/* The shared Alert rather than a bespoke amber box: warning already means this,
               and Alert carries the icon, the role="alert" urgency and the wrapping rules. */}
           <Alert variant="warning" title="Replacement Mode">
@@ -1143,7 +1158,7 @@ export function GuidedWorkspace({
           for the two targets the Workspace genuinely resolves - nothing is parsed out of the
           message text, and no target is invented for an error that does not carry one. */}
       {validationError && (
-        <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
+        <div className={`${WORKSPACE_CONTAINER} mt-3 shrink-0 px-3 sm:px-4 xl:px-6`}>
           <Alert
             variant="destructive"
             title="Review required information"
@@ -1187,27 +1202,36 @@ export function GuidedWorkspace({
               )}
             >
               {isCatalogCollapsed && (
-                <div className="flex h-full flex-col items-center gap-2.5 rounded-lg border border-brand-card-border bg-brand-card py-2">
-                  <button
-                    type="button"
-                    ref={catalogRailToggleRef}
-                    onClick={handleExpandCatalog}
-                    aria-label="Expand examination catalog"
-                    aria-expanded={false}
-                    aria-controls="workspace-desktop-catalog"
-                    title="Expand examination catalog"
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-brand-card-border bg-brand-card text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
-                  >
-                    <PanelLeftOpen aria-hidden="true" className="h-4 w-4" />
-                  </button>
-                  {selectedTemplateCodes.length > 0 && (
-                    <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-[11px] font-semibold tabular-nums text-brand-primary">
-                      {selectedTemplateCodes.length}
+                /* The collapsed rail is the same panel the catalog is, narrowed: a white
+                   working surface whose structural header band holds the expand control, with
+                   the selection count and the vertical label in the body beneath it. */
+                <div className="flex h-full flex-col items-center overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
+                  <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-brand-border bg-brand-structural">
+                    <Button
+                      type="button"
+                      ref={catalogRailToggleRef}
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleExpandCatalog}
+                      aria-label="Expand examination catalog"
+                      aria-expanded={false}
+                      aria-controls="workspace-desktop-catalog"
+                      title="Expand examination catalog"
+                      className="h-8 w-8 shrink-0 px-0"
+                    >
+                      <PanelLeftOpen aria-hidden="true" className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-col items-center gap-2.5 py-2.5">
+                    {selectedTemplateCodes.length > 0 && (
+                      <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-[11px] font-semibold tabular-nums text-brand-primary">
+                        {selectedTemplateCodes.length}
+                      </span>
+                    )}
+                    <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+                      Catalog
                     </span>
-                  )}
-                  <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-semibold uppercase tracking-widest text-brand-text-subtle">
-                    Catalog
-                  </span>
+                  </div>
                 </div>
               )}
               <div id="workspace-desktop-catalog" className={cn("h-full min-h-0", isCatalogCollapsed && "hidden")}>
@@ -1227,8 +1251,9 @@ export function GuidedWorkspace({
             {/* Mobile/Tablet Catalog Overlay Drawer */}
             {isCatalogDrawerOpen && (
               <>
+                {/* Navy scrim, the same one the shell drawer and the dialogs use. */}
                 <div
-                  className="fixed inset-0 z-40 bg-slate-900/60 motion-safe:transition-opacity lg:hidden"
+                  className="fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] motion-safe:transition-opacity lg:hidden"
                   onClick={handleCloseCatalogDrawer}
                   aria-hidden="true"
                 />
@@ -1236,23 +1261,27 @@ export function GuidedWorkspace({
                     the shell prints no title of its own - two stacked titles for one panel read as
                     a nested card. The close control stays the first focusable node, which is what
                     the focus trap places initial focus on. */}
+                {/* Canvas ground with the overlay shadow (a floating surface), a 56px structural
+                    strip on top that lines up with the command bar it covers. */}
                 <div
                   ref={catalogDrawerRef}
                   id="workspace-catalog-drawer"
                   role="dialog"
                   aria-modal="true"
                   aria-label="Examination Catalog"
-                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-card-border bg-brand-background lg:hidden"
+                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-border-strong bg-brand-canvas shadow-overlay lg:hidden"
                 >
-                  <div className="flex shrink-0 items-center justify-end border-b border-brand-card-border bg-brand-card px-2 py-1.5">
-                    <button
+                  <div className="flex h-14 shrink-0 items-center justify-end border-b border-brand-border-strong bg-brand-structural px-1.5">
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="lg"
                       onClick={handleCloseCatalogDrawer}
-                      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                      className="h-11 w-11 shrink-0 px-0"
                       aria-label="Close Examination Catalog"
                     >
                       <X aria-hidden="true" className="h-5 w-5" />
-                    </button>
+                    </Button>
                   </div>
                   <div className="min-h-0 flex-1 p-2">
                   <ExaminationCatalog
@@ -1271,7 +1300,7 @@ export function GuidedWorkspace({
             )}
 
             {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-2.5 scroll-pt-16 scroll-pb-16">
+            <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-16 scroll-pb-16">
               {/* Patient Demographics Header Card */}
               <PatientDemographicsForm
                 isExpanded={isDemographicsExpanded}
@@ -1304,10 +1333,10 @@ export function GuidedWorkspace({
                   (patient, session progress, which report is active), never the work itself.
                   Tinting it is what lets the active tab lift onto the white working surface
                   and read as selected without a heavier border. */}
-              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-brand-card-border bg-brand-structural px-3 py-1.5 shadow-low">
+              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2 shadow-low">
                 {session.demographics.sex && session.demographics.age > 0 && (
                   <span
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-brand-text-muted sm:inline-flex"
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold tabular-nums text-brand-text-muted sm:inline-flex"
                     title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
                   >
                     <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
@@ -1317,14 +1346,16 @@ export function GuidedWorkspace({
                 {sessionProgress.totalReports > 0 && (
                   <span
                     data-session-progress
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium text-brand-text-muted sm:inline-flex"
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium tabular-nums text-brand-text-muted sm:inline-flex"
                     title="Reports in this session with every selected result encoded"
                   >
+                    {/* Progress vocabulary: the check turns teal once every report is complete,
+                        and stays muted while any is pending. */}
                     <CheckCircle2
                       aria-hidden="true"
                       className={
                         sessionProgress.completedReports === sessionProgress.totalReports
-                          ? "h-3.5 w-3.5 text-emerald-600"
+                          ? "h-3.5 w-3.5 text-brand-primary"
                           : "h-3.5 w-3.5 text-brand-text-subtle"
                       }
                     />
@@ -1379,12 +1410,13 @@ export function GuidedWorkspace({
                   />
                 </div>
               ) : (
+                /* The shared EmptyState as shipped: a quiet structural-tint region on the canvas,
+                   not another white card competing with the panels above it. */
                 <EmptyState
                   icon={FileText}
                   title="No examination selected"
                   description="Choose a laboratory examination from the catalog to begin encoding patient results."
                   headingLevel={2}
-                  className="my-3 rounded-lg border border-brand-card-border bg-brand-card"
                 />
               )}
             </div>
@@ -1486,7 +1518,7 @@ export function GuidedWorkspace({
             Discard Changes & Exit
           </Button>
 
-          <div className="mt-1 border-t border-brand-border-subtle pt-2">
+          <div className="mt-1 border-t border-brand-border pt-2">
             <Button
               ref={continueEditingRef}
               type="button"

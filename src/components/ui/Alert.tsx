@@ -54,7 +54,7 @@ export function Alert({
     <div
       role={isUrgent ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2 text-xs",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-xs",
         surfaces[variant],
         className
       )}

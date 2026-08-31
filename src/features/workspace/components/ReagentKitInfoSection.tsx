@@ -1,5 +1,6 @@
 import React from "react";
 import { ReagentKitInfo } from "@/domain/types";
+import { Input } from "@/components/ui/Input";
 import { Package } from "lucide-react";
 
 export interface ReagentKitInfoSectionProps {
@@ -22,39 +23,36 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
   };
 
   return (
-    <div className="mt-2.5 rounded-lg border border-brand-warning-border bg-brand-warning-bg p-3.5">
-      <div className="flex items-center gap-2 mb-3">
-        <Package className="h-4 w-4 text-amber-700" />
-        <h3 className="text-xs font-bold text-amber-900">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
+    // A structural tint group like every other footer section. Whether the kit information is
+    // still outstanding is stated in words by the footer summary bar, not by tinting this
+    // whole block amber.
+    <div className="rounded-lg border border-brand-border bg-brand-structural p-3">
+      <div className="mb-3 flex items-center gap-2">
+        <Package aria-hidden="true" className="h-4 w-4 text-brand-primary" />
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-amber-900 mb-1">Lot Number *</label>
-          <input
-            type="text"
-            data-kit-field="lotNumber"
-            data-encoding-input
-            value={current.lotNumber}
-            onChange={(e) => handleChange("lotNumber", e.target.value)}
-            placeholder="e.g. LOT-2026-X89"
-            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-brand-card focus-visible:outline-none focus-visible:ring-2 focus:ring-amber-500"
-            required
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Input
+          label="Lot Number *"
+          type="text"
+          data-kit-field="lotNumber"
+          data-encoding-input
+          value={current.lotNumber}
+          onChange={(e) => handleChange("lotNumber", e.target.value)}
+          placeholder="e.g. LOT-2026-X89"
+          required
+        />
 
-        <div>
-          <label className="block text-[11px] font-semibold text-amber-900 mb-1">Kit Expiration Date *</label>
-          <input
-            type="text"
-            data-kit-field="expirationDate"
-            data-encoding-input
-            value={current.expirationDate}
-            onChange={(e) => handleChange("expirationDate", e.target.value)}
-            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-brand-card focus-visible:outline-none focus-visible:ring-2 focus:ring-amber-500"
-            required
-          />
-        </div>
+        <Input
+          label="Kit Expiration Date *"
+          type="text"
+          data-kit-field="expirationDate"
+          data-encoding-input
+          value={current.expirationDate}
+          onChange={(e) => handleChange("expirationDate", e.target.value)}
+          required
+        />
       </div>
     </div>
   );

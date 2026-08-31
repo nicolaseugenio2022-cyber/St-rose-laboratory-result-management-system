@@ -44,10 +44,10 @@ export function PersonnelFormModal({
   const [isSignatureBusy, setIsSignatureBusy] = useState(false);
 
   return (
-    // Viewport containment is set here rather than in Modal: the shared dialog is correct for
-    // short confirmations, and this is the one form long enough to exceed a laptop viewport.
-    // tailwind-merge resolves max-w-2xl over the shared max-w-lg, and the panel scrolls itself
-    // so the sticky action row inside the form stays reachable.
+    // The shared dialog caps itself to the viewport and scrolls its body; this is the one form
+    // long enough to need the wider panel and its own containment, kept so the sticky action
+    // row inside the form stays reachable however the dialog is laid out. tailwind-merge
+    // resolves max-w-2xl over the shared max-w-lg.
     <Modal
       isOpen={isOpen}
       onClose={onClose}

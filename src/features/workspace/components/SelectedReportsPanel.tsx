@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
 import { X, MoreVertical, Trash2, XCircle, Check, FileText } from "lucide-react";
@@ -75,12 +76,13 @@ export function SelectedReportsPanel({
   if (selectedSpecs.length === 0) {
     return (
       <div className="min-w-0 flex-1">
+        {/* Sits inside the structural context strip, so it carries no frame of its own. */}
         <EmptyState
           icon={FileText}
           title="No examinations selected"
           description="Choose one or more laboratory examinations from the catalog to begin encoding results."
           headingLevel={2}
-          className="px-3 py-3"
+          className="border-0 bg-transparent px-3 py-3"
         />
       </div>
     );
@@ -111,7 +113,7 @@ export function SelectedReportsPanel({
       <div
         role="tablist"
         aria-label="Selected examination reports"
-        className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-b border-brand-card-border"
+        className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-b border-brand-border"
       >
         {selectedSpecs.map((spec, index) => {
           const code = spec.template.templateCode;
@@ -121,14 +123,16 @@ export function SelectedReportsPanel({
           const progress = progressByTemplateCode?.[code];
 
           return (
+            // The active tab lifts onto the white working surface with a navy label and a teal
+            // rail under it; the others stay muted on the structural strip.
             <div
               key={code}
               role="presentation"
               className={cn(
                 "group relative flex shrink-0 items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-1.5 text-xs transition-colors duration-150",
                 isActive
-                  ? "border-b-brand-primary bg-brand-card font-semibold text-brand-text"
-                  : "border-b-transparent font-medium text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text"
+                  ? "border-b-brand-primary bg-brand-surface font-semibold text-brand-navy"
+                  : "border-b-transparent font-medium text-brand-text-muted hover:bg-brand-structural-hover hover:text-brand-navy"
               )}
             >
               <button
@@ -148,16 +152,16 @@ export function SelectedReportsPanel({
               >
                 <span className="max-w-[180px] truncate xl:max-w-[240px]">{spec.template.templateTitle}</span>
 
-                {/* Compact completed/selected, or a check once the report is done. Never a
+                {/* Compact completed/selected, or a teal check once the report is done. Never a
                     progress track inside every tab - seventeen of those is noise, not signal. */}
                 {progress && (
                   progress.isComplete ? (
                     <Check
                       aria-hidden="true"
-                      className="h-3.5 w-3.5 shrink-0 stroke-[2.5] text-emerald-600"
+                      className="h-3.5 w-3.5 shrink-0 stroke-[2.5] text-brand-primary"
                     />
                   ) : (
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-brand-text-muted">
+                    <span className="shrink-0 font-mono text-[11px] font-normal tabular-nums text-brand-text-muted">
                       {progress.completedCount}/{progress.selectedCount}
                     </span>
                   )
@@ -171,7 +175,7 @@ export function SelectedReportsPanel({
                   e.stopPropagation();
                   onRemoveTemplate(code);
                 }}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-text-subtle transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-text-subtle transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-structural-hover hover:text-brand-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                 title="Remove examination tab"
                 aria-label={`Remove ${spec.template.templateTitle} examination tab`}
               >
@@ -184,12 +188,9 @@ export function SelectedReportsPanel({
 
       {/* Unsaved state as real text, announced politely rather than a bare pulsing dot. */}
       {isDirty && (
-        <span
-          role="status"
-          className="mb-1 shrink-0 whitespace-nowrap rounded-md bg-brand-warning-bg px-1.5 py-0.5 text-[11px] font-semibold text-brand-warning ring-1 ring-inset ring-brand-warning-border"
-        >
+        <Badge variant="warning" size="sm" role="status" className="mb-1 shrink-0">
           Unsaved
-        </span>
+        </Badge>
       )}
 
       {/* Examination Actions Dropdown Menu */}
@@ -216,7 +217,7 @@ export function SelectedReportsPanel({
         {isMenuOpen && (
           <div
             id={actionsPopupId}
-            className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-md border border-brand-card-border bg-brand-card py-1 text-xs shadow-md"
+            className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-md border border-brand-border bg-brand-surface py-1 text-xs shadow-overlay"
           >
             {selectedSpecs.length > 1 && (
               <button
@@ -227,9 +228,9 @@ export function SelectedReportsPanel({
                     onCloseOtherTemplates(activeTemplateCode);
                   }
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:bg-brand-surface-hover focus-visible:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-brand-text transition-colors hover:bg-brand-tint hover:text-brand-navy focus-visible:bg-brand-tint focus-visible:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
               >
-                <XCircle aria-hidden="true" className="h-3.5 w-3.5" />
+                <XCircle aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-muted" />
                 Close Other Examinations
               </button>
             )}

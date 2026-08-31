@@ -24,10 +24,10 @@ export function NavigationMenu({ items = navigationConfig, currentUserRole, onNa
 
   return (
     <nav className="py-2" aria-label="Main Navigation">
-      <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-brand-text-subtle">
+      <p className="px-4 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
         Core Menu
       </p>
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-px">
         {permittedItems.map((item) => (
           <NavItem key={item.href} item={item} onNavigate={onNavigate} />
         ))}

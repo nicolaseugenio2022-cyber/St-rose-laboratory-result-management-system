@@ -56,25 +56,26 @@ export function HistorySessionActions({
   const isCard = variant === "card";
   const rowSubject = session.accessionNumber ?? session.demographics?.fullName ?? "";
   const named = (label: string) => (rowSubject ? `${label} ${rowSubject}` : label);
-  // Table controls share one height so they sit on a single baseline; the emphasis difference is
-  // carried by surface (bordered / ghost / icon-only), not by differing geometry.
-  const previewClass = isCard
-    ? "min-h-[2.25rem] h-auto px-3 py-2 font-semibold text-brand-text-muted hover:bg-brand-surface-hover"
-    : "h-8 px-2 xl:px-2.5 border-brand-border bg-brand-structural font-semibold text-brand-text-muted hover:bg-brand-border-strong";
+  // Card controls are the shared medium (36px) button; table controls are the shared small (32px)
+  // one so three of them sit on a single 34px row baseline. The emphasis difference is carried
+  // by surface (filled / outlined / icon-only), not by differing geometry.
+  const buttonSize = isCard ? "md" : "sm";
   // Table variant carries three actions in one cell. They share one shape language - same height,
   // radius and padding rhythm - so they read as a single group, and emphasis is carried by fill:
-  // Preview alone is filled, Replace/Edit is outlined, Delete draft is outlined and icon-only.
-  // The fill must contrast with the row: a white fill on a white row is invisible, which left
-  // Preview and Replace/Edit distinguishable only by one border shade.
+  // Preview alone is filled (structural, so it reads on a white or striped row), Replace/Edit is
+  // outlined in the action colour, Delete draft is outlined and icon-only.
   // Every control keeps a visible resting border, so interactivity never depends on colour alone.
+  const previewClass = isCard
+    ? ""
+    : "h-8 px-2 xl:px-2.5 border-brand-border bg-brand-structural text-brand-navy hover:border-brand-border-strong hover:bg-brand-structural-hover";
   const reopenClass = isCard
-    ? "min-h-[2.25rem] h-auto px-3 py-2 border-brand-info-border bg-brand-tint font-semibold text-brand-primary hover:bg-brand-surface-hover"
-    : "h-8 px-2 xl:px-2.5 font-semibold text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
+    ? "border-brand-info-border bg-brand-tint text-brand-primary hover:border-brand-primary hover:bg-brand-tint"
+    : "h-8 px-2 xl:px-2.5 text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
   // Icon-only in the table: 32x32 clears the WCAG 2.5.8 target-size minimum, the trash glyph
   // carries the destructive meaning by shape rather than by colour, and the accessible name is
   // supplied explicitly below.
   const deleteClass = isCard
-    ? "min-h-[2.25rem] h-auto px-2 py-2 font-semibold text-brand-text-muted hover:text-brand-danger"
+    ? "px-2.5 text-brand-text-muted hover:bg-brand-danger-bg hover:text-brand-danger"
     : "h-8 w-8 border border-brand-border p-0 text-brand-text-muted hover:border-brand-danger-border hover:bg-brand-danger-bg hover:text-brand-danger";
   const iconSize = isCard ? "h-4 w-4" : "h-3.5 w-3.5";
   // Between lg and xl the shell leaves the table roughly 720px, so the labelled controls do
@@ -86,7 +87,7 @@ export function HistorySessionActions({
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size={buttonSize}
         onClick={() => onPreview(session)}
         className={previewClass}
         aria-label={named("Preview")}
@@ -99,7 +100,7 @@ export function HistorySessionActions({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size={buttonSize}
           onClick={() => onReopen(session)}
           className={reopenClass}
           aria-label={named(isCompleted ? "Replace" : "Edit")}
@@ -116,7 +117,7 @@ export function HistorySessionActions({
     <Button
       type="button"
       variant="ghost"
-      size="sm"
+      size={buttonSize}
       onClick={() => onDeleteDraft(entry)}
       disabled={isDeleting}
       className={deleteClass}
@@ -142,12 +143,14 @@ export function HistorySessionActions({
     );
   }
 
-  // Card layout keeps the destructive action out of the primary action row; the strong
-  // destructive framing lives in the confirmation dialog, not here.
+  // Card layout: one structural footer band. The primary actions sit left and the destructive
+  // action alone at the far right, so it stays apart from the primary row while the DOM order
+  // (Preview, Edit, Delete draft) is unchanged; the strong destructive framing lives in the
+  // confirmation dialog, not here.
   return (
-    <>
-      <div className="flex flex-wrap gap-2 pt-1">{primaryActions}</div>
-      {deleteAction && <div className="border-t border-brand-border-subtle pt-2">{deleteAction}</div>}
-    </>
+    <div className="flex flex-wrap items-center gap-2 border-t border-brand-border bg-brand-structural px-3.5 py-2">
+      {primaryActions}
+      {deleteAction && <div className="ml-auto">{deleteAction}</div>}
+    </div>
   );
 }

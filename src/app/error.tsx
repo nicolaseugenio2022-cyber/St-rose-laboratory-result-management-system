@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 export default function ErrorPage({
   error,
@@ -15,31 +16,34 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center p-6 bg-brand-canvas">
-      <div className="bg-brand-card rounded-2xl border border-brand-card-border p-8 max-w-md w-full text-center shadow-low space-y-4">
-        <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
-          <AlertTriangle className="h-6 w-6" />
+    <div className="flex min-h-[70vh] items-center justify-center bg-brand-canvas p-6">
+      <div
+        role="alert"
+        className="w-full max-w-md overflow-hidden rounded-lg border border-brand-border-strong bg-brand-card shadow-low"
+      >
+        <div className="flex items-center gap-3 border-b border-brand-border bg-brand-structural px-4 py-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-warning-border bg-brand-warning-bg text-brand-warning">
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h2 className="text-[13px] font-semibold text-brand-navy">Application Exception</h2>
         </div>
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Application Exception</h2>
-          <p className="text-xs text-slate-500 mt-1">
+        <div className="space-y-3 px-4 py-4">
+          <p className="text-xs leading-relaxed text-brand-text-muted">
             An unexpected error occurred while processing your request. All patient session data remains safely persisted.
           </p>
+          {error.digest ? (
+            <p className="text-[11px] text-brand-text-muted">
+              Support reference:{" "}
+              <span className="select-all font-mono text-brand-text">{error.digest}</span>
+            </p>
+          ) : null}
+          <div className="pt-1">
+            <Button type="button" size="sm" onClick={() => reset()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Try Again
+            </Button>
+          </div>
         </div>
-        {error.digest ? (
-          <p className="text-[11px] text-slate-400">
-            Support reference:{" "}
-            <span className="select-all font-mono text-slate-500">{error.digest}</span>
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => reset()}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover transition-colors shadow-sm"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Try Again
-        </button>
       </div>
     </div>
   );

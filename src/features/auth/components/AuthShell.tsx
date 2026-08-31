@@ -5,17 +5,16 @@ import Image from "next/image";
  * The composition every unauthenticated screen sits in.
  *
  * One component because login, first-login, the three recovery stages and the account-load
- * failure were four near-identical `min-h-screen flex items-center justify-center` wrappers,
- * each centring a white card on a bare canvas. Four copies of one layout is four places for it
- * to drift, and the result read as a generic form page rather than as this system's front door.
+ * failure were four near-identical wrappers, each centring a white card on a bare canvas.
+ * Four copies of one layout is four places for it to drift.
  *
- * The shape is deliberately plain:
+ * The three surfaces, in the order an operator meets them:
  *
- *   - **Canvas** carries the brand tint, so the screen is not mostly white before anything loads.
- *   - **Structural** is the identity panel - shown beside the form from `lg` up, and collapsing
- *     to a compact header strip below it. It is the only place the mark and the laboratory name
- *     appear, so the form surface can be entirely about the task.
- *   - **Working** is the elevated form surface, and it is the only elevated thing on screen.
+ *   - **Canvas** is the cool blue-gray ground, so the screen is never mostly white.
+ *   - **Identity** is a deep navy panel carrying the official mark and the laboratory name -
+ *     beside the form from `lg` up, a compact strip above it below that. It is the only
+ *     place identity appears, so the form surface can be entirely about the task.
+ *   - **Working** is the elevated white form surface, and the only elevated thing on screen.
  *
  * No gradient, no imagery beyond the official mark, no glass, no marketing heading. An operator
  * signing in at the start of a shift needs to find one field and one button.
@@ -33,8 +32,9 @@ export interface AuthShellProps {
 }
 
 /**
- * The official mark. Square asset (1254x1254), so a square box preserves its ratio exactly.
- * Never cropped, recoloured, or substituted.
+ * The official mark. Square asset (1254x1254) holding a teal disc; clipping the square to a
+ * circle leaves a thin white ring around the disc, which is how it sits on navy.
+ * Never cropped further, recoloured, or substituted.
  */
 function BrandMark({ className }: { className?: string }) {
   return (
@@ -52,20 +52,18 @@ function BrandMark({ className }: { className?: string }) {
 export function AuthShell({ title, description, banner, children, footer }: AuthShellProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-brand-canvas px-4 py-6 sm:px-6">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-0 lg:flex-row lg:items-stretch">
+      <div className="mx-auto flex w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-brand-border-strong shadow-low lg:flex-row lg:items-stretch">
         {/* ── Identity panel ──────────────────────────────────────────────────
             Beside the form on a desktop, a compact strip above it on a phone.
-            Same surface either way, so the two layouts read as one design. */}
-        <aside
-          className="flex shrink-0 items-center gap-3 rounded-t-xl border border-b-0 border-brand-border bg-brand-structural px-4 py-3.5 lg:w-72 lg:flex-col lg:items-start lg:justify-between lg:rounded-l-xl lg:rounded-tr-none lg:border-b lg:border-r-0 lg:px-6 lg:py-8"
-        >
+            Same navy surface either way, so the two layouts read as one design. */}
+        <aside className="flex shrink-0 items-center gap-3 bg-brand-navy px-4 py-3.5 text-brand-navy-foreground lg:w-72 lg:flex-col lg:items-start lg:justify-between lg:px-7 lg:py-8">
           <div className="flex items-center gap-3 lg:flex-col lg:items-start lg:gap-5">
-            <BrandMark className="h-10 w-10 shrink-0 object-contain lg:h-16 lg:w-16" />
+            <BrandMark className="h-10 w-10 shrink-0 rounded-full object-cover lg:h-16 lg:w-16" />
             <div className="min-w-0">
-              <p className="text-sm font-bold leading-tight tracking-tight text-brand-text lg:text-lg">
+              <p className="text-[15px] font-bold leading-tight tracking-tight text-white lg:text-lg">
                 St. Rose
               </p>
-              <p className="text-xs font-medium leading-tight text-brand-text-muted lg:mt-0.5">
+              <p className="text-xs font-medium leading-tight text-brand-navy-muted lg:mt-0.5">
                 Diagnostic Laboratory
               </p>
             </div>
@@ -73,20 +71,20 @@ export function AuthShell({ title, description, banner, children, footer }: Auth
 
           {/* Desktop only: one quiet line of context. It states what the system is, and makes no
               claim the application cannot back up. */}
-          <p className="hidden text-xs leading-relaxed text-brand-text-muted lg:block">
+          <p className="hidden text-xs leading-relaxed text-brand-navy-muted lg:block">
             Laboratory Result Management System. For authorised laboratory personnel.
           </p>
         </aside>
 
         {/* ── Working surface ─────────────────────────────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col rounded-b-xl border border-brand-border bg-brand-surface px-4 py-5 shadow-low sm:px-6 sm:py-6 lg:rounded-l-none lg:rounded-r-xl lg:px-8 lg:py-8">
+        <main className="flex min-w-0 flex-1 flex-col bg-brand-surface px-4 py-5 sm:px-6 sm:py-6 lg:px-9 lg:py-8">
           <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center lg:max-w-md">
             <header className="mb-4">
-              <h1 className="text-lg font-bold tracking-tight text-brand-text sm:text-xl">
+              <h1 className="text-lg font-bold tracking-tight text-brand-navy sm:text-xl">
                 {title}
               </h1>
               {description && (
-                <p className="mt-1 text-xs leading-relaxed text-brand-text-muted sm:text-sm">
+                <p className="mt-1 text-xs leading-relaxed text-brand-text-muted sm:text-[13px]">
                   {description}
                 </p>
               )}

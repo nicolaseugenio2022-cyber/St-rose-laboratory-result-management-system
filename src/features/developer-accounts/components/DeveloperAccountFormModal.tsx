@@ -61,7 +61,7 @@ function FormActions({
   return (
     // Column-reversed on a phone so the submit control sits under the thumb and Cancel is not
     // the first thing a wrapping row pushes onto its own line.
-    <div className="flex flex-col-reverse gap-2 border-t border-brand-border-subtle pt-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+    <div className="mt-4 flex flex-col-reverse gap-2 border-t border-brand-border pt-3 sm:flex-row sm:justify-end">
       <Button
         type="button"
         variant="outline"
@@ -138,36 +138,42 @@ function CreateDeveloperAccountForm({
       className="space-y-4"
     >
       <FormError message={serverError} />
-      <Input
-        label="Username"
-        placeholder="e.g. developer"
-        error={errors.username?.message}
-        {...register("username")}
-      />
-      <Input
-        label="Initial Password"
-        type="password"
-        placeholder="At least 6 characters"
-        error={errors.password?.message}
-        {...register("password")}
-      />
-      <Select
-        label="Security Question"
-        options={SECURITY_QUESTION_OPTIONS.map((question) => ({
-          label: question,
-          value: question,
-        }))}
-        error={errors.securityQuestion?.message}
-        {...register("securityQuestion")}
-      />
-      {selectedQuestion === CUSTOM_SECURITY_QUESTION && (
+      {/* Two columns from sm up. Field order is unchanged; the credential pair shares a row and
+          the recovery pair sits in one structural tint block. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input
-          label="Custom Security Question"
-          placeholder="Enter the account holder's question"
-          error={errors.customSecurityQuestion?.message}
-          {...register("customSecurityQuestion")}
+          label="Username"
+          placeholder="e.g. developer"
+          error={errors.username?.message}
+          {...register("username")}
         />
-      )}
+        <Input
+          label="Initial Password"
+          type="password"
+          placeholder="At least 6 characters"
+          error={errors.password?.message}
+          {...register("password")}
+        />
+        <div className="space-y-3 rounded-lg border border-brand-border bg-brand-structural p-3 sm:col-span-2">
+          <Select
+            label="Security Question"
+            options={SECURITY_QUESTION_OPTIONS.map((question) => ({
+              label: question,
+              value: question,
+            }))}
+            error={errors.securityQuestion?.message}
+            {...register("securityQuestion")}
+          />
+          {selectedQuestion === CUSTOM_SECURITY_QUESTION && (
+            <Input
+              label="Custom Security Question"
+              placeholder="Enter the account holder's question"
+              error={errors.customSecurityQuestion?.message}
+              {...register("customSecurityQuestion")}
+            />
+          )}
+        </div>
+      </div>
       <FormActions submitLabel="Create Account" isLoading={isLoading} onCancel={onCancel} />
     </form>
   );
@@ -267,23 +273,25 @@ function UpdateSecurityQuestionForm({
     >
       <FormError message={serverError} />
       <input type="hidden" {...register("id")} />
-      <Select
-        label="Security Question"
-        options={SECURITY_QUESTION_OPTIONS.map((question) => ({
-          label: question,
-          value: question,
-        }))}
-        error={errors.securityQuestion?.message}
-        {...register("securityQuestion")}
-      />
-      {selectedQuestion === CUSTOM_SECURITY_QUESTION && (
-        <Input
-          label="Custom Security Question"
-          placeholder="Enter the account holder's question"
-          error={errors.customSecurityQuestion?.message}
-          {...register("customSecurityQuestion")}
+      <div className="space-y-3">
+        <Select
+          label="Security Question"
+          options={SECURITY_QUESTION_OPTIONS.map((question) => ({
+            label: question,
+            value: question,
+          }))}
+          error={errors.securityQuestion?.message}
+          {...register("securityQuestion")}
         />
-      )}
+        {selectedQuestion === CUSTOM_SECURITY_QUESTION && (
+          <Input
+            label="Custom Security Question"
+            placeholder="Enter the account holder's question"
+            error={errors.customSecurityQuestion?.message}
+            {...register("customSecurityQuestion")}
+          />
+        )}
+      </div>
       <FormActions submitLabel="Update Question" isLoading={isLoading} onCancel={onCancel} />
     </form>
   );

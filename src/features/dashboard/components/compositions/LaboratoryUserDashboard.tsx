@@ -11,13 +11,9 @@ export interface LaboratoryUserDashboardProps {
   recentWork: RecentWork;
 }
 
-/** One bordered panel per list, with hairlines between rows. */
-function RowPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
-      {children}
-    </div>
-  );
+/** Rows inside a panel: hairlines between them, and no outer border of their own. */
+function RowList({ children }: { children: React.ReactNode }) {
+  return <div className="divide-y divide-brand-border-subtle">{children}</div>;
 }
 
 const viewAllHistory = <SectionLink href="/history">View all history</SectionLink>;
@@ -45,12 +41,12 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
   const completed = recentWork.recentCompleted.slice(0, 5);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* One start action, not two. Completed history stays reachable from the
           contextual "View all history" link on each completed list, where the operator
           is already looking at completed work - it does not compete with starting a
           session, which is the only thing this screen exists to launch. */}
-      <DashboardSection title="Start laboratory work">
+      <DashboardSection title="Start laboratory work" variant="bare">
         <ActionCard
           href="/workspace"
           icon={PlayCircle}
@@ -62,7 +58,7 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
 
       {/* Asymmetric on wide screens: unfinished work leads, because it is the
           only list on this page the operator is expected to act on. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr]">
         <DashboardSection
           title="Continue your work"
           description="Unfinished sessions you started"
@@ -72,14 +68,14 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
               icon={Inbox}
               title="No unfinished sessions"
               description="Sessions you start but do not complete will appear here."
-              className="rounded-lg border border-brand-card-border bg-brand-card"
+              className="rounded-none border-0"
             />
           ) : (
-            <RowPanel>
+            <RowList>
               {drafts.map((item) => (
                 <SessionRow key={item.id} item={item} showResume />
               ))}
-            </RowPanel>
+            </RowList>
           )}
         </DashboardSection>
 
@@ -93,18 +89,17 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
               icon={FileEdit}
               title="No completed sessions yet"
               description="Completed patient sessions will be listed here."
-              className="rounded-lg border border-brand-card-border bg-brand-card"
+              className="rounded-none border-0"
             />
           ) : (
-            <RowPanel>
+            <RowList>
               {completed.map((item) => (
                 <SessionRow key={item.id} item={item} showResume />
               ))}
-            </RowPanel>
+            </RowList>
           )}
         </DashboardSection>
       </div>
-
     </div>
   );
 }

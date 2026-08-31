@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 
 export interface TemplateRemarksSectionProps {
   remarks?: string | null;
@@ -10,34 +11,34 @@ export function TemplateRemarksSection({ remarks, onChange }: TemplateRemarksSec
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="mt-2.5 overflow-hidden rounded-lg border border-brand-card-border bg-brand-background transition-colors">
+    // A structural tint group inside the white footer body, never another white card.
+    <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-structural">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-brand-structural-hover transition-colors"
+        aria-expanded={isExpanded}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
       >
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-brand-primary" />
-          <h3 className="text-xs font-bold text-brand-text uppercase tracking-wider">Laboratory Remarks</h3>
+          <MessageSquare aria-hidden="true" className="h-4 w-4 text-brand-primary" />
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">Laboratory Remarks</h3>
         </div>
         <div className="flex items-center gap-2">
           {remarks && remarks.trim() !== "" && (
-            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-              Has Remarks
-            </span>
+            <Badge variant="success" size="sm">Has Remarks</Badge>
           )}
-          {isExpanded ? <ChevronUp className="h-4 w-4 text-brand-text-subtle" /> : <ChevronDown className="h-4 w-4 text-brand-text-subtle" />}
+          {isExpanded ? <ChevronUp aria-hidden="true" className="h-4 w-4 text-brand-text-subtle" /> : <ChevronDown aria-hidden="true" className="h-4 w-4 text-brand-text-subtle" />}
         </div>
       </button>
 
       {isExpanded && (
-        <div className="p-4 pt-0 border-t border-brand-card-border mt-2">
+        <div className="border-t border-brand-border px-3 pb-3 pt-2.5">
           <textarea
             value={remarks || ""}
             onChange={(e) => onChange(e.target.value)}
             rows={2}
             placeholder="Enter official laboratory notes, observations, or specimen comments..."
-            className="w-full px-3 py-2 text-xs rounded-lg border border-brand-border bg-brand-card focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary focus-visible:outline-none"
+            className="w-full rounded-md border border-brand-border bg-brand-surface px-3 py-2 text-[13px] text-brand-text transition-[border-color,box-shadow] placeholder:text-slate-500 hover:border-brand-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
           />
         </div>
       )}

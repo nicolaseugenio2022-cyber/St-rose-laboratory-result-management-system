@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
-import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
+import { SkeletonRegion } from "@/components/ui/Skeleton";
 import {
   createDeveloperAccountAction,
   deleteDeveloperAccountAction,
@@ -21,6 +21,7 @@ import {
   DeveloperAccountFormModal,
   type DeveloperAccountModalMode,
 } from "./DeveloperAccountFormModal";
+import { DeveloperAccountDirectorySkeleton } from "./DeveloperAccountDirectorySkeleton";
 import { DeveloperAccountTable } from "./DeveloperAccountTable";
 
 interface DeveloperAccountManagementViewProps {
@@ -237,34 +238,34 @@ export function DeveloperAccountManagementView({
 
       {/* One structural toolbar behind the records: search, result count, Clear, and the page's
           primary action. The shell already renders the page title, so nothing here repeats it. */}
-      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
+      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="min-w-0 flex-1 lg:max-w-sm">
-            <div className="relative">
-              {/* A real label rather than a placeholder: a placeholder vanishes the moment the
-                  field is used, taking the field's name with it. */}
-              <Input
-                id="developer-account-search"
-                label="Search"
-                type="search"
-                placeholder="Username"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-9"
-              />
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute bottom-2.5 left-3 h-4 w-4 text-brand-text-subtle"
-              />
-            </div>
+          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+            {/* A real label rather than a placeholder: a placeholder vanishes the moment the
+                field is used, taking the field's name with it. */}
+            <Input
+              id="developer-account-search"
+              label="Search"
+              type="search"
+              placeholder="Username"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="pl-9"
+            />
+            {/* Centred on the 44px field below sm and on the 36px field above it. */}
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
+            />
           </div>
+          {/* Medium controls line up with the 36px field beside them on a desktop; the 44px
+              minimum below sm keeps them a touch target. */}
           <div className="flex shrink-0 flex-wrap items-center gap-2 lg:ml-auto">
             {isFiltered && (
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="min-h-11 sm:min-h-8"
+                className="min-h-11 sm:min-h-9"
                 onClick={clearSearch}
               >
                 <X aria-hidden="true" className="h-3.5 w-3.5" />
@@ -273,8 +274,7 @@ export function DeveloperAccountManagementView({
             )}
             <Button
               type="button"
-              size="sm"
-              className="min-h-11 sm:min-h-8"
+              className="min-h-11 sm:min-h-9"
               onClick={() => openModal("create")}
               // The page's primary write. It is locked by the same slot the rows are, so a
               // create cannot be started on top of a toggle, a delete, or another submission.
@@ -285,7 +285,7 @@ export function DeveloperAccountManagementView({
             </Button>
           </div>
         </div>
-        <p className="text-xs text-brand-text-muted" aria-live="polite">
+        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
           {countLine}
         </p>
       </div>
@@ -304,15 +304,15 @@ export function DeveloperAccountManagementView({
       </p>
 
       {isInitialLoad ? (
-        <SkeletonRegion isLoading label="Loading Developer accounts" className="space-y-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-[4.5rem] w-full rounded-lg" />
-          ))}
+        // The same placeholder the route's loading.tsx draws, so the directory does not jump
+        // between the two placeholders that precede it.
+        <SkeletonRegion isLoading label="Loading Developer accounts">
+          <DeveloperAccountDirectorySkeleton />
         </SkeletonRegion>
       ) : isUnavailable ? (
         // A read failure, stated as itself. Nothing here claims the directory is empty, because
         // nothing here knows whether it is.
-        <div className="space-y-3 rounded-lg border border-brand-card-border bg-brand-card p-4">
+        <div className="space-y-3 rounded-lg border border-brand-border bg-brand-card p-4 shadow-low">
           <Alert variant="destructive" title="Could not load Developer accounts">
             {loadError}
           </Alert>

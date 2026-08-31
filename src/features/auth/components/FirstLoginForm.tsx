@@ -30,7 +30,11 @@ const SETUP_STEPS = [
 ] as const;
 
 /**
- * Two-step trail.
+ * Two-step trail, drawn as a rail rather than a row of boxes.
+ *
+ * Each step owns one segment of a top rail. The rail is teal up to and including the current
+ * step and muted beyond it, so progress reads as a fill; the current step is the only one with
+ * a navy label, and the completed step carries a teal check.
  *
  * State is never carried by colour alone: every item states "Done", "Current step" or "Not started"
  * in words, and the completed step also carries a check mark. `aria-current="step"` marks the active
@@ -41,7 +45,7 @@ function SetupSteps({ step }: { step: FirstLoginFormProps["step"] }) {
 
   return (
     <nav aria-label="First sign-in setup">
-      <ol className="grid grid-cols-2 gap-2">
+      <ol className="grid grid-cols-2 gap-3">
         {SETUP_STEPS.map((entry, index) => {
           const isDone = index < currentIndex;
           const isCurrent = index === currentIndex;
@@ -52,18 +56,14 @@ function SetupSteps({ step }: { step: FirstLoginFormProps["step"] }) {
               key={entry.key}
               aria-current={isCurrent ? "step" : undefined}
               className={cn(
-                "rounded-md border px-3 py-2",
-                isDone && "border-brand-success-border bg-brand-success-bg",
-                isCurrent && "border-brand-primary bg-brand-tint",
-                !isDone && !isCurrent && "border-brand-border bg-brand-structural"
+                "min-w-0 border-t-2 pt-2",
+                isDone || isCurrent ? "border-brand-primary" : "border-brand-border"
               )}
             >
               <p
                 className={cn(
-                  "flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide",
-                  isDone && "text-brand-success",
-                  isCurrent && "text-brand-primary",
-                  !isDone && !isCurrent && "text-brand-text-subtle"
+                  "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                  isDone || isCurrent ? "text-brand-primary" : "text-brand-text-muted"
                 )}
               >
                 {isDone && <Check aria-hidden="true" className="h-3 w-3 shrink-0" />}
@@ -71,13 +71,17 @@ function SetupSteps({ step }: { step: FirstLoginFormProps["step"] }) {
               </p>
               <p
                 className={cn(
-                  "mt-0.5 text-xs font-semibold",
-                  isCurrent || isDone ? "text-brand-text" : "text-brand-text-muted"
+                  "mt-0.5 text-[13px] font-semibold leading-tight",
+                  isCurrent
+                    ? "text-brand-navy"
+                    : isDone
+                      ? "text-brand-text"
+                      : "text-brand-text-muted"
                 )}
               >
                 {entry.label}
               </p>
-              <p className="mt-0.5 text-[11px] font-medium text-brand-text-muted">{status}</p>
+              <p className="mt-0.5 text-[11px] text-brand-text-muted">{status}</p>
             </li>
           );
         })}
@@ -127,17 +131,21 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
       banner={<SetupSteps step={step} />}
       footer={
         // Outside the form, because it is not a submission. Disabled alongside the submit button
-        // while a credential mutation is in flight, so a sign-out cannot race it.
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full"
-          disabled={isPending}
-          onClick={logout}
-        >
-          <LogOut aria-hidden="true" className="h-4 w-4" />
-          Logout
-        </Button>
+        // while a credential mutation is in flight, so a sign-out cannot race it. Drawn as the
+        // secondary text action every auth footer uses - teal, semibold, centred - but on the
+        // shared Button, so it keeps a control's disabled and focus behaviour.
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-11 text-brand-primary underline-offset-2 hover:bg-transparent hover:text-brand-primary-hover hover:underline active:bg-transparent sm:min-h-0"
+            disabled={isPending}
+            onClick={logout}
+          >
+            <LogOut aria-hidden="true" className="h-4 w-4" />
+            Logout
+          </Button>
+        </div>
       }
     >
       <form action={submit} className="space-y-4">
@@ -168,7 +176,7 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
               <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
                 Security Question
               </p>
-              <p className="mt-1 text-sm font-semibold leading-snug text-brand-text">
+              <p className="mt-1 text-[13px] font-semibold leading-snug text-brand-text">
                 {securityQuestion}
               </p>
             </div>
@@ -204,7 +212,13 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
         )}
 
         {/* Disabled while pending, so a second press cannot start a second credential mutation. */}
-        <Button type="submit" size="lg" className="w-full" disabled={isPending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          disabled={isPending}
+          aria-busy={isPending || undefined}
+        >
           {isPending ? (
             <>
               <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 motion-safe:animate-spin" />

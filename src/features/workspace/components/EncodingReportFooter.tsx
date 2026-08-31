@@ -31,10 +31,9 @@ export interface EncodingReportFooterProps {
  * header, and a sticky descendant of a clipping ancestor is silently inert.
  *
  * **This component relocates and summarises. It changes no behaviour.** The four sections are
- * rendered exactly as they were, with the same props and the same change handlers; none of their
- * files is modified. In particular the signatory section keeps its own accordion and its
- * deliberately sibling - never nested - Confirm control, whose nesting once caused a hydration
- * failure (`e48967a`).
+ * rendered exactly as they were, with the same props and the same change handlers. In particular
+ * the signatory section keeps its own accordion and its deliberately sibling - never nested -
+ * Confirm control, whose nesting once caused a hydration failure (`e48967a`).
  */
 
 /**
@@ -66,8 +65,8 @@ function findingsCount(report: ILaboratoryReport): number {
 
 /**
  * One inline status item, not a pill. The wording is the signal and is unchanged; colour only
- * reinforces it, so the row still reads correctly in greyscale. Amber marks outstanding
- * required content. It never blocks and never validates.
+ * reinforces it, so the row still reads correctly in greyscale. The warning tone marks
+ * outstanding required content. It never blocks and never validates.
  */
 function SummaryChip({ label, isSatisfied, isRequired }: { label: string; isSatisfied: boolean; isRequired: boolean }) {
   return (
@@ -77,7 +76,7 @@ function SummaryChip({ label, isSatisfied, isRequired }: { label: string; isSati
         isSatisfied
           ? "font-medium text-brand-text-muted"
           : isRequired
-            ? "font-semibold text-amber-800"
+            ? "font-semibold text-brand-warning"
             : "font-medium text-brand-text-muted"
       )}
     >
@@ -105,26 +104,25 @@ export function EncodingReportFooter({
     <section
       data-encoding-footer={definition.templateCode}
       aria-label="Report footer"
-      // Sticky chrome: low elevation, cast upward because the panel is docked to the bottom
-      // and the content it lifts above is above it. Retinted from neutral slate to the F4
-      // brand hue so it matches every other shadow in the system.
-      className="sticky bottom-0 z-20 rounded-lg border border-brand-card-border bg-brand-card shadow-[0_-1px_3px_rgb(11_47_66/0.06)]"
+      // Sticky chrome on a white working surface: the same low elevation as every other panel,
+      // with the stronger border because this edge sits against the canvas.
+      className="sticky bottom-0 z-20 overflow-hidden rounded-lg border border-brand-border-strong bg-brand-card shadow-low"
     >
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         aria-controls="encoding-footer-content"
-        className="flex w-full items-center gap-2.5 rounded-lg bg-brand-structural px-3 py-1.5 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+        className="flex w-full items-center gap-2.5 bg-brand-structural px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
       >
         <PanelBottom aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-wider text-brand-text-muted">
+        <span className="shrink-0 text-[13px] font-semibold leading-tight tracking-tight text-brand-navy">
           Report Details
         </span>
 
         {/* Status items wrap at narrow widths rather than clipping; the divide rule gives them
             structure without turning each one into a chip. */}
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-brand-card-border [&>*:not(:first-child)]:pl-2">
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-brand-border [&>*:not(:first-child)]:pl-2">
           <SummaryChip
             label={assigned ? "Signatories assigned" : "Signatories incomplete"}
             isSatisfied={assigned}
@@ -149,7 +147,7 @@ export function EncodingReportFooter({
           )}
         </span>
 
-        <span className="flex shrink-0 items-center gap-1 rounded border border-brand-border px-1.5 py-0.5 text-[11px] font-semibold text-brand-text-muted">
+        <span className="flex shrink-0 items-center gap-1 rounded-md border border-brand-border bg-brand-surface px-1.5 py-0.5 text-[11px] font-semibold text-brand-text-muted">
           {isExpanded ? "Hide" : "Show"}
           {isExpanded ? (
             <ChevronDown aria-hidden="true" className="h-4 w-4" />
@@ -172,7 +170,8 @@ export function EncodingReportFooter({
           // rows it belongs to. 38dvh keeps the results dominant; everything inside stays
           // reachable because the panel scrolls rather than clipping. dvh, not vh, so mobile
           // browser chrome shrinks the bound with the viewport instead of overflowing it.
-          "max-h-[38dvh] space-y-2.5 overflow-y-auto overscroll-contain border-t border-brand-card-border bg-brand-structural p-3",
+          // White body; each section inside is a structural tint group, never another card.
+          "max-h-[38dvh] space-y-3 overflow-y-auto overscroll-contain border-t border-brand-border bg-brand-card p-3",
           !isExpanded && "hidden"
         )}
       >

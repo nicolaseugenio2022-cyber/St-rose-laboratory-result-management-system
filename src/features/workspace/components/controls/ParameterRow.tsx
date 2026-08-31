@@ -2,6 +2,7 @@ import React from "react";
 import type { EvaluationOutcome, PatientSex } from "@/domain/types";
 import type { ParameterSpec } from "@/domain/types/report-definition";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/utils/cn";
 import { displayUnit } from "../../encoding/evaluate-encoding-result";
 
@@ -13,7 +14,7 @@ import { displayUnit } from "../../encoding/evaluate-encoding-result";
  * **Every track is fixed, and that is the whole point.** Each ParameterRow is its own
  * independent grid, so a content-sized track (`auto`, `minmax(_,auto)`, `min-content`) is
  * resolved separately per row against that row's own content. The previous Unit, Reference
- * and Status tracks were all content-sized, so a row whose unit read "x10\u00b3/\u00b5L" resolved a
+ * and Status tracks were all content-sized, so a row whose unit read "x10³/µL" resolved a
  * wider Unit track than one reading "%", and every column after it - including the Result
  * input - started at a different x position. Nothing but identical, content-independent
  * track sizes can align independent grids; widening the content-sized tracks until one
@@ -72,16 +73,14 @@ export function ParameterRow({
         // can no longer be read against the wrong neighbouring row. Row height is never fixed and
         // nothing is clipped: a validation message, a wrapped sex-unset reference, a
         // ConditionalChoice pair or a computed help line all expand the row.
-        "grid items-start gap-x-2 gap-y-1 px-2.5 py-1 text-xs transition-colors duration-150 sm:items-center",
+        "grid items-start gap-x-2 gap-y-1 px-3 py-1 text-xs transition-colors duration-150 sm:items-center",
         PARAMETER_ROW_TRACKS,
-        // The row being edited is the one thing an encoder must never lose track of. A soft brand
-        // wash plus a narrow inset accent marks it without moving anything: the accent border is
-        // always present and only changes colour, so no row shifts by a pixel when focus arrives.
-        // The control keeps its own focus ring - this marks the row, it does not replace that.
-        "border-l-2 border-l-transparent focus-within:border-l-brand-primary focus-within:bg-blue-50/60",
-        isSelected
-          ? "bg-transparent hover:bg-slate-100/60"
-          : "bg-slate-100/70 opacity-60"
+        // The row being edited is the one thing an encoder must never lose track of. The brand
+        // tint plus a narrow inset teal rail marks it without moving anything: the rail is always
+        // present and only changes colour, so no row shifts by a pixel when focus arrives. The
+        // control keeps its own focus ring - this marks the row, it does not replace that.
+        "border-l-2 border-l-transparent focus-within:border-l-brand-primary focus-within:bg-brand-tint",
+        isSelected ? "hover:bg-brand-structural" : "bg-brand-structural opacity-60"
       )}
     >
       <div className="col-span-3 flex min-w-0 items-start gap-2 sm:col-span-1">
@@ -101,12 +100,12 @@ export function ParameterRow({
           checked={isSelected}
           disabled={!parameter.isSelectable}
           onChange={(event) => onToggleSelect(event.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-300 text-brand-primary pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed"
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-brand-border-strong accent-brand-primary pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed sm:mt-0"
           aria-label={`Select parameter ${parameter.parameterName}`}
         />
         <div className={cn("min-w-0", !isSelected && "opacity-50")}>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="block text-xs font-semibold leading-tight text-brand-text">{parameter.parameterName}</span>
+            <span className="block text-[13px] font-medium leading-tight text-brand-text">{parameter.parameterName}</span>
             {labelAdornment}
           </div>
           {labelHelp}
@@ -120,14 +119,14 @@ export function ParameterRow({
             id={validationMessageId}
             data-validation-message
             role="alert"
-            className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-rose-700"
+            className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-brand-danger"
           >
             {validationMessage}
           </p>
         )}
       </div>
 
-      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-[11px] font-semibold text-slate-500">
+      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-[11px] text-brand-text-muted">
         {renderedUnit || ""}
       </span>
 
@@ -142,7 +141,7 @@ export function ParameterRow({
         {reference && (
           <span
             data-reference-display
-            className="inline-block w-full whitespace-normal break-words font-mono text-[11px] leading-snug text-slate-500"
+            className="inline-block w-full whitespace-normal break-words font-mono text-[11px] leading-snug text-brand-text-muted"
           >
             Ref: {reference}
           </span>
@@ -150,31 +149,17 @@ export function ParameterRow({
       </span>
 
       <div data-status-column className="min-w-0">
-        <span
-          className={cn(
-            // Same outcome mapping and same hues as before, with the badge weight taken down:
-            // a 1px inset ring instead of a filled border, so a column of statuses reads as a
-            // scannable stripe rather than a stack of buttons. Invalid keeps the loudest
-            // treatment because it is the only outcome that blocks completion. The text is
-            // always the primary signal - colour never carries the meaning alone.
-            // w-full rather than a min-width: the track is already fixed, so filling it makes
-            // every badge the same width and the status column reads as one stripe.
-            "inline-block w-full break-words rounded px-1.5 py-0.5 text-center text-[11px] font-bold uppercase tracking-wide",
-            outcome === "Invalid"
-              ? "bg-rose-600 font-extrabold text-white"
-              : outcome === "Abnormal" || outcome === "High"
-                ? "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-300"
-                : outcome === "Low"
-                  ? "bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300"
-                : outcome === "Normal"
-                  ? "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-300"
-                  : outcome === "Entered"
-                    ? "bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-300"
-                  : "bg-transparent font-normal text-slate-500 ring-1 ring-inset ring-brand-card-border"
-          )}
-        >
-          {status}
-        </span>
+        {/* The outcome flag is the shared StatusBadge, which carries exactly the mapping this
+            column used to retype by hand - Invalid solid, Abnormal/High rose, Low amber, Normal
+            emerald, Entered blue, pending slate. `label` keeps the visible word: "Pending" for an
+            unevaluated result, the outcome name for everything else. w-full because the track is
+            already fixed, so filling it makes every badge the same width and the status column
+            reads as one stripe. The text is always the primary signal. */}
+        <StatusBadge
+          status={outcome}
+          label={status}
+          className="w-full justify-center whitespace-normal break-words px-1.5 text-center"
+        />
       </div>
     </div>
   );

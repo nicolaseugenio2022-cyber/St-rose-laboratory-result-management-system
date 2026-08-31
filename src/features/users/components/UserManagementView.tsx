@@ -329,7 +329,7 @@ export function UserManagementView({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {loadErrorMessage && (
         <Alert
           variant={directoryUnavailable ? "destructive" : "warning"}
@@ -366,23 +366,25 @@ export function UserManagementView({
       {/* Structural: the directory controls sit behind the records rather than presenting as
           another content card. Add staff account lives here as the page's primary action -
           the shell already supplies the title this block used to repeat. */}
-      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
+      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="min-w-0 flex-1 lg:max-w-sm">
-            <div className="relative">
-              {/* A real label, not a placeholder: a placeholder disappears the moment the field
-                  is used, taking the field's name with it. */}
-              <Input
-                id="user-directory-search"
-                label="Search accounts"
-                type="search"
-                placeholder="Username"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-              <Search aria-hidden="true" className="pointer-events-none absolute bottom-2.5 left-3 h-4 w-4 text-brand-text-subtle" />
-            </div>
+          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+            {/* A real label, not a placeholder: a placeholder disappears the moment the field
+                is used, taking the field's name with it. */}
+            <Input
+              id="user-directory-search"
+              label="Search accounts"
+              type="search"
+              placeholder="Username"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+            {/* Centred on the 44px field below sm and on the 36px field above it. */}
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
+            />
           </div>
           <div className="w-full shrink-0 lg:w-52">
             <Select
@@ -393,13 +395,14 @@ export function UserManagementView({
               onChange={(e) => setRoleFilter(e.target.value)}
             />
           </div>
-          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+          {/* Medium controls line up with the 36px fields beside them on a desktop; the 44px
+              minimum below sm keeps them a touch target. */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:ml-auto">
             {hasActiveFilters && (
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="min-h-11 sm:min-h-8"
+                className="min-h-11 sm:min-h-9"
                 onClick={clearDirectoryFilters}
               >
                 <X aria-hidden="true" className="h-3.5 w-3.5" />
@@ -409,8 +412,7 @@ export function UserManagementView({
             <Button
               type="button"
               onClick={handleOpenCreate}
-              size="sm"
-              className="min-h-11 sm:min-h-8"
+              className="min-h-11 sm:min-h-9"
               disabled={isMutating}
             >
               <Plus aria-hidden="true" className="h-4 w-4" />
@@ -422,7 +424,7 @@ export function UserManagementView({
             status change is announced here and stated in words, which is also what explains the
             other rows' held toggles - the operator is never left with a dead control and no
             reason for it. */}
-        <p className="text-xs text-brand-text-muted" aria-live="polite">
+        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
           {directoryUnavailable ? (
             "Account totals are unavailable until the directory loads."
           ) : statusUpdatingUser ? (

@@ -3,8 +3,11 @@ import type {
   WorkspacePersonnelEntry,
   WorkspaceSignatorySelection,
 } from "@/features/workspace/signatory-contracts";
-import { UserCheck, ShieldCheck, CheckCircle2, Clock } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 
 /**
  * Build one selection from a directory entry.
@@ -27,6 +30,24 @@ function toSelection(
     printedPrcLicenseNumber: person.prcLicenseNumber,
     displayOrder,
   };
+}
+
+/** The option label is the same "First Last, Credentials" line the native select always showed. */
+function toOption(person: WorkspacePersonnelEntry) {
+  return { value: person.id, label: `${person.firstName} ${person.lastName}, ${person.credentials}` };
+}
+
+/**
+ * The selected signatory summary as one detail row beneath its field. The wording is the
+ * existing "PRC License:" line; only the layout is the shared label/value row.
+ */
+function PrcLicenseRow({ person }: { person: WorkspacePersonnelEntry }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 px-1 py-1">
+      <span className="text-[11px] text-brand-text-muted">PRC License:</span>
+      <span className="font-mono text-xs font-medium tabular-nums text-brand-text">{person.prcLicenseNumber}</span>
+    </div>
+  );
 }
 
 export interface SignatorySelectionSectionProps {
@@ -146,25 +167,28 @@ export function SignatorySelectionSection({
     setIsConfirmed(true);
   };
 
+  const pathologistOptions = pathologists.map(toOption);
+  const medtechOptions = medtechs.map(toOption);
+
   return (
-    <div className="mt-3.5 overflow-hidden rounded-lg border border-brand-card-border bg-brand-background transition-colors">
+    // A structural tint group; the three signatory fields inside it are grouped by the grid,
+    // never by a card each.
+    <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-structural">
       {/* Header & Requirement Badges Accordion Toggle */}
       {/* The Confirm action is a sibling of the toggle, never a descendant: a button
           nested inside a button is invalid HTML and the parser hoists it out, which
           makes the server and client trees disagree during hydration. */}
-      <div className="w-full p-3 sm:py-3 sm:px-4 flex flex-col sm:flex-row sm:items-center gap-2 hover:bg-brand-structural-hover transition-colors">
+      <div className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center">
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
           aria-expanded={isExpanded}
-          className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left"
+          className="flex min-w-0 flex-1 flex-col justify-between gap-2 rounded-md text-left transition-colors sm:flex-row sm:items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
+            <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
             <div>
-              <h3 className="text-xs font-bold text-brand-text uppercase tracking-wider">
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
                 Assigned Signatories & Approval
               </h3>
               <p className="text-[11px] text-brand-text-muted">
@@ -174,106 +198,68 @@ export function SignatorySelectionSection({
           </div>
 
           {/* Metadata Requirement Badge */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
             {isFullyConfirmed ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50/90 text-emerald-800 border border-emerald-200/80 rounded-full">
-                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+              <Badge variant="success" size="sm" className="gap-1">
+                <CheckCircle2 aria-hidden="true" className="h-3 w-3" />
                 Assigned ✓
-              </span>
+              </Badge>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-full">
-                <Clock className="h-3 w-3 text-amber-600" />
+              <Badge variant="warning" size="sm" className="gap-1">
+                <Clock aria-hidden="true" className="h-3 w-3" />
                 Suggested (Unconfirmed)
-              </span>
+              </Badge>
             )}
           </div>
         </button>
 
         {!isFullyConfirmed && (
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={() => setIsConfirmed(true)}
-            className="shrink-0 self-start sm:self-auto px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-sm"
+            className="shrink-0 self-start sm:self-auto"
           >
             Confirm ✓
-          </button>
+          </Button>
         )}
       </div>
 
       {isExpanded && (
-        <div className="p-3 pt-0 border-t border-brand-card-border mt-1.5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Pathologist Card */}
-            <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
-              <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
-                Pathologist (Signatory 1)
-              </label>
-              <select
+        <div className="border-t border-brand-border p-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Pathologist */}
+            <div>
+              <Select
+                label="Pathologist (Signatory 1)"
                 value={selectedPathologistId}
                 onChange={(e) => handleSelectPathologist(e.target.value)}
-                className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
-              >
-                {pathologists.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName}, {p.credentials}
-                  </option>
-                ))}
-              </select>
-              {activePathologist && (
-                <div className="text-[10px] text-brand-text-muted font-mono">
-                  PRC License: <span className="font-bold text-brand-text-muted">{activePathologist.prcLicenseNumber}</span>
-                </div>
-              )}
+                options={pathologistOptions}
+              />
+              {activePathologist && <PrcLicenseRow person={activePathologist} />}
             </div>
 
-            {/* Medical Technologist 1 Card */}
-            <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
-              <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                Medical Technologist (Signatory 2)
-              </label>
-              <select
+            {/* Medical Technologist 1 */}
+            <div>
+              <Select
+                label="Medical Technologist (Signatory 2)"
                 value={selectedMedtech1Id}
                 onChange={(e) => handleSelectMedtech1(e.target.value)}
-                className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
-              >
-                {medtechs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName}, {p.credentials}
-                  </option>
-                ))}
-              </select>
-              {activeMedtech1 && (
-                <div className="text-[10px] text-brand-text-muted font-mono">
-                  PRC License: <span className="font-bold text-brand-text-muted">{activeMedtech1.prcLicenseNumber}</span>
-                </div>
-              )}
+                options={medtechOptions}
+              />
+              {activeMedtech1 && <PrcLicenseRow person={activeMedtech1} />}
             </div>
 
-            {/* Medical Technologist 2 Card (Rendered ONLY when requiredMedtechsCount >= 2, e.g. HIV_RESULT) */}
+            {/* Medical Technologist 2 (Rendered ONLY when requiredMedtechsCount >= 2, e.g. HIV_RESULT) */}
             {requiredMedtechsCount >= 2 && (
-              <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
-                <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
-                  <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                  Medical Technologist 2 (Signatory 3)
-                </label>
-                <select
+              <div>
+                <Select
+                  label="Medical Technologist 2 (Signatory 3)"
                   value={selectedMedtech2Id}
                   onChange={(e) => handleSelectMedtech2(e.target.value)}
-                  className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
-                >
-                  {medtechs.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName}, {p.credentials}
-                    </option>
-                  ))}
-                </select>
-                {activeMedtech2 && (
-                  <div className="text-[10px] text-brand-text-muted font-mono">
-                    PRC License: <span className="font-bold text-brand-text-muted">{activeMedtech2.prcLicenseNumber}</span>
-                  </div>
-                )}
+                  options={medtechOptions}
+                />
+                {activeMedtech2 && <PrcLicenseRow person={activeMedtech2} />}
               </div>
             )}
           </div>

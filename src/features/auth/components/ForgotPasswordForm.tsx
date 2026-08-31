@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ChevronRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -29,13 +29,14 @@ const RECOVERY_STEPS: ReadonlyArray<{ stage: RecoveryStage; label: string }> = [
 ];
 
 /**
- * Deliberately a compact row, not a stepper graphic: three numbered chips on one line.
+ * Three-segment rail, one segment per stage.
  *
- * State is never carried by colour alone. A completed step swaps its numeral for a check glyph,
- * the current step is the only one in full-strength text, and every chip carries a screen-reader
- * word - Completed / Current step / Not started - alongside `aria-current="step"` on the active
- * one. The polite live region restates position when the stage advances, because a heading that
- * changes silently is not an announcement.
+ * The rail is teal up to and including the current stage and muted beyond it, so progress reads
+ * as a fill. State is never carried by colour alone. A completed step swaps its numeral for a
+ * check glyph, the current step is the only one with a navy label, and every step carries a
+ * screen-reader word - Completed / Current step / Not started - alongside `aria-current="step"`
+ * on the active one. The polite live region restates position when the stage advances, because
+ * a heading that changes silently is not an announcement.
  */
 function RecoveryProgress({ currentIndex }: { currentIndex: number }) {
   const currentStep = RECOVERY_STEPS[currentIndex];
@@ -44,7 +45,7 @@ function RecoveryProgress({ currentIndex }: { currentIndex: number }) {
     <div>
       <p
         aria-hidden="true"
-        className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted"
+        className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted"
       >
         Step {currentIndex + 1} of {RECOVERY_STEPS.length}
       </p>
@@ -52,11 +53,9 @@ function RecoveryProgress({ currentIndex }: { currentIndex: number }) {
         Step {currentIndex + 1} of {RECOVERY_STEPS.length}: {currentStep.label}.
       </p>
 
-      {/* Wraps rather than scrolls, so 375px never produces a horizontal overflow. */}
-      <ol
-        aria-label="Password recovery progress"
-        className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5"
-      >
+      {/* Three equal columns whose labels wrap within their column, so 375px never produces a
+          horizontal overflow. */}
+      <ol aria-label="Password recovery progress" className="mt-2 grid grid-cols-3 gap-2">
         {RECOVERY_STEPS.map((step, index) => {
           const isDone = index < currentIndex;
           const isCurrent = index === currentIndex;
@@ -65,37 +64,32 @@ function RecoveryProgress({ currentIndex }: { currentIndex: number }) {
             <li
               key={step.stage}
               aria-current={isCurrent ? "step" : undefined}
-              className="flex items-center gap-1.5"
+              className={cn(
+                "min-w-0 border-t-2 pt-1.5",
+                isDone || isCurrent ? "border-brand-primary" : "border-brand-border"
+              )}
             >
-              <span
-                className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold leading-none",
-                  isDone && "border-brand-primary bg-brand-primary text-brand-primary-foreground",
-                  isCurrent && "border-brand-primary bg-brand-surface text-brand-primary",
-                  !isDone &&
-                    !isCurrent &&
-                    "border-brand-border bg-brand-surface text-brand-text-muted"
-                )}
-              >
-                {isDone ? <Check aria-hidden="true" className="h-3 w-3" /> : index + 1}
-              </span>
-              <span
-                className={cn(
-                  "text-[11px] leading-tight",
-                  isCurrent ? "font-semibold text-brand-text" : "font-medium text-brand-text-muted"
-                )}
-              >
-                {step.label}
+              <span className="flex items-start gap-1">
+                <span
+                  className={cn(
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[10px] font-bold leading-none tabular-nums",
+                    isDone || isCurrent ? "text-brand-primary" : "text-brand-text-muted"
+                  )}
+                >
+                  {isDone ? <Check aria-hidden="true" className="h-3 w-3" /> : index + 1}
+                </span>
+                <span
+                  className={cn(
+                    "text-[11px] leading-tight",
+                    isCurrent ? "font-semibold text-brand-navy" : "font-medium text-brand-text-muted"
+                  )}
+                >
+                  {step.label}
+                </span>
               </span>
               <span className="sr-only">
                 {isDone ? "Completed" : isCurrent ? "Current step" : "Not started"}
               </span>
-              {index < RECOVERY_STEPS.length - 1 && (
-                <ChevronRight
-                  aria-hidden="true"
-                  className="ml-0.5 h-3 w-3 shrink-0 text-brand-text-subtle"
-                />
-              )}
             </li>
           );
         })}
@@ -224,7 +218,7 @@ export function ForgotPasswordForm() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
                 Security question
               </p>
-              <p className="mt-1 text-sm font-semibold leading-snug text-brand-text">
+              <p className="mt-1 text-[13px] font-semibold leading-snug text-brand-text">
                 {securityQuestion}
               </p>
             </div>

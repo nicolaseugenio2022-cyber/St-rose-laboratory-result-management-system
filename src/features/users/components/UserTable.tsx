@@ -15,8 +15,8 @@ import { cn } from "@/utils/cn";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RoleBadge } from "./RoleBadge";
-import { UserStatusBadge } from "./UserStatusBadge";
 
 /**
  * The exact account fields the user directory renders.
@@ -196,14 +196,19 @@ export function UserTable({
     // it. The recoverable case is the only one that carries an action.
     if (loadState === "failed") {
       return (
-        <EmptyState
-          icon={AlertTriangle}
-          title="Account directory unavailable"
-          description="The staff account directory could not be loaded, so no accounts can be shown. This is a load failure, not an empty directory."
-          headingLevel={3}
-          className="rounded-lg border border-brand-danger-border bg-brand-card"
-          action={
-            onRetryLoad ? (
+        // A working surface with a danger-tinted icon disc: the error is a panel of its own,
+        // not a quiet structural region, because there is nothing behind it to read.
+        <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-brand-danger-border bg-brand-card px-6 py-7 text-center shadow-low">
+          <span className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full border border-brand-danger-border bg-brand-danger-bg">
+            <AlertTriangle aria-hidden="true" className="h-4 w-4 text-brand-danger" />
+          </span>
+          <h3 className="text-[13px] font-semibold text-brand-navy">Account directory unavailable</h3>
+          <p className="max-w-sm text-xs leading-relaxed text-brand-text-muted">
+            The staff account directory could not be loaded, so no accounts can be shown. This is
+            a load failure, not an empty directory.
+          </p>
+          {onRetryLoad && (
+            <div className="mt-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -214,9 +219,9 @@ export function UserTable({
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                 Retry loading accounts
               </Button>
-            ) : undefined
-          }
-        />
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -228,7 +233,6 @@ export function UserTable({
           title="Loading accounts"
           description="Fetching the staff account directory."
           headingLevel={3}
-          className="rounded-lg border border-brand-card-border bg-brand-card"
         />
       );
     }
@@ -245,7 +249,6 @@ export function UserTable({
             : "Staff login accounts will be listed here once they are created."
         }
         headingLevel={3}
-        className="rounded-lg border border-brand-card-border bg-brand-card"
         action={
           hasActiveFilters && onClearFilters ? (
             <Button
@@ -269,10 +272,10 @@ export function UserTable({
           squeezed onto a phone and does not rely on horizontal scrolling to stay usable.
 
           No wrapper card here: `Table` already draws the rounded, bordered, card-surfaced
-          container. Nesting it inside a second bordered div drew two concentric borders a
-          pixel apart. */}
+          container - it is the white panel, and it carries the working-surface shadow. Nesting
+          it inside a second bordered div drew two concentric borders a pixel apart. */}
       <div className="hidden md:block">
-        <Table className="min-w-[720px]">
+        <Table striped wrapperClassName="shadow-low" className="min-w-[720px]">
           <TableHeader>
             <TableRow>
               <TableHead>Username</TableHead>
@@ -299,13 +302,10 @@ export function UserTable({
                 <TableRow
                   key={user.id}
                   aria-busy={policy.isRowBusy || undefined}
-                  className={cn(
-                    "even:bg-brand-structural hover:bg-brand-surface-hover",
-                    policy.isRowBusy && "opacity-60"
-                  )}
+                  className={cn(policy.isRowBusy && "opacity-60")}
                 >
-                  <TableCell className="py-2 align-middle">
-                    <span className="block break-all font-mono text-sm font-semibold text-brand-text">
+                  <TableCell>
+                    <span className="block break-all font-mono text-xs font-semibold text-brand-text">
                       @{user.username}
                     </span>
                     {policy.isCurrentUser && (
@@ -314,38 +314,40 @@ export function UserTable({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="py-2 align-middle">
+                  <TableCell>
                     <RoleBadge role={user.role} />
                   </TableCell>
-                  <TableCell className="py-2 align-middle">
-                    <UserStatusBadge status={user.status} />
+                  <TableCell>
+                    <StatusBadge status={user.status} size="sm" />
                   </TableCell>
-                  <TableCell className="py-2 align-middle text-xs text-brand-text-muted">
+                  <TableCell className="whitespace-nowrap font-mono tabular-nums text-brand-text-muted">
                     {formatDate(user.createdAt)}
                   </TableCell>
-                  <TableCell className="py-2 text-right align-middle">
+                  <TableCell className="text-right">
                     {isDeveloperRow ? (
                       <DeveloperRowNotice isDeveloperCaller={isDeveloperCaller} />
                     ) : (
                       <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 w-8 px-0"
                             onClick={() => onEdit(user)}
                             disabled={policy.actionsDisabled}
                             aria-label={`Edit ${user.username}`}
                           >
-                            <Edit2 aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />
+                            <Edit2 aria-hidden="true" className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 w-8 px-0"
                             onClick={() => onResetPassword(user)}
                             disabled={policy.actionsDisabled}
                             aria-label={`Reset password for ${user.username}`}
                           >
-                            <KeyRound aria-hidden="true" className="h-4 w-4 text-brand-text-muted" />
+                            <KeyRound aria-hidden="true" className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="outline"
@@ -360,9 +362,12 @@ export function UserTable({
                             )}
                             {policy.isActive ? "Deactivate" : "Activate"}
                           </Button>
+                          {/* Quiet and danger-tinted rather than filled: the confirmation dialog
+                              is the guard, so the row does not need a red block on every line. */}
                           <Button
-                            variant="danger"
+                            variant="ghost"
                             size="sm"
+                            className="text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger"
                             onClick={() => onDelete(user)}
                             disabled={policy.deleteDisabled}
                             aria-label={`Delete ${user.username}`}
@@ -393,11 +398,11 @@ export function UserTable({
 
       {/* Narrow presentation of the same directory and the same handlers. Actions carry visible
           labels here rather than icon-only affordances with hover titles, and each is held to a
-          44px minimum height - the compact desktop control size is not a touch target. */}
-      <ul
-        className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card md:hidden"
-        aria-label="Staff account directory"
-      >
+          44px minimum height - the compact desktop control size is not a touch target.
+
+          One white record per account: a compact header row, the meta line, and the actions in
+          a structural footer band. */}
+      <ul className="space-y-2 md:hidden" aria-label="Staff account directory">
         {users.map((user) => {
           const policy = rowPolicy(
             user,
@@ -414,86 +419,93 @@ export function UserTable({
             <li
               key={user.id}
               aria-busy={policy.isRowBusy || undefined}
-              className={cn("space-y-2 px-3 py-3", policy.isRowBusy && "opacity-60")}
+              className={cn(
+                "overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low",
+                policy.isRowBusy && "opacity-60"
+              )}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-3 px-3.5 py-2.5">
                 <div className="min-w-0">
-                  <p className="break-all font-mono text-sm font-semibold text-brand-text">@{user.username}</p>
+                  <p className="break-all font-mono text-[13px] font-semibold text-brand-text">@{user.username}</p>
                   {policy.isCurrentUser && (
                     <p className="mt-0.5 text-[11px] font-semibold text-brand-primary">Current account</p>
                   )}
                 </div>
-                <UserStatusBadge status={user.status} />
+                <StatusBadge status={user.status} size="sm" className="shrink-0" />
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-brand-text-muted">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 pb-2.5 text-[11px] text-brand-text-muted">
                 <RoleBadge role={user.role} />
-                <span>Created {formatDate(user.createdAt)}</span>
+                <span>
+                  Created <span className="font-mono tabular-nums">{formatDate(user.createdAt)}</span>
+                </span>
               </div>
 
-              {isDeveloperRow ? (
-                <DeveloperRowNotice isDeveloperCaller={isDeveloperCaller} />
-              ) : (
-                <>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11"
-                      onClick={() => onEdit(user)}
-                      disabled={policy.actionsDisabled}
-                      aria-label={`Edit ${user.username}`}
-                    >
-                      <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11"
-                      onClick={() => onResetPassword(user)}
-                      disabled={policy.actionsDisabled}
-                      aria-label={`Reset password for ${user.username}`}
-                    >
-                      <KeyRound aria-hidden="true" className="h-3.5 w-3.5" />
-                      Reset password
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11"
-                      onClick={() => onToggleStatus(user)}
-                      disabled={policy.toggleDisabled}
-                      isLoading={policy.isStatusUpdating}
-                      aria-label={`${policy.isActive ? "Deactivate" : "Activate"} ${user.username}`}
-                    >
-                      {!policy.isStatusUpdating && (
-                        <Power aria-hidden="true" className="h-3.5 w-3.5" />
-                      )}
-                      {policy.isActive ? "Deactivate" : "Activate"}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      className="min-h-11"
-                      onClick={() => onDelete(user)}
-                      disabled={policy.deleteDisabled}
-                      aria-label={`Delete ${user.username}`}
-                    >
-                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                      Delete
-                    </Button>
-                  </div>
-                  {policy.isStatusUpdating && (
-                    <p className="text-[11px] font-semibold text-brand-text-muted">
-                      Updating account status...
-                    </p>
-                  )}
-                  {policy.blockedReason && (
-                    <p className="text-[11px] text-brand-text-muted">{policy.blockedReason}</p>
-                  )}
-                </>
-              )}
+              <div className="space-y-2 border-t border-brand-border bg-brand-structural px-3.5 py-2.5">
+                {isDeveloperRow ? (
+                  <DeveloperRowNotice isDeveloperCaller={isDeveloperCaller} />
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={() => onEdit(user)}
+                        disabled={policy.actionsDisabled}
+                        aria-label={`Edit ${user.username}`}
+                      >
+                        <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={() => onResetPassword(user)}
+                        disabled={policy.actionsDisabled}
+                        aria-label={`Reset password for ${user.username}`}
+                      >
+                        <KeyRound aria-hidden="true" className="h-3.5 w-3.5" />
+                        Reset password
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={() => onToggleStatus(user)}
+                        disabled={policy.toggleDisabled}
+                        isLoading={policy.isStatusUpdating}
+                        aria-label={`${policy.isActive ? "Deactivate" : "Activate"} ${user.username}`}
+                      >
+                        {!policy.isStatusUpdating && (
+                          <Power aria-hidden="true" className="h-3.5 w-3.5" />
+                        )}
+                        {policy.isActive ? "Deactivate" : "Activate"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11 text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger"
+                        onClick={() => onDelete(user)}
+                        disabled={policy.deleteDisabled}
+                        aria-label={`Delete ${user.username}`}
+                      >
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </div>
+                    {policy.isStatusUpdating && (
+                      <p className="text-[11px] font-semibold text-brand-text-muted">
+                        Updating account status...
+                      </p>
+                    )}
+                    {policy.blockedReason && (
+                      <p className="text-[11px] text-brand-text-muted">{policy.blockedReason}</p>
+                    )}
+                  </>
+                )}
+              </div>
             </li>
           );
         })}

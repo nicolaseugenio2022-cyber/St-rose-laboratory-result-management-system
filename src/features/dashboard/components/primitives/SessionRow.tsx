@@ -49,14 +49,14 @@ export function SessionRow({ item, showResume = false, className }: SessionRowPr
   const activity = activityParts(item.activityAt);
 
   return (
-    <div className={cn("flex items-center gap-3 px-3 py-2", className)}>
+    <div className={cn("flex items-center gap-3 px-3.5 py-2", className)}>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           {/* title restores what truncation removes: a long patient name is still
               readable on hover instead of ending in an ellipsis with no recourse. */}
           <span
             title={item.patientName}
-            className="truncate text-xs font-semibold text-brand-text"
+            className="truncate text-[13px] font-semibold text-brand-navy"
           >
             {item.patientName}
           </span>
@@ -91,7 +91,7 @@ export function SessionRow({ item, showResume = false, className }: SessionRowPr
           // the row: 44px would push every list row to ~60px and halve how much work
           // fits above the fold, and this is the only target in the row, so the
           // spacing exception already applied - 32px is the honest middle.
-          className="inline-flex min-h-8 shrink-0 items-center rounded-md border border-brand-border px-2.5 text-[11px] font-semibold text-brand-text transition-[color,background-color,border-color,transform] duration-150 hover:bg-brand-surface-hover active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          className="inline-flex min-h-8 shrink-0 items-center rounded-md border border-brand-border-strong bg-brand-surface px-2.5 text-[11px] font-semibold text-brand-navy transition-[color,background-color,border-color,transform] duration-150 hover:border-brand-navy-muted hover:bg-brand-surface-hover active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
         >
           {item.status === "Draft" ? "Resume" : "Open"}
           <span className="sr-only"> {item.patientName}</span>

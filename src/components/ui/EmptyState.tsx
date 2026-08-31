@@ -15,12 +15,12 @@ export interface EmptyStateProps extends Omit<React.HTMLAttributes<HTMLDivElemen
 /**
  * Compact operational empty state.
  *
- * Deliberately small: a muted icon, a real heading, one line of guidance and at
- * most one action. No large illustration and no tall blank card — an empty
- * table should not push the rest of the screen off the viewport.
+ * A structural-tint panel, so an empty region reads as a quiet part of the page rather
+ * than a blank white hole: a muted icon on a white disc, a real heading, one line of
+ * guidance and at most one action. No illustration, no tall card.
  *
- * Distinguish the cases in the copy: nothing exists yet, nothing matches the
- * current filter, and a load error are three different messages.
+ * Distinguish the cases in the copy: nothing exists yet, nothing matches the current
+ * filter, and a load error are three different messages.
  */
 export function EmptyState({
   icon: Icon,
@@ -36,17 +36,21 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-1 px-6 py-6 text-center",
+        "flex flex-col items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-structural px-6 py-7 text-center",
         className
       )}
       {...props}
     >
-      {Icon && <Icon className="h-6 w-6 text-brand-text-subtle" aria-hidden="true" />}
-      <Heading className="text-sm font-semibold text-brand-text">{title}</Heading>
+      {Icon && (
+        <span className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full border border-brand-border bg-brand-surface">
+          <Icon className="h-4 w-4 text-brand-text-muted" aria-hidden="true" />
+        </span>
+      )}
+      <Heading className="text-[13px] font-semibold text-brand-navy">{title}</Heading>
       {description && (
         <p className="max-w-sm text-xs leading-relaxed text-brand-text-muted">{description}</p>
       )}
-      {action && <div className="mt-2">{action}</div>}
+      {action && <div className="mt-2.5">{action}</div>}
     </div>
   );
 }

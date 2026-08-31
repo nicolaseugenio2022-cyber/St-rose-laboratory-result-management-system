@@ -42,12 +42,11 @@ export function AdminDashboard({
   const completed = recentWork.recentCompleted.slice(0, 5);
 
   return (
-    <div className="space-y-5">
-      {/* One action, full width. Completed history was a second card competing with the only
-          thing this screen exists to launch; it stays reachable from the navigation and from
-          the contextual link on the activity list, which is where an operator already is when
-          they want it. */}
-      <DashboardSection title="Start laboratory work">
+    <div className="space-y-4">
+      {/* One action, full width, and no panel around it: the action card is already the
+          surface. Completed history stays reachable from the navigation and from the
+          contextual link on the activity list. */}
+      <DashboardSection title="Start laboratory work" variant="bare">
         <ActionCard
           href="/workspace"
           icon={PlayCircle}
@@ -61,22 +60,20 @@ export function AdminDashboard({
         title="Account overview"
         description="Login accounts visible to your role"
       >
-        {/* A strip of labelled figures is a description list. The tiles were a bag of
-            divs, so a screen reader read eight unrelated fragments instead of four
-            term/value pairs.
+        {/* A strip of labelled figures is a description list, inside the panel: the 1px
+            gaps draw the separators against the panel border colour.
 
             Total is not redundant against Active + Inactive: they answer different questions
             at a glance - how large the estate is, versus how much of it is live. */}
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-brand-card-border bg-brand-card-border md:grid-cols-4">
-          <MetricTile className="bg-brand-structural" label="Total accounts" value={totalUsers} icon={Users} />
-          <MetricTile className="bg-brand-structural" label="Active" value={activeUsers} />
-          <MetricTile className="bg-brand-structural" label="Inactive" value={inactiveUsers} />
-          <MetricTile className="bg-brand-structural" label="Administrators" value={adminUsers} icon={ShieldCheck} />
+        <dl className="grid grid-cols-2 gap-px bg-brand-border md:grid-cols-4">
+          <MetricTile className="bg-brand-card" label="Total accounts" value={totalUsers} icon={Users} />
+          <MetricTile className="bg-brand-card" label="Active" value={activeUsers} />
+          <MetricTile className="bg-brand-card" label="Inactive" value={inactiveUsers} />
+          <MetricTile className="bg-brand-card" label="Administrators" value={adminUsers} icon={ShieldCheck} />
         </dl>
       </DashboardSection>
 
-      {/* Full width now that Management is gone: the activity list is the only operational
-          content on this screen and it was previously squeezed into two fifths of it. */}
+      {/* Full width: the activity list is the only operational content on this screen. */}
       <DashboardSection
         title="Recent laboratory activity"
         description="Most recent completed sessions"
@@ -87,10 +84,10 @@ export function AdminDashboard({
             icon={History}
             title="No recent laboratory activity"
             description="Completed patient sessions will appear here."
-            className="rounded-lg border border-brand-card-border bg-brand-card"
+            className="rounded-none border-0"
           />
         ) : (
-          <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
+          <div className="divide-y divide-brand-border-subtle">
             {completed.map((item) => (
               <SessionRow key={item.id} item={item} showResume />
             ))}

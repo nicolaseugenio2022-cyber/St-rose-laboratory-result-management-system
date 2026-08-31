@@ -57,17 +57,17 @@ export function ComputedInput({
       data-calculation-mode-switch={calculationMode}
       onClick={() => onRequestModeChange?.(isManual ? "Auto" : "Manual")}
       className={cn(
-        "inline-flex items-center gap-1 rounded border px-1.5 text-[11px] font-bold uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
         isManual
-          ? "border-amber-300 bg-amber-100 text-amber-800 hover:border-amber-400"
-          : "border-brand-info-border bg-brand-tint text-brand-info hover:border-brand-info-border"
+          ? "border-brand-warning-border bg-brand-warning-bg text-brand-warning hover:border-brand-warning"
+          : "border-brand-info-border bg-brand-tint text-brand-info hover:border-brand-primary"
       )}
     >
       {isManual ? <Pencil className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
       {isManual ? "Manual" : "Auto"}
     </button>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded border border-brand-info-border bg-brand-tint px-1.5 text-[11px] font-bold uppercase text-brand-info"><Lock className="h-3 w-3" />Auto-Calculated</span>
+    <span className="inline-flex items-center gap-1 rounded-md border border-brand-info-border bg-brand-tint px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-brand-info"><Lock className="h-3 w-3" />Auto-Calculated</span>
   );
 
   const helpText = !supportsManualEntry
@@ -85,7 +85,7 @@ export function ComputedInput({
     validationMessage={validationMessage || undefined}
     validationMessageId={validationMessage ? errorId : undefined}
     labelAdornment={modeControl}
-    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-amber-700" : "text-brand-info")}><Info className={cn("h-3 w-3 shrink-0", isManual ? "text-amber-600" : "text-brand-info")} />{helpText}</span>}
+    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-brand-warning" : "text-brand-info")}><Info className="h-3 w-3 shrink-0" />{helpText}</span>}
   >
     {isManual ? (
       <input
@@ -102,11 +102,16 @@ export function ComputedInput({
         onChange={(event) => onChange?.(event.target.value, evaluationOutcome)}
         placeholder="Enter result..."
         className={cn(
-          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary",
-          evaluationOutcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-brand-border bg-brand-card text-brand-text"
+          "block h-11 w-full rounded-md border bg-brand-surface px-3 font-mono text-[13px] tabular-nums text-brand-text transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80 sm:h-9",
+          evaluationOutcome === "Invalid"
+            ? "border-brand-danger bg-brand-danger-bg font-semibold text-brand-danger hover:border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger"
+            : "border-brand-border hover:border-brand-border-strong"
         )}
       />
     ) : (
+      // Visibly read-only: a structural tint instead of the white working surface, the value in
+      // navy mono so it still reads as a key figure. The Auto chip beside the label is the
+      // indicator; this field never invites typing.
       <input
         type="text"
         data-encoding-input
@@ -119,7 +124,12 @@ export function ComputedInput({
         disabled
         aria-invalid={evaluationOutcome === "Invalid"}
         aria-describedby={validationMessage ? errorId : undefined}
-        className="h-8 w-full cursor-not-allowed rounded-md border border-brand-info-border bg-brand-tint px-2.5 text-sm font-bold font-mono text-brand-info placeholder:font-normal placeholder:text-brand-text-subtle"
+        className={cn(
+          "block h-11 w-full cursor-not-allowed rounded-md border px-3 font-mono text-[13px] font-semibold tabular-nums placeholder:font-sans placeholder:font-normal placeholder:text-brand-text-muted sm:h-9",
+          evaluationOutcome === "Invalid"
+            ? "border-brand-danger-border bg-brand-danger-bg text-brand-danger"
+            : "border-brand-border bg-brand-structural text-brand-navy"
+        )}
       />
     )}
   </ParameterRow>;

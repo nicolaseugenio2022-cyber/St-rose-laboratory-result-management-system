@@ -23,7 +23,7 @@ export function WorkspaceShell({ children, currentUserRole }: WorkspaceShellProp
         <a
           href="#workspace-main"
           inert={isDrawerOpen || undefined}
-          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:border focus:border-brand-border focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-slate-900 focus:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-focus-ring"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:border focus:border-brand-border-strong focus:bg-brand-surface focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-brand-navy focus:shadow-overlay focus:outline-none focus:ring-2 focus:ring-brand-focus-ring"
         >
           Skip to encoding surface
         </a>

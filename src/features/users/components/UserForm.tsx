@@ -108,66 +108,72 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
           the assertive live-region role that a bare div does not. */}
       {serverError && <Alert variant="destructive">{serverError}</Alert>}
 
-      <Input
-        label="Username"
-        autoComplete="off"
-        placeholder="e.g. jdoe"
-        error={errors.username?.message}
-        {...register("username")}
-      />
-
-      {!isEditing && (
-        <>
-          <Select
-            label="Security Question"
-            options={SECURITY_QUESTION_OPTIONS.map((question) => ({
-              label: question,
-              value: question,
-            }))}
-            error={(errors as { securityQuestion?: { message?: string } }).securityQuestion?.message}
-            {...register("securityQuestion" as keyof CreateUserFormValues)}
+      {/* Two columns from sm up. Field order is unchanged; the username spans the row, the
+          recovery pair sits in one structural tint block, and the remaining fields pair off. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Input
+            label="Username"
+            autoComplete="off"
+            placeholder="e.g. jdoe"
+            error={errors.username?.message}
+            {...register("username")}
           />
-          {selectedSecurityQuestion === CUSTOM_SECURITY_QUESTION && (
-            <Input
-              label="Custom Security Question"
-              placeholder="Enter the account holder's question"
-              error={(errors as { customSecurityQuestion?: { message?: string } }).customSecurityQuestion?.message}
-              {...register("customSecurityQuestion" as keyof CreateUserFormValues)}
+        </div>
+
+        {!isEditing && (
+          <div className="space-y-3 rounded-lg border border-brand-border bg-brand-structural p-3 sm:col-span-2">
+            <Select
+              label="Security Question"
+              options={SECURITY_QUESTION_OPTIONS.map((question) => ({
+                label: question,
+                value: question,
+              }))}
+              error={(errors as { securityQuestion?: { message?: string } }).securityQuestion?.message}
+              {...register("securityQuestion" as keyof CreateUserFormValues)}
             />
-          )}
-        </>
-      )}
+            {selectedSecurityQuestion === CUSTOM_SECURITY_QUESTION && (
+              <Input
+                label="Custom Security Question"
+                placeholder="Enter the account holder's question"
+                error={(errors as { customSecurityQuestion?: { message?: string } }).customSecurityQuestion?.message}
+                {...register("customSecurityQuestion" as keyof CreateUserFormValues)}
+              />
+            )}
+          </div>
+        )}
 
-      {!isEditing && (
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="At least 6 characters"
-          error={(errors as { password?: { message?: string } }).password?.message}
-          {...register("password")}
-        />
-      )}
+        {!isEditing && (
+          <Input
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            placeholder="At least 6 characters"
+            error={(errors as { password?: { message?: string } }).password?.message}
+            {...register("password")}
+          />
+        )}
 
-      <Select
-        label="System Role"
-        options={roleOptions}
-        error={errors.role?.message}
-        {...register("role")}
-      />
-
-      {isEditing && (
         <Select
-          label="Account Status"
-          options={statusOptions}
-          error={(errors as any).status?.message}
-          {...register("status" as any)}
+          label="System Role"
+          options={roleOptions}
+          error={errors.role?.message}
+          {...register("role")}
         />
-      )}
 
-      {/* Both footer actions clear 44px on a phone and fall back to the standard 40px control
-          height from sm up. */}
-      <div className="flex items-center justify-end gap-3 border-t border-brand-border-subtle pt-4">
+        {isEditing && (
+          <Select
+            label="Account Status"
+            options={statusOptions}
+            error={(errors as any).status?.message}
+            {...register("status" as any)}
+          />
+        )}
+      </div>
+
+      {/* Column-reversed on a phone so the submit control sits under the thumb. Both actions
+          clear 44px there and fall back to the standard control height from sm up. */}
+      <div className="mt-4 flex flex-col-reverse gap-2 border-t border-brand-border pt-3 sm:flex-row sm:justify-end">
         <Button
           type="button"
           variant="outline"

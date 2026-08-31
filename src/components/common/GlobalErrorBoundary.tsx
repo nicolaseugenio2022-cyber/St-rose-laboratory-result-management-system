@@ -2,6 +2,7 @@
 
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertOctagon, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface Props {
   children?: ReactNode;
@@ -35,32 +36,28 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[400px] w-full flex items-center justify-center p-6 bg-slate-50 border border-slate-200 rounded-xl my-4 text-center">
+        <div className="my-4 flex min-h-[400px] w-full items-center justify-center rounded-lg border border-brand-border bg-brand-structural p-6 text-center">
           <div className="max-w-md space-y-4">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertOctagon className="h-6 w-6" />
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-brand-danger-border bg-brand-danger-bg text-brand-danger">
+              <AlertOctagon className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+              <h2 className="text-base font-bold tracking-tight text-brand-navy">
                 {this.props.fallbackTitle || "System Operation Exception"}
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="mt-1 text-xs leading-relaxed text-brand-text-muted">
                 An unexpected application error occurred. The operation was safely contained to prevent data corruption.
               </p>
             </div>
             {this.state.error?.message && (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-left font-mono text-[11px] text-rose-800 break-words">
+              <div className="break-words rounded-md border border-brand-danger-border bg-brand-danger-bg p-3 text-left font-mono text-[11px] text-brand-danger">
                 {this.state.error.message}
               </div>
             )}
-            <button
-              type="button"
-              onClick={this.handleReset}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover transition-colors shadow-sm"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
+            <Button type="button" size="sm" onClick={this.handleReset}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               Reload Operational View
-            </button>
+            </Button>
           </div>
         </div>
       );

@@ -44,21 +44,56 @@ function errorMessage(error: unknown, fallback: string): string {
 /**
  * One figure in the summary strip.
  *
- * Deliberately plain: no card, no icon, no shadow, and no emphasis colour. These are four
- * neutral counts describing the shape of the roster, and dressing one of them differently
- * would assert a problem the directory has no way to substantiate.
+ * The same tile the dashboards draw: a small uppercase label over a navy figure, on a white
+ * cell that the strip's one-pixel gaps separate. Deliberately plain beyond that: no icon, no
+ * shadow, and no emphasis colour. These are four neutral counts describing the shape of the
+ * roster, and dressing one of them differently would assert a problem the directory has no
+ * way to substantiate.
  *
  * A description list rather than stacked divs, so each number is announced with the thing it
- * counts. `flex-col-reverse` puts the figure above its label visually while the reading order
- * stays label-then-value.
+ * counts.
  */
 function SummaryFigure({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex min-w-0 flex-col-reverse px-3 py-2 sm:px-4">
-      <dt className="mt-1 break-words text-[11px] font-medium uppercase tracking-wide text-brand-text-subtle">
+    <div className="flex min-w-0 flex-col gap-1 bg-brand-card px-3.5 py-3">
+      <dt className="min-w-0 break-words text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-brand-text-muted">
         {label}
       </dt>
-      <dd className="text-lg font-bold tabular-nums leading-none text-brand-text">{value}</dd>
+      <dd className="text-xl font-bold leading-tight tabular-nums text-brand-navy">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Placeholder for the record list while the directory is being fetched.
+ *
+ * Sized to the table the data resolves into - a structural header band and ~48px rows, each
+ * carrying a two-line name block and the chips beside it - so nothing jumps when it lands.
+ */
+function PersonnelListSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-card">
+      <div className="flex items-center gap-6 border-b border-brand-border bg-brand-structural px-3 py-2.5">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="hidden h-3 w-12 lg:block" />
+        <Skeleton className="hidden h-3 w-20 lg:block" />
+        <Skeleton className="hidden h-3 w-16 lg:block" />
+        <Skeleton className="h-3 w-12" />
+      </div>
+      <div className="divide-y divide-brand-border-subtle">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="flex items-center gap-6 px-3 py-2.5">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-3.5 w-44 max-w-full" />
+              <Skeleton className="h-2.5 w-24 max-w-full" />
+            </div>
+            <Skeleton className="hidden h-4 w-24 lg:block" />
+            <Skeleton className="hidden h-3 w-16 lg:block" />
+            <Skeleton className="hidden h-3 w-16 lg:block" />
+            <Skeleton className="h-4 w-14" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -209,17 +244,18 @@ export function PersonnelDirectoryView({
 
   return (
     <div className="space-y-4">
-      {/* ── Context line + neutral counts, one structural band ────────────────
+      {/* ── Context line + neutral counts, one panel ──────────────────────────
           No in-body page title: the app shell already renders "Personnel
           Directory" as the page <h1>, and repeating it here gave the route two
           competing headings for the same thing. What is left is the sentence
-          that says what the roster is for, and the counts that describe it. */}
+          that says what the roster is for, in the panel's structural header
+          band, and the counts that describe it, as a metric strip below. */}
       <section
         aria-label="Directory summary"
-        className="overflow-hidden rounded-xl border border-brand-border bg-brand-structural"
+        className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
       >
-        <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <p className="min-w-0 text-xs leading-relaxed text-brand-text-muted">
+        <div className="flex flex-col gap-2 border-b border-brand-border bg-brand-structural px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <p className="min-w-0 text-xs leading-snug text-brand-text-muted">
             {canManage
               ? "PRC-licensed Pathologists and Medical Technologists who sign laboratory reports."
               : "PRC-licensed Pathologists and Medical Technologists who sign laboratory reports. You have read-only access."}
@@ -236,7 +272,9 @@ export function PersonnelDirectoryView({
           )}
         </div>
 
-        <dl className="grid grid-cols-2 divide-x divide-y divide-brand-border border-t border-brand-border sm:grid-cols-4 sm:divide-y-0">
+        {/* The strip's own background shows through the one-pixel gaps between the white
+            tiles, which is what draws the separators without a border on every cell. */}
+        <dl className="grid grid-cols-2 gap-px bg-brand-border sm:grid-cols-4">
           <SummaryFigure label="Total" value={summary.total} />
           <SummaryFigure label="Active" value={summary.active} />
           <SummaryFigure label="Pathologists" value={summary.pathologists} />
@@ -259,9 +297,9 @@ export function PersonnelDirectoryView({
       {/* ── Search and filter toolbar ───────────────────────────────────────── */}
       <section
         aria-label="Search and filter personnel"
-        className="rounded-xl border border-brand-border bg-brand-structural px-3 py-3"
+        className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5"
       >
-        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           {/* The label is written out here rather than passed to Input, because the search
               icon has to be positioned against the control alone - Input's own label would
               sit inside the same box and pull the icon off centre. The classes are the
@@ -290,7 +328,7 @@ export function PersonnelDirectoryView({
           </div>
           {/* Widths live on the wrappers: Select forwards className to the <select> itself,
               so a width passed as a prop would fight its own w-full container. */}
-          <div className="grid grid-cols-2 gap-2.5 lg:flex lg:shrink-0">
+          <div className="grid grid-cols-2 gap-3 lg:flex lg:shrink-0">
             <div className="lg:w-44">
               <Select
                 label="Role"
@@ -310,15 +348,13 @@ export function PersonnelDirectoryView({
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-brand-border pt-2.5">
+        <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-brand-border pt-2">
           {/* Announced politely: a count that changes as the user types is useful to hear, but
               not urgent enough to interrupt them mid-keystroke. */}
           <p aria-live="polite" className="text-[11px] text-brand-text-muted">
             <span className="font-semibold tabular-nums text-brand-text">{resultCount}</span>
             {resultCount === 1 ? " record" : " records"}
-            {hasActiveFilters && (
-              <span className="text-brand-text-subtle"> of {summary.total}</span>
-            )}
+            {hasActiveFilters && <span> of {summary.total}</span>}
           </p>
           {hasActiveFilters && (
             <Button
@@ -335,10 +371,8 @@ export function PersonnelDirectoryView({
       </section>
 
       {isLoading ? (
-        <div aria-busy="true" aria-label="Loading personnel directory" className="space-y-2">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-14 w-full rounded-lg" />
-          ))}
+        <div aria-busy="true" aria-label="Loading personnel directory">
+          <PersonnelListSkeleton />
         </div>
       ) : (
         <PersonnelTable

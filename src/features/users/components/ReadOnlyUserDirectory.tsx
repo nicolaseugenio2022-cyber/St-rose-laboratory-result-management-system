@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   Table,
   TableHeader,
@@ -17,7 +18,6 @@ import {
   TableCell,
 } from "@/components/ui/Table";
 import { ROLE_LABEL, RoleBadge } from "./RoleBadge";
-import { UserStatusBadge } from "./UserStatusBadge";
 
 /**
  * The Developer view of the ordinary-account directory.
@@ -116,9 +116,10 @@ export function ReadOnlyUserDirectory({
 
       {/* States the access level once, plainly, where the management controls would otherwise be.
           Without it the absence of an Add button reads as a missing feature rather than a
-          deliberate boundary. */}
-      <div className="flex items-start gap-2.5 rounded-lg border border-brand-info-border bg-brand-info-bg px-3 py-2.5">
-        <ShieldCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-info" />
+          deliberate boundary. Drawn with the shared Alert's tokens but without its live-region
+          role: this is a standing fact about the page, not a message that arrived. */}
+      <div className="flex items-start gap-2.5 rounded-md border border-brand-info-border bg-brand-info-bg px-3 py-2.5">
+        <ShieldCheck aria-hidden="true" className="mt-px h-4 w-4 shrink-0 text-brand-info" />
         <p className="text-xs leading-relaxed text-brand-info">
           <span className="font-semibold">Read-only directory access.</span> Account management is
           restricted to Administrators. Developer accounts are managed separately in Developer
@@ -126,24 +127,24 @@ export function ReadOnlyUserDirectory({
         </p>
       </div>
 
-      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
+      {/* One structural toolbar: search, role filter, Clear, and the result count. */}
+      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="min-w-0 flex-1 lg:max-w-sm">
-            <div className="relative">
-              <Input
-                id="readonly-directory-search"
-                label="Search accounts"
-                type="search"
-                placeholder="Username"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-9"
-              />
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute bottom-2.5 left-3 h-4 w-4 text-brand-text-subtle"
-              />
-            </div>
+          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+            <Input
+              id="readonly-directory-search"
+              label="Search accounts"
+              type="search"
+              placeholder="Username"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="pl-9"
+            />
+            {/* Centred on the 44px field below sm and on the 36px field above it. */}
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
+            />
           </div>
           <div className="w-full shrink-0 lg:w-52">
             <Select
@@ -155,12 +156,11 @@ export function ReadOnlyUserDirectory({
             />
           </div>
           {hasActiveFilters && (
-            <div className="shrink-0 lg:ml-auto">
+            <div className="flex shrink-0 items-center lg:ml-auto">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="min-h-11 sm:min-h-8"
+                className="min-h-11 sm:min-h-9"
                 onClick={clearFilters}
               >
                 <X aria-hidden="true" className="h-3.5 w-3.5" />
@@ -169,7 +169,7 @@ export function ReadOnlyUserDirectory({
             </div>
           )}
         </div>
-        <p className="text-xs text-brand-text-muted" aria-live="polite">
+        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
           {directoryUnavailable ? (
             "Account totals are unavailable until the directory loads."
           ) : (
@@ -184,15 +184,19 @@ export function ReadOnlyUserDirectory({
       <div aria-busy={isLoading || undefined}>
         {directoryUnavailable ? (
           // A failed load is not an empty directory, and it is the only one of these states the
-          // reader can act on.
-          <EmptyState
-            icon={AlertTriangle}
-            headingLevel={3}
-            title="Account directory unavailable"
-            description="The account directory could not be loaded, so no accounts can be shown. This is a load failure, not an empty directory."
-            className="rounded-lg border border-brand-danger-border bg-brand-card"
-            action={
-              onRetryLoad ? (
+          // reader can act on. A working surface with a danger-tinted icon disc, because there is
+          // nothing behind it to read.
+          <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-brand-danger-border bg-brand-card px-6 py-7 text-center shadow-low">
+            <span className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full border border-brand-danger-border bg-brand-danger-bg">
+              <AlertTriangle aria-hidden="true" className="h-4 w-4 text-brand-danger" />
+            </span>
+            <h3 className="text-[13px] font-semibold text-brand-navy">Account directory unavailable</h3>
+            <p className="max-w-sm text-xs leading-relaxed text-brand-text-muted">
+              The account directory could not be loaded, so no accounts can be shown. This is a
+              load failure, not an empty directory.
+            </p>
+            {onRetryLoad && (
+              <div className="mt-2.5">
                 <Button
                   type="button"
                   variant="outline"
@@ -203,20 +207,18 @@ export function ReadOnlyUserDirectory({
                   <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                   Retry loading accounts
                 </Button>
-              ) : undefined
-            }
-          />
+              </div>
+            )}
+          </div>
         ) : isLoading && entries.length === 0 ? (
           <EmptyState
             icon={Users}
             headingLevel={3}
             title="Loading accounts"
             description="Fetching the account directory."
-            className="rounded-lg border border-brand-card-border bg-brand-card"
           />
         ) : filtered.length === 0 ? (
           <EmptyState
-            className="rounded-lg border border-brand-card-border bg-brand-card"
             icon={Users}
             headingLevel={3}
             title={hasActiveFilters ? "No accounts match these filters" : "No accounts to display"}
@@ -242,9 +244,9 @@ export function ReadOnlyUserDirectory({
           <>
             {/* Desktop and tablet: the table. Hidden rather than horizontally scrolled below lg,
                 where the record list below carries the same three facts without pushing the page
-                sideways. */}
+                sideways. `Table` is the white panel - it draws its own border and radius. */}
             <div className="hidden lg:block">
-              <Table>
+              <Table striped wrapperClassName="shadow-low">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Username</TableHead>
@@ -256,15 +258,15 @@ export function ReadOnlyUserDirectory({
                   {filtered.map((entry) => (
                     // Keyed by username: it is unique across accounts and it is the only stable
                     // identifier this projection carries, which is the point of the projection.
-                    <TableRow key={entry.username} className="even:bg-brand-background">
-                      <TableCell className="py-2 font-semibold text-brand-text">
+                    <TableRow key={entry.username}>
+                      <TableCell className="break-all font-mono font-semibold text-brand-text">
                         {entry.username}
                       </TableCell>
-                      <TableCell className="py-2">
+                      <TableCell>
                         <RoleBadge role={entry.role} />
                       </TableCell>
-                      <TableCell className="py-2">
-                        <UserStatusBadge status={entry.status} />
+                      <TableCell>
+                        <StatusBadge status={entry.status} size="sm" />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -280,24 +282,22 @@ export function ReadOnlyUserDirectory({
               {filtered.map((entry) => (
                 <li
                   key={entry.username}
-                  className="rounded-lg border border-brand-card-border bg-brand-card p-3 shadow-sm"
+                  className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
                 >
                   {/* The username wraps rather than truncates: it is the only identifier on the
                       record, so a clipped one leaves the reader unable to tell two accounts
                       apart. */}
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 break-words text-sm font-semibold text-brand-text">
+                  <div className="flex items-start justify-between gap-3 px-3.5 py-2.5">
+                    <p className="min-w-0 break-all font-mono text-[13px] font-semibold text-brand-text">
                       {entry.username}
                     </p>
-                    <span className="shrink-0">
-                      <UserStatusBadge status={entry.status} />
-                    </span>
+                    <StatusBadge status={entry.status} size="sm" className="shrink-0" />
                   </div>
-                  <dl className="mt-2.5">
-                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-subtle">
+                  <dl className="flex items-center gap-2 px-3.5 pb-2.5">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
                       Role
                     </dt>
-                    <dd className="mt-1">
+                    <dd>
                       <RoleBadge role={entry.role} />
                     </dd>
                   </dl>

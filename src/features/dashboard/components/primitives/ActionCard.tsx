@@ -34,7 +34,7 @@ export function ActionCard({
     <Link
       href={href}
       className={cn(
-        "group flex items-center gap-3 rounded-md border px-3 py-2.5",
+        "group flex items-center gap-3 rounded-lg border px-3.5 py-2.5",
         // 150ms sits in the feedback band. Only the scale moves, so only the scale
         // is withdrawn under reduced motion; the colour step still answers the press.
         "transition-[color,background-color,border-color,transform] duration-150",
@@ -43,15 +43,15 @@ export function ActionCard({
         // ringed every focused card in a colour the page does not contain.
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
         isPrimary
-          ? "border-brand-primary bg-brand-primary text-brand-primary-foreground shadow-sm hover:bg-brand-primary-hover"
-          : "border-brand-card-border bg-brand-card hover:border-brand-border-strong hover:bg-brand-surface-hover",
+          ? "border-brand-primary bg-brand-primary text-brand-primary-foreground shadow-low hover:bg-brand-primary-hover"
+          : "border-brand-border bg-brand-card shadow-low hover:border-brand-border-strong hover:bg-brand-surface-hover",
         className
       )}
     >
       {Icon && (
         <span
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
             isPrimary ? "bg-white/15" : "bg-brand-tint text-brand-primary"
           )}
         >
@@ -59,7 +59,7 @@ export function ActionCard({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-xs font-semibold", isPrimary ? "" : "text-brand-text")}>
+        <span className={cn("block text-[13px] font-semibold", isPrimary ? "" : "text-brand-navy")}>
           {title}
         </span>
         {description && (

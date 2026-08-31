@@ -44,8 +44,12 @@ export function NumericTextInput({ parameter, value, isSelected, patientSex, onC
         }}
         placeholder="Enter result..."
         className={cn(
-          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary",
-          outcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-brand-border bg-brand-card text-brand-text"
+          // The shared Input field geometry - 36px from sm up, 44px below - with a mono value so a
+          // column of results reads as a column of numbers.
+          "block h-11 w-full rounded-md border bg-brand-surface px-3 font-mono text-[13px] tabular-nums text-brand-text transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80 sm:h-9",
+          outcome === "Invalid"
+            ? "border-brand-danger bg-brand-danger-bg font-semibold text-brand-danger hover:border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger"
+            : "border-brand-border hover:border-brand-border-strong"
         )}
       />
     </ParameterRow>

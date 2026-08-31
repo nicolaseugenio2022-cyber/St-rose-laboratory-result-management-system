@@ -19,12 +19,21 @@ import {
 import { formatRoleLabel } from "@/config/roles";
 import type { UserRole } from "@/domain/types";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { readAuditPageAction } from "@/features/server-boundary/audit-actions";
 import type {
   AuditCategory,
@@ -251,11 +260,18 @@ const OUTCOME_TONES: Record<string, OutcomeTone> = {
   completed: "neutral",
 };
 
-const OUTCOME_TONE_CLASS: Record<OutcomeTone, string> = {
-  negative: "border-rose-200 bg-rose-50 text-rose-800",
-  caution: "border-amber-200 bg-amber-50 text-amber-900",
-  positive: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  neutral: "border-brand-card-border bg-brand-structural text-brand-text-muted",
+/**
+ * Toned outcomes render through the shared Badge so the audit table carries the same chip
+ * vocabulary as every other module: negative = danger, caution = warning, positive = success.
+ * "neutral" never reaches this map - it renders as quiet text (see OutcomeBadge).
+ */
+const OUTCOME_TONE_VARIANT: Record<
+  Exclude<OutcomeTone, "neutral">,
+  "danger" | "warning" | "success"
+> = {
+  negative: "danger",
+  caution: "warning",
+  positive: "success",
 };
 
 /**
@@ -296,11 +312,9 @@ function OutcomeBadge({
     return <span className="whitespace-nowrap text-[11px] text-brand-text-muted">{label}</span>;
   }
   return (
-    <span
-      className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold ${OUTCOME_TONE_CLASS[tone]}`}
-    >
+    <Badge variant={OUTCOME_TONE_VARIANT[tone]} size="sm" className="shrink-0">
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -412,47 +426,83 @@ function formatDetailValue(value: unknown): string {
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3 py-1.5">
-      <dt className="text-xs font-semibold text-brand-text-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-xs text-brand-text">{children}</dd>
+    <div className="flex items-baseline justify-between gap-3 px-3.5 py-1.5">
+      <dt className="shrink-0 text-[11px] text-brand-text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-xs font-medium text-brand-text">{children}</dd>
     </div>
   );
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-t border-brand-card-border pt-3 first:border-t-0 first:pt-0">
-      <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-brand-text-muted">{title}</h3>
-      <dl className="divide-y divide-brand-border-subtle">{children}</dl>
+    <section>
+      <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+        {title}
+      </h3>
+      <dl className="divide-y divide-brand-border rounded-lg border border-brand-border bg-brand-structural">
+        {children}
+      </dl>
     </section>
   );
 }
 
+/**
+ * Sized to the resolved geometry of BOTH record branches: the fixed-width table at md and up,
+ * the compact record cards below it. Swapping in real rows therefore moves nothing.
+ */
 function AuditTableSkeleton() {
   return (
-    <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
-      <table className="w-full table-fixed border-collapse text-left text-xs">
-        <thead>
-          <tr className="border-b border-brand-card-border bg-brand-structural">
-            {Array.from({ length: 6 }).map((_, columnIndex) => (
-              <th key={columnIndex} className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[columnIndex]}`}>
-                <Skeleton className="h-3 w-20" />
-              </th>
+    <SkeletonRegion isLoading label="Loading audit events">
+      <Table className="table-fixed" wrapperClassName="hidden rounded-none border-0 md:block">
+        <TableHeader>
+          <tr>
+            {AUDIT_COLUMN_WIDTH.map((width, columnIndex) => (
+              <TableHead key={columnIndex} className={`px-2.5 ${width}`}>
+                <Skeleton className="h-3 w-20 max-w-full" />
+              </TableHead>
             ))}
           </tr>
-        </thead>
-        <tbody className="divide-y divide-brand-border-subtle">
+        </TableHeader>
+        <TableBody>
           {Array.from({ length: 5 }).map((_, rowIndex) => (
-            <tr key={rowIndex}>
-              {Array.from({ length: 6 }).map((__, columnIndex) => (
-                <td key={columnIndex} className="px-2.5 py-2.5">
-                  <Skeleton className="h-4 w-full" />
-                </td>
+            <TableRow key={rowIndex}>
+              {AUDIT_COLUMN_WIDTH.map((_, columnIndex) => (
+                <TableCell key={columnIndex} className="px-2.5">
+                  {columnIndex === 1 ? (
+                    <div className="space-y-1">
+                      <Skeleton className="h-3.5 w-3/4" />
+                      <Skeleton className="h-2.5 w-1/2" />
+                    </div>
+                  ) : (
+                    <Skeleton className={columnIndex === 5 ? "ml-auto h-8 w-8" : "h-3.5 w-full"} />
+                  )}
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
+      <div className="space-y-3 bg-brand-structural p-3 md:hidden">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
+          >
+            <div className="space-y-2 px-3.5 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <Skeleton className="h-3.5 w-3/5" />
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+            <div className="flex justify-end border-t border-brand-border bg-brand-structural px-3.5 py-2">
+              <Skeleton className="h-11 w-28" />
+            </div>
+          </div>
+        ))}
+      </div>
     </SkeletonRegion>
   );
 }
@@ -613,58 +663,60 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     switch (category) {
       case "AuthAccount":
         return (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+          <Badge variant="neutral" size="sm" className="shrink-0 gap-1">
             <Key className="h-3 w-3" aria-hidden="true" /> Auth / Account
-          </span>
+          </Badge>
         );
       case "PersonnelCredential":
         return (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-purple-800 border border-purple-200">
+          <Badge variant="neutral" size="sm" className="shrink-0 gap-1">
             <UserCheck className="h-3 w-3" aria-hidden="true" /> Personnel
-          </span>
+          </Badge>
         );
       case "SessionReport":
         return (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <Badge variant="neutral" size="sm" className="shrink-0 gap-1">
             <FileText className="h-3 w-3" aria-hidden="true" /> Session / Report
-          </span>
+          </Badge>
         );
       case "SecurityDenial":
         return (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold rounded bg-rose-50 text-rose-800 border border-rose-200">
-            <AlertTriangle className="h-3 w-3 text-rose-600" aria-hidden="true" /> Security Denial
-          </span>
+          <Badge variant="warning" size="sm" className="shrink-0 gap-1">
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Security Denial
+          </Badge>
         );
     }
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-4 pb-6">
       {/* Structural: filtering is the control surface for the records, so it recedes behind
           them. Refresh lives here with the other controls rather than in a page-introduction
           block of its own. */}
-      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
+      <div className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-brand-text-muted">
-            <Filter className="h-4 w-4 text-brand-text-subtle" aria-hidden="true" />
-            <span>Audit filters</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Filter className="h-3.5 w-3.5 shrink-0 text-brand-text-subtle" aria-hidden="true" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              Audit filters
+            </span>
             {active.length > 0 && (
-              <span className="rounded-full bg-brand-card px-2 py-0.5 text-[10px] font-bold text-brand-text-muted ring-1 ring-inset ring-brand-card-border">
-                {active.length} active
-              </span>
+              <span className="text-[11px] text-brand-text-muted">{active.length} active</span>
             )}
           </div>
           <div className="flex items-center gap-2">
             {active.length > 0 && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={clearAllFilters}
                 disabled={loading}
-                className="inline-flex min-h-11 items-center gap-1 rounded-md border border-brand-border bg-brand-card px-2.5 sm:min-h-8 text-[11px] font-semibold text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50"
+                className="min-h-11 sm:min-h-8"
               >
-                <X className="h-3 w-3" aria-hidden="true" />
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
                 Clear all filters
-              </button>
+              </Button>
             )}
             <Button
               type="button"
@@ -672,7 +724,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               size="sm"
               onClick={() => void loadPage(filters, offset)}
               disabled={loading}
-              className="min-h-11 md:min-h-8"
+              className="min-h-11 sm:min-h-8"
             >
               <RefreshCw
                 aria-hidden="true"
@@ -692,22 +744,25 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   onClick={() => clearFilter(entry.key)}
                   disabled={loading}
                   aria-label={`Remove filter: ${entry.label} ${entry.verb} ${entry.value}`}
-                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand-border bg-brand-card py-1 pl-2.5 pr-2 sm:min-h-7 text-[11px] text-brand-text-muted transition-colors hover:border-brand-border-strong hover:bg-brand-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-md border border-brand-border bg-brand-surface py-1 pl-2.5 pr-2 text-[11px] text-brand-text-muted transition-colors hover:border-brand-border-strong hover:bg-brand-surface-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 sm:min-h-7"
                 >
-                  <span className="font-semibold text-brand-text-muted">
+                  <span className="font-semibold">
                     {entry.label} {entry.verb}
                   </span>
-                  <span className={`truncate ${entry.mono ? "font-mono" : ""}`} title={entry.value}>
+                  <span
+                    className={entry.mono ? "truncate font-mono text-brand-text" : "truncate text-brand-text"}
+                    title={entry.value}
+                  >
                     {entry.value}
                   </span>
-                  <X className="h-3 w-3 shrink-0 text-brand-text-muted" aria-hidden="true" />
+                  <X className="h-3 w-3 shrink-0" aria-hidden="true" />
                 </button>
               </li>
             ))}
           </ul>
         )}
 
-        <div className="grid gap-x-3 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <Select
             label="Category"
             options={[...CATEGORY_OPTIONS]}
@@ -724,7 +779,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               aria-describedby="audit-event-type-hint"
               onChange={(event) => changeFilter("eventType", event.target.value)}
             />
-            <p id="audit-event-type-hint" className="mt-1.5 text-[11px] text-brand-text-muted">
+            <p id="audit-event-type-hint" className="mt-1.5 text-[11px] leading-snug text-brand-text-muted">
               Matched <span className="font-semibold">exactly</span> on the raw identifier, not the
               readable label.
             </p>
@@ -743,17 +798,25 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             value={filters.to}
             onChange={(event) => changeFilter("to", event.target.value)}
           />
-          <div className="relative">
-            <Search className="absolute left-3.5 top-[2.15rem] h-4 w-4 text-brand-text-subtle pointer-events-none" />
-            <Input
-              label="Performed by or target"
-              placeholder="Search audit records"
-              value={filters.search}
-              aria-describedby="audit-search-hint"
-              onChange={(event) => changeFilter("search", event.target.value)}
-              className="pl-10"
-            />
-            <p id="audit-search-hint" className="mt-1.5 text-[11px] text-brand-text-muted">
+          <div className="w-full">
+            {/* The icon is anchored to the BOTTOM of the field, not the top of the label, so its
+                position follows the shared Input's own height (44px on touch, 36px from sm) and
+                never depends on the label's line-height. */}
+            <div className="relative">
+              <Input
+                label="Performed by or target"
+                placeholder="Search audit records"
+                value={filters.search}
+                aria-describedby="audit-search-hint"
+                onChange={(event) => changeFilter("search", event.target.value)}
+                className="pl-9"
+              />
+              <Search
+                className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
+                aria-hidden="true"
+              />
+            </div>
+            <p id="audit-search-hint" className="mt-1.5 text-[11px] leading-snug text-brand-text-muted">
               Matches any part of a username or target reference.
             </p>
           </div>
@@ -790,7 +853,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         {/* One bordered surface holds the records AND the pagination footer. Pagination stays
             OUTSIDE the populated/empty branch so it keeps reporting a truthful range and its
             disabled state in every state, exactly as before. */}
-        <div className="overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
+        <div className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
         {page.events.length === 0 ? loading ? (
           <AuditTableSkeleton />
         ) : error ? (
@@ -799,6 +862,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           <EmptyState
             icon={AlertCircle}
             headingLevel={3}
+            className="rounded-none border-0"
             title="Audit events could not be loaded"
             description="The request did not complete, so no events are shown. This is a load failure, not an empty result."
             action={
@@ -818,6 +882,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         ) : (
           <EmptyState
             icon={ShieldCheck}
+            className="rounded-none border-0"
             title={
               active.length === 0
                 ? "No audit events recorded"
@@ -849,25 +914,30 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>
+            {/* Literal table elements, deliberately: verify-audit-presentation pins this region by
+                its source shape (the wrapper marker, table-fixed, the AUDIT_COLUMN_WIDTH allocation
+                and the literal <td> cells), so the shared Table primitive's classes are applied
+                here by hand rather than through its components. The records surface around it
+                already supplies the border and radius. */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full table-fixed border-collapse text-left text-xs">
+              <table className="w-full table-fixed border-collapse text-left text-xs [&_tbody>tr:nth-child(even):not(:hover)]:bg-[#F8FAFC]">
                 <caption className="sr-only">Audit event log</caption>
-                <thead className="border-b border-brand-card-border bg-brand-structural text-[11px] font-semibold uppercase tracking-wider text-brand-text-muted">
+                <thead className="border-b border-brand-border bg-brand-structural text-[11px] font-semibold uppercase tracking-wide text-brand-navy">
                   <tr>
-                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
-                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
-                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[2]}`}>Outcome</th>
-                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[3]}`}>Performed by</th>
-                    <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[4]}`}>Target reference</th>
-                    <th className={`px-2.5 py-3.5 text-right ${AUDIT_COLUMN_WIDTH[5]}`}>Details</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 ${AUDIT_COLUMN_WIDTH[2]}`}>Outcome</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 ${AUDIT_COLUMN_WIDTH[3]}`}>Performed by</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 ${AUDIT_COLUMN_WIDTH[4]}`}>Target reference</th>
+                    <th scope="col" className={`whitespace-nowrap px-2.5 py-2 text-right ${AUDIT_COLUMN_WIDTH[5]}`}>Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-brand-border-subtle">
+                <tbody className="divide-y divide-brand-border-subtle bg-brand-card">
                   {page.events.map((event) => {
                     const occurred = formatOccurredAtParts(event.occurredAt);
                     return (
-                      <tr key={event.id} className="transition-colors even:bg-brand-structural hover:bg-brand-surface-hover">
-                        <td className="px-2.5 py-2.5 align-middle">
+                      <tr key={event.id} className="transition-colors hover:bg-brand-surface-hover">
+                        <td className="px-2.5 py-2 align-middle">
                           <span
                             className="block whitespace-nowrap font-mono text-[11px] tabular-nums text-brand-text-muted"
                             title={occurred.full}
@@ -877,7 +947,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             <span className="block 2xl:inline">{occurred.time}</span>
                           </span>
                         </td>
-                        <td className="px-2.5 py-2.5 align-middle">
+                        <td className="px-2.5 py-2 align-middle">
                           <div className="font-semibold text-brand-text">
                             {humanizeIdentifier(event.eventType)}
                           </div>
@@ -888,15 +958,15 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             {event.eventType}
                           </div>
                         </td>
-                        <td className="px-2.5 py-2.5 align-middle">
+                        <td className="px-2.5 py-2 align-middle">
                           <OutcomeBadge event={event} />
                         </td>
-                        <td className="px-2.5 py-2.5 align-middle font-medium text-brand-text-muted">
+                        <td className="px-2.5 py-2 align-middle font-medium text-brand-text-muted">
                           <span className="block truncate" title={event.performedByUsername ?? undefined}>
                             {event.performedByUsername ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-2.5 align-middle">
+                        <td className="px-2.5 py-2 align-middle">
                           <span
                             className="block truncate font-mono text-[11px] text-brand-text-muted"
                             title={event.targetReference ?? undefined}
@@ -904,7 +974,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             {event.targetReference ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-2.5 text-right align-middle">
+                        <td className="px-2.5 py-2 text-right align-middle">
                           <Button
                             type="button"
                             variant="outline"
@@ -925,45 +995,54 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             </div>
 
             <ul
-              // No border, radius, background or shadow here: the records surface around this
-              // list already supplies all four, and repeating them drew a second card inside the
-              // first. Dividers stay - they separate records rather than reframe them.
-              className="divide-y divide-brand-border-subtle md:hidden"
+              // Compact record cards on a structural ground: the tint is what lets a white
+              // card sit inside the white records surface without reading as a card in a card.
+              className="space-y-3 bg-brand-structural p-3 md:hidden"
               aria-label="Audit event log"
             >
               {page.events.map((event) => {
                 const occurred = formatOccurredAtParts(event.occurredAt);
                 return (
-                  <li key={event.id} className="space-y-2 px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 font-semibold text-brand-text">
-                        {humanizeIdentifier(event.eventType)}
+                  <li
+                    key={event.id}
+                    className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
+                  >
+                    <div className="space-y-2 px-3.5 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 text-[13px] font-semibold leading-snug text-brand-text">
+                          {humanizeIdentifier(event.eventType)}
+                        </p>
+                        <OutcomeBadge event={event} />
+                      </div>
+
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        {getCategoryBadge(event.category)}
+                        <span className="min-w-0 truncate font-mono text-[10px] text-brand-text-muted">
+                          {event.eventType}
+                        </span>
+                      </div>
+
+                      <p className="font-mono text-[11px] tabular-nums text-brand-text-muted">
+                        {occurred.date} · {occurred.time}
                       </p>
-                      <OutcomeBadge event={event} />
-                    </div>
 
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                      {getCategoryBadge(event.category)}
-                      <span className="min-w-0 truncate font-mono text-[10px] text-brand-text-muted">
-                        {event.eventType}
-                      </span>
-                    </div>
-
-                    <p className="font-mono text-[11px] tabular-nums text-brand-text-muted">
-                      {occurred.date} · {occurred.time}
-                    </p>
-
-                    <div className="flex flex-wrap items-end justify-between gap-2">
                       <div className="min-w-0 space-y-0.5 text-[11px] text-brand-text-muted">
                         <p className="truncate">
-                          <span className="font-semibold text-brand-text-muted">By</span>{" "}
-                          {event.performedByUsername ?? "Not recorded"}
+                          <span className="font-semibold">By</span>{" "}
+                          <span className="text-brand-text">
+                            {event.performedByUsername ?? "Not recorded"}
+                          </span>
                         </p>
                         <p className="truncate">
-                          <span className="font-semibold text-brand-text-muted">Target</span>{" "}
-                          {event.targetReference ?? "Not recorded"}
+                          <span className="font-semibold">Target</span>{" "}
+                          <span className="font-mono text-brand-text">
+                            {event.targetReference ?? "Not recorded"}
+                          </span>
                         </p>
                       </div>
+                    </div>
+
+                    <div className="flex justify-end border-t border-brand-border bg-brand-structural px-3.5 py-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -982,7 +1061,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center" aria-live="polite">
-                <span className="rounded-md border border-brand-card-border bg-brand-card px-3 py-2 text-xs font-semibold text-brand-text-muted shadow-low">
+                <span className="rounded-md border border-brand-border bg-brand-surface px-3 py-1.5 text-[11px] font-semibold text-brand-text-muted shadow-low">
                   Loading audit logs...
                 </span>
               </div>
@@ -990,10 +1069,13 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           </div>
         )}
 
-        <div className="flex flex-col gap-3 border-t border-brand-card-border bg-brand-structural px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-brand-text-muted" aria-live="polite">
-            Showing <span className="font-semibold text-brand-text">{firstVisible}–{lastVisible}</span> of{" "}
-            <span className="font-semibold text-brand-text">{page.total}</span> events
+        <div className="flex flex-col gap-2 border-t border-brand-border bg-brand-structural px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] text-brand-text-muted" aria-live="polite">
+            Showing{" "}
+            <span className="font-semibold tabular-nums text-brand-text">
+              {firstVisible}–{lastVisible}
+            </span>{" "}
+            of <span className="font-semibold tabular-nums text-brand-text">{page.total}</span> events
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -1004,7 +1086,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               onClick={() => void loadPage(filters, Math.max(0, offset - limit))}
               className="min-h-11 sm:min-h-8"
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
               Previous
             </Button>
             <Button
@@ -1016,7 +1098,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               className="min-h-11 sm:min-h-8"
             >
               Next
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -1034,18 +1116,22 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         {selectedEvent && (
           <div
             tabIndex={0}
-            className="max-h-[65vh] space-y-3 overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+            className="max-h-[65vh] space-y-4 overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
           >
             <DetailSection title="Event">
               <DetailRow label="Event">
                 <span className="font-semibold">{humanizeIdentifier(selectedEvent.eventType)}</span>
-                <span className="ml-2 font-mono text-[11px] text-brand-text-muted">{selectedEvent.eventType}</span>
+                <span className="ml-2 font-mono text-[11px] font-normal text-brand-text-muted">
+                  {selectedEvent.eventType}
+                </span>
               </DetailRow>
               <DetailRow label="Category">{getCategoryBadge(selectedEvent.category)}</DetailRow>
               <DetailRow label="Outcome">
                 <OutcomeBadge event={selectedEvent} />
               </DetailRow>
-              <DetailRow label="Occurred">{formatOccurredAt(selectedEvent.occurredAt)}</DetailRow>
+              <DetailRow label="Occurred">
+                <span className="font-mono tabular-nums">{formatOccurredAt(selectedEvent.occurredAt)}</span>
+              </DetailRow>
             </DetailSection>
 
             <DetailSection title="Performed by">
@@ -1058,7 +1144,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   : "Not recorded"}
               </DetailRow>
               <DetailRow label="User ID">
-                <span className="font-mono text-[11px] text-brand-text-muted">
+                <span className="font-mono text-[11px] font-normal text-brand-text-muted">
                   {selectedEvent.performedByUserId ?? "Not recorded"}
                 </span>
               </DetailRow>
@@ -1083,22 +1169,22 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   </DetailRow>
                 ))
               ) : (
-                <p className="py-1.5 text-xs text-brand-text-muted">
+                <div className="px-3.5 py-2 text-[11px] text-brand-text-muted">
                   This event carries no additional detail beyond the fields above.
-                </p>
+                </div>
               )}
             </DetailSection>
 
-            <details className="border-t border-brand-card-border pt-3">
+            <details className="border-t border-brand-border pt-3">
               <summary
                 tabIndex={0}
-                className="cursor-pointer rounded text-[11px] font-bold uppercase tracking-wider text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="cursor-pointer rounded text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               >
                 Raw detail payload
               </summary>
               <pre
                 tabIndex={0}
-                className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-brand-card-border bg-brand-structural p-3 font-mono text-[11px] leading-relaxed text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-brand-border bg-brand-structural p-3 font-mono text-[11px] leading-relaxed text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               >
                 {JSON.stringify(selectedEvent.details ?? null, null, 2)}
               </pre>

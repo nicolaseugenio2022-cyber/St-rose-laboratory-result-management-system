@@ -125,9 +125,7 @@ function RowActions({
   return (
     <div
       className={
-        layout === "row"
-          ? "flex items-center justify-end gap-1.5"
-          : "flex items-center gap-2 border-t border-brand-border-subtle pt-2.5"
+        layout === "row" ? "flex items-center justify-end gap-1.5" : "flex items-center gap-2"
       }
     >
       <Button
@@ -169,7 +167,7 @@ function RowActions({
 function RecordField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-subtle">
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
         {label}
       </dt>
       <dd className="mt-0.5 text-xs text-brand-text">{children}</dd>
@@ -189,11 +187,9 @@ export function PersonnelTable({
   if (personnel.length === 0) {
     // The two empty cases are different problems and deserve different sentences: an unfiltered
     // directory is genuinely empty and wants the create action, while a filtered one is intact
-    // and wants the filters cleared.
-    const shell = "rounded-lg border border-brand-card-border bg-brand-card";
+    // and wants the filters cleared. Both stand on the canvas in the shared empty-state panel.
     return isFiltered ? (
       <EmptyState
-        className={shell}
         icon={UserCheck}
         headingLevel={3}
         title="No personnel match these filters"
@@ -213,7 +209,6 @@ export function PersonnelTable({
       />
     ) : (
       <EmptyState
-        className={shell}
         icon={UserCheck}
         headingLevel={3}
         title="No personnel on file"
@@ -237,7 +232,7 @@ export function PersonnelTable({
           a six-column clinical table compressed into 375px is unreadable whichever way it is
           squeezed, so narrow widths get the record list below instead. */}
       <div className="hidden lg:block">
-        <Table>
+        <Table striped>
           <TableHeader>
             <TableRow>
               <TableHead>Personnel</TableHead>
@@ -256,7 +251,6 @@ export function PersonnelTable({
                   key={person.id}
                   aria-busy={isBusy || undefined}
                   className={[
-                    "even:bg-brand-background",
                     isBusy ? "opacity-60" : "",
                     person.isActive ? "" : "text-brand-text-muted",
                   ]
@@ -265,7 +259,7 @@ export function PersonnelTable({
                 >
                   {/* Name and credentials share one cell: they are read together, and pairing
                       them removes a column without losing a fact. */}
-                  <TableCell className="py-2">
+                  <TableCell>
                     <div className="font-semibold text-brand-text">
                       {formatPersonnelName(person)}
                     </div>
@@ -275,22 +269,22 @@ export function PersonnelTable({
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="py-2">
+                  <TableCell>
                     <RoleBadge person={person} />
                   </TableCell>
                   {/* Tabular figures so licence numbers align digit-for-digit down the column,
                       which is how a mismatched one gets spotted. */}
-                  <TableCell className="py-2 font-mono text-[11px] tabular-nums text-brand-text-muted">
+                  <TableCell className="font-mono text-[11px] tabular-nums text-brand-text-muted">
                     {person.prcLicenseNumber}
                   </TableCell>
-                  <TableCell className="py-2">
+                  <TableCell>
                     <SignatureIndicator person={person} />
                   </TableCell>
-                  <TableCell className="py-2">
+                  <TableCell>
                     <StatusBadge status={person.isActive ? "Active" : "Inactive"} size="sm" />
                   </TableCell>
                   {canManage && (
-                    <TableCell className="py-2 text-right">
+                    <TableCell className="text-right">
                       <RowActions
                         person={person}
                         isBusy={isBusy}
@@ -308,7 +302,9 @@ export function PersonnelTable({
         </Table>
       </div>
 
-      {/* Narrow widths: one elevated record per person, carrying every fact the row carries. */}
+      {/* Narrow widths: one record per person, carrying every fact the row carries. A white
+          working surface with the facts in the body and the actions in a structural footer
+          band, so the two controls read as the record's own rather than as loose buttons. */}
       <ul className="space-y-2 lg:hidden">
         {personnel.map((person) => {
           const isBusy = busyPersonnelId === person.id;
@@ -317,49 +313,51 @@ export function PersonnelTable({
               key={person.id}
               aria-busy={isBusy || undefined}
               className={[
-                "rounded-lg border border-brand-card-border bg-brand-card p-3 shadow-sm",
+                "overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low",
                 isBusy ? "opacity-60" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
             >
-              {/* Identity wraps rather than truncates. A clipped surname is the single thing that
-                  makes an Edit or Deactivate press ambiguous, and two extra lines on a phone cost
-                  far less than acting on the wrong Pathologist. */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="break-words text-sm font-semibold text-brand-text">
-                    {formatPersonnelName(person)}
-                  </p>
-                  {person.credentials && (
-                    <p className="mt-0.5 break-words text-[11px] text-brand-text-muted">
-                      {person.credentials}
+              <div className="px-3.5 py-2.5">
+                {/* Identity wraps rather than truncates. A clipped surname is the single thing
+                    that makes an Edit or Deactivate press ambiguous, and two extra lines on a
+                    phone cost far less than acting on the wrong Pathologist. */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-[13px] font-semibold leading-snug text-brand-text">
+                      {formatPersonnelName(person)}
                     </p>
-                  )}
+                    {person.credentials && (
+                      <p className="mt-0.5 break-words text-[11px] text-brand-text-muted">
+                        {person.credentials}
+                      </p>
+                    )}
+                  </div>
+                  <StatusBadge
+                    status={person.isActive ? "Active" : "Inactive"}
+                    size="sm"
+                    className="shrink-0"
+                  />
                 </div>
-                <StatusBadge
-                  status={person.isActive ? "Active" : "Inactive"}
-                  size="sm"
-                  className="shrink-0"
-                />
+
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2">
+                  <RecordField label="Role">
+                    <RoleBadge person={person} />
+                  </RecordField>
+                  <RecordField label="Signature">
+                    <SignatureIndicator person={person} />
+                  </RecordField>
+                  <RecordField label="PRC Licence">
+                    <span className="font-mono tabular-nums text-brand-text-muted">
+                      {person.prcLicenseNumber}
+                    </span>
+                  </RecordField>
+                </dl>
               </div>
 
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
-                <RecordField label="Role">
-                  <RoleBadge person={person} />
-                </RecordField>
-                <RecordField label="Signature">
-                  <SignatureIndicator person={person} />
-                </RecordField>
-                <RecordField label="PRC Licence">
-                  <span className="font-mono tabular-nums text-brand-text-muted">
-                    {person.prcLicenseNumber}
-                  </span>
-                </RecordField>
-              </dl>
-
               {canManage && (
-                <div className="mt-3">
+                <div className="border-t border-brand-border bg-brand-structural px-3.5 py-2">
                   <RowActions
                     person={person}
                     isBusy={isBusy}

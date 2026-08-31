@@ -10,6 +10,7 @@ import {
   CreateUserFormValues,
   UpdateUserFormValues,
 } from "@/lib/validations/userValidation";
+import { Alert } from "@/components/ui/Alert";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -77,7 +78,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
   }, [initialData, reset]);
 
   const roleOptions = [
-    { label: "Standard User", value: "User" },
+    { label: "Laboratory User", value: "User" },
     { label: "Administrator", value: "Admin" },
   ];
 
@@ -103,14 +104,13 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
-      {serverError && (
-        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs font-medium text-rose-700">
-          {serverError}
-        </div>
-      )}
+      {/* The shared Alert, not a hand-rolled rose box: it carries the icon, the border tokens and
+          the assertive live-region role that a bare div does not. */}
+      {serverError && <Alert variant="destructive">{serverError}</Alert>}
 
       <Input
         label="Username"
+        autoComplete="off"
         placeholder="e.g. jdoe"
         error={errors.username?.message}
         {...register("username")}
@@ -142,6 +142,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
         <Input
           label="Password"
           type="password"
+          autoComplete="new-password"
           placeholder="At least 6 characters"
           error={(errors as { password?: { message?: string } }).password?.message}
           {...register("password")}
@@ -164,12 +165,20 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
         />
       )}
 
-      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+      {/* Both footer actions clear 44px on a phone and fall back to the standard 40px control
+          height from sm up. */}
+      <div className="flex items-center justify-end gap-3 border-t border-brand-border-subtle pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 sm:min-h-10"
+          onClick={onCancel}
+          disabled={isLoading}
+        >
           Cancel
         </Button>
-        <Button type="submit" isLoading={isLoading}>
-          {isEditing ? "Save Changes" : "Create Account"}
+        <Button type="submit" className="min-h-11 sm:min-h-10" isLoading={isLoading}>
+          {isEditing ? "Save changes" : "Create account"}
         </Button>
       </div>
     </form>

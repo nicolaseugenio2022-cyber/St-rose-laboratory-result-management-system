@@ -31,9 +31,9 @@ export default function AppRouteGroupError({
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-4 text-center">
       <div
         role="alert"
-        className="max-w-md space-y-4 rounded-xl border border-brand-border bg-brand-surface p-8 shadow-sm"
+        className="max-w-md space-y-4 rounded-lg border border-brand-card-border bg-brand-card p-6"
       >
-        <h2 className="text-lg font-bold text-brand-text">Unable to load this page</h2>
+        <h2 className="text-sm font-semibold text-brand-text">Unable to load this page</h2>
         <p className="text-xs text-brand-text-muted">
           Something went wrong while loading this page. Please try again.
         </p>

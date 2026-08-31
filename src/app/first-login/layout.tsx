@@ -6,8 +6,8 @@ export default function FirstLoginLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-background p-4">
-      {children}
-    </div>
+    // The composition lives in AuthShell, which each page renders itself - a page knows its own
+    // task heading, and this layout does not. All that remains here is the route guard.
+    <>{children}</>
   );
 }

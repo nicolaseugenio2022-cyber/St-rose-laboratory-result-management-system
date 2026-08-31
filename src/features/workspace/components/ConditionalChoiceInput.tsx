@@ -20,10 +20,10 @@ export function ConditionalChoiceInput({ parameter, value, isSelected, patientSe
   };
   return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect}>
     <div className="flex gap-1.5">
-      <select value={parsed.label} disabled={!isSelected} onChange={(event) => change(event.target.value, parsed.result)} data-encoding-input data-control-type="ConditionalChoice" className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:bg-slate-50 disabled:text-slate-400">
+      <select value={parsed.label} disabled={!isSelected} onChange={(event) => change(event.target.value, parsed.result)} data-encoding-input data-control-type="ConditionalChoice" className="h-8 min-w-0 flex-1 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:bg-brand-structural disabled:text-brand-text-subtle">
         <option value="">-- Finding --</option>{spec.labelChoices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
       </select>
-      <select value={parsed.result} disabled={!isSelected || !parsed.label} onChange={(event) => change(parsed.label, event.target.value)} data-encoding-input data-control-type="ConditionalChoice" className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:bg-slate-50 disabled:text-slate-400">
+      <select value={parsed.result} disabled={!isSelected || !parsed.label} onChange={(event) => change(parsed.label, event.target.value)} data-encoding-input data-control-type="ConditionalChoice" className="h-8 min-w-0 flex-1 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:bg-brand-structural disabled:text-brand-text-subtle">
         <option value="">-- Result --</option>{spec.resultOptions.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
       </select>
     </div>

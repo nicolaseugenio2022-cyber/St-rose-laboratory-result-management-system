@@ -24,6 +24,7 @@ import {
   PatientReportSessionTransport,
   toSessionTransport,
 } from "@/features/server-boundary/session-transport";
+import { applyResolvedSignatories } from "@/features/server-boundary/signatory-resolution";
 
 type OperationalCaller = {
   userId: string;
@@ -139,7 +140,13 @@ export async function completeSessionAction(
   if (transport.status !== "Draft") throw new Error("Only draft sessions may be completed.");
 
   const repository = new SupabasePatientReportSessionRepository(caller);
-  const completed = await repository.completeSession(fromSessionTransport(transport));
+  // The transported signatories carry whatever signatureImageUrl the browser sent. Resolve it
+  // from authoritative personnel BEFORE completeSession() runs validateAndCompose: the frozen
+  // snapshot and the RPC payload both read this same live aggregate, so resolving here is what
+  // makes them incapable of disagreeing. Resolving later would correct only the relational rows.
+  const draft = fromSessionTransport(transport);
+  await applyResolvedSignatories(draft.reports, new SupabasePersonnelRepository());
+  const completed = await repository.completeSession(draft);
 
   const reportCount = completed.reports.length;
   const templateCodes = completed.reports.map((report) => report.templateCode);
@@ -176,7 +183,11 @@ export async function replaceSessionAction(
   }
 
   const repository = new SupabasePatientReportSessionRepository(caller);
-  const replacement = fromSessionTransport(transport).recompleteSession();
+  // recompleteSession() composes the replacement snapshot inline, so resolution must precede it
+  // for the same reason as completion above.
+  const candidate = fromSessionTransport(transport);
+  await applyResolvedSignatories(candidate.reports, new SupabasePersonnelRepository());
+  const replacement = candidate.recompleteSession();
   const replaced = await repository.replaceSession(replacement);
 
   const reportCount = replaced.reports.length;

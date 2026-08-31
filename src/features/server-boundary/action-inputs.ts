@@ -52,6 +52,33 @@ const laboratoryResultSchema = z.object({
   isSelected: z.boolean().optional(),
 }).strict();
 
+/**
+ * The inbound signatory shape - deliberately WITHOUT `signatureImageUrl`.
+ *
+ * This object is not `.strict()`, and that is the point: Zod's default strips unknown keys, so a
+ * transported `signatureImageUrl` is silently dropped here rather than rejected. Rejecting would
+ * break the reopen path, whose signatories are hydrated from `report_signatories` rows and do
+ * carry the stored reference; dropping loses nothing, because no client-supplied reference is
+ * ever persisted:
+ *
+ *   - `saveDraft` writes no `signature_image_url` column at all;
+ *   - `completeSession` and `replaceSession` both run `applyResolvedSignatories` first, which
+ *     re-reads the reference from the authoritative personnel record.
+ *
+ * So this makes structural what was previously only behavioural. Before, `z.array(z.unknown())`
+ * accepted *any* object - the entire signatory element was unvalidated - and the boundary held
+ * solely because the two persistence paths happened to overwrite the value. Now the value cannot
+ * reach the domain object in the first place, and the identity fields are actually typed.
+ */
+const signatorySelectionSchema = z.object({
+  personnelId: z.string().min(1),
+  role: z.string().min(1),
+  printedFullName: z.string(),
+  printedCredentials: z.string(),
+  printedPrcLicenseNumber: z.string(),
+  displayOrder: z.number(),
+});
+
 const laboratoryReportSchema = z.object({
   id: z.string().min(1),
   sessionId: z.string().min(1),
@@ -62,7 +89,7 @@ const laboratoryReportSchema = z.object({
   remarks: z.string().nullable().optional(),
   encodingData: z.unknown().optional(),
   results: z.array(laboratoryResultSchema),
-  signatories: z.array(z.unknown()),
+  signatories: z.array(signatorySelectionSchema),
 }).strict();
 
 const patientReportSessionSchema = z.object({

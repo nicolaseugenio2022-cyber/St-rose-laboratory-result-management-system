@@ -5,8 +5,6 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowUpDown,
-  Calendar,
   Clock,
   History,
   ListFilter,
@@ -21,7 +19,6 @@ import {
 } from "@/features/server-boundary/server-actions";
 import { fromSessionTransport } from "@/features/server-boundary/session-transport";
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
-import { formatDateISO } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -165,7 +162,7 @@ function HistoryTableSkeleton() {
       <table className="w-full table-fixed border-collapse text-left text-xs">
         <caption className="sr-only">Loading patient report session history</caption>
         <thead>
-          <tr className="border-b border-brand-border bg-slate-100">
+          <tr className="border-b border-brand-border bg-brand-structural">
             {Array.from({ length: TABLE_COLUMN_COUNT }).map((_, columnIndex) => (
               <th key={columnIndex} className={`px-2.5 py-3.5 ${COLUMN_WIDTH_CLASS[columnIndex]} ${COLUMN_HIDDEN_CLASS[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
@@ -336,17 +333,6 @@ export function SessionHistoryView({
     });
   }, [entries, searchQuery, sort, statusFilter]);
 
-  const updateSort = (key: SortKey) => {
-    setSort((current) => ({
-      key,
-      direction:
-        current.key === key && current.direction === "ascending" ? "descending" : "ascending",
-    }));
-  };
-
-  const ariaSort = (key: SortKey): SortDirection | "none" =>
-    sort.key === key ? sort.direction : "none";
-
   const handleConfirmDeleteDraft = async () => {
     const entry = pendingDeleteEntry;
     if (!entry) return;
@@ -371,60 +357,20 @@ export function SessionHistoryView({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <History className="h-5 w-5 text-brand-primary" />
-            <h2 className="text-2xl font-bold text-brand-text tracking-tight">Patient Report Session History</h2>
-          </div>
-          <p className="text-xs text-brand-text-muted mt-1.5 leading-relaxed">
-            Search, preview, print, and manage patient laboratory report sessions within the 30-day retention window.
-          </p>
-        </div>
-
-        {/* Status Filter Tabs */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setStatusFilter("ALL")}
-            className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "ALL" ? "bg-white text-brand-primary shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            All ({entries.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Completed")}
-            className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "Completed" ? "bg-white text-emerald-700 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Completed
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Draft")}
-            className={`px-3 py-1 rounded-md transition-colors ${
-              statusFilter === "Draft" ? "bg-white text-amber-700 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Drafts
-          </button>
-        </div>
-      </div>
-
       {/* Search Toolbar */}
-      <div className="space-y-3 rounded-xl border border-brand-border bg-brand-surface p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-end gap-2 sm:max-w-md">
+      {/* Structural: search, sort and scope are controls ABOUT the records, so they recede
+          behind the records themselves rather than presenting as another content card. */}
+      <div className="space-y-3 rounded-lg border border-brand-card-border bg-brand-structural p-4">
+        {/* One control row: search, scope, sort. It stacks at narrow widths rather than
+            wrapping into an ambiguous grid. */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="flex min-w-0 flex-1 items-end gap-2 lg:max-w-md">
             <div className="min-w-0 flex-1 space-y-1.5">
               <label htmlFor="history-search" className="block text-xs font-semibold text-brand-text">
                 Search sessions
               </label>
               <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-subtle" aria-hidden="true" />
                 <Input
                   id="history-search"
                   type="text"
@@ -449,9 +395,42 @@ export function SessionHistoryView({
               </Button>
             )}
           </div>
-          {/* The canonical sort control. Accession, Patient and Status sort from their headers too,
-              but Date has no header of its own now, so this stays visible at every width. */}
-          <div className="w-full shrink-0 sm:max-w-xs">
+          {/* Scope. A group of real buttons with aria-pressed rather than a select: three
+              options that are always worth seeing, and the counts belong beside them. */}
+          <div className="shrink-0">
+            <span id="history-scope-label" className="mb-1.5 block text-xs font-semibold text-brand-text">
+              Show
+            </span>
+            <div
+              role="group"
+              aria-labelledby="history-scope-label"
+              className="inline-flex h-10 items-center rounded-md border border-brand-card-border bg-brand-card p-1 text-xs font-semibold"
+            >
+              {([
+                ["ALL", `All (${entries.length})`],
+                ["Completed", "Completed"],
+                ["Draft", "Drafts"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatusFilter(value)}
+                  aria-pressed={statusFilter === value}
+                  className={`rounded px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring ${
+                    statusFilter === value
+                      ? "bg-brand-structural font-bold text-brand-primary"
+                      : "text-brand-text-muted hover:text-brand-text"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* The canonical sort control, and now the only one: the table headers no longer
+              sort, so there is exactly one sorting interaction per viewport. */}
+          <div className="w-full shrink-0 lg:max-w-[15rem]">
             <Select
               label="Sort by"
               options={CARD_SORT_OPTIONS}
@@ -462,22 +441,17 @@ export function SessionHistoryView({
               }}
             />
           </div>
-          <div className="flex h-10 shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
-            <Calendar className="h-4 w-4 text-slate-400" aria-hidden="true" />
-            <span>Today: {formatDateISO()}</span>
-          </div>
         </div>
-        <div className="flex flex-col gap-1 border-t border-slate-100 pt-3 text-xs text-brand-text-muted sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+        <div className="flex flex-col gap-1 border-t border-brand-border-subtle pt-3 text-xs text-brand-text-muted sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
           <p aria-live="polite">
             {hasActiveAccessionSearch
               ? `Showing ${filteredEntries.length} of ${entries.length} accession matches returned`
               : `Showing ${filteredEntries.length} of ${entries.length} loaded sessions`}
           </p>
-          {hasActiveAccessionSearch ? (
-            <p>Accession numbers are matched by prefix across retained sessions you can access; up to 50 matches are returned.</p>
-          ) : (
-            <p>Up to the newest 50 sessions are currently loaded. Patient-name and physician matching covers only these loaded sessions; valid accession prefixes search retained history server-side.</p>
-          )}
+          <p className="sm:text-right">
+            Name and physician searches cover the newest 50 loaded sessions; accession prefixes
+            search retained history.
+          </p>
         </div>
       </div>
 
@@ -488,7 +462,7 @@ export function SessionHistoryView({
       )}
 
       {/* Session Table */}
-      <div className="bg-brand-surface rounded-xl border border-brand-border overflow-hidden shadow-sm">
+      <div className="bg-brand-surface rounded-lg border border-brand-border overflow-hidden shadow-sm">
         {loading || serverSearchPending ? (
           <HistoryTableSkeleton />
         ) : loadError ? (
@@ -537,29 +511,24 @@ export function SessionHistoryView({
             />
           )
         ) : (
-          <>
+          <div className="overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <caption className="sr-only">Patient report session history</caption>
               <thead>
-                <tr className="bg-slate-100 text-slate-700 uppercase font-extrabold tracking-wider border-b border-brand-border text-[11px]">
-                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[0]}`} aria-sort={ariaSort("accession")}>
-                    <button type="button" onClick={() => updateSort("accession")} aria-label="Sort by accession number" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
-                      ACCESSION NO <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[1]}`} aria-sort={ariaSort("patient")}>
-                    <button type="button" onClick={() => updateSort("patient")} aria-label="Sort by patient name" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
-                      PATIENT <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</th>
-                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[3]}`} aria-sort={ariaSort("retention")}>
-                    <button type="button" onClick={() => updateSort("retention")} aria-label="Sort by retention expiry" className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring">
-                      STATUS <ArrowUpDown className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className={`py-3.5 px-2.5 ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</th>
+                <tr className="border-b border-brand-card-border bg-brand-structural text-[11px] font-semibold uppercase tracking-wider text-brand-text-muted">
+                  {/* Plain headers. Two sorting models on one table - three sortable headers
+                      plus a Sort by select that also offered Date - meant the select and the
+                      headers could disagree about what the table was ordered by. The select is
+                      canonical and carries every key, so the headers simply label.
+
+                      The lifecycle header is named for what it holds AND for what its sort key
+                      actually orders: it said STATUS while sorting on retention. */}
+                  <th className={`px-2.5 py-2 ${COLUMN_WIDTH_CLASS[0]}`}>ACCESSION NO</th>
+                  <th className={`px-2.5 py-2 ${COLUMN_WIDTH_CLASS[1]}`}>PATIENT</th>
+                  <th className={`px-2.5 py-2 ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</th>
+                  <th className={`px-2.5 py-2 ${COLUMN_WIDTH_CLASS[3]}`}>STATUS / RETENTION</th>
+                  <th className={`px-2.5 py-2 ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-border-subtle">
@@ -568,13 +537,13 @@ export function SessionHistoryView({
                   const RetentionIcon = retention?.icon;
 
                   return (
-                    <tr key={sess.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-4 px-2.5 font-mono font-bold text-blue-900 tabular-nums break-all xl:whitespace-nowrap xl:break-normal">{sess.accessionNumber}</td>
-                      <td className="py-4 px-2.5">
-                        <div className="font-bold text-slate-900 uppercase break-words">{sess.demographics.fullName || "Unnamed Patient"}</div>
+                    <tr key={sess.id} className="transition-colors even:bg-brand-structural hover:bg-brand-surface-hover">
+                      <td className="px-2.5 py-2.5 font-mono font-bold text-brand-primary tabular-nums break-all xl:whitespace-nowrap xl:break-normal">{sess.accessionNumber}</td>
+                      <td className="px-2.5 py-2.5">
+                        <div className="font-bold text-brand-text uppercase break-words">{sess.demographics.fullName || "Unnamed Patient"}</div>
                         {/* Secondary identity metadata: lowest scan priority, so it is the first thing
                             dropped as width tightens. Both values remain available in Preview. */}
-                        <div className="hidden lg:flex lg:items-baseline lg:gap-1.5 mt-0.5 text-[11px] text-slate-500">
+                        <div className="hidden lg:flex lg:items-baseline lg:gap-1.5 mt-0.5 text-[11px] text-brand-text-muted">
                           <span className="whitespace-nowrap tabular-nums">
                             {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
                           </span>
@@ -591,14 +560,14 @@ export function SessionHistoryView({
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-2.5">
+                      <td className="px-2.5 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
-                            <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
+                            <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-brand-structural text-brand-text-muted rounded border border-brand-card-border">{r.templateCode}</span>
                           ))}
                           {sess.reports.length > MAX_VISIBLE_TEST_CHIPS && (
                             <span
-                              className="px-2 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-700 rounded border border-slate-300 whitespace-nowrap"
+                              className="px-2 py-0.5 text-[10px] font-semibold bg-brand-border-strong text-brand-text-muted rounded border border-brand-border whitespace-nowrap"
                               title={sess.reports.slice(MAX_VISIBLE_TEST_CHIPS).map((r) => r.templateCode).join(", ")}
                             >
                               <span aria-hidden="true">+{sess.reports.length - MAX_VISIBLE_TEST_CHIPS}</span>
@@ -610,21 +579,26 @@ export function SessionHistoryView({
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-2.5">
-                        <StatusBadge status={sess.status} size="sm" />
-                        {retention ? (
-                          <span className={`mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${retention.className}`}>
-                            {RetentionIcon && <RetentionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-                            {retention.label}
+                      <td className="px-2.5 py-2.5">
+                        {/* Status, retention and examination date on one wrapping line instead of
+                            three stacked blocks. Every value is unchanged - the retention wording is
+                            the same string - but the row no longer spends 3 line-heights on them. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <StatusBadge status={sess.status} size="sm" />
+                          {retention ? (
+                            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold ${retention.className}`}>
+                              {RetentionIcon && <RetentionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                              {retention.label}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-brand-text-muted">Not yet retained</span>
+                          )}
+                          <span className="font-mono text-[11px] tabular-nums text-brand-text-muted">
+                            {sess.demographics.examinationDate || "\u2014"}
                           </span>
-                        ) : (
-                          <span className="mt-1 block text-[11px] text-slate-500">Not yet retained</span>
-                        )}
-                        <div className="mt-1 font-mono text-[11px] tabular-nums text-slate-500">
-                          {sess.demographics.examinationDate || "—"}
                         </div>
                       </td>
-                      <td className="py-4 px-2.5">
+                      <td className="px-2.5 py-2.5">
                         <HistorySessionActions
                           entry={{ session: sess, canReopen }}
                           variant="table"
@@ -654,19 +628,19 @@ export function SessionHistoryView({
                 <li key={sess.id} className="space-y-2 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-bold uppercase text-slate-900">{sess.demographics.fullName || "Unnamed Patient"}</p>
-                      <p className="mt-0.5 font-mono font-bold tabular-nums text-blue-900">{sess.accessionNumber}</p>
+                      <p className="font-bold uppercase text-brand-text">{sess.demographics.fullName || "Unnamed Patient"}</p>
+                      <p className="mt-0.5 font-mono font-bold tabular-nums text-brand-primary">{sess.accessionNumber}</p>
                     </div>
                     <StatusBadge status={sess.status} size="sm" />
                   </div>
 
                   <div className="flex flex-wrap gap-1">
                     {sess.reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
-                      <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200">{r.templateCode}</span>
+                      <span key={r.id} className="px-2 py-0.5 text-[10px] font-semibold bg-brand-structural text-brand-text-muted rounded border border-brand-card-border">{r.templateCode}</span>
                     ))}
                     {hiddenTestCount > 0 && (
                       <span
-                        className="px-2 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-700 rounded border border-slate-300 whitespace-nowrap"
+                        className="px-2 py-0.5 text-[10px] font-semibold bg-brand-border-strong text-brand-text-muted rounded border border-brand-border whitespace-nowrap"
                         title={sess.reports.slice(MAX_VISIBLE_TEST_CHIPS).map((r) => r.templateCode).join(", ")}
                       >
                         <span aria-hidden="true">+{hiddenTestCount}</span>
@@ -684,7 +658,7 @@ export function SessionHistoryView({
                     </span>
                   )}
 
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-brand-text-muted">
                     <span className="whitespace-nowrap tabular-nums">
                       {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
                     </span>
@@ -704,7 +678,7 @@ export function SessionHistoryView({
               );
             })}
           </ul>
-          </>
+          </div>
         )}
       </div>
 

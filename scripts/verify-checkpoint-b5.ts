@@ -1326,14 +1326,32 @@ assert(
   "replaceSessionAction rejects non-completed input with the required SecurityDenial before throwing"
 );
 
+// UX-10M6S2: the single-line form was pinned verbatim. The aggregate is now hoisted to a local
+// so server-side signature resolution can run between construction and recomposition, so the
+// literal no longer exists. The ORDERING this assertion protects is unchanged and still pinned
+// below; only the spelling of the recompletion site moved.
 const replaceActionRecompletionIndex = liveCodeIndexOf(
   replaceSessionActionSource,
-  "const replacement = fromSessionTransport(transport).recompleteSession();"
+  ".recompleteSession()"
 );
 assert(
   replaceActionRecompletionIndex > replaceActionRepositoryIndex &&
     replaceActionRecompletionIndex < replaceActionCallIndex,
   "replaceSessionAction recompletes the session before calling replaceSession"
+);
+
+// UX-10M6S2: and the resolution that recomposition depends on must precede it. Resolving after
+// recompleteSession() would freeze the client-supplied signature reference into the replacement
+// snapshot while correcting only the relational rows - the exact divergence this slice exists
+// to prevent.
+const replaceActionResolutionIndex = liveCodeIndexOf(
+  replaceSessionActionSource,
+  "await applyResolvedSignatories("
+);
+assert(
+  replaceActionResolutionIndex > replaceActionRepositoryIndex &&
+    replaceActionResolutionIndex < replaceActionRecompletionIndex,
+  "replaceSessionAction resolves signatories server-side before recomposing the replacement snapshot"
 );
 
 const replacementSuccessEventIndex = liveCodeIndexOf(

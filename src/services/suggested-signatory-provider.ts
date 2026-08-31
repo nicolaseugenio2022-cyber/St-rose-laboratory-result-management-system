@@ -1,67 +1,82 @@
-import { IPersonnel } from "@/domain/models/interfaces";
-import { SignatorySnapshot } from "@/domain/types";
+import type {
+  WorkspacePersonnelEntry,
+  WorkspaceSignatorySelection,
+} from "@/features/workspace/signatory-contracts";
 
+/**
+ * Turns the required signatory counts for a template into a default selection.
+ *
+ * Both its input and its output are now the client-safe Workspace contracts. It previously took
+ * `IPersonnel[]` and returned `SignatorySnapshot[]`, copying `p.signatureImageUrl` into every
+ * suggestion - including Medical Technologists, whose reference `signatory-resolution.ts` then
+ * had to force back to `null`. That copy was the origin of the signature reference inside client
+ * state: every draft the Workspace built carried it, every autosave wrote it to sessionStorage,
+ * and every mutation sent it back to the server as if it were authority.
+ *
+ * Nothing is lost by dropping it. The renderer receives the reference on the separate render-only
+ * channel, and persistence resolves it server-side from `personnelId`.
+ */
 export interface ISuggestedSignatoryProvider {
   getSuggestedSignatories(
     templateCode: string,
     requiredPathologistsCount: number,
     requiredMedtechsCount: number,
-    availablePersonnel: IPersonnel[]
-  ): SignatorySnapshot[];
+    availablePersonnel: WorkspacePersonnelEntry[]
+  ): WorkspaceSignatorySelection[];
 }
 
 export class SuggestedSignatoryProvider implements ISuggestedSignatoryProvider {
-  /**
-   * Resolves suggested signatories by matching active personnel roles cleanly,
-   * completely eliminating positional array index assumptions.
-   */
   public getSuggestedSignatories(
     templateCode: string,
     requiredPathologistsCount: number,
     requiredMedtechsCount: number,
-    availablePersonnel: IPersonnel[]
-  ): SignatorySnapshot[] {
+    availablePersonnel: WorkspacePersonnelEntry[]
+  ): WorkspaceSignatorySelection[] {
     const activePersonnel = availablePersonnel.filter((p) => p.isActive);
     const pathologists = activePersonnel.filter((p) => p.role === "Pathologist");
     const medtechs = activePersonnel.filter((p) => p.role === "MedicalTechnologist");
 
-    const suggestions: SignatorySnapshot[] = [];
+    const suggestions: WorkspaceSignatorySelection[] = [];
     let displayOrder = 1;
 
-    // 1. Resolve required Pathologists by role
     for (let i = 0; i < requiredPathologistsCount; i++) {
-      const p = pathologists[i];
-      if (p) {
-        suggestions.push({
-          personnelId: p.id,
-          role: "Pathologist",
-          printedFullName: `${p.firstName} ${p.lastName}`,
-          printedCredentials: p.credentials,
-          printedPrcLicenseNumber: p.prcLicenseNumber,
-          signatureImageUrl: p.signatureImageUrl,
-          displayOrder: displayOrder++,
-        });
+      const pathologist = pathologists[i];
+      if (pathologist) {
+        suggestions.push(toSelection(pathologist, "Pathologist", displayOrder++));
       }
     }
 
-    // 2. Resolve required Medical Technologists by role
     for (let i = 0; i < requiredMedtechsCount; i++) {
-      const mt = medtechs[i];
-      if (mt) {
-        suggestions.push({
-          personnelId: mt.id,
-          role: "MedicalTechnologist",
-          printedFullName: `${mt.firstName} ${mt.lastName}`,
-          printedCredentials: mt.credentials,
-          printedPrcLicenseNumber: mt.prcLicenseNumber,
-          signatureImageUrl: mt.signatureImageUrl,
-          displayOrder: displayOrder++,
-        });
+      const medtech = medtechs[i];
+      if (medtech) {
+        suggestions.push(toSelection(medtech, "MedicalTechnologist", displayOrder++));
       }
     }
 
     return suggestions;
   }
+}
+
+/**
+ * The single place a selection is built from a directory entry.
+ *
+ * `role` is taken from the slot being filled rather than from the record, matching the previous
+ * behaviour exactly - the candidate lists are already filtered by role, so the two always agree,
+ * and `signatory-resolution.ts` rejects any disagreement server-side before persistence.
+ */
+function toSelection(
+  person: WorkspacePersonnelEntry,
+  role: WorkspaceSignatorySelection["role"],
+  displayOrder: number
+): WorkspaceSignatorySelection {
+  return {
+    personnelId: person.id,
+    role,
+    printedFullName: `${person.firstName} ${person.lastName}`,
+    printedCredentials: person.credentials,
+    printedPrcLicenseNumber: person.prcLicenseNumber,
+    displayOrder,
+  };
 }
 
 export const suggestedSignatoryProvider = new SuggestedSignatoryProvider();

@@ -9,11 +9,14 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, type = "text", label, error, helperText, id, disabled, ...props }, ref) => {
-    const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
-    // Unique per instance so two fields sharing a label cannot collide on a message id.
     const reactId = useId();
-    const errorId = `${inputId ?? reactId}-error`;
-    const helperId = `${inputId ?? reactId}-helper`;
+    // Correction 1: identity comes from useId, never from label text. Two fields sharing a
+    // label used to collapse onto one id, which silently pointed both labels and both
+    // aria-describedby references at whichever control rendered last. An explicit caller id
+    // still wins outright.
+    const inputId = id ?? `input-${reactId}`;
+    const errorId = `${inputId}-error`;
+    const helperId = `${inputId}-helper`;
     // The message is bound to the field rather than left floating beside it. Set before
     // the prop spread, so a consumer passing its own aria-describedby still wins.
     const describedBy = error ? errorId : helperText ? helperId : undefined;
@@ -33,8 +36,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            "flex h-10 w-full rounded-md border border-brand-border bg-brand-surface px-3 text-sm text-brand-text placeholder:text-brand-text-subtle transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-focus-ring/40 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60",
-            error && "border-brand-danger focus:border-brand-danger focus:ring-brand-danger/30",
+            "flex h-10 w-full rounded-md border border-brand-border bg-brand-surface px-3 text-sm text-brand-text placeholder:text-slate-500 transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60",
+            error && "border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger",
             className
           )}
           {...props}

@@ -1,16 +1,41 @@
 import React, { useState, useEffect, useRef } from "react";
-import { IPersonnel } from "@/domain/models/interfaces";
-import { SignatorySnapshot } from "@/domain/types";
+import type {
+  WorkspacePersonnelEntry,
+  WorkspaceSignatorySelection,
+} from "@/features/workspace/signatory-contracts";
 import { UserCheck, ShieldCheck, CheckCircle2, Clock } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 
+/**
+ * Build one selection from a directory entry.
+ *
+ * The three call sites below were previously three copies of the same object literal, each of
+ * which copied `signatureImageUrl` out of the personnel record and into the report. One builder
+ * means the reference cannot be reintroduced in one branch and missed in the others, and the
+ * entry type it accepts no longer carries a reference to copy.
+ */
+function toSelection(
+  person: WorkspacePersonnelEntry,
+  role: WorkspaceSignatorySelection["role"],
+  displayOrder: number
+): WorkspaceSignatorySelection {
+  return {
+    personnelId: person.id,
+    role,
+    printedFullName: `${person.firstName} ${person.lastName}`,
+    printedCredentials: person.credentials,
+    printedPrcLicenseNumber: person.prcLicenseNumber,
+    displayOrder,
+  };
+}
+
 export interface SignatorySelectionSectionProps {
   templateCode: string;
-  signatories: SignatorySnapshot[];
+  signatories: WorkspaceSignatorySelection[];
   requiredPathologistsCount: number;
   requiredMedtechsCount: number;
-  availablePersonnel: IPersonnel[];
-  onChange: (updatedSignatories: SignatorySnapshot[]) => void;
+  availablePersonnel: WorkspacePersonnelEntry[];
+  onChange: (updatedSignatories: WorkspaceSignatorySelection[]) => void;
 }
 
 export function SignatorySelectionSection({
@@ -61,7 +86,10 @@ export function SignatorySelectionSection({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  const areSignatoriesEqual = (a: SignatorySnapshot[], b: SignatorySnapshot[]) => {
+  const areSignatoriesEqual = (
+    a: WorkspaceSignatorySelection[],
+    b: WorkspaceSignatorySelection[]
+  ) => {
     if (a.length !== b.length) return false;
     return a.every(
       (item, idx) =>
@@ -72,47 +100,17 @@ export function SignatorySelectionSection({
   };
 
   useEffect(() => {
-    const updated: SignatorySnapshot[] = [];
+    const updated: WorkspaceSignatorySelection[] = [];
 
     const pathObj = pathologists.find((p) => p.id === selectedPathologistId);
-    if (pathObj) {
-      updated.push({
-        personnelId: pathObj.id,
-        role: "Pathologist",
-        printedFullName: `${pathObj.firstName} ${pathObj.lastName}`,
-        printedCredentials: pathObj.credentials,
-        printedPrcLicenseNumber: pathObj.prcLicenseNumber,
-        signatureImageUrl: pathObj.signatureImageUrl,
-        displayOrder: 1,
-      });
-    }
+    if (pathObj) updated.push(toSelection(pathObj, "Pathologist", 1));
 
     const mt1Obj = medtechs.find((p) => p.id === selectedMedtech1Id);
-    if (mt1Obj) {
-      updated.push({
-        personnelId: mt1Obj.id,
-        role: "MedicalTechnologist",
-        printedFullName: `${mt1Obj.firstName} ${mt1Obj.lastName}`,
-        printedCredentials: mt1Obj.credentials,
-        printedPrcLicenseNumber: mt1Obj.prcLicenseNumber,
-        signatureImageUrl: mt1Obj.signatureImageUrl,
-        displayOrder: 2,
-      });
-    }
+    if (mt1Obj) updated.push(toSelection(mt1Obj, "MedicalTechnologist", 2));
 
     if (requiredMedtechsCount >= 2) {
       const mt2Obj = medtechs.find((p) => p.id === selectedMedtech2Id);
-      if (mt2Obj) {
-        updated.push({
-          personnelId: mt2Obj.id,
-          role: "MedicalTechnologist",
-          printedFullName: `${mt2Obj.firstName} ${mt2Obj.lastName}`,
-          printedCredentials: mt2Obj.credentials,
-          printedPrcLicenseNumber: mt2Obj.prcLicenseNumber,
-          signatureImageUrl: mt2Obj.signatureImageUrl,
-          displayOrder: 3,
-        });
-      }
+      if (mt2Obj) updated.push(toSelection(mt2Obj, "MedicalTechnologist", 3));
     }
 
     if (!areSignatoriesEqual(signatories, updated)) {
@@ -149,12 +147,12 @@ export function SignatorySelectionSection({
   };
 
   return (
-    <div className="bg-slate-50/70 border border-slate-200 rounded-xl overflow-hidden mt-3.5 transition-all">
+    <div className="mt-3.5 overflow-hidden rounded-lg border border-brand-card-border bg-brand-background transition-colors">
       {/* Header & Requirement Badges Accordion Toggle */}
       {/* The Confirm action is a sibling of the toggle, never a descendant: a button
           nested inside a button is invalid HTML and the parser hoists it out, which
           makes the server and client trees disagree during hydration. */}
-      <div className="w-full p-3 sm:py-3 sm:px-4 flex flex-col sm:flex-row sm:items-center gap-2 hover:bg-slate-100/60 transition-colors">
+      <div className="w-full p-3 sm:py-3 sm:px-4 flex flex-col sm:flex-row sm:items-center gap-2 hover:bg-brand-structural-hover transition-colors">
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -166,10 +164,10 @@ export function SignatorySelectionSection({
               <ShieldCheck className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-brand-text uppercase tracking-wider">
                 Assigned Signatories & Approval
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-brand-text-muted">
                 PRC-licensed medical personnel authorizing this laboratory report
               </p>
             </div>
@@ -203,18 +201,18 @@ export function SignatorySelectionSection({
       </div>
 
       {isExpanded && (
-        <div className="p-3 pt-0 border-t border-slate-200/60 mt-1.5">
+        <div className="p-3 pt-0 border-t border-brand-card-border mt-1.5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {/* Pathologist Card */}
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+            <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
+              <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
                 Pathologist (Signatory 1)
               </label>
               <select
                 value={selectedPathologistId}
                 onChange={(e) => handleSelectPathologist(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-md p-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary mb-1"
+                className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
               >
                 {pathologists.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -223,22 +221,22 @@ export function SignatorySelectionSection({
                 ))}
               </select>
               {activePathologist && (
-                <div className="text-[10px] text-slate-500 font-mono">
-                  PRC License: <span className="font-bold text-slate-700">{activePathologist.prcLicenseNumber}</span>
+                <div className="text-[10px] text-brand-text-muted font-mono">
+                  PRC License: <span className="font-bold text-brand-text-muted">{activePathologist.prcLicenseNumber}</span>
                 </div>
               )}
             </div>
 
             {/* Medical Technologist 1 Card */}
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+            <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
+              <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
                 Medical Technologist (Signatory 2)
               </label>
               <select
                 value={selectedMedtech1Id}
                 onChange={(e) => handleSelectMedtech1(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-md p-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary mb-1"
+                className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
               >
                 {medtechs.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -247,23 +245,23 @@ export function SignatorySelectionSection({
                 ))}
               </select>
               {activeMedtech1 && (
-                <div className="text-[10px] text-slate-500 font-mono">
-                  PRC License: <span className="font-bold text-slate-700">{activeMedtech1.prcLicenseNumber}</span>
+                <div className="text-[10px] text-brand-text-muted font-mono">
+                  PRC License: <span className="font-bold text-brand-text-muted">{activeMedtech1.prcLicenseNumber}</span>
                 </div>
               )}
             </div>
 
             {/* Medical Technologist 2 Card (Rendered ONLY when requiredMedtechsCount >= 2, e.g. HIV_RESULT) */}
             {requiredMedtechsCount >= 2 && (
-              <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+              <div className="bg-brand-card border border-brand-card-border rounded-lg p-2.5 shadow-sm">
+                <label className="block text-[11px] font-bold text-brand-text-muted uppercase mb-1 flex items-center gap-1.5">
                   <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
                   Medical Technologist 2 (Signatory 3)
                 </label>
                 <select
                   value={selectedMedtech2Id}
                   onChange={(e) => handleSelectMedtech2(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-md p-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary mb-1"
+                  className="w-full text-xs bg-brand-structural border border-brand-border rounded-md p-1.5 font-medium text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary mb-1"
                 >
                   {medtechs.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -272,8 +270,8 @@ export function SignatorySelectionSection({
                   ))}
                 </select>
                 {activeMedtech2 && (
-                  <div className="text-[10px] text-slate-500 font-mono">
-                    PRC License: <span className="font-bold text-slate-700">{activeMedtech2.prcLicenseNumber}</span>
+                  <div className="text-[10px] text-brand-text-muted font-mono">
+                    PRC License: <span className="font-bold text-brand-text-muted">{activeMedtech2.prcLicenseNumber}</span>
                   </div>
                 )}
               </div>

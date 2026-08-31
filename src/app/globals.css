@@ -32,17 +32,44 @@
   --color-secondary-hover: #1e293b;
   --color-secondary-foreground: #f8fafc;
 
-  /* --- SURFACES & BACKGROUNDS --- */
-  /* Application viewport background color */
-  --color-background: #f8fafc; /* Slate 50 */
-  /* Primary card, panel, and modal surface background */
+  /* --- THREE-SURFACE SYSTEM --- */
+  /* Every surface used to sit between #f8fafc and #ffffff - a 1.046:1 separation, which
+     is below the threshold at which an edge reads as an edge. Canvas, structure and
+     content therefore collapsed into one white plane. These three are the whole
+     hierarchy; depth comes from them plus borders and spacing, not from shadow. */
+
+  /* 1 - CANVAS. The application ground: behind pages and major regions. Cooled toward
+     the brand hue (~196deg) at very low saturation so it reads as a considered ground
+     rather than grey. Content surfaces sit ON this and are separated by fill, which is
+     why their borders can stay quiet. */
+  --color-canvas: #e6edf2;
+
+  /* 2 - WORKING SURFACE. The strongest reading surface, and the only pure white one:
+     forms, tables, workspace panels, dashboard content. Kept at #ffffff deliberately -
+     clinical data earns the highest-clarity ground in the system. */
   --color-surface: #ffffff;
   /* Hover surface background for list items, table rows, and interactive panels */
   --color-surface-hover: #f1f5f9;
 
+  /* 3 - STRUCTURAL. Navigation, headers, table headers, section bands, sticky context
+     and filters. Sits between canvas and working surface, so a band inside a white card
+     recedes and a sidebar against the canvas lifts - one token doing both jobs because
+     it is the same job: structure, not content. */
+  --color-structural: #f1f6f9;
+  --color-structural-hover: #e8f0f5;
+
+  /* Retained name, re-pointed. Its existing consumers are all structural bands - table
+     headers, recessed encoding sections, catalog family headers - so they inherit the
+     correct surface without being touched. Page grounds move to --color-canvas. */
+  --color-background: var(--color-structural);
+
   /* --- BORDERS & SEPARATORS --- */
   /* Standard structural border color for cards, inputs, tables, and dividers */
   --color-border: #e2e8f0;
+  /* For an edge that must read against the canvas rather than against white. The
+     standard border is 1.043:1 on the canvas - invisible - so shell dividers that
+     separate structure from ground use this instead. */
+  --color-border-strong: #cbd8e2;
   /* Subtle inner border color */
   --color-border-subtle: #f1f5f9;
 
@@ -51,22 +78,23 @@
   --color-text: #0F172A;
   /* Muted text color for descriptions and metadata */
   --color-text-muted: #475569;
-  /* Subdued text color for placeholders and disabled labels */
+  /* Subdued text for decorative icons and de-emphasised glyphs. NOT for placeholder
+     text: at 2.6:1 on white it cannot carry it - Input uses slate-500 for that. */
   --color-text-subtle: #94a3b8;
 
   /* --- SEMANTIC UI STATES (STRICTLY SEPARATED FROM BRANDING) --- */
   /* Success state color (Used strictly for Active account status, System Ready badge, positive operations) */
-  --color-success: #059669; /* Emerald 600 */
+  --color-success: #047857; /* Emerald 700 - clears 4.5:1 on --color-success-bg for badge text */
   --color-success-bg: #ecfdf5;
   --color-success-border: #a7f3d0;
 
   /* Warning state color (Used strictly for Inactive account status, caution alerts) */
-  --color-warning: #d97706; /* Amber 600 */
+  --color-warning: #92400e; /* Amber 800 - clears 4.5:1 on --color-warning-bg for badge text */
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fde68a;
 
   /* Danger state color (Used strictly for errors, destructive actions) */
-  --color-danger: #dc2626; /* Rose 600 */
+  --color-danger: #b91c1c; /* Red 700 - clears 4.5:1 on --color-danger-bg for badge text */
   --color-danger-bg: #fef2f2;
   --color-danger-border: #fecaca;
 
@@ -87,10 +115,14 @@
   --color-role-user-border: #e2e8f0;
 
   /* --- NAVIGATION & SIDEBAR --- */
-  /* Sidebar background color */
-  --color-sidebar: #ffffff;
-  /* Active navigation item background (Brand Tint) */
-  --color-sidebar-active: #E8F3F6;
+  /* Sidebar background color. Structural: navigation is chrome, not content, and a white
+     sidebar beside white content erased the boundary between shell and page. */
+  --color-sidebar: var(--color-structural);
+  /* Active navigation item background. Deepened from the general brand tint: on a white
+     sidebar #E8F3F6 was a clear highlight, but on a structural sidebar it falls to
+     1.038:1 and stops reading. This holds 1.122:1 against the sidebar while keeping the
+     active label at 5.49:1. */
+  --color-sidebar-active: #dcebf1;
   /* Active navigation item text/icon color (Brand Primary) */
   --color-sidebar-active-text: #0B6384;
   /* Default sidebar item text color */
@@ -101,6 +133,17 @@
   --color-card: #ffffff;
   /* Card container border */
   --color-card-border: #e2e8f0;
+
+  /* --- ELEVATION --- */
+  /* Two levels, not five. Flat/bordered is the default and carries no shadow at all;
+     these are the only two that exist above it. Both are tinted toward the brand hue
+     rather than neutral black, because a pure-black shadow over a cooled canvas reads
+     as dirt on the surface instead of depth. */
+  /* LOW - major cards, sticky workspace chrome, important page sections. */
+  --shadow-low: 0 1px 2px 0 rgb(11 47 66 / 0.05), 0 1px 3px 0 rgb(11 47 66 / 0.04);
+  /* OVERLAY - dialogs, menus, drawers and popovers only. Nothing that sits in the page
+     flow may use this; it is what separates "floating above the page" from "part of it". */
+  --shadow-overlay: 0 12px 28px -8px rgb(11 47 66 / 0.20), 0 4px 10px -4px rgb(11 47 66 / 0.10);
 
   /* --- ACCESSIBILITY & FOCUS --- */
   /* Focus ring outline color */
@@ -117,6 +160,44 @@
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+}
+
+/* ==========================================================================
+   BROWSER SURFACES
+   Selection and caret ship with browser defaults that belong to no design
+   system. Theming them from the palette is what makes the application read as
+   built rather than assembled.
+   ========================================================================== */
+
+::selection {
+  background-color: var(--color-tint);
+  color: var(--color-text);
+}
+
+input,
+textarea,
+select,
+[contenteditable] {
+  caret-color: var(--color-primary);
+}
+
+/* ==========================================================================
+   REDUCED MOTION
+   Reduced motion means less movement, not no feedback. Looping and spinning
+   animations and smooth scrolling are retired; colour and opacity transitions
+   stay, because they explain a state change rather than move the page. Motion
+   that does move something carries its own motion-reduce: guard at the call
+   site, where the intent is visible.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }
 

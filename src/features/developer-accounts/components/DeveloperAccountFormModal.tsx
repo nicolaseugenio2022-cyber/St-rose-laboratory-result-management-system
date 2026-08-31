@@ -4,6 +4,7 @@ import React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -18,7 +19,7 @@ import {
   updateDeveloperSecurityQuestionSchema,
   updateDeveloperUsernameSchema,
 } from "@/lib/validations/developerAccountValidation";
-import type { User } from "@/types/user";
+import type { DeveloperAccountEntry } from "@/features/users/account-directory-entry";
 
 export type DeveloperAccountModalMode =
   | "create"
@@ -35,7 +36,7 @@ type PasswordValues = z.infer<typeof resetDeveloperPasswordSchema>;
 
 interface DeveloperAccountFormModalProps {
   mode: DeveloperAccountModalMode | null;
-  account: User | null;
+  account: DeveloperAccountEntry | null;
   isLoading: boolean;
   onClose: () => void;
   onCreate: (values: CreateValues) => Promise<void>;
@@ -58,27 +59,35 @@ function FormActions({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+    // Column-reversed on a phone so the submit control sits under the thumb and Cancel is not
+    // the first thing a wrapping row pushes onto its own line.
+    <div className="flex flex-col-reverse gap-2 border-t border-brand-border-subtle pt-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onCancel}
+        disabled={isLoading}
+        className="min-h-11 sm:min-h-10"
+      >
         Cancel
       </Button>
-      <Button type="submit" isLoading={isLoading}>
+      <Button type="submit" isLoading={isLoading} className="min-h-11 sm:min-h-10">
         {submitLabel}
       </Button>
     </div>
   );
 }
 
+/**
+ * Server-side failures the field-level messages cannot carry.
+ *
+ * The shared Alert rather than a hand-rolled rose panel: it already pairs the tint with an icon
+ * and already announces itself through role="alert", so the message is not colour-only and does
+ * not need a second implementation to keep in step with the rest of the system.
+ */
 function FormError({ message }: { message: string | null }) {
   if (!message) return null;
-  return (
-    <div
-      role="alert"
-      className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700"
-    >
-      {message}
-    </div>
-  );
+  return <Alert variant="destructive">{message}</Alert>;
 }
 
 function CreateDeveloperAccountForm({
@@ -123,7 +132,11 @@ function CreateDeveloperAccountForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(submit)}
+      aria-busy={isLoading || undefined}
+      className="space-y-4"
+    >
       <FormError message={serverError} />
       <Input
         label="Username"
@@ -166,7 +179,7 @@ function UpdateUsernameForm({
   onCancel,
   onSubmit,
 }: {
-  account: User;
+  account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: UsernameValues) => Promise<void>;
@@ -197,7 +210,11 @@ function UpdateUsernameForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(submit)}
+      aria-busy={isLoading || undefined}
+      className="space-y-4"
+    >
       <FormError message={serverError} />
       <input type="hidden" {...register("id")} />
       <Input label="Username" error={errors.username?.message} {...register("username")} />
@@ -212,7 +229,7 @@ function UpdateSecurityQuestionForm({
   onCancel,
   onSubmit,
 }: {
-  account: User;
+  account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: SecurityQuestionValues) => Promise<void>;
@@ -243,7 +260,11 @@ function UpdateSecurityQuestionForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(submit)}
+      aria-busy={isLoading || undefined}
+      className="space-y-4"
+    >
       <FormError message={serverError} />
       <input type="hidden" {...register("id")} />
       <Select
@@ -274,7 +295,7 @@ function ResetPasswordForm({
   onCancel,
   onSubmit,
 }: {
-  account: User;
+  account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: PasswordValues) => Promise<void>;
@@ -299,7 +320,11 @@ function ResetPasswordForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(submit)}
+      aria-busy={isLoading || undefined}
+      className="space-y-4"
+    >
       <FormError message={serverError} />
       <input type="hidden" {...register("id")} />
       <Input
@@ -347,7 +372,17 @@ export function DeveloperAccountFormModal({
   const copy = modalCopy[mode];
 
   return (
-    <Modal isOpen onClose={onClose} title={copy.title} description={copy.description}>
+    // Escape, the backdrop and the close control are the shared Modal's, and they keep working -
+    // except while a credential write is in flight, where dismissal would leave the operator
+    // guessing whether the account changed. `onClose` already refuses in that window; saying so
+    // through `dismissible` also removes the close control instead of leaving a dead one.
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={copy.title}
+      description={copy.description}
+      dismissible={!isLoading}
+    >
       {mode === "create" ? (
         <CreateDeveloperAccountForm
           isLoading={isLoading}

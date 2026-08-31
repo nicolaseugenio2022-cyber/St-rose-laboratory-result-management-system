@@ -1,102 +1,84 @@
 import React from "react";
-import { ArrowRight, Database, Hash, ShieldCheck, ServerCog, Activity } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 
+/** One bordered panel of placeholder rows, matching a real list panel's geometry. */
+function PanelSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="divide-y divide-brand-border-subtle overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between gap-3 px-3 py-2">
+          <Skeleton className="h-3.5 w-40" />
+          <Skeleton className="h-3.5 w-16" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionSkeleton({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="space-y-2.5">
+      <div className="border-b border-brand-border-subtle pb-1.5">
+        <Skeleton className="h-3.5 w-36" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Placeholder for the Developer technical surface.
+ *
+ * Mirrors the finished composition region for region - health strip, two
+ * diagnostics panels, a statistics strip, then activity beside administration -
+ * so nothing jumps when the awaited data resolves. Decorative throughout: the
+ * Suspense boundary conveys the loading state.
+ */
 export function DeveloperDashboardSkeleton() {
   return (
-    <section className="space-y-6 animate-pulse">
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <div className="h-8 w-64 bg-slate-200 rounded-md mb-2"></div>
-          <div className="h-4 w-96 bg-slate-100 rounded-md"></div>
+    // SkeletonRegion announces the loading state once, semantically, while the
+    // placeholders inside stay decorative and hidden from assistive technology.
+    <SkeletonRegion isLoading label="Loading developer dashboard" className="space-y-5">
+      <SectionSkeleton>
+        {/* Geometry, not semantics: the placeholder stays decorative divs so it never
+            announces an empty description list, while matching the real strip cell for
+            cell so nothing shifts when the data resolves. */}
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-brand-card-border bg-brand-card-border md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-1.5 bg-brand-structural px-3 py-2.5">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+          ))}
         </div>
-        <div className="h-4 w-32 bg-slate-200 rounded-md"></div>
+      </SectionSkeleton>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <SectionSkeleton>
+          <PanelSkeleton rows={4} />
+        </SectionSkeleton>
+        <SectionSkeleton>
+          <PanelSkeleton rows={5} />
+        </SectionSkeleton>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Database className="h-4 w-4 text-slate-300" />
-                <CardTitle className="h-5 w-40 bg-slate-200 rounded-md"></CardTitle>
-              </div>
-              <CardDescription className="h-4 w-56 bg-slate-100 rounded-md mt-2"></CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="h-6 w-full bg-slate-100 rounded-md"></div>
-              <div className="h-6 w-full bg-slate-100 rounded-md"></div>
-              <div className="h-6 w-full bg-slate-100 rounded-md"></div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-slate-300" />
-                <CardTitle className="h-5 w-32 bg-slate-200 rounded-md"></CardTitle>
-              </div>
-              <CardDescription className="h-4 w-56 bg-slate-100 rounded-md mt-2"></CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="rounded-2xl bg-slate-100 p-3 h-16"></div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+      <SectionSkeleton>
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-brand-card-border bg-brand-card-border md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-1.5 bg-brand-structural px-3 py-2.5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+          ))}
         </div>
+      </SectionSkeleton>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ServerCog className="h-4 w-4 text-slate-300" />
-              <CardTitle className="h-5 w-40 bg-slate-200 rounded-md"></CardTitle>
-            </div>
-            <CardDescription className="h-4 w-56 bg-slate-100 rounded-md mt-2"></CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl bg-slate-100 p-4 grid gap-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-5 w-full bg-slate-200 rounded-md"></div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Hash className="h-4 w-4 text-slate-300" />
-              <CardTitle className="h-5 w-40 bg-slate-200 rounded-md"></CardTitle>
-            </div>
-            <CardDescription className="h-4 w-56 bg-slate-100 rounded-md mt-2"></CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="rounded-2xl bg-slate-100 p-4 h-24"></div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-slate-300" />
-              <CardTitle className="h-5 w-40 bg-slate-200 rounded-md"></CardTitle>
-            </div>
-            <CardDescription className="h-4 w-56 bg-slate-100 rounded-md mt-2"></CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[1, 2].map((i) => (
-              <div key={i} className="rounded-2xl bg-slate-100 p-4 h-20 border border-slate-200"></div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    </section>
+      {/* Mirrors the corrected composition: Recent System Activity is full width now that
+          Administration is gone, so the placeholder must be too or the page jumps on
+          resolve. */}
+      <SectionSkeleton>
+        <PanelSkeleton rows={6} />
+      </SectionSkeleton>
+    </SkeletonRegion>
   );
 }

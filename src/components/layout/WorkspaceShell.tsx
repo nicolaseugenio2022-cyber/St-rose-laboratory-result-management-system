@@ -17,10 +17,13 @@ export function WorkspaceShell({ children, currentUserRole }: WorkspaceShellProp
 
   return (
     <WorkspaceNavigationGuardProvider>
-      <div className="flex h-dvh w-full overflow-hidden bg-slate-100/60">
+      <div className="flex h-dvh w-full overflow-hidden bg-brand-canvas">
+        {/* Finding 1: the skip link is a sibling of the drawer, so it must go inert too,
+            or it stays the one reachable control behind the scrim. */}
         <a
           href="#workspace-main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-slate-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-focus-ring"
+          inert={isDrawerOpen || undefined}
+          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:border focus:border-brand-border focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-slate-900 focus:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-focus-ring"
         >
           Skip to encoding surface
         </a>
@@ -32,7 +35,14 @@ export function WorkspaceShell({ children, currentUserRole }: WorkspaceShellProp
           onCloseDrawer={closeDrawer}
         />
 
-        <div id="workspace-main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
+        {/* Correction 5: inert while the Workspace drawer is open, so the encoding surface
+            behind the scrim is not reachable by pointer, Tab or browse navigation. */}
+        <div
+          id="workspace-main"
+          tabIndex={-1}
+          inert={isDrawerOpen || undefined}
+          className="flex min-w-0 flex-1 flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+        >
           {children}
         </div>
       </div>

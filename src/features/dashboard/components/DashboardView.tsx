@@ -47,7 +47,6 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
     ]);
     return (
       <AdminDashboard
-        currentUserProfile={currentUserProfile}
         totalUsers={users.length}
         activeUsers={users.filter((u) => u.status === "Active").length}
         inactiveUsers={users.filter((u) => u.status !== "Active").length}
@@ -59,9 +58,6 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
 
   const recentWork = await getRecentWork();
   return (
-    <LaboratoryUserDashboard
-      currentUserProfile={currentUserProfile}
-      recentWork={recentWork}
-    />
+    <LaboratoryUserDashboard recentWork={recentWork} />
   );
 }

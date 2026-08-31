@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { X } from "lucide-react";
@@ -13,15 +13,107 @@ export interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   currentUserRole?: UserRole;
+  /** Control focus returns to when the mobile drawer closes. Optional and internal to the shell. */
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
+const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: SidebarProps) {
+  const panelRef = useRef<HTMLElement>(null);
+  // onClose is an inline arrow at the call site, so it changes identity every render.
+  // Holding it in a ref keeps the isolation effect below from tearing down and rebuilding
+  // the trap, the scroll lock and the breakpoint listener on each render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Below lg this panel is a modal drawer, so it needs the behaviour of one: focus
+  // moves in on open, Tab and Shift+Tab stay inside, Escape dismisses, and focus
+  // returns to the trigger. The effect only engages while `isOpen`, and `isOpen`
+  // is false on desktop where the sidebar is simply part of the page - so the
+  // desktop sidebar is never trapped.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const panel = panelRef.current;
+    const returnTo = returnFocusRef?.current ?? null;
+
+    // Crossing into the desktop breakpoint retires the modal state: the panel becomes
+    // ordinary page furniture at lg, so leaving the trap armed would strand a desktop user
+    // inside it. Handled in an effect, never as a render branch, so the server and client
+    // trees stay identical on first paint.
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    // Finding 2: read the current value before arming anything. Subscribing alone left an
+    // open drawer holding the body lock, the inert background and the trap when the effect
+    // began already at desktop, because no `change` event would ever fire to retire them.
+    if (desktopQuery.matches) {
+      onCloseRef.current();
+      return;
+    }
+
+    panel?.querySelectorAll<HTMLElement>(FOCUSABLE)[0]?.focus();
+
+    // Background isolation while the drawer is open. The page behind must not scroll, and
+    // the previous overflow value is captured rather than assumed so a dialog that opened
+    // first has its own lock restored intact.
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleBreakpointChange = (event: MediaQueryListEvent) => {
+      if (event.matches) onCloseRef.current();
+    };
+    desktopQuery.addEventListener("change", handleBreakpointChange);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        return;
+      }
+
+      // Finding 1: recover focus that is somehow outside the drawer - a programmatic
+      // focus() elsewhere, or a control removed mid-interaction - instead of letting Tab
+      // continue from wherever it landed in the obscured page.
+      if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      desktopQuery.removeEventListener("change", handleBreakpointChange);
+      document.body.style.overflow = previousBodyOverflow;
+      returnTo?.focus();
+    };
+  }, [isOpen, returnFocusRef]);
+
   return (
     <>
       {/* Mobile Backdrop Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/30 lg:hidden animate-in fade-in"
+          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -29,33 +121,49 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
 
       {/* Sidebar Panel */}
       <aside
+        ref={panelRef}
+        id="app-navigation-sidebar"
+        aria-label="Main Navigation"
+        {...(isOpen ? { role: "dialog", "aria-modal": true } : {})}
         className={cn(
-          "fixed top-0 bottom-0 left-0 z-50 flex w-64 flex-col border-r border-brand-border bg-brand-sidebar transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:bottom-auto lg:z-auto lg:h-[100dvh] lg:translate-x-0",
-          isOpen ? "translate-x-0 shadow-md lg:shadow-none" : "-translate-x-full"
+          "fixed bottom-0 left-0 top-0 z-50 flex w-64 flex-col border-r border-brand-border-strong bg-brand-sidebar transition-transform duration-200 ease-in-out motion-reduce:transition-none lg:sticky lg:top-0 lg:bottom-auto lg:z-auto lg:h-[100dvh] lg:translate-x-0",
+          // `invisible` while closed is what keeps the off-screen drawer out of the
+          // Tab order: translate alone leaves every link focusable behind the page.
+          // `lg:visible` hands the panel straight back to the desktop layout.
+          isOpen ? "translate-x-0 shadow-lg lg:shadow-none" : "invisible -translate-x-full lg:visible"
         )}
       >
         {/* Brand Header */}
-        <div className="flex h-16 shrink-0 items-center justify-between px-5 border-b border-brand-border">
-          <Link href="/dashboard" className="flex items-center gap-3 group" onClick={onClose}>
+        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-brand-border px-3">
+          <Link
+            href="/dashboard"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+            onClick={onClose}
+          >
             <Image
               src="/st-rose-logo-official.png"
               alt="St. Rose Diagnostic Laboratory Logo"
-              width={44}
-              height={44}
-              className="h-11 w-auto object-contain shrink-0"
+              width={36}
+              height={36}
+              className="h-9 w-auto shrink-0 object-contain"
               priority
             />
-            <div>
-              <span className="block font-bold text-brand-text text-sm leading-tight">St. Rose</span>
-              <span className="block text-[11px] font-medium text-brand-text-muted">Diagnostic Laboratory</span>
-            </div>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold leading-tight text-brand-text">
+                St. Rose
+              </span>
+              <span className="block truncate text-[11px] leading-tight text-brand-text-muted">
+                Diagnostic Laboratory
+              </span>
+            </span>
           </Link>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-brand-text-subtle hover:bg-brand-surface-hover hover:text-brand-text lg:hidden"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-text-subtle transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
             aria-label="Close Navigation Sidebar"
           >
-            <X className="h-5 w-5" />
+            <X aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
 
@@ -64,12 +172,14 @@ export function Sidebar({ isOpen, onClose, currentUserRole }: SidebarProps) {
           <NavigationMenu onNavigate={onClose} currentUserRole={currentUserRole} />
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="shrink-0 p-4 border-t border-brand-border bg-slate-50/50">
-          <div className="rounded-lg border border-brand-border bg-brand-surface p-3 shadow-sm">
-            <p className="text-xs font-semibold text-brand-text">Result Management System</p>
-            <p className="text-[11px] text-brand-text-muted mt-0.5">Version {SYSTEM_CONSTANTS.APP.VERSION}</p>
-          </div>
+        {/* Sidebar Footer. Plain text on the surface, not a card: nothing here is actionable. */}
+        <div className="shrink-0 border-t border-brand-border px-3 py-2">
+          <p className="truncate text-[11px] font-medium text-brand-text-muted">
+            Result Management System
+          </p>
+          <p className="truncate font-mono text-[10px] text-brand-text-subtle">
+            v{SYSTEM_CONSTANTS.APP.VERSION}
+          </p>
         </div>
       </aside>
     </>

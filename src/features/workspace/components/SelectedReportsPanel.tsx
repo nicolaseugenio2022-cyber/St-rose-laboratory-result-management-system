@@ -1,6 +1,16 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
-import { X, MoreVertical, Trash2, XCircle } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { cn } from "@/utils/cn";
+import { Button } from "@/components/ui/Button";
+import { X, MoreVertical, Trash2, XCircle, Check, FileText } from "lucide-react";
+
+/** Display-only encoding progress for one report. */
+export interface ReportTabProgress {
+  completedCount: number;
+  selectedCount: number;
+  isComplete: boolean;
+}
 
 export interface SelectedReportsPanelProps {
   selectedSpecs: HydratedTemplateSpec[];
@@ -10,6 +20,13 @@ export interface SelectedReportsPanelProps {
   onCloseOtherTemplates: (keepTemplateCode: string) => void;
   onClearAllTemplates: () => void;
   isDirty?: boolean;
+  /**
+   * Per-report progress, keyed by template code. Display only: the Workspace derives
+   * it from the shared completion rule, so this panel never computes completeness and
+   * cannot drift from the meter the report card draws. A template with no entry is
+   * simply not annotated - it is never dropped from the queue.
+   */
+  progressByTemplateCode?: Record<string, ReportTabProgress>;
 }
 
 export function SelectedReportsPanel({
@@ -20,10 +37,15 @@ export function SelectedReportsPanel({
   onCloseOtherTemplates,
   onClearAllTemplates,
   isDirty = false,
+  progressByTemplateCode,
 }: SelectedReportsPanelProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Stable across renders, so aria-controls always resolves to the same element and two
+  // workspaces on one page could never collide on the id.
+  const actionsPopupId = `${React.useId()}-examination-actions`;
 
   // Close dropdown menu when clicking outside
   useEffect(() => {
@@ -36,13 +58,30 @@ export function SelectedReportsPanel({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Escape dismisses the menu and hands focus back to the control that opened it,
+  // so a keyboard operator is never dropped onto the document body.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setIsMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isMenuOpen]);
+
   if (selectedSpecs.length === 0) {
     return (
-      <div className="min-w-0 flex-1 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 text-center">
-        <p className="text-xs font-bold text-amber-800">No examinations selected.</p>
-        <p className="text-xs text-amber-600 mt-1">
-          Choose one or more laboratory examinations from the catalog to begin encoding laboratory results.
-        </p>
+      <div className="min-w-0 flex-1">
+        <EmptyState
+          icon={FileText}
+          title="No examinations selected"
+          description="Choose one or more laboratory examinations from the catalog to begin encoding results."
+          headingLevel={2}
+          className="px-3 py-3"
+        />
       </div>
     );
   }
@@ -60,97 +99,37 @@ export function SelectedReportsPanel({
     const nextIndex = (currentIndex + direction + selectedSpecs.length) % selectedSpecs.length;
     const nextCode = selectedSpecs[nextIndex].template.templateCode;
     onSelectActiveTemplate(nextCode);
+    // focus() scrolls the newly active tab back into view in a horizontally
+    // overflowing strip, so keyboard switching never leaves it off screen.
     tabRefs.current[nextCode]?.focus();
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-row-reverse items-end gap-2">
-      {/* Examination Actions Dropdown Menu */}
-      <div className="relative shrink-0 pb-1" ref={menuRef}>
-          <button
-            type="button"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors shadow-sm"
-            aria-label="Examination Actions Menu"
-          >
-            <span>Actions</span>
-            <MoreVertical className="h-3.5 w-3.5 text-slate-500" />
-          </button>
-
-          {isMenuOpen && (
-            <div className="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg z-30 py-1 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  if (activeTemplateCode) {
-                    onRemoveTemplate(activeTemplateCode);
-                  }
-                }}
-                className="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-100 flex items-center gap-2"
-              >
-                <X className="h-3.5 w-3.5 text-slate-500" />
-                Close Current Examination
-              </button>
-
-              {selectedSpecs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    if (activeTemplateCode) {
-                      onCloseOtherTemplates(activeTemplateCode);
-                    }
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-100 flex items-center gap-2"
-                >
-                  <XCircle className="h-3.5 w-3.5 text-slate-500" />
-                  Close Other Examinations
-                </button>
-              )}
-
-              <div className="my-1 border-t border-slate-100" />
-
-              <button
-                type="button"
-                onClick={handleRequestClearAll}
-                className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-semibold"
-              >
-                <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                Clear All Examinations...
-              </button>
-            </div>
-          )}
-      </div>
-
-      {isDirty && (
-        <span
-          className="mb-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500 animate-pulse"
-          title="Unsaved changes in active session"
-        />
-      )}
-
+    // Tabs lead in both DOM and visual order; the Actions control is the trailing edge.
+    <div className="flex min-w-0 flex-1 items-end gap-2">
       {/* Browser-style Tab Strip */}
       <div
         role="tablist"
         aria-label="Selected examination reports"
-        className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200"
+        className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-b border-brand-card-border"
       >
         {selectedSpecs.map((spec, index) => {
           const code = spec.template.templateCode;
           const isActive = activeTemplateCode === code;
           const tabId = `report-tab-${code}`;
           const panelId = `report-panel-${code}`;
+          const progress = progressByTemplateCode?.[code];
 
           return (
             <div
               key={code}
               role="presentation"
-              className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs transition-all select-none ${
+              className={cn(
+                "group relative flex shrink-0 items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-1.5 text-xs transition-colors duration-150",
                 isActive
-                  ? "bg-white border-t-2 border-t-brand-primary border-x border-b-white font-bold text-brand-primary shadow-sm -mb-px"
-                  : "bg-slate-100/90 border border-slate-200/80 text-slate-600 hover:bg-slate-200/70 font-medium"
-              }`}
+                  ? "border-b-brand-primary bg-brand-card font-semibold text-brand-text"
+                  : "border-b-transparent font-medium text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text"
+              )}
             >
               <button
                 ref={(node) => {
@@ -165,18 +144,24 @@ export function SelectedReportsPanel({
                 onClick={() => onSelectActiveTemplate(code)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
                 title={`${spec.template.templateTitle} (${spec.template.examinationFamily})`}
-                className="flex min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+                className="flex min-h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded text-left transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               >
-                <span className="truncate max-w-[180px] xl:max-w-[260px]">{spec.template.templateTitle}</span>
+                <span className="max-w-[180px] truncate xl:max-w-[240px]">{spec.template.templateTitle}</span>
 
-                {/* Renderer Badge */}
-                <span
-                  className={`text-[9px] font-mono px-1 py-0.5 rounded ${
-                    isActive ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-200/60 text-slate-500"
-                  }`}
-                >
-                  {spec.template.rendererFamily}
-                </span>
+                {/* Compact completed/selected, or a check once the report is done. Never a
+                    progress track inside every tab - seventeen of those is noise, not signal. */}
+                {progress && (
+                  progress.isComplete ? (
+                    <Check
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 stroke-[2.5] text-emerald-600"
+                    />
+                  ) : (
+                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-brand-text-muted">
+                      {progress.completedCount}/{progress.selectedCount}
+                    </span>
+                  )
+                )}
               </button>
 
               {/* Close Tab (X) Action Button */}
@@ -186,17 +171,81 @@ export function SelectedReportsPanel({
                   e.stopPropagation();
                   onRemoveTemplate(code);
                 }}
-                className={`p-0.5 rounded hover:bg-slate-200 transition-colors ml-1 ${
-                  isActive ? "text-slate-400 hover:text-red-600" : "text-slate-400 hover:text-red-600"
-                }`}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-text-subtle transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                 title="Remove examination tab"
                 aria-label={`Remove ${spec.template.templateTitle} examination tab`}
               >
-                <X className="h-3 w-3" />
+                <X aria-hidden="true" className="h-3 w-3" />
               </button>
             </div>
           );
         })}
+      </div>
+
+      {/* Unsaved state as real text, announced politely rather than a bare pulsing dot. */}
+      {isDirty && (
+        <span
+          role="status"
+          className="mb-1 shrink-0 whitespace-nowrap rounded-md bg-brand-warning-bg px-1.5 py-0.5 text-[11px] font-semibold text-brand-warning ring-1 ring-inset ring-brand-warning-border"
+        >
+          Unsaved
+        </span>
+      )}
+
+      {/* Examination Actions Dropdown Menu */}
+      <div className="relative mb-1 shrink-0" ref={menuRef}>
+        {/* A disclosure, not an ARIA menu. aria-haspopup="menu" promised the full menu
+            keyboard model - roving focus, Home/End, type-ahead, arrow navigation - and the
+            popup implements none of it, so a screen-reader user was told to expect
+            interactions that do nothing. The honest contract is the one actually built:
+            aria-expanded plus aria-controls, and the two actions stay ordinary Tab stops. */}
+        <Button
+          ref={menuButtonRef}
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          aria-label="Examination Actions"
+          aria-expanded={isMenuOpen}
+          aria-controls={actionsPopupId}
+        >
+          Actions
+          <MoreVertical aria-hidden="true" className="h-3.5 w-3.5" />
+        </Button>
+
+        {isMenuOpen && (
+          <div
+            id={actionsPopupId}
+            className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-md border border-brand-card-border bg-brand-card py-1 text-xs shadow-md"
+          >
+            {selectedSpecs.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  if (activeTemplateCode) {
+                    onCloseOtherTemplates(activeTemplateCode);
+                  }
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:bg-brand-surface-hover focus-visible:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+              >
+                <XCircle aria-hidden="true" className="h-3.5 w-3.5" />
+                Close Other Examinations
+              </button>
+            )}
+
+            <div className="my-1 border-t border-brand-border-subtle" />
+
+            <button
+              type="button"
+              onClick={handleRequestClearAll}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left font-semibold text-brand-danger transition-colors hover:bg-brand-danger-bg focus-visible:bg-brand-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+            >
+              <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+              Clear All Examinations...
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

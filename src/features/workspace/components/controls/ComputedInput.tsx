@@ -57,17 +57,17 @@ export function ComputedInput({
       data-calculation-mode-switch={calculationMode}
       onClick={() => onRequestModeChange?.(isManual ? "Auto" : "Manual")}
       className={cn(
-        "inline-flex items-center gap-1 rounded border px-1.5 text-[11px] font-bold uppercase transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20",
+        "inline-flex items-center gap-1 rounded border px-1.5 text-[11px] font-bold uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
         isManual
           ? "border-amber-300 bg-amber-100 text-amber-800 hover:border-amber-400"
-          : "border-blue-200 bg-blue-100 text-blue-700 hover:border-blue-300"
+          : "border-brand-info-border bg-brand-tint text-brand-info hover:border-brand-info-border"
       )}
     >
       {isManual ? <Pencil className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
       {isManual ? "Manual" : "Auto"}
     </button>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-100 px-1.5 text-[11px] font-bold uppercase text-blue-700"><Lock className="h-3 w-3" />Auto-Calculated</span>
+    <span className="inline-flex items-center gap-1 rounded border border-brand-info-border bg-brand-tint px-1.5 text-[11px] font-bold uppercase text-brand-info"><Lock className="h-3 w-3" />Auto-Calculated</span>
   );
 
   const helpText = !supportsManualEntry
@@ -85,7 +85,7 @@ export function ComputedInput({
     validationMessage={validationMessage || undefined}
     validationMessageId={validationMessage ? errorId : undefined}
     labelAdornment={modeControl}
-    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-amber-700" : "text-blue-600")}><Info className={cn("h-3 w-3 shrink-0", isManual ? "text-amber-600" : "text-blue-500")} />{helpText}</span>}
+    labelHelp={<span className={cn("mt-0.5 flex items-center gap-1 text-[11px] font-medium", isManual ? "text-amber-700" : "text-brand-info")}><Info className={cn("h-3 w-3 shrink-0", isManual ? "text-amber-600" : "text-brand-info")} />{helpText}</span>}
   >
     {isManual ? (
       <input
@@ -102,8 +102,8 @@ export function ComputedInput({
         onChange={(event) => onChange?.(event.target.value, evaluationOutcome)}
         placeholder="Enter result..."
         className={cn(
-          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary",
-          evaluationOutcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-slate-300 bg-white text-slate-900"
+          "h-8 w-full rounded-md border px-2.5 text-sm font-mono transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary",
+          evaluationOutcome === "Invalid" ? "border-rose-500 bg-rose-50/60 font-bold text-rose-900" : "border-brand-border bg-brand-card text-brand-text"
         )}
       />
     ) : (
@@ -119,7 +119,7 @@ export function ComputedInput({
         disabled
         aria-invalid={evaluationOutcome === "Invalid"}
         aria-describedby={validationMessage ? errorId : undefined}
-        className="h-8 w-full cursor-not-allowed rounded-md border border-blue-300 bg-blue-100/70 px-2.5 text-sm font-bold font-mono text-blue-900 placeholder:font-normal placeholder:text-blue-400"
+        className="h-8 w-full cursor-not-allowed rounded-md border border-brand-info-border bg-brand-tint px-2.5 text-sm font-bold font-mono text-brand-info placeholder:font-normal placeholder:text-brand-text-subtle"
       />
     )}
   </ParameterRow>;

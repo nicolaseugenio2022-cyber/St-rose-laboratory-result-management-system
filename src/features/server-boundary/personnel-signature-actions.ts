@@ -27,7 +27,7 @@ export type UploadPersonnelSignatureInput = z.infer<
 >;
 
 export type SignatureActionResult =
-  | { success: true; signatureImageUrl: string }
+  | { success: true; hasSignature: boolean }
   | { success: false; error: string };
 
 export async function uploadPersonnelSignatureAction(
@@ -117,7 +117,9 @@ export async function uploadPersonnelSignatureAction(
     details,
   });
 
-  return { success: true, signatureImageUrl: proxyUrl };
+  // The proxy URL is persisted and remains the render-time source; it is deliberately not
+  // returned. The client only needs to know that a signature now exists.
+  return { success: true, hasSignature: true };
 }
 
 export async function removePersonnelSignatureAction(
@@ -162,7 +164,7 @@ export async function removePersonnelSignatureAction(
     },
   });
 
-  return { success: true, signatureImageUrl: "" };
+  return { success: true, hasSignature: false };
 }
 
 function extractObjectPathFromProxyUrl(proxyUrl: string): string | null {

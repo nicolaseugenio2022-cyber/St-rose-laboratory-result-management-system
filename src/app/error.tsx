@@ -15,8 +15,8 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center p-6 bg-slate-50">
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 max-w-md w-full text-center shadow-lg space-y-4">
+    <div className="min-h-[70vh] flex items-center justify-center p-6 bg-brand-canvas">
+      <div className="bg-brand-card rounded-2xl border border-brand-card-border p-8 max-w-md w-full text-center shadow-low space-y-4">
         <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
           <AlertTriangle className="h-6 w-6" />
         </div>

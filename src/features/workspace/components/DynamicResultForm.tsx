@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { ILaboratoryReport } from "@/domain/models/interfaces";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "@/domain/models/laboratory-report-domain";
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
 import { applyAllSelectableParameters, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, getEditableResultValue } from "../encoding/report-encoding";
 import { getReportEncodingProgress } from "../encoding/encoding-progress";
+import { advanceToNextResultInput, collectResultInputs } from "../encoding/result-tab-navigation";
 import { normalizeCalculationModes, resolveCalculationMode, type CalculationMode } from "@/domain/calculation-mode";
 import type { PatientSex } from "@/domain/types";
 import { NumericTextInput } from "./controls/NumericTextInput";
@@ -15,6 +16,7 @@ import { ConditionalChoiceInput } from "./ConditionalChoiceInput";
 import { PARAMETER_ROW_TRACKS } from "./controls/ParameterRow";
 import { RequestedBySection } from "./RequestedBySection";
 import { AdditionalEncodingFieldsSection } from "./AdditionalEncodingFieldsSection";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/utils/cn";
 import { CheckCircle2, CheckSquare, FileSpreadsheet, Square } from "lucide-react";
 
@@ -45,6 +47,27 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     onChangeReport(applyAllSelectableParameters(report, definition, selected));
   }, [definition, report, onChangeReport]);
 
+  // One handler at the grid boundary rather than an onKeyDown on every control: the event
+  // bubbles here anyway, and duplicating this across six control components would be six
+  // places for the skip rules to drift apart.
+  const resultGridRef = useRef<HTMLDivElement>(null);
+  const handleResultGridKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const container = resultGridRef.current;
+    if (!container) return;
+    advanceToNextResultInput(
+      {
+        key: event.key,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        target: event.target,
+        preventDefault: () => event.preventDefault(),
+      },
+      collectResultInputs(container)
+    );
+  }, []);
+
   // Completion is the shared Workspace rule (encoding-progress.ts), not a local calculation: the
   // session-level indicator counts whole reports from the same rule, and a second copy of what
   // counts as encoded would be free to drift from this rendered counter.
@@ -55,24 +78,54 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
   });
 
   return <div
-    id={`report-panel-${definition.templateCode}`}
-    role="tabpanel"
-    aria-labelledby={`report-tab-${definition.templateCode}`}
-    className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
-    data-encoding-report={definition.templateCode}
+    // The tabpanel identity lives on the Workspace wrapper that holds this form AND the
+    // report footer, so remarks, kit information and signatories belong to the same labelled
+    // panel as the results they sign off. Declaring it here would leave the footer outside
+    // the panel, or create a second nested tabpanel for the same tab.
+    className="mb-3 overflow-hidden rounded-lg border border-brand-card-border bg-brand-card shadow-low"
   >
-    <div className="border-b border-slate-200 bg-slate-50/90 px-3.5 py-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="flex min-w-0 items-center gap-2"><FileSpreadsheet className="h-4 w-4 shrink-0 text-brand-primary" /><h2 className="truncate text-sm font-bold text-slate-800">{definition.templateTitle}</h2><span className="shrink-0 rounded border border-slate-200 bg-white px-1.5 text-[10px] font-bold">{definition.templateCode}</span></div>
-        <div className="flex shrink-0 items-center gap-2"><div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 sm:w-36"><div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} /></div><span className="text-[10px] font-bold text-slate-600">{completedCount}/{selectedCount}</span>{completionPercent === 100 && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}</div>
-        <button type="button" onClick={() => handleSelectAllToggle(!allSelected)} className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{allSelected ? <Square className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}{allSelected ? "Deselect optional" : "Select optional"}</button>
+    {/* One heading per report. The active tab already names this report AND labels this
+        panel, and the worksheet used to carry a third "Laboratory Results Encoding"
+        heading inside its own bordered card - three titles and four frames for one table. */}
+    {/* Structural header band on a white card: the report identity and its progress are
+        chrome for the grid below, so they recede while the results stay the brightest
+        thing in the panel. */}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-brand-card-border bg-brand-structural px-3.5 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <FileSpreadsheet aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
+        <h2 className="truncate text-sm font-semibold text-brand-text">{definition.templateTitle}</h2>
+        <span className="shrink-0 font-mono text-[11px] font-semibold text-brand-text-subtle">{definition.templateCode}</span>
       </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Deliberately not animated. This advances on almost every keystroke, and a
+            width transition is both a layout-property animation and a moving target
+            beside the field being typed into. */}
+        <div
+          role="progressbar"
+          aria-valuenow={completedCount}
+          aria-valuemin={0}
+          aria-valuemax={selectedCount}
+          aria-label={`${definition.templateTitle} results encoded`}
+          className="h-1.5 w-24 overflow-hidden rounded-full bg-brand-border-subtle sm:w-36"
+        >
+          <div className="h-full rounded-full bg-brand-primary" style={{ width: `${completionPercent}%` }} />
+        </div>
+        <span className="text-[11px] font-semibold tabular-nums text-brand-text-muted">{completedCount}/{selectedCount}</span>
+        {completionPercent === 100 && <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-emerald-600" />}
+      </div>
+      {/* Was a hand-rolled button with no hover and no focus ring at all. */}
+      <Button type="button" variant="outline" size="sm" onClick={() => handleSelectAllToggle(!allSelected)} className="ml-auto shrink-0">
+        {allSelected ? <Square aria-hidden="true" className="h-3.5 w-3.5" /> : <CheckSquare aria-hidden="true" className="h-3.5 w-3.5" />}
+        {allSelected ? "Deselect optional" : "Select optional"}
+      </Button>
     </div>
-    <div className="space-y-2.5 p-3 sm:p-3.5">
+    {/* Report setup in one recessed band, then the worksheet full-bleed to the card
+        edges - the grid gets the whole width instead of losing it to a nested frame. */}
+    <div className="space-y-2.5 border-b border-brand-card-border bg-brand-background px-3.5 py-2.5">
       <RequestedBySection policy={definition.requestedByPolicy} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
-      <section className="overflow-hidden rounded-lg border border-slate-200">
-        <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/80 px-2.5 py-1.5"><FileSpreadsheet aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" /><h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">Laboratory Results Encoding</h3></div>
+    </div>
+    <div>
         {/* Worksheet column header, laid out from PARAMETER_ROW_TRACKS so it cannot drift out of
             alignment with the rows. aria-hidden because it is a visual scanning aid only: the real
             semantics live on each control, which already carries its own accessible name, and
@@ -81,7 +134,8 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
         <div
           aria-hidden="true"
           className={cn(
-            "hidden gap-x-2 border-b border-l-2 border-l-transparent border-b-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:grid sm:items-center",
+            // Column header is structural too - it labels the grid, it is not part of it.
+            "hidden gap-x-2 border-b border-l-2 border-l-transparent border-b-brand-card-border bg-brand-structural px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-text-muted sm:grid sm:items-center",
             PARAMETER_ROW_TRACKS
           )}
         >
@@ -91,7 +145,15 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
           <span>Reference</span>
           <span>Status</span>
         </div>
-        <div className="divide-y divide-slate-100">{sortedParameters.map((parameter) => {
+        {/* The scope of the forward-Tab fast path. Requested By, the additional encoding
+            fields and everything in the report footer also carry data-encoding-input, and
+            none of them belong to this sequence - bounding the query to this container is
+            what excludes them. */}
+        <div
+          ref={resultGridRef}
+          onKeyDown={handleResultGridKeyDown}
+          className="divide-y divide-brand-border-subtle"
+        >{sortedParameters.map((parameter) => {
           const result = report.results.find((item) => item.parameterCode === parameter.parameterCode);
           const value = getEditableResultValue(parameter, result?.resultValue || "");
           const isSelected = (result as LaboratoryResultDomain | undefined)?.isSelected ?? true;
@@ -121,9 +183,8 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
           // background of its own so the stripe shows through, while a deselected row keeps its
           // muted fill and a focused row keeps its brand wash. Quiet enough that no text loses
           // contrast against it.
-          return <div key={parameter.parameterCode} data-param-code={parameter.parameterCode} className="even:bg-slate-50/60">{control}</div>;
+          return <div key={parameter.parameterCode} data-param-code={parameter.parameterCode} className="even:bg-brand-background">{control}</div>;
         })}</div>
-      </section>
     </div>
   </div>;
 }

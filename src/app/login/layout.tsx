@@ -18,8 +18,8 @@ export default async function LoginLayout({
   }
 
   return (
-    <div className="min-h-screen bg-brand-background flex items-center justify-center p-4">
-      {children}
-    </div>
+    // The composition lives in AuthShell, which each page renders itself - a page knows its own
+    // task heading, and this layout does not. All that remains here is the route guard.
+    <>{children}</>
   );
 }

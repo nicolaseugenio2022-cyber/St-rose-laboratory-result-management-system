@@ -13,15 +13,28 @@ import {
 } from "@/lib/validations/developerAccountValidation";
 import { auditService } from "@/services/audit-service-instance";
 import { userService } from "@/services/user-service-instance";
-import type { User } from "@/types/user";
+import {
+  toDeveloperAccountEntry,
+  type DeveloperAccountEntry,
+} from "@/features/users/account-directory-entry";
 
-export async function listDeveloperAccountsAction(input: unknown): Promise<User[]> {
+/**
+ * Developer Accounts keeps every authorized operation it had - create, rename, change security
+ * question, reset password, toggle status, delete - together with `requireDeveloper` and the
+ * last-active-Developer and current-account safeguards in `userService`. Only the shape returned
+ * to the browser narrows: these actions returned the full `User`, so `tokenVersion`,
+ * `passwordUpdatedAt`, `updatedAt` and both first-login flags were serialized to a client that
+ * renders none of them. The table reads `id`, `username`, `status` and `createdAt`; that is what
+ * now crosses.
+ */
+
+export async function listDeveloperAccountsAction(input: unknown): Promise<DeveloperAccountEntry[]> {
   const caller = await requireDeveloper();
   emptyDeveloperAccountActionSchema.parse(input);
-  return userService.getDeveloperAccounts(caller.role);
+  return (await userService.getDeveloperAccounts(caller.role)).map(toDeveloperAccountEntry);
 }
 
-export async function createDeveloperAccountAction(input: unknown): Promise<User> {
+export async function createDeveloperAccountAction(input: unknown): Promise<DeveloperAccountEntry> {
   const caller = await requireDeveloper();
   const parsed = createDeveloperAccountSchema.parse(input);
   const user = await userService.createDeveloperAccount(parsed, caller.role);
@@ -35,10 +48,10 @@ export async function createDeveloperAccountAction(input: unknown): Promise<User
     targetReference: user.username,
     details: { targetUserId: user.id, status: user.status },
   });
-  return user;
+  return toDeveloperAccountEntry(user);
 }
 
-export async function updateDeveloperUsernameAction(input: unknown): Promise<User> {
+export async function updateDeveloperUsernameAction(input: unknown): Promise<DeveloperAccountEntry> {
   const caller = await requireDeveloper();
   const { id, ...updates } = updateDeveloperUsernameSchema.parse(input);
   const user = await userService.updateDeveloperUsername(id, updates, caller.role);
@@ -52,12 +65,12 @@ export async function updateDeveloperUsernameAction(input: unknown): Promise<Use
     targetReference: user.username,
     details: { targetUserId: user.id },
   });
-  return user;
+  return toDeveloperAccountEntry(user);
 }
 
 export async function updateDeveloperSecurityQuestionAction(
   input: unknown
-): Promise<User> {
+): Promise<DeveloperAccountEntry> {
   const caller = await requireDeveloper();
   const { id, ...updates } = updateDeveloperSecurityQuestionSchema.parse(input);
   const user = await userService.updateDeveloperSecurityQuestion(id, updates, caller.role);
@@ -71,10 +84,10 @@ export async function updateDeveloperSecurityQuestionAction(
     targetReference: user.username,
     details: { targetUserId: user.id },
   });
-  return user;
+  return toDeveloperAccountEntry(user);
 }
 
-export async function resetDeveloperPasswordAction(input: unknown): Promise<User> {
+export async function resetDeveloperPasswordAction(input: unknown): Promise<DeveloperAccountEntry> {
   const caller = await requireDeveloper();
   const { id, ...updates } = resetDeveloperPasswordSchema.parse(input);
   const user = await userService.resetDeveloperPassword(id, updates, caller.role);
@@ -88,10 +101,10 @@ export async function resetDeveloperPasswordAction(input: unknown): Promise<User
     targetReference: user.username,
     details: { targetUserId: user.id },
   });
-  return user;
+  return toDeveloperAccountEntry(user);
 }
 
-export async function toggleDeveloperStatusAction(input: unknown): Promise<User> {
+export async function toggleDeveloperStatusAction(input: unknown): Promise<DeveloperAccountEntry> {
   const caller = await requireDeveloper();
   const { id } = developerAccountIdSchema.parse(input);
   const user = await userService.toggleDeveloperStatus(id, caller.id, caller.role);
@@ -105,7 +118,7 @@ export async function toggleDeveloperStatusAction(input: unknown): Promise<User>
     targetReference: user.username,
     details: { targetUserId: user.id, status: user.status },
   });
-  return user;
+  return toDeveloperAccountEntry(user);
 }
 
 export async function deleteDeveloperAccountAction(input: unknown): Promise<void> {

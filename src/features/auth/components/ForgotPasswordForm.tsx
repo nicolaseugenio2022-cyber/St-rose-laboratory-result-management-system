@@ -1,19 +1,13 @@
 "use client";
 
-import { AuthBrandMark } from "./AuthBrandMark";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { Check, ChevronRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { cn } from "@/utils/cn";
+import { AuthShell } from "./AuthShell";
 import {
   completeRecoveryResetAction,
   startRecoveryAction,
@@ -21,6 +15,94 @@ import {
 } from "@/features/auth/forgotPasswordActions";
 
 type RecoveryStage = "username" | "answer" | "reset";
+
+/**
+ * Recovery is three server-enforced stages, and until now the screen only ever showed one
+ * unlabelled form. An operator locked out mid-shift could not tell how far in they were, whether
+ * anything had been accepted, or how much was left. The state machine is unchanged - the same
+ * three actions, the same transitions, the same sanitised messages - it is now simply visible.
+ */
+const RECOVERY_STEPS: ReadonlyArray<{ stage: RecoveryStage; label: string }> = [
+  { stage: "username", label: "Identify account" },
+  { stage: "answer", label: "Verify answer" },
+  { stage: "reset", label: "New password" },
+];
+
+/**
+ * Deliberately a compact row, not a stepper graphic: three numbered chips on one line.
+ *
+ * State is never carried by colour alone. A completed step swaps its numeral for a check glyph,
+ * the current step is the only one in full-strength text, and every chip carries a screen-reader
+ * word - Completed / Current step / Not started - alongside `aria-current="step"` on the active
+ * one. The polite live region restates position when the stage advances, because a heading that
+ * changes silently is not an announcement.
+ */
+function RecoveryProgress({ currentIndex }: { currentIndex: number }) {
+  const currentStep = RECOVERY_STEPS[currentIndex];
+
+  return (
+    <div>
+      <p
+        aria-hidden="true"
+        className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted"
+      >
+        Step {currentIndex + 1} of {RECOVERY_STEPS.length}
+      </p>
+      <p role="status" className="sr-only">
+        Step {currentIndex + 1} of {RECOVERY_STEPS.length}: {currentStep.label}.
+      </p>
+
+      {/* Wraps rather than scrolls, so 375px never produces a horizontal overflow. */}
+      <ol
+        aria-label="Password recovery progress"
+        className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5"
+      >
+        {RECOVERY_STEPS.map((step, index) => {
+          const isDone = index < currentIndex;
+          const isCurrent = index === currentIndex;
+
+          return (
+            <li
+              key={step.stage}
+              aria-current={isCurrent ? "step" : undefined}
+              className="flex items-center gap-1.5"
+            >
+              <span
+                className={cn(
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold leading-none",
+                  isDone && "border-brand-primary bg-brand-primary text-brand-primary-foreground",
+                  isCurrent && "border-brand-primary bg-brand-surface text-brand-primary",
+                  !isDone &&
+                    !isCurrent &&
+                    "border-brand-border bg-brand-surface text-brand-text-muted"
+                )}
+              >
+                {isDone ? <Check aria-hidden="true" className="h-3 w-3" /> : index + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-[11px] leading-tight",
+                  isCurrent ? "font-semibold text-brand-text" : "font-medium text-brand-text-muted"
+                )}
+              >
+                {step.label}
+              </span>
+              <span className="sr-only">
+                {isDone ? "Completed" : isCurrent ? "Current step" : "Not started"}
+              </span>
+              {index < RECOVERY_STEPS.length - 1 && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="ml-0.5 h-3 w-3 shrink-0 text-brand-text-subtle"
+                />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 export function ForgotPasswordForm() {
   const [stage, setStage] = useState<RecoveryStage>("username");
@@ -30,6 +112,16 @@ export function ForgotPasswordForm() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // Keyboard focus follows the stage. Without this the caret stays on a control that no longer
+  // exists and the operator has to tab back into the form after every transition. Guarded on the
+  // stage the component mounted with, so arriving at the page never steals focus.
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const mountedStageRef = useRef<RecoveryStage>(stage);
+  useEffect(() => {
+    if (stage === mountedStageRef.current) return;
+    firstFieldRef.current?.focus();
+  }, [stage]);
 
   function submit(formData: FormData) {
     setServerError(null);
@@ -60,9 +152,11 @@ export function ForgotPasswordForm() {
     });
   }
 
-  const heading =
+  const currentIndex = RECOVERY_STEPS.findIndex((step) => step.stage === stage);
+
+  const title =
     stage === "username"
-      ? "Forgot your password?"
+      ? "Reset your password"
       : stage === "answer"
         ? "Verify your recovery answer"
         : "Set a new password";
@@ -72,187 +166,184 @@ export function ForgotPasswordForm() {
       : stage === "answer"
         ? "Answer the security question configured for your account."
         : "Choose a new password between 6 and 100 characters.";
+  const submitLabel =
+    stage === "username" ? "Continue" : stage === "answer" ? "Verify Answer" : "Reset Password";
+  const pendingLabel =
+    stage === "username" ? "Checking..." : stage === "answer" ? "Verifying..." : "Saving...";
 
   return (
-    <Card className="w-full max-w-md shadow-lg">
-      <CardHeader className="space-y-2 pb-5 text-center">
-        <AuthBrandMark />
-        <div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-brand-text">
-            St. Rose
-          </CardTitle>
-          <CardDescription className="mt-1 text-sm font-medium text-brand-text-muted">
-            Diagnostic Laboratory
-          </CardDescription>
-        </div>
-        <div className="pt-2">
-          <h2 className="text-xl font-semibold text-brand-text">{heading}</h2>
-          <p className="mt-1 text-sm text-brand-text-muted">{description}</p>
-        </div>
-      </CardHeader>
-
-      <form action={submit}>
-        <CardContent className="space-y-4">
-          {serverError && (
-            <div className="rounded-md border border-brand-danger/20 bg-brand-danger/10 p-3 text-sm text-brand-danger">
-              {serverError}
-            </div>
-          )}
-
-          {stage === "username" && (
-            <Input
-              id="username"
-              name="username"
-              label="Username"
-              type="text"
-              autoComplete="username"
-              disabled={isPending}
-              required
-            />
-          )}
-
-          {stage === "answer" && (
-            <>
-              <div className="rounded-md border border-brand-primary/20 bg-brand-primary/10 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-text-muted">
-                  Security Question
-                </p>
-                <p className="mt-1 text-base font-semibold text-brand-text">
-                  {securityQuestion}
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="answer"
-                  className="block text-xs font-semibold text-brand-text"
-                >
-                  Recovery Answer
-                </label>
-                <div className="relative">
-                  <Input
-                    id="answer"
-                    name="answer"
-                    type={showAnswer ? "text" : "password"}
-                    autoComplete="off"
-                    disabled={isPending}
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-text-muted hover:text-brand-text"
-                    onClick={() => setShowAnswer(!showAnswer)}
-                    aria-label={showAnswer ? "Hide recovery answer" : "Show recovery answer"}
-                  >
-                    {showAnswer ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {stage === "reset" && (
-            <>
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="password"
-                  className="block text-xs font-semibold text-brand-text"
-                >
-                  New Password
-                </label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showNewPassword ? "text" : "password"}
-                    minLength={6}
-                    maxLength={100}
-                    autoComplete="new-password"
-                    disabled={isPending}
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-text-muted hover:text-brand-text"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    aria-label={showNewPassword ? "Hide new password" : "Show new password"}
-                  >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="confirmPassword"
-                  className="block text-xs font-semibold text-brand-text"
-                >
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    minLength={6}
-                    maxLength={100}
-                    autoComplete="new-password"
-                    disabled={isPending}
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-text-muted hover:text-brand-text"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={
-                      showConfirmPassword ? "Hide confirm password" : "Show confirm password"
-                    }
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-
-        <CardFooter className="flex-col gap-3 pb-6 pt-4">
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Please wait...
-              </>
-            ) : stage === "username" ? (
-              "Continue"
-            ) : stage === "answer" ? (
-              "Verify Answer"
-            ) : (
-              "Reset Password"
-            )}
-          </Button>
+    <AuthShell
+      title={title}
+      description={description}
+      banner={<RecoveryProgress currentIndex={currentIndex} />}
+      footer={
+        // Available at every stage: recovery is the flow an operator is most likely to enter by
+        // mistake, and the way out must not depend on how far in they got.
+        <p className="text-center text-xs text-brand-text-muted">
           <Link
             href="/login"
-            className="text-sm font-medium text-brand-primary hover:underline"
+            className="inline-flex min-h-11 items-center font-semibold text-brand-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 sm:min-h-0"
           >
             Back to login
           </Link>
-        </CardFooter>
+        </p>
+      }
+    >
+      <form action={submit} className="space-y-4">
+        {/* The shared Alert carries role="alert", so a rejected attempt is announced rather than
+            only drawn. The previous markup tinted its own box with alpha modifiers on the danger
+            token - and `brand.*` colours resolve to raw CSS `var()`, for which Tailwind emits no
+            rule at all under an alpha modifier, so that box rendered with no background and no
+            border. Solid `*-bg` / `*-border` tokens inside Alert render. The message text is
+            unchanged: these strings are deliberately sanitised server-side. */}
+        {serverError && (
+          <Alert variant="destructive">
+            <p>{serverError}</p>
+          </Alert>
+        )}
+
+        {/* Only the controls belonging to the current stage are mounted. */}
+        {stage === "username" && (
+          <Input
+            ref={firstFieldRef}
+            id="username"
+            name="username"
+            label="Username"
+            type="text"
+            autoComplete="username"
+            disabled={isPending}
+            required
+          />
+        )}
+
+        {stage === "answer" && (
+          <>
+            {/* A flat panel on the structural tint, not a second card: the question is reference
+                text the operator reads while answering, not an object in its own right. */}
+            <div className="rounded-md border border-brand-border bg-brand-structural px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
+                Security question
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-snug text-brand-text">
+                {securityQuestion}
+              </p>
+            </div>
+
+            {/* 44x44 on a phone, shrinking on larger pointers. The box is centred on the
+                wrapper, and the wrapper includes the field's own label row (11px label plus the
+                6px gap), so a fixed 11px nudge re-centres it on the control itself. Same
+                geometry as the first-login reveal control. */}
+            <div className="relative">
+              <Input
+                ref={firstFieldRef}
+                id="answer"
+                name="answer"
+                label="Recovery answer"
+                type={showAnswer ? "text" : "password"}
+                autoComplete="off"
+                disabled={isPending}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAnswer(!showAnswer)}
+                aria-label={showAnswer ? "Hide recovery answer" : "Show recovery answer"}
+                aria-pressed={showAnswer}
+                className="absolute right-3 top-1/2 -translate-y-1/2 mt-[11px] inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-9 sm:w-9 sm:min-h-0 sm:min-w-0"
+              >
+                {showAnswer ? (
+                  <EyeOff aria-hidden="true" className="h-4 w-4" />
+                ) : (
+                  <Eye aria-hidden="true" className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </>
+        )}
+
+        {stage === "reset" && (
+          <>
+            <div className="relative">
+              <Input
+                ref={firstFieldRef}
+                id="password"
+                name="password"
+                label="New password"
+                type={showNewPassword ? "text" : "password"}
+                minLength={6}
+                maxLength={100}
+                autoComplete="new-password"
+                disabled={isPending}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                aria-pressed={showNewPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 mt-[11px] inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-9 sm:w-9 sm:min-h-0 sm:min-w-0"
+              >
+                {showNewPassword ? (
+                  <EyeOff aria-hidden="true" className="h-4 w-4" />
+                ) : (
+                  <Eye aria-hidden="true" className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+
+            <div className="relative">
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                label="Confirm new password"
+                type={showConfirmPassword ? "text" : "password"}
+                minLength={6}
+                maxLength={100}
+                autoComplete="new-password"
+                disabled={isPending}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={
+                  showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                }
+                aria-pressed={showConfirmPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 mt-[11px] inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-9 sm:w-9 sm:min-h-0 sm:min-w-0"
+              >
+                {showConfirmPassword ? (
+                  <EyeOff aria-hidden="true" className="h-4 w-4" />
+                ) : (
+                  <Eye aria-hidden="true" className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Disabled while pending, so a second press cannot start a second recovery attempt
+            against the rate limiter. */}
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          disabled={isPending}
+          aria-busy={isPending || undefined}
+        >
+          {isPending ? (
+            <>
+              <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+              {pendingLabel}
+            </>
+          ) : (
+            submitLabel
+          )}
+        </Button>
       </form>
-    </Card>
+    </AuthShell>
   );
 }

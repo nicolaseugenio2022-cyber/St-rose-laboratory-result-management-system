@@ -994,8 +994,13 @@ export class UserService implements IUserService {
     input: ResetUserPasswordInput,
     callerRole: AuthRole
   ): Promise<User> {
-    if (callerRole !== "Admin" && callerRole !== "Developer") {
-      throw new Error("Only Admin or Developer may reset ordinary account passwords.");
+    // Admin only. Developer was accepted here, which made ordinary-account password reset a
+    // Developer write - contradicting ADR-005 ("no user-management writes") and
+    // SECURITY_MODEL.md §6.4 ("no password-reset controls, no account write operations").
+    // Developer keeps its own reset path: `resetDeveloperPassword`, guarded by
+    // `assertDeveloperCaller`, which this change does not touch.
+    if (callerRole !== "Admin") {
+      throw new Error("Only Admin may reset ordinary account passwords.");
     }
     const current = await this.findOrdinaryMutationTarget(id);
     const now = new Date().toISOString();

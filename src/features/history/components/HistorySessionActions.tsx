@@ -59,8 +59,8 @@ export function HistorySessionActions({
   // Table controls share one height so they sit on a single baseline; the emphasis difference is
   // carried by surface (bordered / ghost / icon-only), not by differing geometry.
   const previewClass = isCard
-    ? "min-h-[2.25rem] h-auto px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-    : "h-8 px-2 xl:px-2.5 border-slate-300 bg-slate-100 font-semibold text-slate-700 hover:bg-slate-200";
+    ? "min-h-[2.25rem] h-auto px-3 py-2 font-semibold text-brand-text-muted hover:bg-brand-surface-hover"
+    : "h-8 px-2 xl:px-2.5 border-brand-border bg-brand-structural font-semibold text-brand-text-muted hover:bg-brand-border-strong";
   // Table variant carries three actions in one cell. They share one shape language - same height,
   // radius and padding rhythm - so they read as a single group, and emphasis is carried by fill:
   // Preview alone is filled, Replace/Edit is outlined, Delete draft is outlined and icon-only.
@@ -68,14 +68,14 @@ export function HistorySessionActions({
   // Preview and Replace/Edit distinguishable only by one border shade.
   // Every control keeps a visible resting border, so interactivity never depends on colour alone.
   const reopenClass = isCard
-    ? "min-h-[2.25rem] h-auto px-3 py-2 border-blue-200 bg-blue-50 font-semibold text-brand-primary hover:bg-blue-100"
-    : "h-8 px-2 xl:px-2.5 font-semibold text-brand-primary hover:border-blue-200 hover:bg-blue-50";
+    ? "min-h-[2.25rem] h-auto px-3 py-2 border-brand-info-border bg-brand-tint font-semibold text-brand-primary hover:bg-brand-surface-hover"
+    : "h-8 px-2 xl:px-2.5 font-semibold text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
   // Icon-only in the table: 32x32 clears the WCAG 2.5.8 target-size minimum, the trash glyph
   // carries the destructive meaning by shape rather than by colour, and the accessible name is
   // supplied explicitly below.
   const deleteClass = isCard
-    ? "min-h-[2.25rem] h-auto px-2 py-2 font-semibold text-slate-500 hover:text-brand-danger"
-    : "h-8 w-8 border border-brand-border p-0 text-slate-500 hover:border-brand-danger-border hover:bg-brand-danger-bg hover:text-brand-danger";
+    ? "min-h-[2.25rem] h-auto px-2 py-2 font-semibold text-brand-text-muted hover:text-brand-danger"
+    : "h-8 w-8 border border-brand-border p-0 text-brand-text-muted hover:border-brand-danger-border hover:bg-brand-danger-bg hover:text-brand-danger";
   const iconSize = isCard ? "h-4 w-4" : "h-3.5 w-3.5";
   // Between lg and xl the shell leaves the table roughly 720px, so the labelled controls do
   // not fit. They collapse to icons there; the text stays in the DOM for assistive tech.
@@ -92,7 +92,7 @@ export function HistorySessionActions({
         aria-label={named("Preview")}
         title="Preview"
       >
-        <Eye className={`${iconSize} text-slate-500`} aria-hidden="true" />
+        <Eye className={`${iconSize} text-brand-text-muted`} aria-hidden="true" />
         <span className={labelClass}>Preview</span>
       </Button>
       {mayReopen && (

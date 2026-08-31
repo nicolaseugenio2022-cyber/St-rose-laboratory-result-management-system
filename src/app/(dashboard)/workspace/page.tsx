@@ -1,8 +1,6 @@
 import { GuidedWorkspace } from "@/features/workspace/GuidedWorkspace";
-import {
-  listActivePersonnelAction,
-  listRegistryTemplatesAction,
-} from "@/features/server-boundary/server-actions";
+import { listRegistryTemplatesAction } from "@/features/server-boundary/server-actions";
+import { listWorkspacePersonnelAction } from "@/features/server-boundary/workspace-personnel-actions";
 
 export const runtime = "nodejs";
 
@@ -22,22 +20,22 @@ export default async function WorkspacePage({
   // its data instead of fetching after hydration. On any failure both fall back to undefined and
   // GuidedWorkspace runs its original client fetches - no error path is lost, nothing is cached.
   let initialTemplates;
-  let initialPersonnel;
+  let initialDirectory;
   try {
-    [initialTemplates, initialPersonnel] = await Promise.all([
+    [initialTemplates, initialDirectory] = await Promise.all([
       listRegistryTemplatesAction({}),
-      listActivePersonnelAction(),
+      listWorkspacePersonnelAction(),
     ]);
   } catch {
     initialTemplates = undefined;
-    initialPersonnel = undefined;
+    initialDirectory = undefined;
   }
 
   return (
     <GuidedWorkspace
       reopenSessionId={typeof sessionId === "string" ? sessionId : undefined}
       initialTemplates={initialTemplates}
-      initialPersonnel={initialPersonnel}
+      initialPersonnel={initialDirectory?.personnel}
     />
   );
 }

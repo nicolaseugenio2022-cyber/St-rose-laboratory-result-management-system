@@ -5,16 +5,25 @@ import { IPatientReportSession, ILaboratoryReport } from "@/domain/models/interf
 import { createNativeSessionPdf, NativeLivePreviewPage } from "./native";
 import { resolveSessionRenderModel } from "./model";
 import "./styles/a4-document.css";
-import { Printer, Download, Eye, Layers, Loader2 } from "lucide-react";
+import { Printer, Download, Loader2 } from "lucide-react";
 
 export interface SharedRenderingEngineProps {
   session: IPatientReportSession;
   targetOutput?: "ScreenPreview" | "BrowserPrint" | "PDFOutput";
+  /**
+   * Render-only signature references, keyed by personnel id, for draft rendering.
+   *
+   * Optional, and consumed nowhere but the resolver below. History passes nothing and keeps
+   * resolving from its frozen snapshot; the Workspace passes the current roster's assets because
+   * its own client state no longer carries a signature reference to resolve from.
+   */
+  signatureAssets?: Readonly<Record<string, string>>;
 }
 
 export function SharedRenderingEngine({
   session,
   targetOutput = "ScreenPreview",
+  signatureAssets,
 }: SharedRenderingEngineProps) {
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -25,12 +34,11 @@ export function SharedRenderingEngine({
 
   // Filter only active, selected laboratory reports in the session
   const activeReports = session.reports;
-  const resolvedSession = useMemo(() => resolveSessionRenderModel(session), [session]);
+  const resolvedSession = useMemo(
+    () => resolveSessionRenderModel(session, undefined, signatureAssets),
+    [session, signatureAssets]
+  );
   const isAccessionAssigned = session.accessionNumber !== null;
-  // The house focus token is ring-brand-primary/30, which is unreadable on this slate-900
-  // toolbar. These controls take a white ring offset against their own surface instead.
-  const DARK_FOCUS_RING =
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900";
 
   // Handle Browser Print Target
   const handlePrint = () => {
@@ -99,128 +107,127 @@ export function SharedRenderingEngine({
 
   if (activeReports.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-xs">
+      <div className="rounded-lg border border-brand-card-border bg-brand-card p-6 text-center text-xs text-slate-500">
         No active laboratory reports selected in session.
       </div>
     );
   }
 
+  const unassignedTitle = "Save the session to assign an accession number before printing";
+  const unassignedExportTitle = "Save the session to assign an accession number before exporting";
+
+  const zoomButtonClass = (isSelected: boolean) =>
+    `inline-flex min-h-6 items-center rounded px-2 text-[11px] font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring ${
+      isSelected ? "bg-brand-card text-brand-text shadow-sm ring-1 ring-brand-card-border" : "text-brand-text-muted hover:text-brand-text"
+    }`;
+
+  const chromeActionClass =
+    "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none";
+
   return (
-    <div className="w-full space-y-4">
-      {/* Screen Preview Interactive Toolbar (Suppressed during print) */}
-      <div className="no-print bg-slate-900 text-white rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-800 text-blue-400">
-            <Eye className="h-4 w-4" />
-          </div>
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-              Shared Rendering Engine — Preview & Export Target
-            </h3>
-            <p className="text-[11px] text-slate-400">
-              Accession:{" "}
-              <span
-                className={
-                  isAccessionAssigned
-                    ? "font-mono text-blue-300 font-semibold"
-                    : "font-semibold italic text-slate-400"
-                }
-              >
-                {session.accessionNumber ?? "Not assigned"}
-              </span>{" "}
-              | Total A4 Pages: {activeReports.length}
-            </p>
-          </div>
+    <div className="flex w-full min-w-0 flex-col">
+      {/* One compact operator toolbar. Everything interactive here is chrome and is
+          suppressed in print; the document below is the only thing that prints. */}
+      <div className="no-print flex flex-wrap items-center gap-x-3 gap-y-2 rounded-t-lg border border-brand-card-border bg-brand-background px-3 py-2 print:hidden">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <h3 className="shrink-0 text-xs font-semibold text-brand-text">Report preview</h3>
+          <p className="min-w-0 truncate text-[11px] text-brand-text-muted">
+            <span
+              className={
+                isAccessionAssigned ? "font-mono font-semibold text-brand-text" : "italic text-brand-text-muted"
+              }
+            >
+              {session.accessionNumber ?? "Not assigned"}
+            </span>
+            <span aria-hidden="true" className="px-1.5 text-slate-300">
+              ·
+            </span>
+            {activeReports.length === 1 ? "1 page" : `${activeReports.length} pages`}
+          </p>
         </div>
 
-        {/* Viewport Zoom & Actions */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Zoom Selector */}
-          <div
-            role="group"
-            aria-label="Preview zoom level"
-            className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 text-xs"
+        <div
+          role="group"
+          aria-label="Preview zoom level"
+          className="flex shrink-0 items-center gap-0.5 rounded-md bg-brand-surface-hover p-0.5"
+        >
+          <button
+            type="button"
+            onClick={() => setZoomLevel(75)}
+            aria-pressed={zoomLevel === 75}
+            className={zoomButtonClass(zoomLevel === 75)}
           >
-            <button
-              type="button"
-              onClick={() => setZoomLevel(75)}
-              aria-pressed={zoomLevel === 75}
-              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
-                zoomLevel === 75 ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              75%
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel(100)}
-              aria-pressed={zoomLevel === 100}
-              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
-                zoomLevel === 100 ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              100%
-            </button>
-          </div>
+            75%
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomLevel(100)}
+            aria-pressed={zoomLevel === 100}
+            className={zoomButtonClass(zoomLevel === 100)}
+          >
+            100%
+          </button>
+        </div>
 
-          {/* Action Buttons */}
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={handlePrint}
             disabled={!isAccessionAssigned}
-            title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before printing"}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-brand-primary text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:pointer-events-none ${DARK_FOCUS_RING}`}
+            title={isAccessionAssigned ? undefined : unassignedTitle}
+            className={`${chromeActionClass} border border-brand-border bg-brand-card text-brand-text hover:border-slate-400 hover:bg-brand-surface-hover`}
           >
-            <Printer className="h-3.5 w-3.5" />
-            Print Report
+            <Printer aria-hidden="true" className="h-3.5 w-3.5" />
+            Print report
           </button>
 
           <button
             type="button"
             onClick={handleExportPDF}
             disabled={isExportingPDF || !isAccessionAssigned}
-            title={isAccessionAssigned ? undefined : "Save the session to assign an accession number before exporting"}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:pointer-events-none ${DARK_FOCUS_RING}`}
+            title={isAccessionAssigned ? undefined : unassignedExportTitle}
+            className={`${chromeActionClass} bg-brand-primary text-brand-primary-foreground shadow-sm hover:bg-brand-primary-hover active:shadow-none`}
           >
             {isExportingPDF ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
                 Generating PDF ({pdfProgress}%)...
               </>
             ) : (
               <>
-                <Download className="h-3.5 w-3.5" />
-                Export PDF Stream
+                <Download aria-hidden="true" className="h-3.5 w-3.5" />
+                Export PDF
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Page Navigation Tabs (Suppressed during print) */}
+      {/* Page Navigation (Suppressed during print) */}
       {activeReports.length > 1 && (
         <nav
           aria-label="Report pages"
-          className="no-print flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200"
+          className="no-print flex items-center gap-1 overflow-x-auto border-x border-b border-brand-card-border bg-brand-card px-2 py-1.5 print:hidden"
         >
-          <span className="shrink-0 font-bold text-slate-500 uppercase tracking-wider text-[10px] mr-1 inline-flex items-center gap-1">
-            <Layers className="h-3 w-3" /> PAGES:
-          </span>
-          {activeReports.map((rep, idx) => (
-            <button
-              key={rep.id || rep.templateCode}
-              type="button"
-              onClick={() => setActivePageIndex(idx)}
-              aria-current={activePageIndex === idx ? "page" : undefined}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
-                activePageIndex === idx
-                  ? "bg-brand-primary text-white border-brand-primary"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              Page {idx + 1}: {rep.templateTitle}
-            </button>
-          ))}
+          {activeReports.map((rep, idx) => {
+            const isCurrent = activePageIndex === idx;
+            return (
+              <button
+                key={rep.id || rep.templateCode}
+                type="button"
+                onClick={() => setActivePageIndex(idx)}
+                aria-current={isCurrent ? "page" : undefined}
+                className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border-b-2 px-2.5 text-xs transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring ${
+                  isCurrent
+                    ? "border-b-brand-primary bg-brand-tint font-semibold text-brand-text"
+                    : "border-b-transparent font-medium text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text"
+                }`}
+              >
+                <span className="font-mono text-[11px] tabular-nums text-brand-text-muted">{idx + 1}</span>
+                {rep.templateTitle}
+              </button>
+            );
+          })}
         </nav>
       )}
 
@@ -232,11 +239,11 @@ export function SharedRenderingEngine({
         ref={pagesContainerRef}
         data-live-preview-viewport="true"
         data-accession-unassigned={isAccessionAssigned ? undefined : "true"}
-        className="w-full max-h-[calc(100dvh-16rem)] overflow-auto bg-slate-100/60 rounded-xl border border-slate-200"
+        className="max-h-[calc(100dvh-14rem)] w-full overflow-auto rounded-b-lg border-x border-b border-brand-card-border bg-brand-background"
       >
         <div
           data-live-preview-page-track="true"
-          className="flex w-max min-w-full flex-col items-center gap-8 py-4"
+          className="flex w-max min-w-full flex-col items-center gap-6 py-4"
         >
           {targetOutput === "ScreenPreview" ? (
             // Render only the selected report in the interactive preview viewport.

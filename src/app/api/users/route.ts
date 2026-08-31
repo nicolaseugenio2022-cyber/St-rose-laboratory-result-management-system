@@ -1,86 +1,38 @@
 import { NextResponse } from "next/server";
 import { userService } from "@/services/user-service-instance";
 import { auditService } from "@/services/audit-service-instance";
-import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
+import {
+  authorizeOrdinaryAccountRead,
+  authorizeOrdinaryAccountWrite,
+} from "@/features/server-boundary/ordinary-account-guard";
+import {
+  toAccountDirectory,
+  toAdminAccountEntry,
+} from "@/features/users/account-directory-entry";
 import { createUserSchema } from "@/lib/validations/userValidation";
 import type { User } from "@/types/user";
 
 export async function GET() {
-  const currentUserProfile = await getCurrentUserProfile();
-  const access = checkRouteAccess("/users", currentUserProfile);
-
-  if (!access.allowed) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: currentUserProfile?.role ?? null,
-      targetRole: null,
-      performedByUserId: currentUserProfile?.id ?? null,
-      performedByUsername: currentUserProfile?.username ?? null,
-      details: {
-        reasonCode: currentUserProfile ? "role_not_authorized" : "unauthenticated",
-        method: "GET",
-      },
-    });
+  const auth = await authorizeOrdinaryAccountRead("GET");
+  if (!auth.authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  if (!currentUserProfile) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: null,
-      targetRole: null,
-      performedByUserId: null,
-      performedByUsername: null,
-      details: {
-        reasonCode: "unauthenticated",
-        method: "GET",
-      },
-    });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  return NextResponse.json(
-    await userService.getUsersVisibleTo(currentUserProfile.role)
-  );
+  // Role-aware projection. Admin receives the five directory fields its table renders; Developer
+  // receives the three ADR-005 names and nothing else. Previously this returned the service result
+  // unprojected, so every caller - Developer included - received tokenVersion, passwordUpdatedAt
+  // and both first-login flags in the response body. Which records are visible is unchanged; only
+  // how much of each record is.
+  const users = await userService.getUsersVisibleTo(auth.caller.role);
+  return NextResponse.json(toAccountDirectory(users, auth.caller.role));
 }
 
 export async function POST(request: Request) {
-  const currentUserProfile = await getCurrentUserProfile();
-  const access = checkRouteAccess("/users", currentUserProfile);
-
-  if (!access.allowed) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: currentUserProfile?.role ?? null,
-      targetRole: null,
-      performedByUserId: currentUserProfile?.id ?? null,
-      performedByUsername: currentUserProfile?.username ?? null,
-      details: {
-        reasonCode: currentUserProfile ? "role_not_authorized" : "unauthenticated",
-        method: "POST",
-      },
-    });
+  const auth = await authorizeOrdinaryAccountWrite("POST");
+  if (!auth.authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-
-  if (!currentUserProfile) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: null,
-      targetRole: null,
-      performedByUserId: null,
-      performedByUsername: null,
-      details: {
-        reasonCode: "unauthenticated",
-        method: "POST",
-      },
-    });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const currentUserProfile = auth.caller;
 
   const payload = await request.json();
   const parsed = createUserSchema.safeParse(payload);
@@ -95,6 +47,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error?.message || "Failed to create user" }, { status: 400 });
   }
 
+  // The audit event still reads the full record - it runs on the server and target_reference and
+  // details are unchanged. Only the response body is projected.
   await auditService.emit({
     category: "AuthAccount",
     eventType: "AccountCreated",
@@ -105,5 +59,5 @@ export async function POST(request: Request) {
     targetReference: user.username,
     details: { targetUserId: user.id, status: user.status },
   });
-  return NextResponse.json(user);
+  return NextResponse.json(toAdminAccountEntry(user));
 }

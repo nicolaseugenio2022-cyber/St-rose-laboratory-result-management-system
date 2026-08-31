@@ -87,8 +87,10 @@ export function SkeletonRegion({
   ...props
 }: SkeletonRegionProps) {
   return (
-    <div aria-busy={isLoading} aria-live="polite" className={className} {...props}>
-      {isLoading && <span className="sr-only">{label}</span>}
+    <div aria-busy={isLoading} className={className} {...props}>
+      <span role="status" aria-live="polite" className="sr-only">
+        {isLoading ? label : ""}
+      </span>
       {children}
     </div>
   );

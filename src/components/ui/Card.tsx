@@ -11,8 +11,10 @@ export function Card({ className, variant = "default", children, ...props }: Car
   // does nothing. A consumer with a real interactive contract adds its own hover treatment.
   const baseStyles = "rounded-lg bg-brand-card transition-colors";
   const variants = {
-    default: "border border-brand-card-border shadow-sm",
-    flat: "border border-brand-border-subtle bg-brand-surface-hover",
+    default: "border border-brand-card-border",
+    // --color-border-subtle and --color-surface-hover are both #f1f5f9, so this
+    // border was invisible against its own fill.
+    flat: "border border-brand-card-border bg-brand-surface-hover",
     outline: "border border-brand-card-border",
   };
 
@@ -40,5 +42,5 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("mt-3 flex items-center border-t border-brand-border-subtle p-4 pt-3", className)} {...props} />;
+  return <div className={cn("flex items-center border-t border-brand-border-subtle p-4 pt-3", className)} {...props} />;
 }

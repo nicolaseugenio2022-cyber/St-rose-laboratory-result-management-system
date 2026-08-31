@@ -81,6 +81,10 @@ export function ConfirmDialog({
           variant="outline"
           onClick={onCancel}
           disabled={isPending}
+          // Confirming or cancelling a destructive action is the last thing a finger touches
+          // before something is irreversible; 40px is under the comfortable target. Desktop
+          // density is unchanged above sm.
+          className="min-h-11 sm:min-h-10"
         >
           {cancelLabel}
         </Button>
@@ -90,6 +94,7 @@ export function ConfirmDialog({
           onClick={onConfirm}
           disabled={isPending || confirmDisabled}
           aria-busy={isPending || undefined}
+          className="min-h-11 sm:min-h-10"
         >
           {isPending ? pendingLabel ?? `${confirmLabel}…` : confirmLabel}
         </Button>

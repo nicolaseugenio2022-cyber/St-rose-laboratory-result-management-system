@@ -18,6 +18,7 @@ import { ComputedInput } from "../src/features/workspace/components/controls/Com
 import { DEFAULT_NEW_SESSION_ADDRESS, initializeNewSessionAddress } from "../src/features/workspace/encoding/new-session-demographics";
 import { resolveReferenceDisplay } from "../src/domain/reference-display";
 import { evaluateEncodingResult } from "../src/features/workspace/encoding/evaluate-encoding-result";
+import { RESULT_INPUT_SELECTOR, advanceToNextResultInput, type ResultInputEntry, type ResultInputLike, type ResultTabEvent } from "../src/features/workspace/encoding/result-tab-navigation";
 import { ParameterRow } from "../src/features/workspace/components/controls/ParameterRow";
 import { evaluateParameterValue } from "../src/services/parameter-evaluation-service";
 import { GenericReportResolver } from "../src/services/generic-report-resolver";
@@ -261,7 +262,15 @@ function findCheckbox(node: React.ReactNode): React.ReactElement<Record<string, 
   return null;
 }
 const selectableCheckbox = findCheckbox(selectableRow)!;
-assert(selectableCheckbox.props.tabIndex === -1 && selectableCheckbox.props.disabled === false, "selectable checkbox is mouse-enabled while excluded from Tab order regardless of required state");
+// UX-10B8-R1-R1: individual keyboard selection is now the approved behaviour, so the old
+// "excluded from Tab order" pin is retired. Exact equality against undefined, not a
+// "not -1" check: it fails for tabIndex={-1}, and equally for a tabIndex={0} that would
+// force the control into an author-managed order instead of the DOM one.
+// UX-10B8-R3: wording narrowed. Forward Tab FROM a result input now skips ahead to the
+// next result, so this no longer claims the checkbox sits in the forward walk - it claims
+// exactly what it tests: the checkbox is enabled, focusable, and carries no tabIndex
+// override, which is what keeps it reachable by Shift+Tab and by tabbing into the row.
+assert(selectableCheckbox.props.tabIndex === undefined && selectableCheckbox.props.disabled === false, "selectable checkbox is enabled and natively focusable, carrying no tabIndex override, regardless of required state");
 (selectableCheckbox.props.onChange as (event: { target: { checked: boolean } }) => void)({ target: { checked: false } });
 assert(clickedSelection === false, "mouse checkbox change deselects an explicitly selectable required parameter in a draft");
 const lockedCheckbox = findCheckbox(ParameterRow({ parameter: { ...selectableRequired, isSelectable: false }, isSelected: true, onToggleSelect: noOp, children: React.createElement("input") }))!;
@@ -282,7 +291,10 @@ for (const definition of ReportDefinitionRegistry.getAllDefinitions()) {
       : { parameter, value: parameter.defaultValue || "", isSelected: true, onToggleSelect: noOp, onChange: noOp };
     const markup = renderToStaticMarkup(React.createElement(Component as React.ComponentType<any>, props));
     assert(markup.includes(`data-control-type="${parameter.inputType}"`), `${definition.templateCode}/${parameter.parameterCode} renders its exact control type`);
-    assert(markup.includes('data-parameter-selector="true"') && markup.includes('tabindex="-1"'), `${definition.templateCode}/${parameter.parameterCode} selector is excluded from Tab order`);
+    // The presence guard is what gives the negative its meaning: without it a markup that
+    // rendered no selector at all would satisfy "emits no tabindex" trivially.
+    const selectorTag = markup.match(/<input(?=[^>]*data-parameter-selector="true")[^>]*>/)?.[0] || "";
+    assert(selectorTag !== "" && !/\btabindex=/i.test(selectorTag) && !/tabindex="-1"/i.test(markup), `${definition.templateCode}/${parameter.parameterCode} selector is present and natively focusable, emitting no tabindex override`);
     if (parameter.inputType === "Computed") assert(markup.includes("disabled=\"\"") && markup.includes("readOnly=\"\""), `${definition.templateCode}/${parameter.parameterCode} computed control is read-only and skipped`);
     if (parameter.options) for (const option of parameter.options) assert(markup.includes(`value="${option}"`), `${definition.templateCode}/${parameter.parameterCode} contains exact option ${option}`);
     if (parameter.suffixSpec) assert(markup.includes("data-fixed-suffix=\"true\"") && markup.includes(parameter.suffixSpec.suffix.trim()), `${definition.templateCode}/${parameter.parameterCode} fixed suffix is outside its editable value`);
@@ -374,7 +386,11 @@ assert(autoComputedMarkup.includes('data-control-type="Computed"') && autoComput
 assert(autoComputedMarkup.includes("disabled=\"\"") && autoComputedMarkup.includes("readOnly=\"\""), "the default Auto computed control stays disabled and read-only");
 assert(autoComputedMarkup.includes('role="switch"') && autoComputedMarkup.includes('aria-checked="false"') && autoComputedMarkup.includes('aria-label="Manual entry for HDL"'), "Auto renders a mode switch whose checked state means Manual");
 assert(!/role="switch"[^>]*tabindex=/i.test(autoComputedMarkup), "the mode switch keeps its natural Tab order and adds no tabindex override");
-assert(autoComputedMarkup.includes('data-parameter-selector="true"') && autoComputedMarkup.includes('tabindex="-1"'), "the pinned selection checkbox stays out of Tab order beside the mode switch");
+// Pairs with the mode-switch assertion directly above: that one proves the switch adds no
+// override, this one proves the selector beside it does not either, and the markup-wide
+// negative proves nothing else in the computed control reintroduces one.
+const autoSelectorTag = autoComputedMarkup.match(/<input(?=[^>]*data-parameter-selector="true")[^>]*>/)?.[0] || "";
+assert(autoSelectorTag !== "" && !/\btabindex=/i.test(autoSelectorTag) && !/tabindex="-1"/i.test(autoComputedMarkup), "the enabled selection checkbox stays natively focusable beside the mode switch, and the computed control emits no tabindex override anywhere");
 
 // Manual: editable, still declaratively Computed, and disabled when its row is deselected.
 const manualComputedMarkup = renderToStaticMarkup(React.createElement(ComputedInput, { parameter: hdlSpec, value: "45", isSelected: true, calculationMode: "Manual", evaluationOutcome: "Normal", onToggleSelect: noOp, onChange: noOp }));
@@ -694,5 +710,101 @@ const headerSource = readFileSync(join(process.cwd(), "src/components/layout/Hea
 const headerLogoutIndex = headerSource.indexOf("m.logoutAction()");
 const headerClearIndex = headerSource.indexOf("clearWorkspaceRecovery();");
 assert(headerClearIndex >= 0 && headerLogoutIndex > headerClearIndex, "Logout clears workspace recovery before signing the operator out");
+
+// --- UX-10B8-R3: result-to-result tabForward Tab -------------------------------------------
+// Driven through the real decision function with controlled fakes rather than by looking for
+// a handler name in source: a named handler that focuses the wrong element would satisfy a
+// source check and fail every one of these.
+type FakeResultInput = ResultInputEntry & { id: string; focused: boolean };
+function makeFakeResultInput(id: string, over: Partial<ResultInputLike> = {}): FakeResultInput {
+  const fakeEntry = {
+    id,
+    focused: false,
+    element: { id },
+    disabled: over.disabled,
+    readOnly: over.readOnly,
+    isVisible: over.isVisible,
+    focus: () => {
+      fakeEntry.focused = true;
+    },
+  } as FakeResultInput;
+  return fakeEntry;
+}
+function makeTabEvent(target: unknown, over: Partial<ResultTabEvent> = {}) {
+  let prevented = false;
+  const event: ResultTabEvent = {
+    key: "Tab",
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    target,
+    preventDefault: () => {
+      prevented = true;
+    },
+    ...over,
+  };
+  return { event, wasPrevented: () => prevented };
+}
+
+// The Lipid Profile shape: an editable result, then an Auto computed result that is disabled
+// and read-only, then the next editable result.
+const tabFbs = makeFakeResultInput("FBS");
+const tabAutoHdl = makeFakeResultInput("HDL-auto", { disabled: true, readOnly: true });
+const tabDeselected = makeFakeResultInput("DESELECTED", { disabled: true });
+const tabHiddenRow = makeFakeResultInput("HIDDEN", { isVisible: false });
+const tabCholesterol = makeFakeResultInput("CHOLESTEROL");
+const tabGrid: FakeResultInput[] = [tabFbs, tabAutoHdl, tabDeselected, tabHiddenRow, tabCholesterol];
+
+const tabForward = makeTabEvent(tabFbs.element);
+const tabTookOver = advanceToNextResultInput(tabForward.event, tabGrid);
+assert(tabTookOver === true && tabForward.wasPrevented() === true, "forward Tab from an editable result is intercepted and calls preventDefault");
+assert(tabCholesterol.focused === true, "forward Tab from an editable result focuses the next eligible result input");
+assert(tabAutoHdl.focused === false && tabDeselected.focused === false && tabHiddenRow.focused === false, "forward Tab skips read-only Auto results, deselected disabled results, and hidden results");
+
+// The selection checkbox is skipped structurally: it does not carry the data-encoding-input
+// contract, so it is never a candidate. Proven against the real rendered row, not asserted.
+const tabSelectorMarkup = renderToStaticMarkup(
+  React.createElement(NumericTextInput, { parameter: cbcHemoglobin, value: "", isSelected: true, onToggleSelect: noOp, onChange: noOp })
+);
+const tabSelectorTag = tabSelectorMarkup.match(/<input(?=[^>]*data-parameter-selector="true")[^>]*>/)?.[0] || "";
+assert(tabSelectorTag !== "" && !/data-encoding-input/.test(tabSelectorTag), "the parameter-selection checkbox carries no data-encoding-input contract, so the forward-Tab walk cannot land on it");
+assert(RESULT_INPUT_SELECTOR === "[data-encoding-input]", "the forward-Tab walk is scoped to the data-encoding-input contract");
+
+// Shift+Tab is left entirely to the browser, which is what keeps the row's checkbox and mode
+// switch reachable backwards.
+const tabBack = makeTabEvent(tabCholesterol.element, { shiftKey: true });
+assert(advanceToNextResultInput(tabBack.event, tabGrid) === false && tabBack.wasPrevented() === false, "Shift+Tab is not intercepted");
+for (const tabModifier of ["ctrlKey", "altKey", "metaKey"] as const) {
+  const tabModified = makeTabEvent(tabFbs.element, { [tabModifier]: true } as Partial<ResultTabEvent>);
+  assert(advanceToNextResultInput(tabModified.event, tabGrid) === false && tabModified.wasPrevented() === false, `Tab modified by ${tabModifier} is not intercepted`);
+}
+
+// Boundary: the tabLast eligible result hands Tab tabBack rather than wrapping to the first.
+const tabLast = makeTabEvent(tabCholesterol.element);
+assert(advanceToNextResultInput(tabLast.event, tabGrid) === false && tabLast.wasPrevented() === false && tabFbs.focused === false, "forward Tab on the last eligible result is not intercepted and never wraps");
+
+// An event raised by something that is not a result input - a checkbox, a mode switch - is
+// not ours to take.
+const tabForeign = makeTabEvent({ id: "not-a-result-input" });
+assert(advanceToNextResultInput(tabForeign.event, tabGrid) === false && tabForeign.wasPrevented() === false, "forward Tab from a non-result control is not intercepted");
+
+// A non-Tab key is never touched.
+const tabTyping = makeTabEvent(tabFbs.element, { key: "Enter" });
+assert(advanceToNextResultInput(tabTyping.event, tabGrid) === false && tabTyping.wasPrevented() === false, "keys other than Tab are not intercepted");
+
+// No tabIndex is introduced on any result input by the fast path.
+for (const definition of ReportDefinitionRegistry.getAllDefinitions()) {
+  for (const parameter of definition.parameters) {
+    const Component = controls[parameter.inputType as keyof typeof controls];
+    if (!Component) continue;
+    const props = parameter.inputType === "Computed"
+      ? { parameter, value: "", isSelected: true, onToggleSelect: noOp }
+      : { parameter, value: parameter.defaultValue || "", isSelected: true, onToggleSelect: noOp, onChange: noOp };
+    const markup = renderToStaticMarkup(React.createElement(Component as React.ComponentType<any>, props));
+    const tabEncodingTag = markup.match(/<(?:input|select)(?=[^>]*data-encoding-input)[^>]*>/)?.[0] || "";
+    assert(tabEncodingTag !== "" && !/\btabindex=/i.test(tabEncodingTag), `${definition.templateCode}/${parameter.parameterCode} result input carries no tabIndex override`);
+  }
+}
 
 console.log("=== ALL CHECKPOINT B4 VERIFICATION TESTS PASSED ===");

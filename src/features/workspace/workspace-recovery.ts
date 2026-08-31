@@ -39,6 +39,32 @@ export function clearWorkspaceRecovery(): void {
   }
 }
 
+/**
+ * Strip any signature reference from the signatories about to be written to storage.
+ *
+ * Belt and braces. The Workspace no longer composes a reference into its signatories at all, so
+ * in practice there is nothing here to remove - but this function is the last thing that runs
+ * before clinical data lands in `sessionStorage` on a shared laboratory workstation, and it is
+ * the one place a future regression upstream would become durable rather than transient. It costs
+ * one map and removes an entire class of "how did that get on disk" question.
+ *
+ * Returns a new object; the caller's live session is never mutated.
+ */
+function withoutSignatureReferences(
+  session: PatientReportSessionTransport
+): PatientReportSessionTransport {
+  return {
+    ...session,
+    reports: session.reports.map((report) => ({
+      ...report,
+      signatories: report.signatories.map(({ ...signatory }) => {
+        delete (signatory as { signatureImageUrl?: unknown }).signatureImageUrl;
+        return signatory;
+      }),
+    })),
+  };
+}
+
 export function saveWorkspaceRecovery(
   payload: Omit<WorkspaceRecoveryPayload, "v" | "savedAt">
 ): void {
@@ -53,6 +79,7 @@ export function saveWorkspaceRecovery(
         v: RECOVERY_VERSION,
         savedAt: new Date().toISOString(),
         ...payload,
+        session: withoutSignatureReferences(payload.session),
       } satisfies WorkspaceRecoveryPayload)
     );
   } catch {

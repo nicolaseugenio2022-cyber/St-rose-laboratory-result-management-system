@@ -15,12 +15,16 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, options, error, helperText, id, disabled, children, ...props }, ref) => {
-    const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
-    // Mirrors Input: the message is bound to the control, and a consumer-supplied
-    // aria-describedby still overrides it because the prop spread comes afterwards.
     const reactId = useId();
-    const errorId = `${selectId ?? reactId}-error`;
-    const helperId = `${selectId ?? reactId}-helper`;
+    // Correction 1: identity comes from useId, never from label text. Two controls sharing a
+    // label used to collapse onto one id, which silently pointed both labels and both
+    // aria-describedby references at whichever control rendered last. An explicit caller id
+    // still wins outright.
+    const selectId = id ?? `select-${reactId}`;
+    // The message stays bound to the control, and a consumer-supplied aria-describedby
+    // still overrides it because the prop spread comes afterwards.
+    const errorId = `${selectId}-error`;
+    const helperId = `${selectId}-helper`;
     const describedBy = error ? errorId : helperText ? helperId : undefined;
 
     return (
@@ -37,8 +41,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            "flex h-10 w-full rounded-md border border-brand-border bg-brand-surface px-3 text-sm text-brand-text transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-focus-ring/40 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60",
-            error && "border-brand-danger focus:border-brand-danger focus:ring-brand-danger/30",
+            "flex h-10 w-full rounded-md border border-brand-border bg-brand-surface px-3 text-sm text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60",
+            error && "border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger",
             className
           )}
           {...props}
@@ -48,6 +52,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               {opt.label}
             </option>
           ))}
+          {children}
         </select>
         {error && (
           <p id={errorId} className="text-[11px] font-medium text-brand-danger">

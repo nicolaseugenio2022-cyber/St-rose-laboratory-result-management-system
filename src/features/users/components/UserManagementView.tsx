@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Search, Users } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, RefreshCw, Search, X } from "lucide-react";
 import { UserRole } from "@/types/user";
 import { resetUserPasswordAction } from "@/features/server-boundary/user-account-actions";
 import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
@@ -11,58 +11,140 @@ import { Alert } from "@/components/ui/Alert";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import type {
+  AccountDirectory,
+  AdminAccountEntry,
+} from "@/features/users/account-directory-entry";
 import { UserTable } from "./UserTable";
-import type { UserDirectoryEntry } from "./UserTable";
+import { ROLE_LABEL } from "./RoleBadge";
+import { ReadOnlyUserDirectory } from "./ReadOnlyUserDirectory";
 import { UserFormModal } from "./UserFormModal";
 import { UserPasswordResetModal } from "./UserPasswordResetModal";
+
+/**
+ * Role language is decided once and reused.
+ *
+ * The filter offers exactly the words the row badge prints, so a reader never has to work out
+ * that the "User" in the filter and the "Laboratory User" on the row name the same role. The
+ * values remain the stored role identifiers - only the wording is presentational.
+ *
+ * There is no Developer option here. This branch is the Admin directory, and an Admin caller is
+ * never served Developer rows, so a Developer filter could only ever return nothing.
+ */
+const ROLE_FILTER_OPTIONS = [
+  { label: "All roles", value: "ALL" },
+  { label: ROLE_LABEL.Admin, value: "Admin" },
+  { label: ROLE_LABEL.User, value: "User" },
+];
+
+const REFRESH_FAILED_MESSAGE =
+  "The account directory could not be refreshed. The accounts below are the last copy that loaded successfully.";
+const INITIAL_LOAD_FAILED_MESSAGE =
+  "The account directory could not be loaded, so no accounts are being shown. Nothing has been created or removed.";
 
 export interface UserManagementViewProps {
   currentUserId: string;
   currentUserRole?: UserRole;
   /**
-   * Server-rendered directory. When present the mount fetch is skipped, so the table paints with
-   * the page instead of after a second round trip. Every later refresh - and every refresh after a
-   * mutation - still reloads from the server through `loadUsers`.
+   * Server-rendered directory, already projected for this caller's access level. When present the
+   * mount fetch is skipped, so the table paints with the page instead of after a second round
+   * trip. Every later refresh - and every refresh after a mutation - still reloads from the server
+   * through `loadUsers`, which returns the same role-tagged shape.
    */
-  initialUsers?: UserDirectoryEntry[];
+  initialDirectory?: AccountDirectory;
 }
 
 export function UserManagementView({
   currentUserId,
   currentUserRole,
-  initialUsers,
+  initialDirectory,
 }: UserManagementViewProps) {
-  const [users, setUsers] = useState<UserDirectoryEntry[]>(() => initialUsers ?? []);
+  // The directory carries its own access level, so "what may I see" and "what may I do" stay one
+  // decision. A read-only payload cannot be widened into a manageable one by client state.
+  //
+  // The fallback is role-derived and fails closed. `initialDirectory` is undefined whenever the
+  // server render hit a transient read failure, and defaulting that window to "manage" put the
+  // Admin chrome - Add, Edit, Reset, Toggle, Delete - in front of a Developer until the refetch
+  // resolved. The server refused every one of those writes, but the interface was still claiming
+  // a capability the role does not have, which is the opposite of why the read-only view exists.
+  // Anything that is not Admin - including an absent role - resolves to the read-only
+  // presentation. This is presentation only; `authorizeOrdinaryAccountWrite` remains the boundary.
+  const [directory, setDirectory] = useState<AccountDirectory>(
+    () =>
+      initialDirectory ??
+      (currentUserRole === "Admin"
+        ? { access: "manage", entries: [] }
+        : { access: "read-only", entries: [] })
+  );
+  // Three separate facts, because the empty table used to conflate them. `hasLoadedDirectory`
+  // says whether any answer has ever arrived; `loadFailed` says whether the most recent attempt
+  // failed; `isLoadingDirectory` says whether one is in flight. "No accounts exist" is only
+  // sayable when the first two are loaded-and-not-failed.
+  const [hasLoadedDirectory, setHasLoadedDirectory] = useState(initialDirectory !== undefined);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [isLoadingDirectory, setIsLoadingDirectory] = useState(initialDirectory === undefined);
+  const users: AdminAccountEntry[] = directory.access === "manage" ? directory.entries : [];
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserDirectoryEntry | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminAccountEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [pendingDeleteUser, setPendingDeleteUser] = useState<UserDirectoryEntry | null>(null);
+  const [statusUpdatingUserId, setStatusUpdatingUserId] = useState<string | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<AdminAccountEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [resetPasswordUser, setResetPasswordUser] = useState<UserDirectoryEntry | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminAccountEntry | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  // One mutation slot for the whole directory, and a ref rather than state because state is the
+  // one thing that cannot guard this. A `setIsSubmitting(true)` reaches a handler only after a
+  // render, so two events dispatched in the same tick both read the stale `false` and both write;
+  // the `disabled` attribute lags by exactly the same render. The ref is current the instant the
+  // first handler claims it.
+  //
+  // Deliberately one slot, not one per operation: the previous per-operation flags let a status
+  // toggle and a delete run at once, racing two writes and two refreshes against each other with
+  // no way to tell which answer the table ended up showing. Create, update, reset password,
+  // status change and delete now all claim this same slot.
+  //
+  // The state flags above are kept, and stay keyed to the record actually being mutated - they
+  // are what the row spinner and the "Updating..." text are drawn from. The ref is the gate; the
+  // state is the description.
+  const mutationRef = useRef(false);
 
   const loadUsers = useCallback(async () => {
-    const data = await fetchUsers();
-    setUsers(data);
+    setIsLoadingDirectory(true);
+    try {
+      setDirectory(await fetchUsers());
+      setHasLoadedDirectory(true);
+      setLoadFailed(false);
+    } catch {
+      // The failure is recorded as a flag rather than as a sentence, so the wording can be
+      // chosen at render time from what is actually on screen. Nothing here clears `directory`:
+      // a failed refresh must not blank a directory the reader was using.
+      setLoadFailed(true);
+    } finally {
+      setIsLoadingDirectory(false);
+    }
   }, []);
 
   useEffect(() => {
     // The server already delivered the first directory; fetching it again on mount would repeat
     // that load. Only this mount fetch is skipped - mutations and refreshes call loadUsers directly.
-    if (initialUsers) return;
+    if (initialDirectory) return;
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadUsers]);
 
   const handleOpenCreate = () => {
+    // Checked here as well as in the disabled state: `disabled` is rendered from state and so
+    // arrives a render late, which is exactly the window a doubled event lands in.
+    if (mutationRef.current) return;
     setEditingUser(null);
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (user: UserDirectoryEntry) => {
+  const handleOpenEdit = (user: AdminAccountEntry) => {
+    if (mutationRef.current) return;
     setEditingUser(user);
     setIsModalOpen(true);
   };
@@ -73,6 +155,10 @@ export function UserManagementView({
   };
 
   const handleFormSubmit = async (data: CreateUserFormValues | UpdateUserFormValues) => {
+    // Claimed before the first await, so a second submit dispatched in the same tick finds the
+    // slot taken and returns without sending anything.
+    if (mutationRef.current) return;
+    mutationRef.current = true;
     setIsSubmitting(true);
     try {
       if (editingUser) {
@@ -86,17 +172,28 @@ export function UserManagementView({
       console.error("Failed to save user record:", err);
       throw err;
     } finally {
+      // Released on the rethrow path too - the modal reports the failure, the slot must not stay
+      // claimed behind it.
+      mutationRef.current = false;
       setIsSubmitting(false);
     }
   };
 
-  const handleToggleStatus = async (user: UserDirectoryEntry) => {
+  const handleToggleStatus = async (user: AdminAccountEntry) => {
+    // Single-flight across every write path, not just status changes: a duplicate click must not
+    // be able to send this twice, and it must not be able to run alongside a delete.
+    if (mutationRef.current) return;
+
     setActionError(null);
     if (user.id === currentUserId && user.status === "Active") {
       setActionError("You cannot deactivate the currently authenticated account.");
       return;
     }
 
+    // Claimed only once the refusal above is past, and with no await between the check and the
+    // claim, so nothing can interleave and no early return leaves the slot stuck.
+    mutationRef.current = true;
+    setStatusUpdatingUserId(user.id);
     try {
       await updateUserApi(user.id, {
         status: user.status === "Active" ? "Inactive" : "Active",
@@ -105,10 +202,14 @@ export function UserManagementView({
     } catch (err) {
       console.error("Failed to toggle status:", err);
       setActionError((err as Error)?.message || "Failed to update user status.");
+    } finally {
+      mutationRef.current = false;
+      setStatusUpdatingUserId(null);
     }
   };
 
-  const handleOpenPasswordReset = (user: UserDirectoryEntry) => {
+  const handleOpenPasswordReset = (user: AdminAccountEntry) => {
+    if (mutationRef.current) return;
     if (user.role === "Developer") return;
     setResetPasswordUser(user);
   };
@@ -119,7 +220,9 @@ export function UserManagementView({
 
   const handlePasswordReset = async (password: string) => {
     if (!resetPasswordUser || resetPasswordUser.role === "Developer") return;
+    if (mutationRef.current) return;
 
+    mutationRef.current = true;
     setIsResettingPassword(true);
     try {
       await resetUserPasswordAction({
@@ -128,11 +231,15 @@ export function UserManagementView({
       });
       handleClosePasswordReset();
     } finally {
+      // The modal owns the failure message and rethrows, so the release has to sit in `finally`
+      // rather than after the call.
+      mutationRef.current = false;
       setIsResettingPassword(false);
     }
   };
 
-  const handleDeleteUser = (user: UserDirectoryEntry) => {
+  const handleDeleteUser = (user: AdminAccountEntry) => {
+    if (mutationRef.current) return;
     setActionError(null);
     if (user.id === currentUserId) {
       setActionError("You cannot delete the currently authenticated account.");
@@ -145,7 +252,11 @@ export function UserManagementView({
   const handleConfirmDeleteUser = async () => {
     const user = pendingDeleteUser;
     if (!user) return;
+    // A confirm dialog is one button an operator can hit twice, and the second press would ask
+    // the server to delete a record the first press already removed.
+    if (mutationRef.current) return;
 
+    mutationRef.current = true;
     setIsDeleting(user.id);
     try {
       await deleteUserApi(user.id);
@@ -154,6 +265,7 @@ export function UserManagementView({
       console.error("Failed to delete user:", err);
       setActionError((err as Error)?.message || "Failed to delete user account.");
     } finally {
+      mutationRef.current = false;
       setIsDeleting(null);
       setPendingDeleteUser(null);
     }
@@ -167,78 +279,193 @@ export function UserManagementView({
     return matchesSearch && matchesRole;
   });
 
+  const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "ALL";
+
+  const clearDirectoryFilters = () => {
+    setSearchQuery("");
+    setRoleFilter("ALL");
+  };
+
   const activeAdminCount = users.filter(
     (user) => user.role === "Admin" && user.status === "Active"
   ).length;
 
-  const roleFilterOptions = useMemo(() => {
-    const options = [
-      { label: "All Roles", value: "ALL" },
-      { label: "Admin", value: "Admin" },
-      { label: "User", value: "User" },
-    ];
+  // A load failure with nothing behind it is a different state from a refresh failure over rows
+  // that are still perfectly readable. The first replaces the directory; the second annotates it.
+  const directoryUnavailable = loadFailed && !hasLoadedDirectory;
+  const loadErrorMessage = !loadFailed
+    ? null
+    : hasLoadedDirectory
+      ? REFRESH_FAILED_MESSAGE
+      : INITIAL_LOAD_FAILED_MESSAGE;
+  const retryLoadUsers = () => {
+    void loadUsers();
+  };
 
-    if (currentUserRole === "Developer") {
-      options.splice(2, 0, { label: "Developer", value: "Developer" });
-    }
+  const statusUpdatingUser = users.find((user) => user.id === statusUpdatingUserId) ?? null;
 
-    return options;
-  }, [currentUserRole]);
+  // The rendered mirror of the slot above. It is derived from the same per-operation state that
+  // already existed, so nothing new has to be kept in sync, and it disables every write entry
+  // point on screen while any one write is in flight. It is presentation only: it will be a
+  // render behind the ref, which is why the ref - not this - is what the handlers check.
+  const isMutating =
+    isSubmitting || isResettingPassword || isDeleting !== null || statusUpdatingUserId !== null;
+
+  // Read-only callers leave here. Not a flag threaded through the management tree, but a
+  // different component: the create, edit, reset, toggle and delete handlers above are simply not
+  // reachable, and neither are the modals that drive them. There is no disabled control to
+  // re-enable and no prop to get wrong.
+  if (directory.access === "read-only") {
+    return (
+      <ReadOnlyUserDirectory
+        entries={directory.entries}
+        loadError={loadErrorMessage}
+        directoryUnavailable={directoryUnavailable}
+        isLoading={isLoadingDirectory && !hasLoadedDirectory}
+        onRetryLoad={retryLoadUsers}
+        onDismissLoadError={() => setLoadFailed(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <Users className="h-5 w-5 text-brand-primary" />
-            <h2 className="text-2xl font-bold text-brand-text tracking-tight">User Management</h2>
-          </div>
-          <p className="text-xs text-brand-text-muted/90 mt-1.5 leading-relaxed">
-            Manage staff login accounts, assign administrative roles, and toggle account activation status.
-          </p>
-        </div>
-        <Button onClick={handleOpenCreate} size="md" className="gap-2 shrink-0">
-          <Plus className="h-4 w-4" />
-          <span>Add Account</span>
-        </Button>
-      </div>
+      {loadErrorMessage && (
+        <Alert
+          variant={directoryUnavailable ? "destructive" : "warning"}
+          title={
+            directoryUnavailable
+              ? "Account directory could not be loaded"
+              : "Showing previously loaded accounts"
+          }
+          // A directory that never loaded has nothing behind the message, so the message is not
+          // dismissible: dismissing it would leave an unexplained blank screen.
+          onDismiss={directoryUnavailable ? undefined : () => setLoadFailed(false)}
+        >
+          <p>{loadErrorMessage}</p>
+          {!directoryUnavailable && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 min-h-11 sm:min-h-8"
+              onClick={retryLoadUsers}
+              isLoading={isLoadingDirectory}
+            >
+              {!isLoadingDirectory && <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />}
+              Retry
+            </Button>
+          )}
+        </Alert>
+      )}
 
       {actionError && (
         <Alert variant="destructive" onDismiss={() => setActionError(null)}>{actionError}</Alert>
       )}
 
-      {/* Filter & Action Toolbar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-brand-surface p-4 rounded-xl border border-brand-border shadow-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-3 h-4 w-4 text-brand-text-subtle pointer-events-none" />
-          <Input
-            placeholder="Search by username..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {/* Structural: the directory controls sit behind the records rather than presenting as
+          another content card. Add staff account lives here as the page's primary action -
+          the shell already supplies the title this block used to repeat. */}
+      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="min-w-0 flex-1 lg:max-w-sm">
+            <div className="relative">
+              {/* A real label, not a placeholder: a placeholder disappears the moment the field
+                  is used, taking the field's name with it. */}
+              <Input
+                id="user-directory-search"
+                label="Search accounts"
+                type="search"
+                placeholder="Username"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+              <Search aria-hidden="true" className="pointer-events-none absolute bottom-2.5 left-3 h-4 w-4 text-brand-text-subtle" />
+            </div>
+          </div>
+          <div className="w-full shrink-0 lg:w-52">
+            <Select
+              id="user-directory-role"
+              label="Role"
+              options={ROLE_FILTER_OPTIONS}
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            />
+          </div>
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+            {hasActiveFilters && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+                onClick={clearDirectoryFilters}
+              >
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+                Clear
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleOpenCreate}
+              size="sm"
+              className="min-h-11 sm:min-h-8"
+              disabled={isMutating}
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              Add staff account
+            </Button>
+          </div>
         </div>
-        <div className="w-full sm:w-48">
-          <Select
-            options={roleFilterOptions}
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-          />
-        </div>
+        {/* One live region, carrying whichever of the three facts is currently true. A pending
+            status change is announced here and stated in words, which is also what explains the
+            other rows' held toggles - the operator is never left with a dead control and no
+            reason for it. */}
+        <p className="text-xs text-brand-text-muted" aria-live="polite">
+          {directoryUnavailable ? (
+            "Account totals are unavailable until the directory loads."
+          ) : statusUpdatingUser ? (
+            <>
+              Updating{" "}
+              <span className="font-semibold text-brand-text">@{statusUpdatingUser.username}</span>.
+              Other account changes are paused until it finishes.
+            </>
+          ) : (
+            <>
+              Showing <span className="font-semibold text-brand-text">{filteredUsers.length}</span>{" "}
+              of <span className="font-semibold text-brand-text">{users.length}</span> accounts
+            </>
+          )}
+        </p>
       </div>
 
       {/* User Data Table */}
-      <UserTable
-        users={filteredUsers}
-        onEdit={handleOpenEdit}
-        onResetPassword={handleOpenPasswordReset}
-        onToggleStatus={handleToggleStatus}
-        onDelete={handleDeleteUser}
-        currentUserId={currentUserId}
-        activeAdminCount={activeAdminCount}
-        deletingUserId={isDeleting}
-      />
+      <div aria-busy={isLoadingDirectory || undefined}>
+        <UserTable
+          users={filteredUsers}
+          onEdit={handleOpenEdit}
+          onResetPassword={handleOpenPasswordReset}
+          onToggleStatus={handleToggleStatus}
+          onDelete={handleDeleteUser}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+          activeAdminCount={activeAdminCount}
+          deletingUserId={isDeleting}
+          statusUpdatingUserId={statusUpdatingUserId}
+          isMutating={isMutating}
+          loadState={
+            directoryUnavailable
+              ? "failed"
+              : isLoadingDirectory && !hasLoadedDirectory
+                ? "loading"
+                : "ready"
+          }
+          onRetryLoad={retryLoadUsers}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={clearDirectoryFilters}
+        />
+      </div>
 
       {/* Create / Edit Form Modal */}
       <UserFormModal

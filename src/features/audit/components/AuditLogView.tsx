@@ -9,12 +9,15 @@ import {
   FileText,
   Filter,
   Key,
+  AlertCircle,
   RefreshCw,
   Search,
   ShieldCheck,
   UserCheck,
   X,
 } from "lucide-react";
+import { formatRoleLabel } from "@/config/roles";
+import type { UserRole } from "@/domain/types";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -252,7 +255,7 @@ const OUTCOME_TONE_CLASS: Record<OutcomeTone, string> = {
   negative: "border-rose-200 bg-rose-50 text-rose-800",
   caution: "border-amber-200 bg-amber-50 text-amber-900",
   positive: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  neutral: "border-slate-200 bg-slate-50 text-slate-600",
+  neutral: "border-brand-card-border bg-brand-structural text-brand-text-muted",
 };
 
 /**
@@ -290,7 +293,7 @@ function OutcomeBadge({
   const { label, tone } = resolveOutcome(event);
   if (tone === "neutral") {
     // Quiet by design: the row records something, but the record makes no claim about it.
-    return <span className="whitespace-nowrap text-[11px] text-slate-500">{label}</span>;
+    return <span className="whitespace-nowrap text-[11px] text-brand-text-muted">{label}</span>;
   }
   return (
     <span
@@ -410,16 +413,16 @@ function formatDetailValue(value: unknown): string {
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3 py-1.5">
-      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
-      <dd className="min-w-0 break-words text-xs text-slate-900">{children}</dd>
+      <dt className="text-xs font-semibold text-brand-text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-xs text-brand-text">{children}</dd>
     </div>
   );
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
-      <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{title}</h3>
+    <section className="border-t border-brand-card-border pt-3 first:border-t-0 first:pt-0">
+      <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-brand-text-muted">{title}</h3>
       <dl className="divide-y divide-brand-border-subtle">{children}</dl>
     </section>
   );
@@ -430,7 +433,7 @@ function AuditTableSkeleton() {
     <SkeletonRegion isLoading label="Loading audit events" className="overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left text-xs">
         <thead>
-          <tr className="border-b border-brand-border bg-slate-100">
+          <tr className="border-b border-brand-card-border bg-brand-structural">
             {Array.from({ length: 6 }).map((_, columnIndex) => (
               <th key={columnIndex} className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[columnIndex]}`}>
                 <Skeleton className="h-3 w-20" />
@@ -442,7 +445,7 @@ function AuditTableSkeleton() {
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <tr key={rowIndex}>
               {Array.from({ length: 6 }).map((__, columnIndex) => (
-                <td key={columnIndex} className="px-2.5 py-4">
+                <td key={columnIndex} className="px-2.5 py-2.5">
                   <Skeleton className="h-4 w-full" />
                 </td>
               ))}
@@ -467,6 +470,11 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   const [selectedEvent, setSelectedEvent] = useState<AuditEventTransport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True when the rows on screen came from an earlier successful load and the most recent
+  // same-criteria attempt failed. Only ever set for a refresh or a page step - a criteria change
+  // clears the rows outright, because rows fetched under other criteria are not stale, they are
+  // wrong.
+  const [showingStaleRows, setShowingStaleRows] = useState(false);
   const requestSequence = useRef(0);
   const pendingLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -482,15 +490,50 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   useEffect(() => cancelPendingLoad, [cancelPendingLoad]);
   const limit = initialCriteria.limit;
 
+  /**
+   * Open a new request generation and put the view into the state that generation implies.
+   *
+   * Bumping the sequence HERE is the publication guard: every earlier request tests
+   * `requestId === requestSequence.current` before it writes, so anything already in flight is
+   * silently retired the moment this runs and can no longer publish into the view.
+   *
+   * `criteriaChanged` additionally drops what belonged to the previous criteria. The filter
+   * controls have already repainted with the new criteria; leaving the previous criteria's rows
+   * underneath them states something false - and if the request then fails, that false pairing is
+   * what the reader is left looking at. Clearing first means the screen can show a loading state,
+   * results, or an error, but never records that do not match the filters displayed above them.
+   * `showingStaleRows` is reset rather than set for the same reason: rows fetched under other
+   * criteria are not stale, they are wrong, so they are never offered under a staleness label.
+   *
+   * Both entry points use this: `loadPage`, when a request starts immediately, and `changeFilter`,
+   * at the instant a debounced free-text criterion becomes visible. That is what lets the request
+   * stay debounced while the invalidation does not.
+   */
+  const beginRequest = useCallback((nextOffset: number, criteriaChanged: boolean) => {
+    const requestId = ++requestSequence.current;
+    setLoading(true);
+    setError(null);
+
+    if (criteriaChanged) {
+      setPage({ events: [], total: 0 });
+      setOffset(nextOffset);
+    }
+    setShowingStaleRows(false);
+
+    return requestId;
+  }, []);
+
   const loadPage = useCallback(
-    async (nextFilters: AuditFilters, nextOffset: number) => {
+    async (
+      nextFilters: AuditFilters,
+      nextOffset: number,
+      options: { criteriaChanged?: boolean } = {}
+    ) => {
       // Choke point: any load that actually starts invalidates whatever was still scheduled.
       // Without this, an immediate control clicked during the debounce window would be followed
       // 300ms later by the stale snapshot - older criteria applying after newer input.
       cancelPendingLoad();
-      const requestId = ++requestSequence.current;
-      setLoading(true);
-      setError(null);
+      const requestId = beginRequest(nextOffset, options.criteriaChanged === true);
 
       try {
         const nextPage = await readAuditPageAction(
@@ -505,6 +548,9 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
       } catch {
         if (requestId === requestSequence.current) {
           setError("Unable to load audit logs. Please try again.");
+          // Rows survive only when they still answer the criteria on screen, and then they are
+          // labelled rather than passed off as current.
+          setShowingStaleRows(!options.criteriaChanged);
         }
       } finally {
         if (requestId === requestSequence.current) {
@@ -512,26 +558,33 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         }
       }
     },
-    [limit, cancelPendingLoad]
+    [limit, cancelPendingLoad, beginRequest]
   );
 
   const changeFilter = <K extends keyof AuditFilters,>(key: K, value: AuditFilters[K]) => {
     const nextFilters = { ...filters, [key]: value };
     setFilters(nextFilters);
 
-    // Free-text fields debounce the request - never the visible state, which updated above. Each
-    // keystroke reschedules with its own snapshot, so the timer that finally fires always carries
-    // the last text typed. Structured controls load immediately; loadPage itself cancels any
-    // pending timer, so an immediate load can never be overtaken by a stale scheduled one.
+    // Free-text fields debounce the REQUEST - never the visible state, which updated above, and
+    // never the invalidation. The criteria on screen have already changed, so the rows below them
+    // are already wrong: `beginRequest` retires the in-flight request and clears them now, while
+    // the network call still waits out FILTER_DEBOUNCE_MS. Deferring the invalidation as well
+    // would leave new criteria sitting above old rows for the whole window, and would leave an
+    // older in-flight response free to publish into it. Each keystroke reschedules with its own
+    // snapshot, so the timer that finally fires always carries the last text typed. The debounced
+    // loadPage still runs its own criteria-changed invalidation, so nothing depends on this one
+    // having happened. Structured controls load immediately; loadPage cancels any pending timer,
+    // so an immediate load can never be overtaken by a stale scheduled one.
     if (key === "eventType" || key === "search") {
       cancelPendingLoad();
+      beginRequest(0, true);
       pendingLoad.current = setTimeout(() => {
         pendingLoad.current = null;
-        void loadPage(nextFilters, 0);
+        void loadPage(nextFilters, 0, { criteriaChanged: true });
       }, FILTER_DEBOUNCE_MS);
       return;
     }
-    void loadPage(nextFilters, 0);
+    void loadPage(nextFilters, 0, { criteriaChanged: true });
   };
 
   // Removing a chip is a click on a complete, deliberate value - not typing - so it stays
@@ -540,12 +593,12 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   const clearFilter = (key: keyof AuditFilters) => {
     const nextFilters = { ...filters, [key]: EMPTY_FILTERS[key] };
     setFilters(nextFilters);
-    void loadPage(nextFilters, 0);
+    void loadPage(nextFilters, 0, { criteriaChanged: true });
   };
 
   const clearAllFilters = () => {
     setFilters(EMPTY_FILTERS);
-    void loadPage(EMPTY_FILTERS, 0);
+    void loadPage(EMPTY_FILTERS, 0, { criteriaChanged: true });
   };
 
   const active = activeFilters(filters);
@@ -587,54 +640,47 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-brand-border pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="h-5 w-5 text-brand-primary" />
-            <h2 className="text-2xl font-bold text-brand-text tracking-tight">Security Audit Log Viewer</h2>
-          </div>
-          <p className="text-xs text-brand-text-muted mt-1.5 leading-relaxed">
-            Inspect append-only security logs for administrative actions, personnel updates, session events, and access denials per SECURITY_MODEL.md.
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void loadPage(filters, offset)}
-          disabled={loading}
-          className="shadow-sm"
-        >
-          <RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
-          Refresh Logs
-        </Button>
-      </div>
-
-      {/* Audit Filter Toolbar */}
-      <div className="bg-brand-surface rounded-xl border border-brand-border p-4 shadow-sm space-y-3">
+      {/* Structural: filtering is the control surface for the records, so it recedes behind
+          them. Refresh lives here with the other controls rather than in a page-introduction
+          block of its own. */}
+      <div className="space-y-2.5 rounded-lg border border-brand-card-border bg-brand-structural p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <Filter className="h-4 w-4 text-slate-400" aria-hidden="true" />
+          <div className="flex items-center gap-2 text-xs font-semibold text-brand-text-muted">
+            <Filter className="h-4 w-4 text-brand-text-subtle" aria-hidden="true" />
             <span>Audit filters</span>
             {active.length > 0 && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+              <span className="rounded-full bg-brand-card px-2 py-0.5 text-[10px] font-bold text-brand-text-muted ring-1 ring-inset ring-brand-card-border">
                 {active.length} active
               </span>
             )}
           </div>
-          {active.length > 0 && (
-            <button
+          <div className="flex items-center gap-2">
+            {active.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                disabled={loading}
+                className="inline-flex min-h-11 items-center gap-1 rounded-md border border-brand-border bg-brand-card px-2.5 sm:min-h-8 text-[11px] font-semibold text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+                Clear all filters
+              </button>
+            )}
+            <Button
               type="button"
-              onClick={clearAllFilters}
+              variant="outline"
+              size="sm"
+              onClick={() => void loadPage(filters, offset)}
               disabled={loading}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+              className="min-h-11 md:min-h-8"
             >
-              <X className="h-3 w-3 text-slate-500" aria-hidden="true" />
-              Clear all filters
-            </button>
-          )}
+              <RefreshCw
+                aria-hidden="true"
+                className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {active.length > 0 && (
@@ -646,15 +692,15 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   onClick={() => clearFilter(entry.key)}
                   disabled={loading}
                   aria-label={`Remove filter: ${entry.label} ${entry.verb} ${entry.value}`}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 py-1 pl-2.5 pr-2 text-[11px] text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand-border bg-brand-card py-1 pl-2.5 pr-2 sm:min-h-7 text-[11px] text-brand-text-muted transition-colors hover:border-brand-border-strong hover:bg-brand-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <span className="font-semibold text-slate-500">
+                  <span className="font-semibold text-brand-text-muted">
                     {entry.label} {entry.verb}
                   </span>
                   <span className={`truncate ${entry.mono ? "font-mono" : ""}`} title={entry.value}>
                     {entry.value}
                   </span>
-                  <X className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />
+                  <X className="h-3 w-3 shrink-0 text-brand-text-muted" aria-hidden="true" />
                 </button>
               </li>
             ))}
@@ -678,7 +724,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               aria-describedby="audit-event-type-hint"
               onChange={(event) => changeFilter("eventType", event.target.value)}
             />
-            <p id="audit-event-type-hint" className="mt-1.5 text-[11px] text-slate-500">
+            <p id="audit-event-type-hint" className="mt-1.5 text-[11px] text-brand-text-muted">
               Matched <span className="font-semibold">exactly</span> on the raw identifier, not the
               readable label.
             </p>
@@ -707,7 +753,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               onChange={(event) => changeFilter("search", event.target.value)}
               className="pl-10"
             />
-            <p id="audit-search-hint" className="mt-1.5 text-[11px] text-slate-500">
+            <p id="audit-search-hint" className="mt-1.5 text-[11px] text-brand-text-muted">
               Matches any part of a username or target reference.
             </p>
           </div>
@@ -716,10 +762,59 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
       {/* Audit Logs Table */}
       <div className="space-y-3" aria-busy={loading}>
-        {error && <Alert variant="destructive">{error}</Alert>}
+        {error && (
+          <Alert variant="destructive">
+            <p>{error}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 min-h-11 sm:min-h-8"
+              onClick={() => void loadPage(filters, offset)}
+              disabled={loading}
+            >
+              <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+              Retry
+            </Button>
+          </Alert>
+        )}
 
+        {/* Rows that outlived a failed refresh say so. Without this they read as current. */}
+        {showingStaleRows && page.events.length > 0 && (
+          <Alert variant="warning">
+            Showing previously loaded events. The most recent refresh did not complete, so this
+            list may be out of date.
+          </Alert>
+        )}
+
+        {/* One bordered surface holds the records AND the pagination footer. Pagination stays
+            OUTSIDE the populated/empty branch so it keeps reporting a truthful range and its
+            disabled state in every state, exactly as before. */}
+        <div className="overflow-hidden rounded-lg border border-brand-card-border bg-brand-card">
         {page.events.length === 0 ? loading ? (
           <AuditTableSkeleton />
+        ) : error ? (
+          // A load that failed is not a search that matched nothing. Saying "no events match"
+          // here would blame the filters for a transport failure and hide the retry.
+          <EmptyState
+            icon={AlertCircle}
+            headingLevel={3}
+            title="Audit events could not be loaded"
+            description="The request did not complete, so no events are shown. This is a load failure, not an empty result."
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+                onClick={() => void loadPage(filters, offset)}
+                disabled={loading}
+              >
+                <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+                Retry
+              </Button>
+            }
+          />
         ) : (
           <EmptyState
             icon={ShieldCheck}
@@ -744,8 +839,9 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   size="sm"
                   onClick={clearAllFilters}
                   disabled={loading}
+                  className="min-h-11 sm:min-h-8"
                 >
-                  <X className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                  <X className="h-3.5 w-3.5 text-brand-text-muted" aria-hidden="true" />
                   Clear all filters
                 </Button>
               ) : undefined
@@ -753,10 +849,10 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           />
         ) : (
           <div className={`relative transition-opacity ${loading ? "opacity-60" : "opacity-100"}`}>
-            <div className="hidden overflow-x-auto rounded-xl border border-brand-border bg-brand-surface shadow-sm md:block">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full table-fixed border-collapse text-left text-xs">
                 <caption className="sr-only">Audit event log</caption>
-                <thead className="border-b border-brand-border bg-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                <thead className="border-b border-brand-card-border bg-brand-structural text-[11px] font-semibold uppercase tracking-wider text-brand-text-muted">
                   <tr>
                     <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[0]}`}>Timestamp</th>
                     <th className={`px-2.5 py-3.5 ${AUDIT_COLUMN_WIDTH[1]}`}>Event</th>
@@ -770,10 +866,10 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   {page.events.map((event) => {
                     const occurred = formatOccurredAtParts(event.occurredAt);
                     return (
-                      <tr key={event.id} className="transition-colors hover:bg-slate-50/80">
-                        <td className="px-2.5 py-4 align-middle">
+                      <tr key={event.id} className="transition-colors even:bg-brand-structural hover:bg-brand-surface-hover">
+                        <td className="px-2.5 py-2.5 align-middle">
                           <span
-                            className="block whitespace-nowrap font-mono text-[11px] tabular-nums text-slate-500"
+                            className="block whitespace-nowrap font-mono text-[11px] tabular-nums text-brand-text-muted"
                             title={occurred.full}
                           >
                             <span className="block 2xl:inline">{occurred.date}</span>
@@ -781,34 +877,34 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                             <span className="block 2xl:inline">{occurred.time}</span>
                           </span>
                         </td>
-                        <td className="px-2.5 py-4 align-middle">
-                          <div className="font-semibold text-slate-900">
+                        <td className="px-2.5 py-2.5 align-middle">
+                          <div className="font-semibold text-brand-text">
                             {humanizeIdentifier(event.eventType)}
                           </div>
                           <div
-                            className="mt-0.5 truncate font-mono text-[10px] text-slate-500"
+                            className="mt-0.5 truncate font-mono text-[10px] text-brand-text-muted"
                             title={event.eventType}
                           >
                             {event.eventType}
                           </div>
                         </td>
-                        <td className="px-2.5 py-4 align-middle">
+                        <td className="px-2.5 py-2.5 align-middle">
                           <OutcomeBadge event={event} />
                         </td>
-                        <td className="px-2.5 py-4 align-middle font-medium text-slate-700">
+                        <td className="px-2.5 py-2.5 align-middle font-medium text-brand-text-muted">
                           <span className="block truncate" title={event.performedByUsername ?? undefined}>
                             {event.performedByUsername ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-4 align-middle">
+                        <td className="px-2.5 py-2.5 align-middle">
                           <span
-                            className="block truncate font-mono text-[11px] text-slate-600"
+                            className="block truncate font-mono text-[11px] text-brand-text-muted"
                             title={event.targetReference ?? undefined}
                           >
                             {event.targetReference ?? "—"}
                           </span>
                         </td>
-                        <td className="px-2.5 py-4 text-right align-middle">
+                        <td className="px-2.5 py-2.5 text-right align-middle">
                           <Button
                             type="button"
                             variant="outline"
@@ -829,15 +925,18 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             </div>
 
             <ul
-              className="divide-y divide-brand-border-subtle rounded-xl border border-brand-border bg-brand-surface shadow-sm md:hidden"
+              // No border, radius, background or shadow here: the records surface around this
+              // list already supplies all four, and repeating them drew a second card inside the
+              // first. Dividers stay - they separate records rather than reframe them.
+              className="divide-y divide-brand-border-subtle md:hidden"
               aria-label="Audit event log"
             >
               {page.events.map((event) => {
                 const occurred = formatOccurredAtParts(event.occurredAt);
                 return (
-                  <li key={event.id} className="space-y-2 px-4 py-4">
+                  <li key={event.id} className="space-y-2 px-3 py-3">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 font-semibold text-slate-900">
+                      <p className="min-w-0 font-semibold text-brand-text">
                         {humanizeIdentifier(event.eventType)}
                       </p>
                       <OutcomeBadge event={event} />
@@ -845,23 +944,23 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       {getCategoryBadge(event.category)}
-                      <span className="min-w-0 truncate font-mono text-[10px] text-slate-500">
+                      <span className="min-w-0 truncate font-mono text-[10px] text-brand-text-muted">
                         {event.eventType}
                       </span>
                     </div>
 
-                    <p className="font-mono text-[11px] tabular-nums text-slate-500">
+                    <p className="font-mono text-[11px] tabular-nums text-brand-text-muted">
                       {occurred.date} · {occurred.time}
                     </p>
 
                     <div className="flex flex-wrap items-end justify-between gap-2">
-                      <div className="min-w-0 space-y-0.5 text-[11px] text-slate-600">
+                      <div className="min-w-0 space-y-0.5 text-[11px] text-brand-text-muted">
                         <p className="truncate">
-                          <span className="font-semibold text-slate-500">By</span>{" "}
+                          <span className="font-semibold text-brand-text-muted">By</span>{" "}
                           {event.performedByUsername ?? "Not recorded"}
                         </p>
                         <p className="truncate">
-                          <span className="font-semibold text-slate-500">Target</span>{" "}
+                          <span className="font-semibold text-brand-text-muted">Target</span>{" "}
                           {event.targetReference ?? "Not recorded"}
                         </p>
                       </div>
@@ -871,6 +970,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                         size="sm"
                         onClick={() => setSelectedEvent(event)}
                         aria-label={`View details for ${event.eventType} at ${occurred.full}`}
+                        className="min-h-11"
                       >
                         View details
                       </Button>
@@ -882,7 +982,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center" aria-live="polite">
-                <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
+                <span className="rounded-md border border-brand-card-border bg-brand-card px-3 py-2 text-xs font-semibold text-brand-text-muted shadow-low">
                   Loading audit logs...
                 </span>
               </div>
@@ -890,10 +990,10 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           </div>
         )}
 
-        <div className="flex flex-col gap-3 rounded-xl border border-brand-border bg-brand-surface px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-slate-500" aria-live="polite">
-            Showing <span className="font-semibold text-slate-700">{firstVisible}–{lastVisible}</span> of{" "}
-            <span className="font-semibold text-slate-700">{page.total}</span> events
+        <div className="flex flex-col gap-3 border-t border-brand-card-border bg-brand-structural px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-brand-text-muted" aria-live="polite">
+            Showing <span className="font-semibold text-brand-text">{firstVisible}–{lastVisible}</span> of{" "}
+            <span className="font-semibold text-brand-text">{page.total}</span> events
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -902,6 +1002,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               size="sm"
               disabled={!hasPrevious || loading}
               onClick={() => void loadPage(filters, Math.max(0, offset - limit))}
+              className="min-h-11 sm:min-h-8"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               Previous
@@ -912,11 +1013,13 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               size="sm"
               disabled={!hasNext || loading}
               onClick={() => void loadPage(filters, offset + limit)}
+              className="min-h-11 sm:min-h-8"
             >
               Next
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
+        </div>
         </div>
       </div>
 
@@ -936,7 +1039,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             <DetailSection title="Event">
               <DetailRow label="Event">
                 <span className="font-semibold">{humanizeIdentifier(selectedEvent.eventType)}</span>
-                <span className="ml-2 font-mono text-[11px] text-slate-500">{selectedEvent.eventType}</span>
+                <span className="ml-2 font-mono text-[11px] text-brand-text-muted">{selectedEvent.eventType}</span>
               </DetailRow>
               <DetailRow label="Category">{getCategoryBadge(selectedEvent.category)}</DetailRow>
               <DetailRow label="Outcome">
@@ -947,9 +1050,15 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
             <DetailSection title="Performed by">
               <DetailRow label="User">{selectedEvent.performedByUsername ?? "Not recorded"}</DetailRow>
-              <DetailRow label="Role">{selectedEvent.actorRole ?? "Not recorded"}</DetailRow>
+              {/* Through the shared helper, so an audit record prints the same role words as
+                  the rest of the system rather than the raw stored value. */}
+              <DetailRow label="Role">
+                {selectedEvent.actorRole
+                  ? formatRoleLabel(selectedEvent.actorRole as UserRole)
+                  : "Not recorded"}
+              </DetailRow>
               <DetailRow label="User ID">
-                <span className="font-mono text-[11px] text-slate-500">
+                <span className="font-mono text-[11px] text-brand-text-muted">
                   {selectedEvent.performedByUserId ?? "Not recorded"}
                 </span>
               </DetailRow>
@@ -959,7 +1068,11 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               <DetailRow label="Reference">
                 <span className="font-mono text-[11px]">{selectedEvent.targetReference ?? "Not recorded"}</span>
               </DetailRow>
-              <DetailRow label="Role">{selectedEvent.targetRole ?? "Not recorded"}</DetailRow>
+              <DetailRow label="Role">
+                {selectedEvent.targetRole
+                  ? formatRoleLabel(selectedEvent.targetRole as UserRole)
+                  : "Not recorded"}
+              </DetailRow>
             </DetailSection>
 
             <DetailSection title="Recorded detail">
@@ -970,22 +1083,22 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   </DetailRow>
                 ))
               ) : (
-                <p className="py-1.5 text-xs text-slate-500">
+                <p className="py-1.5 text-xs text-brand-text-muted">
                   This event carries no additional detail beyond the fields above.
                 </p>
               )}
             </DetailSection>
 
-            <details className="border-t border-slate-200 pt-3">
+            <details className="border-t border-brand-card-border pt-3">
               <summary
                 tabIndex={0}
-                className="cursor-pointer rounded text-[11px] font-bold uppercase tracking-wider text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="cursor-pointer rounded text-[11px] font-bold uppercase tracking-wider text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               >
                 Raw detail payload
               </summary>
               <pre
                 tabIndex={0}
-                className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-brand-card-border bg-brand-structural p-3 font-mono text-[11px] leading-relaxed text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               >
                 {JSON.stringify(selectedEvent.details ?? null, null, 2)}
               </pre>

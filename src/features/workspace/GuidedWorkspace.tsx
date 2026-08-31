@@ -4,21 +4,27 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
-import { IPersonnel, ILaboratoryReport } from "@/domain/models/interfaces";
+import { ILaboratoryReport } from "@/domain/models/interfaces";
+import type {
+  WorkspacePersonnelEntry,
+  WorkspaceSignatureAssetMap,
+} from "@/features/workspace/signatory-contracts";
+import { listWorkspacePersonnelAction } from "@/features/server-boundary/workspace-personnel-actions";
 import { PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./components/PatientDemographicsForm";
 import { DynamicResultForm } from "./components/DynamicResultForm";
 import { EncodingReportFooter } from "./components/EncodingReportFooter";
 import { ExaminationCatalog } from "./components/ExaminationCatalog";
 import { SelectedReportsPanel } from "./components/SelectedReportsPanel";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 import {
   completeSessionAction,
   getReopenableSessionAction,
-  listActivePersonnelAction,
   listRegistryTemplatesAction,
   replaceSessionAction,
   saveDraftAction,
@@ -34,7 +40,7 @@ import { Save, CheckCircle2, AlertCircle, FileText, Eye, Edit3, Menu, X, ArrowLe
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "./encoding/report-encoding";
-import { getSessionEncodingProgress } from "./encoding/encoding-progress";
+import { getReportEncodingProgress, getSessionEncodingProgress } from "./encoding/encoding-progress";
 import { initializeNewSessionAddress } from "./encoding/new-session-demographics";
 import {
   clearWorkspaceRecovery,
@@ -105,7 +111,7 @@ export function GuidedWorkspace({
    *  of a loading state. When absent - including on any server-side fetch failure - the original
    *  client fetches below run unchanged, so no error path is lost. */
   initialTemplates?: HydratedTemplateSpec[];
-  initialPersonnel?: IPersonnel[];
+  initialPersonnel?: WorkspacePersonnelEntry[];
 }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
@@ -127,7 +133,32 @@ export function GuidedWorkspace({
     });
   });
 
-  const [availablePersonnel, setAvailablePersonnel] = useState<IPersonnel[]>(() => initialPersonnel ?? []);
+  const [availablePersonnel, setAvailablePersonnel] = useState<WorkspacePersonnelEntry[]>(
+    () => initialPersonnel ?? []
+  );
+  /**
+   * Render-only signature addresses, derived here rather than received.
+   *
+   * Each value is `/api/signatures/proxy?personnelId=<id>` - an opaque authenticated endpoint
+   * address built from an id this component already holds. The stored `signatureImageUrl`, which
+   * embeds the storage object path, never crosses the boundary in any form.
+   *
+   * Only active Pathologists with a signature on file get an entry: a Medical Technologist slot
+   * is hard-nulled by `composeSignatorySlots`, so an address there could never be drawn, and an
+   * entry for someone without a signature would only produce a 404 the renderer then omits.
+   *
+   * Nothing merges this into `session`, writes it to recovery, or sends it to a server action.
+   * It reaches exactly one consumer, below.
+   */
+  const signatureAssets = useMemo<WorkspaceSignatureAssetMap>(() => {
+    const assets: Record<string, string> = {};
+    for (const person of availablePersonnel) {
+      if (person.role === "Pathologist" && person.isActive && person.hasSignature) {
+        assets[person.id] = `/api/signatures/proxy?personnelId=${encodeURIComponent(person.id)}`;
+      }
+    }
+    return assets;
+  }, [availablePersonnel]);
 
   const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>(() => initialTemplates ?? []);
 
@@ -141,6 +172,10 @@ export function GuidedWorkspace({
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationFocusTarget, setValidationFocusTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
+  // The focus target above is consumed and cleared the moment focus lands, so the summary
+  // keeps its own copy to decide whether it can offer a route back to that exact field.
+  // Only the two targets the Workspace actually proves are ever recorded here.
+  const [validationFieldTarget, setValidationFieldTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<WorkspaceConfirmation | null>(null);
   const [pendingModeChange, setPendingModeChange] = useState<PendingModeChange | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
@@ -285,8 +320,10 @@ export function GuidedWorkspace({
 
   useEffect(() => {
     if (initialPersonnel) return; // server render already delivered the roster
-    listActivePersonnelAction()
-      .then(setAvailablePersonnel)
+    listWorkspacePersonnelAction()
+      .then((directory) => {
+        setAvailablePersonnel(directory.personnel);
+      })
       .catch((error: unknown) => {
         setValidationError(
           error instanceof Error ? error.message : "Active personnel could not be loaded."
@@ -539,6 +576,7 @@ export function GuidedWorkspace({
     setPendingConfirmation(null);
     setValidationError(message);
     setWorkspaceMode("encoding");
+    setValidationFieldTarget(target);
     setValidationFocusTarget(target);
   }, []);
 
@@ -728,6 +766,27 @@ export function GuidedWorkspace({
   useEffect(() => {
     if (validationError) setIsDemographicsExpanded(true);
   }, [validationError]);
+  // Display-only per-report progress for the tab strip. It reuses the same
+  // getReportEncodingProgress rule the report card draws, so the two can never disagree,
+  // and a template whose report or definition is missing simply carries no annotation
+  // rather than being dropped from the queue.
+  const progressByTemplateCode = useMemo(() => {
+    const map: Record<string, { completedCount: number; selectedCount: number; isComplete: boolean }> = {};
+    for (const spec of selectedSpecs) {
+      const code = spec.template.templateCode;
+      const report = session.reports.find((item) => item.templateCode === code);
+      const definition = ReportDefinitionRegistry.getDefinition(code);
+      if (!report || !definition) continue;
+      const progress = getReportEncodingProgress(report, definition);
+      map[code] = {
+        completedCount: progress.completedCount,
+        selectedCount: progress.selectedCount,
+        isComplete: progress.isComplete,
+      };
+    }
+    return map;
+  }, [selectedSpecs, session.reports]);
+
   const activeReport = activeTemplateCode ? session.reports.find((r) => r.templateCode === activeTemplateCode) : undefined;
   const activeDefinition = activeTemplateCode ? ReportDefinitionRegistry.getDefinition(activeTemplateCode) : null;
   const isWorkspaceDialogOpen = showExitModal || pendingConfirmation !== null || pendingModeChange !== null;
@@ -845,48 +904,50 @@ export function GuidedWorkspace({
   // session than the one requested.
   if (reopenStatus === "loading" || reopenStatus === "failed") {
     return (
-      <div className="h-full min-h-0 w-full flex items-center justify-center bg-slate-100/60 p-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm max-w-md w-full p-6 space-y-4 text-center">
+      <div className="h-full min-h-0 w-full flex items-center justify-center bg-brand-canvas p-4">
+        {/* Both branches announce themselves: the reopen can outlast the spinner's
+            usefulness, and under reduced motion the spinner does not turn at all, so the
+            words have to carry the state. */}
+        <div
+          role={reopenStatus === "failed" ? "alert" : "status"}
+          aria-live={reopenStatus === "failed" ? "assertive" : "polite"}
+          className="w-full max-w-md space-y-4 rounded-lg border border-brand-card-border bg-brand-card p-6 text-center"
+        >
           {reopenStatus === "loading" ? (
             <>
-              <div className="mx-auto p-2.5 bg-blue-50 text-brand-primary rounded-full w-fit border border-blue-100">
-                <RefreshCw className="h-6 w-6 animate-spin" />
+              <div className="mx-auto w-fit rounded-full bg-brand-tint p-2.5 text-brand-primary">
+                <RefreshCw aria-hidden="true" className="h-6 w-6 animate-spin" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800">Reopening Session</h2>
-                <p className="text-xs text-slate-500 mt-1">
+                <h2 className="text-sm font-semibold text-brand-text">Reopening Session</h2>
+                <p className="mt-1 text-xs text-brand-text-muted">
                   Loading the saved patient report session from the laboratory record.
                 </p>
               </div>
             </>
           ) : (
             <>
-              <div className="mx-auto p-2.5 bg-rose-50 text-rose-700 rounded-full w-fit border border-rose-200">
-                <AlertCircle className="h-6 w-6" />
+              <div className="mx-auto w-fit rounded-full bg-brand-danger-bg p-2.5 text-brand-danger">
+                <AlertCircle aria-hidden="true" className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800">Session Could Not Be Reopened</h2>
-                <p className="text-xs text-slate-500 mt-1">
+                <h2 className="text-sm font-semibold text-brand-text">Session Could Not Be Reopened</h2>
+                <p className="mt-1 text-xs text-brand-text-muted">
                   {reopenError ?? "This session could not be reopened."}
                 </p>
               </div>
-              <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => router.push("/history")}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-brand-primary hover:bg-brand-primary-hover rounded-lg shadow-sm transition-colors"
-                >
-                  <History className="h-4 w-4" />
+              {/* Both routes out were hand-rolled buttons with no focus ring at all - on a
+                  screen a keyboard operator can be dropped onto, with nothing else to
+                  focus. They are shared Buttons now. */}
+              <div className="flex flex-col gap-2 border-t border-brand-border-subtle pt-3">
+                <Button type="button" variant="primary" onClick={() => router.push("/history")} className="w-full">
+                  <History aria-hidden="true" className="h-4 w-4" />
                   Return to Session History
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/dashboard")}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="outline" onClick={() => router.push("/dashboard")} className="w-full">
+                  <ArrowLeft aria-hidden="true" className="h-4 w-4" />
                   Return to Dashboard
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -896,12 +957,15 @@ export function GuidedWorkspace({
   }
 
   return (
-    <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-100/60">
+    <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-brand-canvas">
       {/* Fixed Workspace command bar. One 56px line: navigation, then session identity, then
           the mode switch and the session actions. The patient leads because that is the context
           every decision in this screen is made against; accession, status and Replacement Mode
           sit under the name as metadata rather than as three competing pills above it. */}
-      <header className="h-14 bg-white border-b border-slate-200 px-4 flex items-center shrink-0 z-30">
+      {/* Structural. The command bar is chrome, and a white bar above a white report card
+          on a white catalog gave the Workspace no frame at all - the operator could not see
+          where the application ended and the task began. */}
+      <header className="z-30 flex h-14 shrink-0 items-center border-b border-brand-border-strong bg-brand-structural px-4">
         <div className={`${WORKSPACE_CONTAINER} flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-2 min-w-0">
             {/* Back to Dashboard Navigation Button */}
@@ -912,7 +976,7 @@ export function GuidedWorkspace({
               onClick={handleBackToDashboard}
               aria-label="Back to Dashboard"
               title="Return to Dashboard"
-              className="shrink-0 whitespace-nowrap px-2 text-slate-600"
+              className="shrink-0 whitespace-nowrap px-2 text-brand-text-muted"
             >
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               <span className="hidden md:inline">Back</span>
@@ -923,7 +987,7 @@ export function GuidedWorkspace({
               ref={catalogToggleRef}
               type="button"
               onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
-              className="lg:hidden inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
               aria-label="Toggle Catalog"
               aria-expanded={isCatalogDrawerOpen}
               aria-controls="workspace-catalog-drawer"
@@ -931,17 +995,17 @@ export function GuidedWorkspace({
               <Menu aria-hidden="true" className="h-5 w-5" />
             </button>
 
-            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-slate-200 sm:block" />
+            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-brand-border-strong sm:block" />
 
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold leading-tight text-slate-900">
+              <h1 className="truncate text-sm font-semibold leading-tight text-brand-text">
                 {session.demographics.fullName || "New Patient Visit Session"}
               </h1>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-none">
-                <span className="shrink-0 font-mono font-semibold text-slate-500" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
+                <span className="shrink-0 font-mono font-semibold text-brand-text-muted" title={session.accessionNumber === null ? "Accession not assigned" : undefined}>
                   {session.accessionNumber ?? "Not assigned"}
                 </span>
-                <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
+                <span aria-hidden="true" className="shrink-0 text-brand-text-subtle">/</span>
                 <span
                   className={`shrink-0 font-semibold uppercase tracking-wide ${
                     session.status === "Completed" ? "text-emerald-700" : "text-amber-700"
@@ -960,20 +1024,24 @@ export function GuidedWorkspace({
             </div>
           </div>
 
-          {/* Session actions: mode switch, then the secondary save, then the primary action. */}
+          {/* Session actions: mode switch, then the secondary save, then the primary action.
+              Below sm the labels collapse to icon-only. Every control here is shrink-0 and
+              whitespace-nowrap, so at 390px the full labels forced the header past the viewport
+              and scrolled the whole page sideways. No action is hidden: each keeps its icon, an
+              aria-label carrying the full name in both states, and a title for pointer users. */}
           <div className="flex items-center gap-2 shrink-0">
             {/* Workspace View Mode Switcher. A two-state control, so each button reports its own
                 pressed state and keeps a full accessible name when the label collapses. */}
-            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-lg bg-slate-100 p-0.5">
+            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-md bg-brand-surface-hover p-0.5">
               <button
                 type="button"
                 onClick={() => setWorkspaceMode("encoding")}
                 aria-pressed={workspaceMode === "encoding"}
                 aria-label="Encoding"
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
                   workspaceMode === "encoding"
-                    ? "bg-white text-slate-900 ring-1 ring-slate-200"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-brand-card text-brand-text shadow-sm ring-1 ring-brand-card-border"
+                    : "text-brand-text-muted hover:text-brand-text"
                 }`}
               >
                 <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
@@ -984,10 +1052,10 @@ export function GuidedWorkspace({
                 onClick={() => setWorkspaceMode("preview")}
                 aria-pressed={workspaceMode === "preview"}
                 aria-label="Live Preview"
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring ${
                   workspaceMode === "preview"
-                    ? "bg-white text-slate-900 ring-1 ring-slate-200"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-brand-card text-brand-text shadow-sm ring-1 ring-brand-card-border"
+                    : "text-brand-text-muted hover:text-brand-text"
                 }`}
               >
                 <Eye aria-hidden="true" className="h-3.5 w-3.5" />
@@ -995,7 +1063,7 @@ export function GuidedWorkspace({
               </button>
             </div>
 
-            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-slate-200 sm:block" />
+            <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-brand-border-strong sm:block" />
 
             {/* Save Draft Action — a completed session under replacement has no draft path */}
             {!isReplacementMode && (
@@ -1006,10 +1074,14 @@ export function GuidedWorkspace({
                 onClick={handleSaveDraft}
                 disabled={saveStatus === "saving" || !isDirty}
                 aria-keyshortcuts="Control+S Meta+S"
-                className="shrink-0 whitespace-nowrap"
+                aria-label={saveStatus === "saving" ? "Saving..." : "Save Draft"}
+                title={saveStatus === "saving" ? "Saving..." : "Save Draft"}
+                className="shrink-0 whitespace-nowrap px-2 sm:px-3"
               >
                 <Save aria-hidden="true" className="h-3.5 w-3.5" />
-                {saveStatus === "saving" ? "Saving..." : "Save Draft"}
+                <span className="hidden sm:inline">
+                  {saveStatus === "saving" ? "Saving..." : "Save Draft"}
+                </span>
               </Button>
             )}
 
@@ -1022,10 +1094,14 @@ export function GuidedWorkspace({
                 onClick={requestReplaceConfirmation}
                 disabled={saveStatus === "saving"}
                 aria-keyshortcuts="Control+Enter Meta+Enter"
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                aria-label={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
+                title={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 sm:px-3"
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
-                {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
+                <span className="hidden sm:inline">
+                  {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
+                </span>
               </button>
             )}
 
@@ -1037,10 +1113,12 @@ export function GuidedWorkspace({
                 size="sm"
                 onClick={requestCompleteConfirmation}
                 aria-keyshortcuts="Control+Enter Meta+Enter"
-                className="shrink-0 whitespace-nowrap"
+                aria-label="Complete Session"
+                title="Complete Session"
+                className="shrink-0 whitespace-nowrap px-2 sm:px-3"
               >
                 <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
-                Complete Session
+                <span className="hidden sm:inline">Complete Session</span>
               </Button>
             )}
           </div>
@@ -1050,33 +1128,47 @@ export function GuidedWorkspace({
       {/* Replacement Mode Notice */}
       {isReplacementMode && (
         <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
-          <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center gap-2 text-xs text-amber-900">
-            <RefreshCw className="h-4 w-4 text-amber-700 flex-shrink-0" />
-            <span>
-              <span className="font-bold">Replacement Mode.</span> Saving replaces the completed
-              report for accession {session.accessionNumber} permanently. The previous content is
-              not recoverable, and the accession number is not changed.
-            </span>
-          </div>
+          {/* The shared Alert rather than a bespoke amber box: warning already means this,
+              and Alert carries the icon, the role="alert" urgency and the wrapping rules. */}
+          <Alert variant="warning" title="Replacement Mode">
+            Saving replaces the completed report for accession {session.accessionNumber}{" "}
+            permanently. The previous content is not recoverable, and the accession number is
+            not changed.
+          </Alert>
         </div>
       )}
 
-      {/* Validation Banner Notice */}
+      {/* Validation summary. The message string is the existing one, unchanged; the heading
+          and the route-to-field control are presentation around it. The control appears only
+          for the two targets the Workspace genuinely resolves - nothing is parsed out of the
+          message text, and no target is invented for an error that does not carry one. */}
       {validationError && (
         <div className={`${WORKSPACE_CONTAINER} px-4 mt-2 shrink-0`}>
-          <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between text-xs text-red-700">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-              <span>{validationError}</span>
+          <Alert
+            variant="destructive"
+            title="Review required information"
+            onDismiss={() => {
+              setValidationError(null);
+              setValidationFieldTarget(null);
+            }}
+            dismissLabel="Dismiss validation summary"
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="min-w-0">{validationError}</span>
+              {validationFieldTarget && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkspaceMode("encoding");
+                    setValidationFocusTarget(validationFieldTarget);
+                  }}
+                  className="inline-flex min-h-7 shrink-0 items-center rounded-md border border-current px-2 text-[11px] font-semibold underline-offset-2 transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                >
+                  {validationFieldTarget === "patient-full-name" ? "Go to Patient Full Name" : "Go to Sex"}
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => setValidationError(null)}
-              className="text-red-500 hover:text-red-700 font-bold"
-            >
-              Dismiss
-            </button>
-          </div>
+          </Alert>
         </div>
       )}
 
@@ -1095,7 +1187,7 @@ export function GuidedWorkspace({
               )}
             >
               {isCatalogCollapsed && (
-                <div className="flex h-full flex-col items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-2 shadow-sm">
+                <div className="flex h-full flex-col items-center gap-2.5 rounded-lg border border-brand-card-border bg-brand-card py-2">
                   <button
                     type="button"
                     ref={catalogRailToggleRef}
@@ -1104,16 +1196,16 @@ export function GuidedWorkspace({
                     aria-expanded={false}
                     aria-controls="workspace-desktop-catalog"
                     title="Expand examination catalog"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-brand-card-border bg-brand-card text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                   >
                     <PanelLeftOpen aria-hidden="true" className="h-4 w-4" />
                   </button>
                   {selectedTemplateCodes.length > 0 && (
-                    <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-blue-100 px-1 text-[11px] font-bold tabular-nums text-blue-800">
+                    <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-[11px] font-semibold tabular-nums text-brand-primary">
                       {selectedTemplateCodes.length}
                     </span>
                   )}
-                  <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-semibold uppercase tracking-widest text-brand-text-subtle">
                     Catalog
                   </span>
                 </div>
@@ -1136,7 +1228,7 @@ export function GuidedWorkspace({
             {isCatalogDrawerOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
+                  className="fixed inset-0 z-40 bg-slate-900/60 motion-safe:transition-opacity lg:hidden"
                   onClick={handleCloseCatalogDrawer}
                   aria-hidden="true"
                 />
@@ -1150,13 +1242,13 @@ export function GuidedWorkspace({
                   role="dialog"
                   aria-modal="true"
                   aria-label="Examination Catalog"
-                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-slate-200 bg-slate-100/70 lg:hidden"
+                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-card-border bg-brand-background lg:hidden"
                 >
-                  <div className="flex shrink-0 items-center justify-end border-b border-slate-200 bg-white px-2 py-1.5">
+                  <div className="flex shrink-0 items-center justify-end border-b border-brand-card-border bg-brand-card px-2 py-1.5">
                     <button
                       type="button"
                       onClick={handleCloseCatalogDrawer}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                       aria-label="Close Examination Catalog"
                     >
                       <X aria-hidden="true" className="h-5 w-5" />
@@ -1184,6 +1276,7 @@ export function GuidedWorkspace({
               <PatientDemographicsForm
                 isExpanded={isDemographicsExpanded}
                 onToggleExpanded={setIsDemographicsExpanded}
+                invalidFieldId={validationError ? validationFieldTarget : null}
                 demographics={session.demographics}
                 onChange={(updated) => {
                   setSession((previous) => {
@@ -1207,10 +1300,14 @@ export function GuidedWorkspace({
               {/* Clinical context rail: the reference-range context and session progress the
                   operator must not lose while scrolling, then the report tabs. Solid white and
                   unblurred so scrolled result rows never show through and reduce legibility. */}
-              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
+              {/* Structural, and deliberately so: this rail carries context ABOUT the work
+                  (patient, session progress, which report is active), never the work itself.
+                  Tinting it is what lets the active tab lift onto the white working surface
+                  and read as selected without a heavier border. */}
+              <div className="sticky top-0 z-20 flex items-end gap-2.5 rounded-lg border border-brand-card-border bg-brand-structural px-3 py-1.5 shadow-low">
                 {session.demographics.sex && session.demographics.age > 0 && (
                   <span
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-slate-600 sm:inline-flex"
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-[11px] font-semibold text-brand-text-muted sm:inline-flex"
                     title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
                   >
                     <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
@@ -1220,7 +1317,7 @@ export function GuidedWorkspace({
                 {sessionProgress.totalReports > 0 && (
                   <span
                     data-session-progress
-                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium text-slate-500 sm:inline-flex"
+                    className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-[11px] font-medium text-brand-text-muted sm:inline-flex"
                     title="Reports in this session with every selected result encoded"
                   >
                     <CheckCircle2
@@ -1228,7 +1325,7 @@ export function GuidedWorkspace({
                       className={
                         sessionProgress.completedReports === sessionProgress.totalReports
                           ? "h-3.5 w-3.5 text-emerald-600"
-                          : "h-3.5 w-3.5 text-slate-400"
+                          : "h-3.5 w-3.5 text-brand-text-subtle"
                       }
                     />
                     {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
@@ -1238,7 +1335,7 @@ export function GuidedWorkspace({
                     session context from the report tabs and disappears when neither meta item
                     is on screen. */}
                 {(sessionProgress.totalReports > 0 || (session.demographics.sex && session.demographics.age > 0)) && (
-                  <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-slate-200 sm:block" />
+                  <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-brand-border-strong sm:block" />
                 )}
                 <SelectedReportsPanel
                   selectedSpecs={selectedSpecs}
@@ -1248,12 +1345,22 @@ export function GuidedWorkspace({
                   onCloseOtherTemplates={handleCloseOtherTemplates}
                   onClearAllTemplates={() => setPendingConfirmation("clearAll")}
                   isDirty={isDirty}
+                  progressByTemplateCode={progressByTemplateCode}
                 />
               </div>
 
               {/* Dynamic Result Form Dispatcher */}
               {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
-                <>
+                // One tabpanel per report, owning the results AND the footer. The strip's
+                // aria-controls points here, so a screen-reader user moving by tabpanel reaches
+                // signatories, remarks and kit information instead of stopping at the grid.
+                <div
+                  id={`report-panel-${activeDefinition.templateCode}`}
+                  role="tabpanel"
+                  aria-labelledby={`report-tab-${activeDefinition.templateCode}`}
+                  data-encoding-report={activeDefinition.templateCode}
+                  className="flex min-w-0 flex-col"
+                >
                   <DynamicResultForm
                     definition={activeDefinition}
                     report={activeReport}
@@ -1270,42 +1377,28 @@ export function GuidedWorkspace({
                     availablePersonnel={availablePersonnel}
                     onChangeReport={handleReportChange}
                   />
-                </>
-              ) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-6 py-6 text-center shadow-sm flex flex-col items-center justify-center my-3">
-                  <div className="p-2.5 bg-blue-50 text-brand-primary rounded-full mb-2 border border-blue-100">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-xs font-bold text-slate-800">No Examination Selected</h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5 max-w-xs">
-                    Choose a laboratory examination from the catalog on the left to begin encoding patient results.
-                  </p>
                 </div>
+              ) : (
+                <EmptyState
+                  icon={FileText}
+                  title="No examination selected"
+                  description="Choose a laboratory examination from the catalog to begin encoding patient results."
+                  headingLevel={2}
+                  className="my-3 rounded-lg border border-brand-card-border bg-brand-card"
+                />
               )}
             </div>
           </div>
         ) : (
-          /* Live Screen Preview Mode using SharedRenderingEngine */
-          <div className="h-full overflow-y-auto bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
-              <div>
-                <h2 className="text-base font-bold text-slate-800">A4 Printable Document Screen Preview</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Rendering exact physical A4 document output via SharedRenderingEngine
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setWorkspaceMode("encoding")}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Return to Encoding Form
-              </button>
-            </div>
-
-            <div className="space-y-8 overflow-x-auto pb-6">
-              <SharedRenderingEngine session={session} targetOutput="ScreenPreview" />
-            </div>
+          /* Live Preview. The engine owns its own toolbar and its viewport is the single
+             vertical scrolling region, so this wrapper adds no card frame, no second header
+             and no duplicate mode switch - the command bar already carries that control. */
+          <div className="flex h-full min-h-0 min-w-0 flex-col">
+            <SharedRenderingEngine
+              session={session}
+              targetOutput="ScreenPreview"
+              signatureAssets={signatureAssets}
+            />
           </div>
         )}
       </main>
@@ -1393,7 +1486,7 @@ export function GuidedWorkspace({
             Discard Changes & Exit
           </Button>
 
-          <div className="mt-1 border-t border-slate-200 pt-2">
+          <div className="mt-1 border-t border-brand-border-subtle pt-2">
             <Button
               ref={continueEditingRef}
               type="button"

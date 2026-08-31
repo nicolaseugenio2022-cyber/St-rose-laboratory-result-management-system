@@ -10,13 +10,29 @@ import { displayUnit } from "../../encoding/evaluate-encoding-result";
  * from the same definition as the rows beneath it. Two hand-kept copies would drift the first
  * time either side is touched, and a header that does not line up is worse than no header.
  *
+ * **Every track is fixed, and that is the whole point.** Each ParameterRow is its own
+ * independent grid, so a content-sized track (`auto`, `minmax(_,auto)`, `min-content`) is
+ * resolved separately per row against that row's own content. The previous Unit, Reference
+ * and Status tracks were all content-sized, so a row whose unit read "x10\u00b3/\u00b5L" resolved a
+ * wider Unit track than one reading "%", and every column after it - including the Result
+ * input - started at a different x position. Nothing but identical, content-independent
+ * track sizes can align independent grids; widening the content-sized tracks until one
+ * fixture happens to line up does not, because the next fixture re-resolves them.
+ *
+ * Parameter alone is `minmax(0,1fr)`: it is the only flexible track, it absorbs all
+ * remaining width, and a `1fr` resolves from the container - which every row shares - not
+ * from content. The 0 minimum lets a long parameter name wrap rather than force the row
+ * past the card and into the clipped overflow.
+ *
  * Narrow: Parameter and Result take the full width, then Unit | Reference | Status share one
- * line, so a row stays one readable block instead of five detached stacked cells. Wide: the five
- * tracks. Reference is minmax(0,auto) so a qualitative report, where no parameter carries a
- * reference, collapses the track to nothing rather than leaving a dead column.
+ * line, so a row stays one readable block instead of five detached stacked cells. That line
+ * is fixed-tracked for the same reason.
  */
 export const PARAMETER_ROW_TRACKS =
-  "grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[minmax(180px,1fr)_minmax(150px,180px)_minmax(45px,auto)_minmax(0,auto)_minmax(70px,auto)] xl:grid-cols-[minmax(220px,1fr)_minmax(200px,260px)_minmax(56px,auto)_minmax(0,auto)_minmax(88px,auto)]";
+  "grid-cols-[3.25rem_minmax(0,1fr)_6rem] " +
+  "sm:grid-cols-[minmax(0,1fr)_9rem_3.25rem_6rem_6rem] " +
+  "lg:grid-cols-[minmax(0,1fr)_11rem_4rem_9rem_6.5rem] " +
+  "xl:grid-cols-[minmax(0,1fr)_14rem_4.5rem_12rem_7rem]";
 
 export interface ParameterRowProps {
   parameter: ParameterSpec;
@@ -69,19 +85,28 @@ export function ParameterRow({
       )}
     >
       <div className="col-span-3 flex min-w-0 items-start gap-2 sm:col-span-1">
+        {/* No tabIndex at all: a native checkbox is already focusable, and its natural DOM
+            order is exactly the order the operator reads the row in. tabIndex={-1} had made
+            individual selection mouse-only - a keyboard operator could reach the bulk
+            Select/Deselect control but could not deselect one optional parameter. A
+            disabled checkbox (an explicitly non-selectable parameter) is excluded by the
+            platform, so exclusion never has to be spelled out here.
+
+            The ring is stated in full because focus-visible:ring-brand-focus-ring alone set
+            a colour with no width and therefore painted nothing - invisible focus on a
+            control that is now keyboard reachable would be worse than the old exclusion. */}
         <input
           type="checkbox"
-          tabIndex={-1}
           data-parameter-selector
           checked={isSelected}
           disabled={!parameter.isSelectable}
           onChange={(event) => onToggleSelect(event.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-300 text-brand-primary pointer-events-auto focus:ring-brand-primary/20 disabled:cursor-not-allowed"
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-300 text-brand-primary pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed"
           aria-label={`Select parameter ${parameter.parameterName}`}
         />
         <div className={cn("min-w-0", !isSelected && "opacity-50")}>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="block text-xs font-semibold leading-tight text-slate-900">{parameter.parameterName}</span>
+            <span className="block text-xs font-semibold leading-tight text-brand-text">{parameter.parameterName}</span>
             {labelAdornment}
           </div>
           {labelHelp}
@@ -102,26 +127,29 @@ export function ParameterRow({
         )}
       </div>
 
-      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-[45px] text-[11px] font-semibold text-slate-500 font-mono">
+      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-[11px] font-semibold text-slate-500">
         {renderedUnit || ""}
       </span>
 
       {/* Reference column. Rendered even when empty so the remaining cells keep their track:
           grid items are placed in source order, so omitting this element would shift Status
-          into the reference track. An empty span contributes no width, which is what lets the
-          minmax(0,auto) track collapse for a qualitative report. */}
+          into the reference track. The track is a fixed width, so an empty reference leaves
+          the column empty and Status stays exactly where it is on every other row - and a long
+          sex-unset reference wraps inside that width instead of widening the column and
+          pushing Result and Status sideways. The per-element max-w that used to bound the
+          wrap is gone: the track is the bound, and two bounds could disagree. */}
       <span className="min-w-0">
         {reference && (
           <span
             data-reference-display
-            className="inline-block max-w-[8rem] whitespace-normal break-words text-[11px] font-mono leading-snug text-slate-500 xl:max-w-[14rem]"
+            className="inline-block w-full whitespace-normal break-words font-mono text-[11px] leading-snug text-slate-500"
           >
             Ref: {reference}
           </span>
         )}
       </span>
 
-      <div data-status-column className="min-w-[70px]">
+      <div data-status-column className="min-w-0">
         <span
           className={cn(
             // Same outcome mapping and same hues as before, with the badge weight taken down:
@@ -129,7 +157,9 @@ export function ParameterRow({
             // scannable stripe rather than a stack of buttons. Invalid keeps the loudest
             // treatment because it is the only outcome that blocks completion. The text is
             // always the primary signal - colour never carries the meaning alone.
-            "inline-block min-w-[70px] rounded px-1.5 py-0.5 text-center text-[11px] font-bold uppercase tracking-wide",
+            // w-full rather than a min-width: the track is already fixed, so filling it makes
+            // every badge the same width and the status column reads as one stripe.
+            "inline-block w-full break-words rounded px-1.5 py-0.5 text-center text-[11px] font-bold uppercase tracking-wide",
             outcome === "Invalid"
               ? "bg-rose-600 font-extrabold text-white"
               : outcome === "Abnormal" || outcome === "High"
@@ -140,7 +170,7 @@ export function ParameterRow({
                   ? "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-300"
                   : outcome === "Entered"
                     ? "bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-300"
-                  : "bg-transparent font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
+                  : "bg-transparent font-normal text-slate-500 ring-1 ring-inset ring-brand-card-border"
           )}
         >
           {status}

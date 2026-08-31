@@ -9,16 +9,20 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function Badge({ className, variant = "neutral", size = "md", children, ...props }: BadgeProps) {
   // Square-cornered like StatusBadge, so the system has one badge shape. A pill is reserved
   // for shapes that mean "bounded selector", not applied to every short label.
-  const baseStyles = "inline-flex items-center whitespace-nowrap rounded-md font-semibold transition-colors";
+  // An inset ring rather than a border, matching StatusBadge and the dashboard
+  // pills: a border adds 2px to the box, so a size="sm" Badge and a size="sm"
+  // StatusBadge were different heights despite identical padding and type.
+  const baseStyles =
+    "inline-flex items-center whitespace-nowrap rounded-md font-semibold ring-1 ring-inset transition-colors";
 
   const variants = {
-    success: "bg-brand-success-bg text-brand-success border border-brand-success-border",
-    warning: "bg-brand-warning-bg text-brand-warning border border-brand-warning-border",
-    danger: "bg-brand-danger-bg text-brand-danger border border-brand-danger-border",
-    indigo: "bg-indigo-50 text-indigo-700 border border-indigo-200",
-    purple: "bg-indigo-50 text-indigo-700 border border-indigo-200",
-    blue: "bg-brand-info-bg text-brand-info border border-brand-info-border",
-    neutral: "bg-slate-100 text-slate-700 border border-slate-200",
+    success: "bg-brand-success-bg text-brand-success ring-brand-success-border",
+    warning: "bg-brand-warning-bg text-brand-warning ring-brand-warning-border",
+    danger: "bg-brand-danger-bg text-brand-danger ring-brand-danger-border",
+    indigo: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+    purple: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+    blue: "bg-brand-info-bg text-brand-info ring-brand-info-border",
+    neutral: "bg-slate-100 text-slate-700 ring-slate-200",
   };
 
   const sizes = {

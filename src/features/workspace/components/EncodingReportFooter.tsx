@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
-import { ILaboratoryReport, IPersonnel } from "@/domain/models/interfaces";
+import { ILaboratoryReport } from "@/domain/models/interfaces";
+import type { WorkspacePersonnelEntry } from "@/features/workspace/signatory-contracts";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
 import { RepeatableFindingsSection } from "./RepeatableFindingsSection";
@@ -14,7 +15,7 @@ export interface EncodingReportFooterProps {
   spec: HydratedTemplateSpec;
   definition: ClinicalReportDefinition;
   report: ILaboratoryReport;
-  availablePersonnel: IPersonnel[];
+  availablePersonnel: WorkspacePersonnelEntry[];
   onChangeReport: (updatedReport: ILaboratoryReport) => void;
 }
 
@@ -74,10 +75,10 @@ function SummaryChip({ label, isSatisfied, isRequired }: { label: string; isSati
       className={cn(
         "shrink-0 whitespace-nowrap text-[11px]",
         isSatisfied
-          ? "font-medium text-slate-600"
+          ? "font-medium text-brand-text-muted"
           : isRequired
             ? "font-semibold text-amber-800"
-            : "font-medium text-slate-500"
+            : "font-medium text-brand-text-muted"
       )}
     >
       {label}
@@ -104,23 +105,26 @@ export function EncodingReportFooter({
     <section
       data-encoding-footer={definition.templateCode}
       aria-label="Report footer"
-      className="sticky bottom-0 z-20 rounded-lg border border-slate-200 bg-white shadow-[0_-1px_2px_rgba(15,23,42,0.05)]"
+      // Sticky chrome: low elevation, cast upward because the panel is docked to the bottom
+      // and the content it lifts above is above it. Retinted from neutral slate to the F4
+      // brand hue so it matches every other shadow in the system.
+      className="sticky bottom-0 z-20 rounded-lg border border-brand-card-border bg-brand-card shadow-[0_-1px_3px_rgb(11_47_66/0.06)]"
     >
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         aria-controls="encoding-footer-content"
-        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary/40"
+        className="flex w-full items-center gap-2.5 rounded-lg bg-brand-structural px-3 py-1.5 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
       >
         <PanelBottom aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+        <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-wider text-brand-text-muted">
           Report Details
         </span>
 
         {/* Status items wrap at narrow widths rather than clipping; the divide rule gives them
             structure without turning each one into a chip. */}
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-slate-200 [&>*:not(:first-child)]:pl-2">
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-brand-card-border [&>*:not(:first-child)]:pl-2">
           <SummaryChip
             label={assigned ? "Signatories assigned" : "Signatories incomplete"}
             isSatisfied={assigned}
@@ -145,7 +149,7 @@ export function EncodingReportFooter({
           )}
         </span>
 
-        <span className="flex shrink-0 items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
+        <span className="flex shrink-0 items-center gap-1 rounded border border-brand-border px-1.5 py-0.5 text-[11px] font-semibold text-brand-text-muted">
           {isExpanded ? "Hide" : "Show"}
           {isExpanded ? (
             <ChevronDown aria-hidden="true" className="h-4 w-4" />
@@ -163,8 +167,12 @@ export function EncodingReportFooter({
       <div
         id="encoding-footer-content"
         className={cn(
-          // Bounded height so an expanded footer can never cover the grid it is docked beneath.
-          "max-h-[50vh] space-y-2.5 overflow-y-auto border-t border-slate-200 bg-slate-50/50 p-3",
+          // Bounded so an expanded footer can never cover the grid it is docked beneath. 50vh
+          // took half the worksheet - the operator expanded the footer and lost sight of the
+          // rows it belongs to. 38dvh keeps the results dominant; everything inside stays
+          // reachable because the panel scrolls rather than clipping. dvh, not vh, so mobile
+          // browser chrome shrinks the bound with the viewport instead of overflowing it.
+          "max-h-[38dvh] space-y-2.5 overflow-y-auto overscroll-contain border-t border-brand-card-border bg-brand-structural p-3",
           !isExpanded && "hidden"
         )}
       >

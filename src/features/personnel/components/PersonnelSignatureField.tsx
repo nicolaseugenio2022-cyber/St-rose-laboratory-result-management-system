@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
-import { Upload, Trash2, ImageOff } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Upload, Trash2, PenLine, PenOff } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   uploadPersonnelSignatureAction,
   removePersonnelSignatureAction,
@@ -14,25 +16,75 @@ const ACCEPTED_MIME = "image/png";
 
 export interface PersonnelSignatureFieldProps {
   personnelId: string;
-  signatureImageUrl: string | null | undefined;
-  onSignatureChanged: (newUrl: string | null) => void;
+  /** Display name of the Pathologist this control acts on. Named in the removal confirmation. */
+  personnelName: string;
+  /** Server-derived. This control never receives the signature reference itself. */
+  hasSignature: boolean;
+  onSignatureChanged: (hasSignature: boolean) => void;
+  /**
+   * Raised while this control holds a confirmation dialog open.
+   *
+   * The confirmation is a dialog inside the personnel dialog, and both listen for Escape on
+   * the document. Without this, one Escape press would dismiss the confirmation *and* discard
+   * the whole edit form underneath it. The parent uses the flag to stop the outer dialog
+   * dismissing while the inner one is answering a question.
+   */
+  onConfirmationOpenChange?: (isOpen: boolean) => void;
+  /**
+   * Raised while an upload or a removal is in flight.
+   *
+   * The guards below stop a second write starting inside this control, but the dialog that
+   * contains it has dismissal routes of its own - Escape, the backdrop, the close control and
+   * Cancel - and none of them know a write is running. Reporting the state upward is what lets
+   * the dialog withhold those routes until the operation settles, rather than tearing the
+   * control down while its request is still outstanding.
+   */
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 export function PersonnelSignatureField({
   personnelId,
-  signatureImageUrl,
+  personnelName,
+  hasSignature,
   onSignatureChanged,
+  onConfirmationOpenChange,
+  onBusyChange,
 }: PersonnelSignatureFieldProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isConfirmingRemoval, setIsConfirmingRemoval] = useState(false);
 
-  const hasSignature = !!signatureImageUrl;
+  // Declared above the handlers because every one of them is gated on it. An upload and a
+  // removal are writes against the same stored object, so a second one started while the first
+  // is in flight would settle in an order neither the control nor the record can predict.
+  // Disabled attributes alone do not cover a drop, which needs no control to fire.
+  const isBusy = isUploading || isRemoving;
+
+  // `isBusy` drives what the reader sees; this ref is the guard that state cannot be. A state
+  // update reaches these handlers only after a render, so two events dispatched in the same
+  // tick - two drops, or a removal confirmed on top of an upload - both read the stale value
+  // and both write against the same stored object. The ref is current the instant the first
+  // operation claims it, so it is the authoritative gate and the state stays the indicator.
+  const operationClaimedRef = useRef(false);
+
+  // Reported on every transition, so the dialog above is locked the moment a write starts and
+  // released the moment it settles - success or failure alike, since both paths clear the two
+  // flags this derives from in their `finally`. The unmount cleanup releases it as well, so a
+  // control torn down mid-write never leaves the dialog stuck closed to its own controls.
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+    return () => onBusyChange?.(false);
+  }, [isBusy, onBusyChange]);
 
   const processFile = useCallback(
     async (file: File) => {
+      // Checked before anything else happens. The `isBusy` guards in the callers above lag by
+      // a render; this does not, so a second drop or picked file in the same tick stops here.
+      if (operationClaimedRef.current) return;
+
       setError(null);
 
       if (file.type !== ACCEPTED_MIME) {
@@ -47,6 +99,9 @@ export function PersonnelSignatureField({
         return;
       }
 
+      // Claimed synchronously, before the first await below, so anything arriving while this
+      // upload runs is refused at the check above instead of starting a parallel write.
+      operationClaimedRef.current = true;
       setIsUploading(true);
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -59,13 +114,14 @@ export function PersonnelSignatureField({
         });
 
         if (result.success) {
-          onSignatureChanged(result.signatureImageUrl);
+          onSignatureChanged(result.hasSignature);
         } else {
           setError(result.error);
         }
       } catch {
         setError("Upload failed. Please try again.");
       } finally {
+        operationClaimedRef.current = false;
         setIsUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
@@ -75,17 +131,29 @@ export function PersonnelSignatureField({
 
   const handleFileInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (isBusy) {
+        event.target.value = "";
+        return;
+      }
       const file = event.target.files?.[0];
       if (file) processFile(file);
     },
-    [processFile]
+    [isBusy, processFile]
   );
+
+  const handleBrowseClick = useCallback(() => {
+    if (isBusy) return;
+    fileInputRef.current?.click();
+  }, [isBusy]);
 
   const handleDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
       setIsDragOver(false);
+      // The default is still cancelled above, so a file dropped mid-write is neither opened by
+      // the browser nor started as a second upload. It is simply ignored.
+      if (isBusy) return;
 
       const files = Array.from(event.dataTransfer.files);
       if (files.length !== 1) {
@@ -94,19 +162,29 @@ export function PersonnelSignatureField({
       }
       processFile(files[0]);
     },
-    [processFile]
+    [isBusy, processFile]
   );
 
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, []);
+  const handleDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      // Cancelled either way, so the browser never opens a dropped file itself. While a write
+      // is in flight the drag is refused as well, so the cursor says no before the drop.
+      event.preventDefault();
+      event.stopPropagation();
+      if (isBusy) event.dataTransfer.dropEffect = "none";
+    },
+    [isBusy]
+  );
 
-  const handleDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragOver(true);
-  }, []);
+  const handleDragEnter = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (isBusy) return;
+      setIsDragOver(true);
+    },
+    [isBusy]
+  );
 
   const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -114,98 +192,180 @@ export function PersonnelSignatureField({
     setIsDragOver(false);
   }, []);
 
-  const handleRemove = useCallback(async () => {
+  /**
+   * Removal is a direct, unrecoverable write against stored personnel data, so it is asked
+   * about before it happens rather than reported afterwards. The confirmation is the only
+   * thing added here: the server action, the storage object, the audit trail and the
+   * signatures already snapshotted onto completed reports are untouched by this step.
+   */
+  const openRemovalConfirmation = useCallback(() => {
+    if (isBusy) return;
+    setError(null);
+    setIsConfirmingRemoval(true);
+    onConfirmationOpenChange?.(true);
+  }, [isBusy, onConfirmationOpenChange]);
+
+  const closeRemovalConfirmation = useCallback(() => {
+    setIsConfirmingRemoval(false);
+    onConfirmationOpenChange?.(false);
+  }, [onConfirmationOpenChange]);
+
+  const handleConfirmRemoval = useCallback(async () => {
+    if (isBusy) return;
+    // The confirmation is a second entry point into the same stored object, and it can be
+    // answered in the same tick an upload starts - before either disabled state has rendered.
+    if (operationClaimedRef.current) return;
+    operationClaimedRef.current = true;
     setError(null);
     setIsRemoving(true);
     try {
       const result: SignatureActionResult =
         await removePersonnelSignatureAction({ personnelId });
       if (result.success) {
-        onSignatureChanged(null);
+        onSignatureChanged(result.hasSignature);
       } else {
         setError(result.error);
       }
     } catch {
       setError("Removal failed. Please try again.");
     } finally {
+      operationClaimedRef.current = false;
       setIsRemoving(false);
+      setIsConfirmingRemoval(false);
+      onConfirmationOpenChange?.(false);
     }
-  }, [personnelId, onSignatureChanged]);
+  }, [isBusy, personnelId, onSignatureChanged, onConfirmationOpenChange]);
 
   return (
-    <div
-      className={`rounded-lg border bg-slate-50 p-4 transition-colors ${
-        isDragOver
-          ? "border-brand-primary bg-brand-primary/5"
-          : "border-slate-200"
-      }`}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-    >
-      <p className="text-xs font-semibold text-brand-text">Signature Image</p>
-      <p className="mt-1 text-[11px] leading-relaxed text-brand-text-muted">
-        PNG only, maximum 2 MB. Signature is used in completed laboratory reports.
-      </p>
+    <>
+      <div
+        aria-disabled={isBusy || undefined}
+        className={[
+          "rounded-lg border transition-colors",
+          isDragOver && !isBusy
+            ? "border-brand-primary border-dashed bg-brand-info-bg"
+            : "border-brand-border bg-brand-structural",
+          // Reduced emphasis while a write runs, matching the state the controls inside it are
+          // already in. No drag-over highlight can appear on top of it.
+          isBusy ? "opacity-60" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+      >
+        <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
+                Signature Image
+              </span>
+              {/* Stated, never flagged. The image is optional, so its absence is a fact about the
+                  record and not a defect in it - same vocabulary and same neutral treatment the
+                  directory row uses, so the two never disagree in a reader's memory. */}
+              {hasSignature ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-text-muted">
+                  <PenLine aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  <span aria-hidden="true">On file</span>
+                  <span className="sr-only">Signature on file</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-text-muted">
+                  <PenOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  <span aria-hidden="true">No image</span>
+                  <span className="sr-only">No signature image</span>
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-brand-text-muted">
+              Optional. PNG only, maximum 2 MB. Drag a file here or use the button. Without an
+              image, reports carry the printed name, credentials and PRC licence instead. Applied
+              to reports completed from now on; previously completed reports keep the signature
+              they were issued with.
+            </p>
+          </div>
 
-      {error && (
-        <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
-          {error}
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png"
+              className="hidden"
+              disabled={isBusy}
+              onChange={handleFileInputChange}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              isLoading={isUploading}
+              disabled={isBusy}
+              onClick={handleBrowseClick}
+              className="min-h-11 sm:min-h-8"
+            >
+              {!isUploading && <Upload aria-hidden="true" className="h-3.5 w-3.5" />}
+              <span className="text-xs">
+                {isUploading ? "Uploading..." : hasSignature ? "Replace" : "Upload"}
+              </span>
+            </Button>
+            {hasSignature && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                isLoading={isRemoving}
+                disabled={isBusy}
+                onClick={openRemovalConfirmation}
+                className="min-h-11 text-brand-danger hover:border-brand-danger-border hover:bg-brand-danger-bg sm:min-h-8"
+              >
+                {!isRemoving && <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
+                <span className="text-xs">{isRemoving ? "Removing..." : "Remove"}</span>
+              </Button>
+            )}
+          </div>
         </div>
-      )}
 
-      <div className="mt-3 flex items-center gap-3">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png"
-          className="hidden"
-          onChange={handleFileInputChange}
-        />
+        {/* Both writes are silent to a screen reader otherwise: the spinner is decorative and the
+            button label alone does not announce itself when it changes. */}
+        <p aria-live="polite" className="sr-only">
+          {isUploading
+            ? "Uploading signature image."
+            : isRemoving
+              ? "Removing signature image."
+              : ""}
+        </p>
 
-        {hasSignature ? (
-          <>
-            <div className="flex items-center gap-2 text-[11px] text-brand-text-subtle">
-              <ImageOff className="h-3.5 w-3.5" />
-              <span>Signature uploaded</span>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isUploading || isRemoving}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="mr-1 h-3 w-3" />
-                Replace
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isUploading || isRemoving}
-                onClick={handleRemove}
-              >
-                <Trash2 className="mr-1 h-3 w-3" />
-                Remove
-              </Button>
-            </div>
-          </>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isUploading || isRemoving}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="mr-1 h-3 w-3" />
-            {isUploading ? "Uploading..." : "Upload Signature"}
-          </Button>
+        {error && (
+          <div className="px-3 pb-3">
+            <Alert variant="destructive" onDismiss={() => setError(null)}>
+              {error}
+            </Alert>
+          </div>
         )}
       </div>
-    </div>
+
+      <ConfirmDialog
+        isOpen={isConfirmingRemoval}
+        onCancel={closeRemovalConfirmation}
+        onConfirm={handleConfirmRemoval}
+        title="Remove signature image?"
+        description={`This removes the stored signature image for ${personnelName}.`}
+        confirmLabel="Remove image"
+        pendingLabel="Removing..."
+        variant="destructive"
+        isPending={isRemoving}
+      >
+        <p>
+          Reports completed from now on will carry this Pathologist&rsquo;s textual signatory
+          information - printed name, credentials and PRC licence number - in place of the
+          image. Reports already completed keep the signature they were issued with.
+        </p>
+        <p className="mt-2 text-brand-text-muted">
+          A signature image can be uploaded again at any time.
+        </p>
+      </ConfirmDialog>
+    </>
   );
 }

@@ -10,15 +10,15 @@ export function TemplateRemarksSection({ remarks, onChange }: TemplateRemarksSec
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="bg-slate-50/80 rounded-xl border border-slate-200 overflow-hidden mt-2.5 transition-all">
+    <div className="mt-2.5 overflow-hidden rounded-lg border border-brand-card-border bg-brand-background transition-colors">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-100/60 transition-colors"
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-brand-structural-hover transition-colors"
       >
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-brand-primary" />
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Laboratory Remarks</h3>
+          <h3 className="text-xs font-bold text-brand-text uppercase tracking-wider">Laboratory Remarks</h3>
         </div>
         <div className="flex items-center gap-2">
           {remarks && remarks.trim() !== "" && (
@@ -26,18 +26,18 @@ export function TemplateRemarksSection({ remarks, onChange }: TemplateRemarksSec
               Has Remarks
             </span>
           )}
-          {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          {isExpanded ? <ChevronUp className="h-4 w-4 text-brand-text-subtle" /> : <ChevronDown className="h-4 w-4 text-brand-text-subtle" />}
         </div>
       </button>
 
       {isExpanded && (
-        <div className="p-4 pt-0 border-t border-slate-200/60 mt-2">
+        <div className="p-4 pt-0 border-t border-brand-card-border mt-2">
           <textarea
             value={remarks || ""}
             onChange={(e) => onChange(e.target.value)}
             rows={2}
             placeholder="Enter official laboratory notes, observations, or specimen comments..."
-            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none"
+            className="w-full px-3 py-2 text-xs rounded-lg border border-brand-border bg-brand-card focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:border-brand-primary focus-visible:outline-none"
           />
         </div>
       )}

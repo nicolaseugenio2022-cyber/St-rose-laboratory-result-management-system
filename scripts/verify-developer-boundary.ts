@@ -19,8 +19,13 @@ import {
   emitLockoutActivated,
   emitLockoutReleased,
 } from "@/lib/lockout-audit";
+import {
+  toAccountDirectory,
+  toDeveloperAccountEntry,
+} from "@/features/users/account-directory-entry";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import type { SessionPayload } from "@/lib/session-codec";
+import type { User } from "@/types/user";
 import type {
   AuditLogEntry,
   AuditLogQueryCriteria,
@@ -2098,7 +2103,20 @@ async function verifyAdminResetsOrdinaryPassword(): Promise<void> {
   );
 }
 
-async function verifyDeveloperResetsOrdinaryPassword(): Promise<void> {
+/**
+ * UX-10SEC1 inverted this case.
+ *
+ * It previously asserted that a Developer caller *may* replace an ordinary account's password.
+ * That was the behaviour, and it contradicted both governing authorities: ADR-005 records that
+ * Developer "holds no user-management writes", and SECURITY_MODEL.md §6.4 that Developer has "no
+ * password-reset controls, no account write operations". The assertion was repaired by correcting
+ * the implementation and inverting the expectation, not by deleting the case - the operation it
+ * covers still needs a standing proof, now of refusal rather than of permission.
+ *
+ * Resetting a password is the most consequential of the four writes that were open to Developer:
+ * it rotates the credential and increments tokenVersion, ending the target's live sessions.
+ */
+async function verifyDeveloperCannotResetOrdinaryPassword(): Promise<void> {
   const replacementPassword = randomUUID();
   const initial = credential(USER_A, "Admin");
   initial.securityAnswerHash = randomUUID();
@@ -2108,29 +2126,25 @@ async function verifyDeveloperResetsOrdinaryPassword(): Promise<void> {
   initial.tokenVersion = 13;
   const { credentials, service } = createSubject([initial]);
 
-  await service.resetUserPassword(
-    initial.id,
-    { password: replacementPassword },
-    "Developer"
+  const error = await captureError(() =>
+    service.resetUserPassword(initial.id, { password: replacementPassword }, "Developer")
   );
-
   const stored = await credentials.findById(initial.id);
+
+  assert(error instanceof Error, "case 66 must reject a Developer caller");
+  // The credential must be untouched, not merely un-returned. A guard that threw after hashing
+  // would still have rotated tokenVersion and ended the target's sessions.
   assert(
-    stored !== null &&
-      stored.passwordHash !== initial.passwordHash &&
-      (await verifyPassword(replacementPassword, stored.passwordHash)),
-    "case 66 must allow a Developer caller to replace an ordinary password hash"
-  );
-  assert(
-    stored.tokenVersion === initial.tokenVersion + 1,
-    "case 66 must increment tokenVersion by exactly one"
+    stored?.passwordHash === initial.passwordHash &&
+      stored.tokenVersion === initial.tokenVersion,
+    "case 66 must leave the ordinary credential and tokenVersion unchanged"
   );
   assert(
     stored.securityAnswerHash === initial.securityAnswerHash &&
       stored.securityQuestion === initial.securityQuestion &&
       stored.mustChangePassword === initial.mustChangePassword &&
       stored.mustSetRecovery === initial.mustSetRecovery,
-    "case 66 must preserve recovery and first-login state"
+    "case 66 must leave recovery and first-login state unchanged"
   );
 }
 
@@ -2391,6 +2405,289 @@ async function verifyLogoutAccountLookupFailureIsSwallowed(): Promise<void> {
       JSON.stringify(consoleErrors[0][1]) ===
         JSON.stringify({ eventType: "AuthenticationLoggedOut" }),
     "case 75 console.error metadata must carry only the AuthenticationLoggedOut eventType"
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   UX-10SEC1 - Developer read-only boundary and safe account DTOs
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Every `User` field that must never reach the browser for an ordinary account. */
+const LIFECYCLE_FIELDS = [
+  "mustChangePassword",
+  "mustSetRecovery",
+  "tokenVersion",
+  "passwordUpdatedAt",
+  "updatedAt",
+] as const;
+
+function fullUserRecord(id: string, role: "Admin" | "User" | "Developer"): User {
+  return {
+    id,
+    // Deliberately shares no substring with `id`: otherwise the "no account id was serialized"
+    // assertion below cannot distinguish a leaked id from a username that merely contains one.
+    username: `login-${role.toLowerCase()}`,
+    role,
+    status: "Active",
+    mustChangePassword: true,
+    mustSetRecovery: true,
+    tokenVersion: 41,
+    passwordUpdatedAt: "2026-08-01T00:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-08-30T00:00:00.000Z",
+  };
+}
+
+/**
+ * The Developer projection carries exactly three fields.
+ *
+ * Asserted as an exact key set rather than "contains username, role, status". A subset check
+ * passes just as happily on a projection that also carries `id`, `tokenVersion` and everything
+ * else - which is the failure this case exists to catch, and the state the code was in before.
+ */
+async function verifyDeveloperDirectoryProjectionIsExactlyThreeFields(): Promise<void> {
+  const directory = toAccountDirectory(
+    [fullUserRecord("admin-1", "Admin"), fullUserRecord("user-1", "User")],
+    "Developer"
+  );
+
+  assert(directory.access === "read-only", "case 86 must tag the Developer directory read-only");
+  assert(directory.entries.length === 2, "case 86 must project every visible record");
+
+  for (const entry of directory.entries) {
+    const keys = Object.keys(entry).sort();
+    assert(
+      JSON.stringify(keys) === JSON.stringify(["role", "status", "username"]),
+      `case 86 Developer entry must carry exactly username, role and status (got ${keys.join(", ")})`
+    );
+  }
+
+  // Serialized, because a TypeScript type erases at runtime and the wire format is what matters.
+  const serialized = JSON.stringify(directory);
+  for (const field of LIFECYCLE_FIELDS) {
+    assert(!serialized.includes(field), `case 86 Developer directory must not serialize ${field}`);
+  }
+  assert(
+    !serialized.includes("admin-1") && !serialized.includes("user-1"),
+    "case 86 Developer directory must not serialize account ids"
+  );
+}
+
+/**
+ * Admin keeps the five fields its table renders - and no lifecycle metadata either.
+ *
+ * The Admin half matters as much as the Developer half: narrowing only the restricted projection
+ * would leave `tokenVersion` and `passwordUpdatedAt` crossing to every Admin browser, which
+ * SECURITY_MODEL.md §74 excludes from *every* browser-reachable projection, not just Developer's.
+ */
+async function verifyAdminDirectoryProjectionCarriesNoLifecycleMetadata(): Promise<void> {
+  const directory = toAccountDirectory([fullUserRecord("admin-1", "Admin")], "Admin");
+
+  assert(directory.access === "manage", "case 87 must tag the Admin directory manageable");
+  const keys = Object.keys(directory.entries[0]).sort();
+  assert(
+    JSON.stringify(keys) === JSON.stringify(["createdAt", "id", "role", "status", "username"]),
+    `case 87 Admin entry must carry exactly the five directory fields (got ${keys.join(", ")})`
+  );
+
+  const serialized = JSON.stringify(directory);
+  for (const field of LIFECYCLE_FIELDS) {
+    assert(!serialized.includes(field), `case 87 Admin directory must not serialize ${field}`);
+  }
+
+  // An unrecognized role must fall to the narrower projection, never the wider one.
+  const fallback = toAccountDirectory([fullUserRecord("user-1", "User")], "User");
+  assert(
+    fallback.access === "read-only",
+    "case 87 must fail closed to the restricted projection for any non-Admin role"
+  );
+}
+
+/**
+ * Developer Accounts keeps its own shape, and it is still not the full record.
+ *
+ * Proves the separate module was narrowed rather than broken: the four fields its table reads
+ * survive, and the lifecycle metadata does not.
+ */
+async function verifyDeveloperAccountEntryCarriesOnlyDisplayedFields(): Promise<void> {
+  const entry = toDeveloperAccountEntry(fullUserRecord("developer-1", "Developer"));
+  const keys = Object.keys(entry).sort();
+  assert(
+    JSON.stringify(keys) === JSON.stringify(["createdAt", "id", "status", "username"]),
+    `case 88 Developer account entry must carry exactly id, username, status and createdAt (got ${keys.join(", ")})`
+  );
+  const serialized = JSON.stringify(entry);
+  for (const field of LIFECYCLE_FIELDS) {
+    assert(
+      !serialized.includes(field),
+      `case 88 Developer account entry must not serialize ${field}`
+    );
+  }
+}
+
+/**
+ * Admin's authorized reset still works.
+ *
+ * The necessary other half of case 66. Without it, an implementation that refused *everyone* would
+ * satisfy the denial case and silently remove Admin's ability to reset a password.
+ */
+async function verifyAdminRetainsOrdinaryPasswordReset(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const initial = credential(USER_A);
+  initial.tokenVersion = 23;
+  const { credentials, service } = createSubject([initial]);
+
+  await service.resetUserPassword(initial.id, { password: replacementPassword }, "Admin");
+
+  const stored = await credentials.findById(initial.id);
+  assert(
+    stored !== null && (await verifyPassword(replacementPassword, stored.passwordHash)),
+    "case 89 must keep Admin's ordinary password reset reachable"
+  );
+  assert(
+    stored.tokenVersion === initial.tokenVersion + 1,
+    "case 89 must still increment tokenVersion by exactly one"
+  );
+}
+
+/**
+ * Developer retains its own account operations.
+ *
+ * The stop-condition check, standing: tightening the ordinary boundary must not reach the separate
+ * Developer Accounts contract, which runs through different service methods behind
+ * `assertDeveloperCaller`.
+ */
+async function verifyDeveloperAccountsRetainSeparateAuthority(): Promise<void> {
+  const replacementPassword = randomUUID();
+  const target = credential(DEVELOPER_B, "Developer");
+  target.tokenVersion = 5;
+  const { credentials, service } = createSubject([target]);
+
+  await service.resetDeveloperPassword(target.id, { password: replacementPassword }, "Developer");
+  const stored = await credentials.findById(target.id);
+  assert(
+    stored !== null && (await verifyPassword(replacementPassword, stored.passwordHash)),
+    "case 90 must keep Developer's own account reset reachable"
+  );
+
+  // And Admin still cannot reach it, which is the rule that protects Developer accounts.
+  const adminAttempt = await captureError(() =>
+    service.resetDeveloperPassword(target.id, { password: randomUUID() }, "Admin")
+  );
+  assert(
+    adminAttempt instanceof Error,
+    "case 90 must still refuse an Admin caller on the Developer reset path"
+  );
+}
+
+/**
+ * Every ordinary-account write routes through the Admin-only guard.
+ *
+ * Structural, because the four write paths are Next.js route handlers and a Server Action whose
+ * behaviour depends on request cookies. What is checkable without a live session - and what
+ * actually failed here - is *which* guard each boundary calls: all four previously authorized
+ * through `checkRouteAccess` alone, which admits Developer.
+ *
+ * The read path is asserted separately and positively, so "route everything through the write
+ * guard" cannot pass this case by locking Developer out of the directory it is entitled to read.
+ */
+function verifyOrdinaryAccountWritesUseTheAdminGuard(): void {
+  const guard = readFileSync(
+    new URL("../src/features/server-boundary/ordinary-account-guard.ts", import.meta.url),
+    "utf8"
+  );
+  const writeBody =
+    /export async function authorizeOrdinaryAccountWrite[\s\S]*?\n}/.exec(guard)?.[0] ?? "";
+  assert(writeBody.length > 0, "case 91 must locate authorizeOrdinaryAccountWrite");
+  assert(
+    /caller\.role !== "Admin"/.test(writeBody),
+    "case 91 write guard must require the Admin role"
+  );
+  assert(
+    /getCurrentUserProfile\(\)/.test(writeBody),
+    "case 91 write guard must resolve the caller from the session, never from input"
+  );
+
+  const collectionRoute = readFileSync(
+    new URL("../src/app/api/users/route.ts", import.meta.url),
+    "utf8"
+  );
+  const itemRoute = readFileSync(
+    new URL("../src/app/api/users/[id]/route.ts", import.meta.url),
+    "utf8"
+  );
+  const resetAction = readFileSync(
+    new URL("../src/features/server-boundary/user-account-actions.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert(
+    /authorizeOrdinaryAccountWrite\("POST"\)/.test(collectionRoute),
+    "case 91 POST /users must authorize as an ordinary-account write"
+  );
+  assert(
+    /authorizeOrdinaryAccountWrite\("PATCH"\)/.test(itemRoute),
+    "case 91 PATCH /users/[id] must authorize as an ordinary-account write"
+  );
+  assert(
+    /authorizeOrdinaryAccountWrite\("DELETE"\)/.test(itemRoute),
+    "case 91 DELETE /users/[id] must authorize as an ordinary-account write"
+  );
+  assert(
+    /authorizeOrdinaryAccountWrite\("RESET"\)/.test(resetAction),
+    "case 91 the ordinary password reset action must authorize as an ordinary-account write"
+  );
+  assert(
+    /authorizeOrdinaryAccountRead\("GET"\)/.test(collectionRoute),
+    "case 91 GET /users must remain a read, reachable by Developer"
+  );
+
+  // No ordinary write may fall back to the route gate, which admits Developer.
+  //
+  // Comments are stripped first: these files explain in prose why they no longer authorize that
+  // way, and an assertion about code must not fail on its own explanation.
+  const codeOnly = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*/g, "");
+
+  for (const [label, source] of [
+    ["collection route", collectionRoute],
+    ["item route", itemRoute],
+    ["reset action", resetAction],
+  ] as const) {
+    assert(
+      !/checkRouteAccess/.test(codeOnly(source)),
+      `case 91 ${label} must not authorize through checkRouteAccess, which admits Developer`
+    );
+  }
+
+  // And the client must not be the boundary: the read-only view exists, but the server refuses
+  // regardless of what the browser renders.
+  assert(
+    !/role === "Developer"/.test(codeOnly(resetAction)),
+    "case 91 the reset action must not branch on a client-supplied role"
+  );
+
+  // The presentation fallback must fail closed too. When a transient read failure leaves the
+  // server-rendered directory undefined, the client picks an access level with no payload to read
+  // it from - and defaulting that window to "manage" showed a Developer the Admin controls until
+  // the refetch resolved. The server refused those writes either way; this pins the interface to
+  // stop claiming a capability the role does not hold.
+  const managementView = codeOnly(
+    readFileSync(
+      new URL("../src/features/users/components/UserManagementView.tsx", import.meta.url),
+      "utf8"
+    )
+  );
+  const directoryFallback =
+    /useState<AccountDirectory>\([\s\S]*?\);/.exec(managementView)?.[0] ?? "";
+  assert(directoryFallback.length > 0, "case 91 must locate the directory state initializer");
+  assert(
+    /currentUserRole === "Admin"/.test(directoryFallback),
+    "case 91 the unresolved-directory fallback must be derived from the trusted caller role"
+  );
+  assert(
+    /\?\s*\{ access: "manage"[\s\S]*?:\s*\{ access: "read-only"/.test(directoryFallback),
+    "case 91 the unresolved-directory fallback must resolve non-Admin roles to the read-only presentation"
   );
 }
 
@@ -2908,7 +3205,7 @@ async function main(): Promise<void> {
   await verifyStalePasswordChangeStateIsRejected();
   await verifyFailedPasswordChangeAuditSurvivesRecordFailure();
   await verifyAdminResetsOrdinaryPassword();
-  await verifyDeveloperResetsOrdinaryPassword();
+  await verifyDeveloperCannotResetOrdinaryPassword();
   await verifyUserCannotResetOrdinaryPassword();
   await verifyOrdinaryResetRejectsDeveloperTarget();
   await verifyUpdateUserIgnoresPasswordLikeField();
@@ -2928,7 +3225,13 @@ async function main(): Promise<void> {
   await verifyConcurrentLockoutActivationEmitsOnce();
   await verifyNullLockoutReleaseEmitsNothing();
   await verifyLockoutStoreFailureDoesNotAlterAuthentication();
-  process.stdout.write("Developer boundary verification passed: all 85 cases verified.\n");
+  await verifyDeveloperDirectoryProjectionIsExactlyThreeFields();
+  await verifyAdminDirectoryProjectionCarriesNoLifecycleMetadata();
+  await verifyDeveloperAccountEntryCarriesOnlyDisplayedFields();
+  await verifyAdminRetainsOrdinaryPasswordReset();
+  await verifyDeveloperAccountsRetainSeparateAuthority();
+  verifyOrdinaryAccountWritesUseTheAdminGuard();
+  process.stdout.write("Developer boundary verification passed: all 91 cases verified.\n");
 }
 
 void main();

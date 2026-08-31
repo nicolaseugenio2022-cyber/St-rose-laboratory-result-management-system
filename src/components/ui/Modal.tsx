@@ -91,6 +91,18 @@ export function Modal({
       const last = focusable[focusable.length - 1];
       const active = document.activeElement as HTMLElement | null;
 
+      // Initial focus sits on the dialog container itself. `contains` reports true for the
+      // container, so the boundary checks below never matched it: forward Tab fell naturally
+      // to the first control, but Shift+Tab walked straight out of the dialog. Wrap it to
+      // the last control instead.
+      if (active === dialogRef.current) {
+        if (e.shiftKey) {
+          e.preventDefault();
+          last.focus();
+        }
+        return;
+      }
+
       if (!dialogRef.current?.contains(active)) {
         e.preventDefault();
         (e.shiftKey ? last : first).focus();
@@ -106,10 +118,14 @@ export function Modal({
     };
 
     document.addEventListener("keydown", handleKeyDown);
+    // Restore the exact previous inline value rather than a hardcoded "unset": a drawer
+    // or an outer dialog may already hold its own lock, and clobbering it would unlock
+    // the page underneath a surface that is still open.
+    const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = previousBodyOverflow;
     };
   }, [isOpen, getFocusable]);
 
@@ -170,14 +186,20 @@ export function Modal({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
-            aria-label={closeLabel}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          {/* Correction 3: a non-dismissible dialog offers no dismissal route at all.
+              Escape and the backdrop already respected `dismissible`; the close control did
+              not, so it stayed enabled and simply did nothing - which reads as a broken
+              control rather than a locked one. It is now absent while dismissal is off. */}
+          {dismissible && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="-mr-2 -mt-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              aria-label={closeLabel}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         <div className="pt-3">{children}</div>

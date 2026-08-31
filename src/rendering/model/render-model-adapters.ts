@@ -116,9 +116,20 @@ function sanitizeOptionalSignatureSource(source: string | null | undefined): str
   }
 }
 
+/**
+ * `signatureAssets` is an optional, render-only override keyed by personnel id.
+ *
+ * Additive on purpose. The Workspace no longer keeps a signature reference inside
+ * `SignatorySnapshot`, so the draft path supplies one here instead; every other caller omits the
+ * argument and resolves exactly as before from the transported value. That fallback is what keeps
+ * two things working: reopened drafts, whose signatories are hydrated from `report_signatories`
+ * rows, and every completed render, which must resolve from its own frozen snapshot and is
+ * deliberately never given an override - today's personnel must not redraw yesterday's report.
+ */
 function composeSignatorySlots(
-  source: readonly SignatorySnapshot[],
-  definition: ClinicalReportDefinition
+  source: readonly (SignatorySnapshot & { signatureAddress?: string | null })[],
+  definition: ClinicalReportDefinition,
+  signatureAssets: Readonly<Record<string, string>> = {}
 ): ResolvedSignatorySlot[] {
   const specs = definition.renderContract?.signatorySlots || STANDARD_SIGNATORY_SLOTS || [];
   const personnel = [...source].sort((left, right) => left.displayOrder - right.displayOrder);
@@ -130,8 +141,19 @@ function composeSignatorySlots(
     const fullName = matching?.printedFullName || "";
     const credentials = matching?.printedCredentials || "";
     const license = matching?.printedPrcLicenseNumber || "";
+    // Three sources, in order of authority for the caller that supplied them:
+    //   1. the draft override map, keyed by personnel id (live authoring);
+    //   2. `signatureAddress` - the opaque server-resolved address the client transport carries
+    //      for a persisted signatory, which for a completed report resolves that report's own
+    //      FROZEN row and never current personnel;
+    //   3. `signatureImageUrl` - the stored reference, which only ever exists server-side now
+    //      (and in verifier fixtures). The client transport cannot carry it.
+    // Whichever wins is sanitized identically, so an address is no more trusted than a path.
+    const overrideAsset = matching ? signatureAssets[matching.personnelId] : undefined;
     const signatureSource = spec.personnelRole === "Pathologist"
-      ? sanitizeOptionalSignatureSource(matching?.signatureImageUrl)
+      ? sanitizeOptionalSignatureSource(
+          overrideAsset ?? matching?.signatureAddress ?? matching?.signatureImageUrl
+        )
       : null;
     return {
       ...spec,
@@ -200,7 +222,8 @@ function resolveStaticContent(
 function draftReport(
   report: ILaboratoryReport,
   definition: ClinicalReportDefinition,
-  demographics: PatientDemographics
+  demographics: PatientDemographics,
+  signatureAssets: Readonly<Record<string, string>> = {}
 ): ResolvedReportRenderModel {
   const rawInputs: Record<string, string> = {};
   for (const parameter of definition.parameters) {
@@ -270,7 +293,7 @@ function draftReport(
     remarks: report.remarks || "",
     reagentKitInfo: report.reagentKitInfo ? { ...report.reagentKitInfo } : null,
     repeatableFindings: populatedFindings(report.encodingData?.repeatableFindings),
-    signatories: composeSignatorySlots(report.signatories, definition),
+    signatories: composeSignatorySlots(report.signatories, definition, signatureAssets),
     suppressAbnormalIndicators: definition.suppressAbnormalIndicators === true,
   };
 }
@@ -355,9 +378,10 @@ function requireDefinition(source: RenderDefinitionSource, templateCode: string)
 
 export function resolveDraftSessionRenderModel(
   session: IPatientReportSession,
-  definitions: RenderDefinitionSource = DEFAULT_DEFINITIONS
+  definitions: RenderDefinitionSource = DEFAULT_DEFINITIONS,
+  signatureAssets: Readonly<Record<string, string>> = {}
 ): ResolvedSessionRenderModel {
-  const reports = session.reports.map((report) => draftReport(report, requireDefinition(definitions, report.templateCode), session.demographics));
+  const reports = session.reports.map((report) => draftReport(report, requireDefinition(definitions, report.templateCode), session.demographics, signatureAssets));
   const agePresentation = session.reports.length === 1
     ? requireDefinition(definitions, session.reports[0].templateCode).renderContract?.demographics?.ageDisplay
     : undefined;
@@ -442,12 +466,16 @@ function legacyCompletedReport(
 
 export function resolveSessionRenderModel(
   session: IPatientReportSession,
-  definitions: RenderDefinitionSource = DEFAULT_DEFINITIONS
+  definitions: RenderDefinitionSource = DEFAULT_DEFINITIONS,
+  signatureAssets: Readonly<Record<string, string>> = {}
 ): ResolvedSessionRenderModel {
+  // The override reaches the draft branch only. Both completed branches resolve from frozen
+  // data - the snapshot, or the equally frozen report_signatories rows - and passing today's
+  // personnel into either would let a signature change rewrite an already-issued report.
   if (session.completedSnapshot) {
     return resolveCompletedSessionRenderModel(session.completedSnapshot, definitions, { accessionNumber: session.accessionNumber ?? undefined });
   }
-  if (session.status !== "Completed") return resolveDraftSessionRenderModel(session, definitions);
+  if (session.status !== "Completed") return resolveDraftSessionRenderModel(session, definitions, signatureAssets);
   const reports = session.reports.map((report) => legacyCompletedReport(report, requireDefinition(definitions, report.templateCode), session.demographics));
   return deepCloneAndFreeze({
     origin: "Completed",

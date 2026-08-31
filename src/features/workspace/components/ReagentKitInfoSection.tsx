@@ -22,7 +22,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
   };
 
   return (
-    <div className="bg-amber-50/60 rounded-xl border border-amber-200 p-3.5 mt-2.5">
+    <div className="mt-2.5 rounded-lg border border-brand-warning-border bg-brand-warning-bg p-3.5">
       <div className="flex items-center gap-2 mb-3">
         <Package className="h-4 w-4 text-amber-700" />
         <h3 className="text-xs font-bold text-amber-900">Reagent Kit Information (Mandatory for Rapid Test Templates)</h3>
@@ -38,7 +38,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
             value={current.lotNumber}
             onChange={(e) => handleChange("lotNumber", e.target.value)}
             placeholder="e.g. LOT-2026-X89"
-            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-brand-card focus-visible:outline-none focus-visible:ring-2 focus:ring-amber-500"
             required
           />
         </div>
@@ -51,7 +51,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
             data-encoding-input
             value={current.expirationDate}
             onChange={(e) => handleChange("expirationDate", e.target.value)}
-            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full px-2.5 py-1.5 text-xs rounded-md border border-amber-300 bg-brand-card focus-visible:outline-none focus-visible:ring-2 focus:ring-amber-500"
             required
           />
         </div>

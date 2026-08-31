@@ -6,6 +6,7 @@ import { Menu, LogOut, KeyRound } from "lucide-react";
 import { navigationConfig } from "@/config/navigation";
 import { formatRoleLabel } from "@/config/roles";
 import { UserRole } from "@/domain/types";
+import { Button } from "@/components/ui/Button";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { clearWorkspaceRecovery } from "@/features/workspace/workspace-recovery";
 
@@ -13,9 +14,13 @@ export interface HeaderProps {
   onMenuToggle: () => void;
   username?: string;
   role?: UserRole;
+  /** Drawer state, so the trigger can report it. Optional and internal to the shell. */
+  isMenuOpen?: boolean;
+  /** Lets the shell restore focus to this trigger when the drawer closes. */
+  menuButtonRef?: React.Ref<HTMLButtonElement>;
 }
 
-export function Header({ onMenuToggle, username, role }: HeaderProps) {
+export function Header({ onMenuToggle, username, role, isMenuOpen = false, menuButtonRef }: HeaderProps) {
   const pathname = usePathname();
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
@@ -27,61 +32,82 @@ export function Header({ onMenuToggle, username, role }: HeaderProps) {
   const pageTitle = currentNav ? currentNav.title : "St. Rose Laboratory";
   const pageDescription = currentNav?.description || "Result Management System";
 
+  // Structural, not working surface: the header is chrome. Sharing the sidebar's surface
+  // and a border that reads against the canvas makes the shell one connected frame
+  // instead of a white bar floating over white content.
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center border-b border-brand-border bg-brand-surface px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-1 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onMenuToggle}
-            className="rounded-lg p-2 text-brand-text-muted hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
-            aria-label="Toggle Navigation Drawer"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
+    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-brand-border-strong bg-brand-structural px-4 sm:px-5 lg:px-6">
+      {/* min-w-0 on the identity side is what stops the account controls from
+          crushing the page title as the viewport narrows. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <button
+          type="button"
+          ref={menuButtonRef}
+          onClick={onMenuToggle}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:bg-brand-surface-hover hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring lg:hidden"
+          aria-label="Toggle Navigation Drawer"
+          aria-expanded={isMenuOpen}
+          aria-controls="app-navigation-sidebar"
+        >
+          <Menu aria-hidden="true" className="h-5 w-5" />
+        </button>
 
-          <div>
-            <h1 className="text-lg font-bold text-brand-text leading-tight tracking-tight">{pageTitle}</h1>
-            <p className="text-xs text-brand-text-muted hidden sm:block mt-0.5">{pageDescription}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {username && (
-            <div
-              className="hidden min-w-0 max-w-48 flex-col border-r border-brand-border pr-3 sm:flex"
-              aria-label={`Signed in as ${username}`}
-            >
-              <span className="truncate text-sm font-medium text-brand-text" title={username}>
-                {username}
-              </span>
-              <span className="whitespace-nowrap text-xs text-brand-text-muted">
-                {formatRoleLabel(role)}
-              </span>
-            </div>
-          )}
-          <button
-            onClick={() => setIsChangePasswordOpen(true)}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
-            aria-label="Change Password"
-          >
-            <KeyRound className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline-block">Change Password</span>
-          </button>
-          <button
-            onClick={() => {
-              // Never leave unsaved patient data recoverable for the next person at a
-              // shared laboratory workstation.
-              clearWorkspaceRecovery();
-              import("@/features/auth/authActions").then((m) => m.logoutAction());
-            }}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring hover:bg-brand-surface-hover hover:text-brand-text h-9 px-3 text-brand-text-muted"
-            aria-label="Logout"
-          >
-            <LogOut className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline-block">Logout</span>
-          </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold leading-tight text-brand-text">{pageTitle}</h1>
+          <p className="hidden truncate text-[11px] leading-tight text-brand-text-muted sm:block">
+            {pageDescription}
+          </p>
         </div>
       </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        {username && (
+          <div
+            className="hidden min-w-0 max-w-48 flex-col items-end border-r border-brand-border pr-3 sm:flex"
+            aria-label={`Signed in as ${username}`}
+          >
+            <span className="max-w-full truncate text-xs font-semibold text-brand-text" title={username}>
+              {username}
+            </span>
+            <span className="whitespace-nowrap text-[11px] text-brand-text-muted">
+              {formatRoleLabel(role)}
+            </span>
+          </div>
+        )}
+
+        {/* Below sm these collapse to icon-only. The aria-label carries the full
+            name in both states, so the accessible name never depends on the
+            visible text being present. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsChangePasswordOpen(true)}
+          aria-label="Change Password"
+          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-3"
+        >
+          <KeyRound aria-hidden="true" className="h-4 w-4" />
+          <span className="hidden sm:inline">Change Password</span>
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            // Never leave unsaved patient data recoverable for the next person at a
+            // shared laboratory workstation.
+            clearWorkspaceRecovery();
+            import("@/features/auth/authActions").then((m) => m.logoutAction());
+          }}
+          aria-label="Logout"
+          className="h-11 w-11 px-0 sm:h-8 sm:w-auto sm:px-3"
+        >
+          <LogOut aria-hidden="true" className="h-4 w-4" />
+          <span className="hidden sm:inline">Logout</span>
+        </Button>
+      </div>
+
       <ChangePasswordModal
         isOpen={isChangePasswordOpen}
         onClose={() => setIsChangePasswordOpen(false)}

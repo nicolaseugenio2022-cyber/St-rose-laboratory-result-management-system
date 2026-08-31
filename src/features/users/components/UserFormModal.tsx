@@ -20,13 +20,25 @@ export function UserFormModal({
   isLoading = false,
 }: UserFormModalProps) {
   const isEditing = !!initialData;
-  const title = isEditing ? "Edit User Account" : "Create New User Account";
+  // Named for what the directory calls these records, and for the control that opens this dialog.
+  // "User Account" read as the Laboratory User role rather than as any staff account.
+  const title = isEditing ? "Edit staff account" : "Add staff account";
   const description = isEditing
-    ? "Update user details, role assignment, or account status."
-    : "Fill in the required information to register a new user account.";
+    ? "Update the account username, role assignment, or status."
+    : "Register a new staff login account.";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} description={description}>
+    // Escape, the backdrop and the close control are the shared Modal's, and they keep working -
+    // except while the create or edit write is in flight, where dismissal would leave the
+    // operator guessing whether the account was saved. `dismissible` also removes the close
+    // control in that window rather than leaving a dead one.
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      description={description}
+      dismissible={!isLoading}
+    >
       <UserForm
         initialData={initialData}
         onSubmit={onSubmit}

@@ -8,7 +8,8 @@ import {
 } from "@/services/userService";
 import { userService } from "@/services/user-service-instance";
 import { auditService } from "@/services/audit-service-instance";
-import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
+import { authorizeOrdinaryAccountWrite } from "@/features/server-boundary/ordinary-account-guard";
+import { toAdminAccountEntry } from "@/features/users/account-directory-entry";
 import { updateUserPayloadSchema } from "@/lib/validations/userValidation";
 import type { User } from "@/types/user";
 
@@ -29,40 +30,13 @@ function userNotFoundResponse(id: string) {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
-  const currentUserProfile = await getCurrentUserProfile();
-  const access = checkRouteAccess("/users", currentUserProfile);
-
-  if (!access.allowed) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: currentUserProfile?.role ?? null,
-      targetRole: null,
-      performedByUserId: currentUserProfile?.id ?? null,
-      performedByUsername: currentUserProfile?.username ?? null,
-      details: {
-        reasonCode: currentUserProfile ? "role_not_authorized" : "unauthenticated",
-        method: "PATCH",
-      },
-    });
+  // Admin only. This route previously authorized through checkRouteAccess alone, which admits
+  // Developer - so a Developer could edit, deactivate or promote an ordinary account.
+  const auth = await authorizeOrdinaryAccountWrite("PATCH");
+  if (!auth.authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-
-  if (!currentUserProfile) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: null,
-      targetRole: null,
-      performedByUserId: null,
-      performedByUsername: null,
-      details: {
-        reasonCode: "unauthenticated",
-        method: "PATCH",
-      },
-    });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const currentUserProfile = auth.caller;
 
   const { id } = await context.params;
   const target = await userService.getUserByIdVisibleTo(id, currentUserProfile.role);
@@ -102,44 +76,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       changedFields: Object.keys(parsed.data),
     },
   });
-  return NextResponse.json(user);
+  return NextResponse.json(toAdminAccountEntry(user));
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const currentUserProfile = await getCurrentUserProfile();
-  const access = checkRouteAccess("/users", currentUserProfile);
-
-  if (!access.allowed) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: currentUserProfile?.role ?? null,
-      targetRole: null,
-      performedByUserId: currentUserProfile?.id ?? null,
-      performedByUsername: currentUserProfile?.username ?? null,
-      details: {
-        reasonCode: currentUserProfile ? "role_not_authorized" : "unauthenticated",
-        method: "DELETE",
-      },
-    });
+  // Admin only. This route previously authorized through checkRouteAccess alone, which admits
+  // Developer - so a Developer could delete an ordinary account.
+  const auth = await authorizeOrdinaryAccountWrite("DELETE");
+  if (!auth.authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-
-  if (!currentUserProfile) {
-    await auditService.emit({
-      category: "SecurityDenial",
-      eventType: "UserManagementAccessDenied",
-      actorRole: null,
-      targetRole: null,
-      performedByUserId: null,
-      performedByUsername: null,
-      details: {
-        reasonCode: "unauthenticated",
-        method: "DELETE",
-      },
-    });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const currentUserProfile = auth.caller;
 
   const { id } = await context.params;
   const target = await userService.getUserByIdVisibleTo(id, currentUserProfile.role);

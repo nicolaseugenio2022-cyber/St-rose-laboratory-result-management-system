@@ -17,8 +17,9 @@ export interface ActionCardProps {
  * A single next action.
  *
  * The whole card is one real <Link>, so it is reachable and activatable by
- * keyboard and announces a meaningful name — rather than a click-only <div>
- * with a nested button, which is the pattern this replaces.
+ * keyboard and announces a meaningful name - rather than a click-only <div>
+ * with a nested button. Nothing is nested inside it that is separately
+ * clickable, so the link keeps one unambiguous target.
  */
 export function ActionCard({
   title,
@@ -33,18 +34,24 @@ export function ActionCard({
     <Link
       href={href}
       className={cn(
-        "group flex items-start gap-3 rounded-lg border px-4 py-3.5 transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2",
+        "group flex items-center gap-3 rounded-md border px-3 py-2.5",
+        // 150ms sits in the feedback band. Only the scale moves, so only the scale
+        // is withdrawn under reduced motion; the colour step still answers the press.
+        "transition-[color,background-color,border-color,transform] duration-150",
+        "active:scale-[0.99] motion-reduce:active:scale-100",
+        // Transparent offset: the page ground is #f8fafc, so a default white offset
+        // ringed every focused card in a colour the page does not contain.
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
         isPrimary
-          ? "border-brand-primary bg-brand-primary text-brand-primary-foreground hover:bg-brand-primary-hover"
-          : "border-brand-card-border bg-brand-card hover:border-slate-300 hover:bg-brand-surface-hover",
+          ? "border-brand-primary bg-brand-primary text-brand-primary-foreground shadow-sm hover:bg-brand-primary-hover"
+          : "border-brand-card-border bg-brand-card hover:border-brand-border-strong hover:bg-brand-surface-hover",
         className
       )}
     >
       {Icon && (
         <span
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
             isPrimary ? "bg-white/15" : "bg-brand-tint text-brand-primary"
           )}
         >
@@ -52,13 +59,13 @@ export function ActionCard({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-xs font-bold", isPrimary ? "" : "text-brand-text")}>
+        <span className={cn("block text-xs font-semibold", isPrimary ? "" : "text-brand-text")}>
           {title}
         </span>
         {description && (
           <span
             className={cn(
-              "mt-0.5 block text-xs leading-relaxed",
+              "mt-0.5 block text-[11px] leading-snug",
               isPrimary ? "opacity-90" : "text-brand-text-muted"
             )}
           >
@@ -67,10 +74,7 @@ export function ActionCard({
         )}
       </span>
       <ArrowRight
-        className={cn(
-          "mt-0.5 h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5",
-          isPrimary ? "" : "text-brand-text-subtle"
-        )}
+        className={cn("h-4 w-4 shrink-0", isPrimary ? "opacity-80" : "text-brand-text-subtle")}
         aria-hidden="true"
       />
     </Link>

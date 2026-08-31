@@ -215,16 +215,47 @@ assert(
 
 // ── Assertion 6: Proxy authenticates session and restricts to Admin or User before storage access ──
 {
-  const sessionCheckIndex = proxyRouteSource.indexOf("getSession()");
-  const roleCheckIndex = proxyRouteSource.indexOf('"Admin"') !== -1
-    ? proxyRouteSource.indexOf('"User"') !== -1
-      ? Math.min(proxyRouteSource.indexOf('"Admin"'), proxyRouteSource.indexOf('"User"'))
-      : proxyRouteSource.indexOf('"Admin"')
+  // UX-10M6S3-R1 corrected this from a file-position check to a handler-reachability check.
+  //
+  // It previously compared byte offsets in the whole file: `.from(` had to appear after
+  // `getSession()`. That held only while the storage call was written inline inside GET. The
+  // route now shares one download helper between its two address modes, and a helper is declared
+  // above the handler - so the old check failed on a route whose authorization had, if anything,
+  // become stricter. Position in a file was never the property worth pinning.
+  //
+  // What matters is that no storage access is REACHABLE before the auth chain. Both modes now
+  // reach storage only through `streamSignatureObject`, so the check is that every call to it
+  // inside GET occurs after the session and role gates.
+  const getHandler = /export async function GET\([\s\S]*$/.exec(proxyRouteSource)?.[0] ?? "";
+  assert(getHandler.length > 0, "the proxy GET handler is locatable");
+
+  const sessionCheckIndex = getHandler.indexOf("getSession()");
+  const roleCheckIndex = getHandler.indexOf('"Admin"') !== -1
+    ? getHandler.indexOf('"User"') !== -1
+      ? Math.min(getHandler.indexOf('"Admin"'), getHandler.indexOf('"User"'))
+      : getHandler.indexOf('"Admin"')
     : -1;
-  const storageIndex = proxyRouteSource.indexOf(".from(");
   assert(
-    sessionCheckIndex >= 0 && roleCheckIndex >= 0 && storageIndex > sessionCheckIndex && storageIndex > roleCheckIndex,
+    sessionCheckIndex >= 0 && roleCheckIndex >= 0,
+    "proxy GET resolves the session and checks the role"
+  );
+
+  // Every storage entry point, not just the first: a second mode that reached storage before the
+  // gates would be exactly the regression this assertion exists to catch.
+  const storageCallIndexes = [
+    ...getHandler.matchAll(/streamSignatureObject\(|\.from\(/g),
+  ].map((match) => match.index ?? -1);
+  assert(storageCallIndexes.length > 0, "proxy GET reaches storage somewhere");
+  assert(
+    storageCallIndexes.every(
+      (index) => index > sessionCheckIndex && index > roleCheckIndex
+    ),
     "proxy authenticates session and checks role before storage access"
+  );
+  // And the shared helper must not be an alternative entry point that skips the gates.
+  assert(
+    !/export\s+(async\s+)?function\s+streamSignatureObject/.test(proxyRouteSource),
+    "the proxy storage helper is module-private and cannot be called around the auth chain"
   );
 }
 
@@ -537,4 +568,50 @@ assert(
   "proxy returns generic 500 on signatories lookup failure (does not treat as path_not_referenced)"
 );
 
-process.stdout.write("\nPersonnel signature verification passed: all 47 assertions verified.\n");
+// ── UX-10M6S1: signature action results carry state, not a reference ─────────
+// The proxy URL is still generated, still persisted and still the render-time source. What
+// changed is that it is no longer handed back to the browser through the action result.
+
+const successUnionMember =
+  signatureActionsSource.match(/\|\s*\{\s*success:\s*true;[^}]*\}/)?.[0] || "";
+assert(
+  successUnionMember.length > 0,
+  "SignatureActionResult declares a success member"
+);
+assert(
+  /hasSignature:\s*boolean/.test(successUnionMember),
+  "SignatureActionResult success carries the derived hasSignature boolean"
+);
+assert(
+  !/signatureImageUrl/.test(successUnionMember),
+  "SignatureActionResult success declares no signatureImageUrl field"
+);
+
+const uploadReturn = uploadBody.match(/return \{\s*success:\s*true[^}]*\}/)?.[0] || "";
+assert(
+  /hasSignature:\s*true/.test(uploadReturn) && !/signatureImageUrl/.test(uploadReturn),
+  "upload success returns hasSignature: true and no signature reference"
+);
+
+const removeReturn = removeBody.match(/return \{\s*success:\s*true[^}]*\}/)?.[0] || "";
+assert(
+  /hasSignature:\s*false/.test(removeReturn) && !/signatureImageUrl/.test(removeReturn),
+  "removal success returns hasSignature: false and no signature reference"
+);
+
+// The server side must be unchanged: the URL is still built, still stored, still read.
+assert(
+  /repository\.update\(\s*personnel\.id,\s*\{\s*signatureImageUrl:\s*proxyUrl\s*\}\)/.test(
+    signatureActionsSource
+  ),
+  "upload still persists the proxy URL server-side"
+);
+assert(
+  /repository\.update\(\s*personnel\.id,\s*\{\s*signatureImageUrl:\s*null\s*\}\)/.test(
+    signatureActionsSource
+  ),
+  "removal still clears the stored reference server-side"
+);
+
+
+process.stdout.write("\nPersonnel signature verification passed: all 59 assertions verified.\n");

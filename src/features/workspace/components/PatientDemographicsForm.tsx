@@ -1,7 +1,7 @@
 import React from "react";
 import { PatientDemographics, PatientSex } from "@/domain/types";
 import { formatDateISO } from "@/lib/utils";
-import { User, Calendar, MapPin, Pencil, ChevronUp } from "lucide-react";
+import { User, MapPin, Pencil, ChevronUp } from "lucide-react";
 
 export interface PatientDemographicsFormProps {
   demographics: PatientDemographics;
@@ -16,6 +16,12 @@ export interface PatientDemographicsFormProps {
    */
   isExpanded?: boolean;
   onToggleExpanded?: (next: boolean) => void;
+  /**
+   * Id of the single field a validation failure resolved to, so it can be marked
+   * programmatically invalid while focus lands on it. Presentation only: it changes no
+   * value, no handler and no validation rule, and null marks nothing.
+   */
+  invalidFieldId?: "patient-full-name" | "patient-sex" | null;
 }
 
 export function PatientDemographicsForm({
@@ -23,6 +29,7 @@ export function PatientDemographicsForm({
   onChange,
   isExpanded = true,
   onToggleExpanded,
+  invalidFieldId = null,
 }: PatientDemographicsFormProps) {
   const handleChange = (field: keyof PatientDemographics, value: unknown) => {
     onChange({
@@ -43,13 +50,13 @@ export function PatientDemographicsForm({
     return (
       <div
         data-demographics-summary
-        className="mb-3 flex items-center gap-2.5 rounded-lg border border-slate-200 border-l-2 border-l-brand-primary bg-white px-3 py-1.5"
+        className="mb-3 flex items-center gap-2.5 rounded-lg border border-brand-card-border border-l-2 border-l-brand-primary bg-brand-card px-3 py-1.5"
       >
         <User aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <span className="shrink-0 text-sm font-semibold text-slate-900">
+        <span className="shrink-0 text-sm font-semibold text-brand-text">
           {demographics.fullName || "Unnamed patient"}
         </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-500" title={demographics.address || undefined}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-brand-text-muted" title={demographics.address || undefined}>
           {[
             demographics.age ? `${demographics.age} y/o` : null,
             demographics.sex || null,
@@ -65,9 +72,9 @@ export function PatientDemographicsForm({
           onClick={() => onToggleExpanded?.(true)}
           aria-expanded={false}
           aria-controls="patient-demographics-fields"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-brand-border bg-brand-card px-2.5 text-[11px] font-semibold text-brand-text-muted transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
         >
-          <Pencil aria-hidden="true" className="h-3.5 w-3.5 text-slate-500" />
+          <Pencil aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-muted" />
           Edit
         </button>
       </div>
@@ -75,10 +82,10 @@ export function PatientDemographicsForm({
   }
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-slate-200 border-l-2 border-l-brand-primary bg-white">
-      <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/80 px-3 py-1.5">
+    <div className="mb-3 overflow-hidden rounded-lg border border-brand-card-border border-l-2 border-l-brand-primary bg-brand-card">
+      <div className="flex items-center gap-2 border-b border-brand-card-border bg-brand-structural px-3 py-1.5">
         <User aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+        <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-brand-text-muted">
           Patient Demographics
         </h2>
         {onToggleExpanded && (
@@ -88,10 +95,10 @@ export function PatientDemographicsForm({
             onClick={() => onToggleExpanded(false)}
             aria-expanded
             aria-controls="patient-demographics-fields"
-            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-brand-border bg-brand-card px-2.5 text-[11px] font-semibold text-brand-text-muted transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
           >
             Done
-            <ChevronUp aria-hidden="true" className="h-3.5 w-3.5 text-slate-500" />
+            <ChevronUp aria-hidden="true" className="h-3.5 w-3.5 text-brand-text-muted" />
           </button>
         )}
       </div>
@@ -102,23 +109,24 @@ export function PatientDemographicsForm({
       >
         {/* Full Name */}
         <div className="sm:col-span-2">
-          <label htmlFor="patient-full-name" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <label htmlFor="patient-full-name" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
             Patient Full Name <span className="text-rose-500">*</span>
           </label>
           <input
             id="patient-full-name"
             type="text"
+            aria-invalid={invalidFieldId === "patient-full-name" ? true : undefined}
             value={demographics.fullName}
             onChange={(e) => handleChange("fullName", e.target.value)}
             placeholder="e.g. Dela Cruz, Juan Santos"
-            className="h-8 w-full scroll-mt-32 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            className="h-8 w-full scroll-mt-32 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             required
           />
         </div>
 
         {/* Simplified Age Field */}
         <div>
-          <label htmlFor="patient-age" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <label htmlFor="patient-age" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
             Age <span className="text-rose-500">*</span>
           </label>
           <input
@@ -127,7 +135,7 @@ export function PatientDemographicsForm({
             min="0"
             value={demographics.age || ""}
             onChange={(e) => handleChange("age", parseInt(e.target.value, 10) || 0)}
-            className="h-8 w-full scroll-mt-32 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            className="h-8 w-full scroll-mt-32 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             placeholder="e.g. 35"
             required
           />
@@ -135,14 +143,15 @@ export function PatientDemographicsForm({
 
         {/* Sex Field with No Default Selection */}
         <div>
-          <label htmlFor="patient-sex" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <label htmlFor="patient-sex" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
             Sex <span className="text-rose-500">*</span>
           </label>
           <select
             id="patient-sex"
+            aria-invalid={invalidFieldId === "patient-sex" ? true : undefined}
             value={demographics.sex || ""}
             onChange={(e) => handleChange("sex", e.target.value as PatientSex)}
-            className="h-8 w-full scroll-mt-32 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            className="h-8 w-full scroll-mt-32 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             required
           >
             <option value="" disabled>
@@ -155,7 +164,7 @@ export function PatientDemographicsForm({
 
         {/* Examination Date */}
         <div className="2xl:col-span-2">
-          <label htmlFor="patient-examination-date" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <label htmlFor="patient-examination-date" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
             Examination Date <span className="text-rose-500">*</span>
           </label>
           <div className="relative">
@@ -164,16 +173,15 @@ export function PatientDemographicsForm({
               type="date"
               value={demographics.examinationDate || formatDateISO()}
               onChange={(e) => handleChange("examinationDate", e.target.value)}
-              className="h-8 w-full scroll-mt-32 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+              className="h-8 w-full scroll-mt-32 rounded-md border border-brand-border bg-brand-card px-2.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
               required
             />
-            <Calendar aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
           </div>
         </div>
 
         {/* Multiline Editable Address */}
         <div className="sm:col-span-2">
-          <label htmlFor="patient-address" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <label htmlFor="patient-address" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
             Address
           </label>
           <div className="relative">
@@ -183,9 +191,9 @@ export function PatientDemographicsForm({
               value={demographics.address || ""}
               onChange={(e) => handleChange("address", e.target.value)}
               placeholder="Enter complete patient address..."
-              className="w-full resize-none scroll-mt-32 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 transition-colors focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+              className="w-full resize-none scroll-mt-32 rounded-md border border-brand-border bg-brand-card px-2.5 py-1.5 text-sm font-medium text-brand-text transition-colors focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
             />
-            <MapPin aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+            <MapPin aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2 h-3.5 w-3.5 text-brand-text-subtle" />
           </div>
         </div>
       </div>

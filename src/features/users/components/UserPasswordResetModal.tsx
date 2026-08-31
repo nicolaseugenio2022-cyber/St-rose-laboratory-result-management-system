@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { UserDirectoryEntry } from "./UserTable";
 import { resetUserPasswordSchema } from "@/lib/validations/userValidation";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -68,21 +69,21 @@ export function UserPasswordResetModal({
   if (!targetUser) return null;
 
   return (
+    // Escape, the backdrop and the close control are the shared Modal's, and they keep working -
+    // except while the password write is in flight, where dismissal would leave the operator
+    // unable to tell whether the credential changed. `dismissible` also removes the close control
+    // in that window rather than leaving a dead one.
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Reset User Password"
+      title="Reset account password"
       description="Set a new password for this account."
+      dismissible={!isLoading}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {serverError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700"
-          >
-            {serverError}
-          </div>
-        )}
+        {/* The shared Alert, not a hand-rolled rose box: it already carries the icon, the border
+            tokens and the assertive live-region role. */}
+        {serverError && <Alert variant="destructive">{serverError}</Alert>}
 
         <div className="rounded-lg border border-brand-border bg-brand-surface-hover px-3.5 py-3">
           <p className="text-xs font-semibold text-brand-text-muted">Account</p>
@@ -117,12 +118,20 @@ export function UserPasswordResetModal({
           disabled={isLoading}
         />
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-          <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+        {/* Both footer actions clear 44px on a phone and fall back to the standard 40px control
+            height from sm up. */}
+        <div className="flex items-center justify-end gap-3 border-t border-brand-border-subtle pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 sm:min-h-10"
+            onClick={onClose}
+            disabled={isLoading}
+          >
             Cancel
           </Button>
-          <Button type="submit" isLoading={isLoading}>
-            Reset Password
+          <Button type="submit" className="min-h-11 sm:min-h-10" isLoading={isLoading}>
+            Reset password
           </Button>
         </div>
       </form>

@@ -340,4 +340,117 @@ assert(
   "PersonnelForm displays the user-facing PRC duplicate message"
 );
 
-process.stdout.write("\nPersonnel directory verification passed: all 11 assertions verified.\n");
+// ── UX-10M6S1: the client-safe personnel projection ──────────────────────────
+// AGENTS.md §7: "Never expose signatureImageUrl to a client schema. Derive a boolean
+// server-side." Passing IPersonnel and letting the client compute !!signatureImageUrl
+// satisfied the interface but not the rule - the URL still crossed the wire. These
+// assertions pin the projection that replaced it.
+
+const directoryEntrySource = getSource("src/features/personnel/personnel-directory-entry.ts");
+const personnelDirectoryViewSource = getSource(
+  "src/features/personnel/components/PersonnelDirectoryView.tsx"
+);
+const personnelTableSource = getSource("src/features/personnel/components/PersonnelTable.tsx");
+const personnelFormModalSource = getSource(
+  "src/features/personnel/components/PersonnelFormModal.tsx"
+);
+const personnelSignatureFieldSource = getSource(
+  "src/features/personnel/components/PersonnelSignatureField.tsx"
+);
+
+// The interface body only - the file's own doc comment quotes the forbidden identifier while
+// explaining why it is forbidden, and a whole-file negative would fail on the explanation.
+const directoryEntryInterface =
+  directoryEntrySource.match(/export interface PersonnelDirectoryEntry \{[\s\S]*?\n\}/)?.[0] || "";
+assert(
+  directoryEntryInterface.length > 0,
+  "PersonnelDirectoryEntry interface is declared and locatable"
+);
+assert(
+  /\bhasSignature\s*:\s*boolean\s*;/.test(directoryEntryInterface),
+  "PersonnelDirectoryEntry carries the server-derived hasSignature boolean"
+);
+assert(
+  !/signatureImageUrl/.test(directoryEntryInterface),
+  "PersonnelDirectoryEntry declares no signatureImageUrl field"
+);
+
+// The projection must DERIVE the boolean, not receive one. Pinning Boolean(...) over the
+// stored reference is what proves the derivation happens on the server side of the boundary.
+const toDirectoryEntryBody =
+  personnelActionsSource.match(/function toDirectoryEntry\([\s\S]*?\n\}/)?.[0] || "";
+assert(
+  toDirectoryEntryBody.length > 0,
+  "personnel-actions.ts declares the toDirectoryEntry projection"
+);
+assert(
+  /hasSignature:\s*Boolean\(\s*person\.signatureImageUrl\s*\)/.test(toDirectoryEntryBody),
+  "toDirectoryEntry derives hasSignature from the stored signature reference server-side"
+);
+assert(
+  !/\.\.\.\s*person/.test(toDirectoryEntryBody),
+  "toDirectoryEntry projects field by field and never spreads the personnel record"
+);
+
+const listPersonnelBody = extractFunctionBody(personnelActionsSource, "listPersonnelAction");
+assert(
+  /requirePersonnelReader\(\)/.test(listPersonnelBody),
+  "listPersonnelAction still authorizes through requirePersonnelReader"
+);
+assert(
+  listPersonnelBody.indexOf("requirePersonnelReader()") <
+    listPersonnelBody.indexOf("SupabasePersonnelRepository"),
+  "listPersonnelAction authorizes before touching the repository"
+);
+assert(
+  /\.map\(toDirectoryEntry\)/.test(listPersonnelBody),
+  "listPersonnelAction returns projected entries, never raw personnel records"
+);
+assert(
+  /export async function listPersonnelAction\(\): Promise<PersonnelDirectoryEntry\[\]>/.test(
+    personnelActionsSource
+  ),
+  "listPersonnelAction is typed to the client-safe projection"
+);
+
+// A mutation result that carries a personnel record carries its signature reference with it.
+assert(
+  /export type PersonnelActionResult =\s*\|\s*\{ success: true \}/.test(personnelActionsSource),
+  "PersonnelActionResult success carries no personnel record"
+);
+assert(
+  !/success:\s*true,\s*data:/.test(personnelActionsSource),
+  "no personnel action returns a personnel record on success"
+);
+assert(
+  /export async function togglePersonnelStatusAction\(input: unknown\): Promise<void>/.test(
+    personnelActionsSource
+  ),
+  "togglePersonnelStatusAction returns no personnel record to the client"
+);
+
+// The client half of the boundary. IPersonnel is the type that carries the URL, so a client
+// component naming either identifier has re-opened the path this slice closed.
+for (const [label, clientSource] of [
+  ["PersonnelDirectoryView", personnelDirectoryViewSource],
+  ["PersonnelTable", personnelTableSource],
+  ["PersonnelFormModal", personnelFormModalSource],
+  ["PersonnelForm", personnelFormSource],
+  ["PersonnelSignatureField", personnelSignatureFieldSource],
+] as const) {
+  assert(
+    !/signatureImageUrl/.test(clientSource),
+    `${label} names no signatureImageUrl`
+  );
+  assert(
+    !/\bIPersonnel\b/.test(clientSource),
+    `${label} does not use the IPersonnel type, which carries the signature reference`
+  );
+}
+assert(
+  /hasSignature/.test(personnelSignatureFieldSource),
+  "PersonnelSignatureField drives its state from the derived boolean"
+);
+
+
+process.stdout.write("\nPersonnel directory verification passed: all 29 assertions verified.\n");

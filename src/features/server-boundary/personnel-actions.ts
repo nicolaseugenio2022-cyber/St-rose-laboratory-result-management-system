@@ -3,6 +3,7 @@
 import "server-only";
 
 import type { IPersonnel } from "@/domain/models/interfaces";
+import type { PersonnelDirectoryEntry } from "@/features/personnel/personnel-directory-entry";
 import { requirePersonnelAdmin, requirePersonnelReader } from "@/lib/personnel-guard";
 import {
   createPersonnelSchema,
@@ -13,13 +14,37 @@ import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-r
 import { auditService } from "@/services/audit-service-instance";
 
 export type PersonnelActionResult =
-  | { success: true; data: IPersonnel }
+  | { success: true }
   | { success: false; error: "DUPLICATE_PRC" };
 
-export async function listPersonnelAction(): Promise<IPersonnel[]> {
+/**
+ * Project a server-side personnel record onto the client-safe directory entry.
+ *
+ * The single place `signatureImageUrl` is reduced to a boolean. Field-by-field rather than a
+ * spread-and-delete: a spread would silently carry any field later added to IPersonnel across
+ * the boundary, which is exactly the failure this projection exists to prevent.
+ */
+function toDirectoryEntry(person: IPersonnel): PersonnelDirectoryEntry {
+  return {
+    id: person.id,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    middleInitial: person.middleInitial ?? null,
+    credentials: person.credentials,
+    prcLicenseNumber: person.prcLicenseNumber,
+    role: person.role,
+    isActive: person.isActive,
+    createdAt: person.createdAt,
+    updatedAt: person.updatedAt,
+    hasSignature: Boolean(person.signatureImageUrl),
+  };
+}
+
+export async function listPersonnelAction(): Promise<PersonnelDirectoryEntry[]> {
   await requirePersonnelReader();
   const repository = new SupabasePersonnelRepository();
-  return repository.findAll();
+  const personnel = await repository.findAll();
+  return personnel.map(toDirectoryEntry);
 }
 
 export async function createPersonnelAction(input: unknown): Promise<PersonnelActionResult> {
@@ -66,7 +91,7 @@ export async function createPersonnelAction(input: unknown): Promise<PersonnelAc
     },
   });
 
-  return { success: true, data: created };
+  return { success: true };
 }
 
 export async function updatePersonnelAction(input: unknown): Promise<PersonnelActionResult> {
@@ -138,10 +163,12 @@ export async function updatePersonnelAction(input: unknown): Promise<PersonnelAc
     },
   });
 
-  return { success: true, data: updated };
+  return { success: true };
 }
 
-export async function togglePersonnelStatusAction(input: unknown): Promise<IPersonnel> {
+/** Returns nothing to the client. The audit payload below is unchanged and still reads the
+ *  updated record server-side; the client refreshes the directory on success. */
+export async function togglePersonnelStatusAction(input: unknown): Promise<void> {
   const caller = await requirePersonnelAdmin();
   const parsed = personnelStatusSchema.parse(input);
   const repository = new SupabasePersonnelRepository();
@@ -162,6 +189,4 @@ export async function togglePersonnelStatusAction(input: unknown): Promise<IPers
       isActive: updated.isActive,
     },
   });
-
-  return updated;
 }

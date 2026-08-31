@@ -61,7 +61,7 @@ export function Alert({
       {...props}
     >
       <Icon className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 break-words">
         {title && <p className="font-semibold leading-tight">{title}</p>}
         {children && (
           <div className={cn("leading-relaxed", title && "mt-0.5 font-normal opacity-90")}>
@@ -74,9 +74,9 @@ export function Alert({
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-current opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+          className="-mr-1 -mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-current transition-colors hover:bg-black/5 active:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
         >
-          <X className="h-3.5 w-3.5" aria-hidden="true" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
     </div>

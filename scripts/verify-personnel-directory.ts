@@ -282,8 +282,14 @@ assert(
   `listActivePersonnelAction must retain its exact body (expected ${EXPECTED_LIST_ACTIVE_PERSONNEL_HASH}, got ${listActivePersonnelHash})`
 );
 
+// SHADCN-07C1-R2 approved real-boundary remint: requireOperationalCaller now derives session and
+// profile from ONE resolveAuthenticatedRequest() instead of a getSession()/getSessionUser() pair,
+// because React cache() is not a dependable dedupe inside a Server Action. The diff was reviewed
+// line by line before reminting: only the resolution mechanism moved. Every role check, denial
+// reason, audit category/event/actor/target field, thrown error type and returned value is
+// untouched, and the structural assertions below continue to prove that independently of the hash.
 const EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH =
-  "f8ed1788ffaa3cbaebcb80253b95ed7fa2421e069cfce3749a0d8532a2072b7b";
+  "d0e146f6225daa08e9c26f83505a62fb1fd0be86a746c414b4c7370016e22d26";
 const requireOperationalCallerFunction = extractDeclaredFunction(
   serverActionsSource,
   "async function requireOperationalCaller"
@@ -481,4 +487,65 @@ assert(
 );
 
 
-process.stdout.write("\nPersonnel directory verification passed: all 29 assertions verified.\n");
+// SHADCN-07C1-R2: both personnel guards resolve the authenticated request EXACTLY ONCE.
+//
+// React cache() gives reuse within a Server Component render; it is not a dependable dedupe inside
+// a Server Action, so the earlier getSession()/getSessionUser() pair could genuinely read the user
+// row twice per guard call. The resolution is COUNTED rather than merely detected - a presence test
+// would pass just as happily on a guard that resolved twice, which is the defect being corrected.
+// The role rules are re-asserted alongside it so a future edit cannot trade authorization for a
+// saved query.
+const personnelGuardSourceForResolution = getSource("src/lib/personnel-guard.ts");
+// Real RegExp values, not strings reconstructed at runtime. The previous form wrapped each rule in
+// literal slashes and stripped them with slice(1, -1) before new RegExp() - fragile, and it left the
+// dot in `profile.role` as a wildcard that would have matched `profileXrole`. These are escaped
+// literals in genuine regex literals, so the rule they pin is the rule they read.
+const guardContracts: Array<[string, RegExp]> = [
+  [
+    "requirePersonnelReader",
+    /profile\.role\s*!==\s*"Admin"\s*&&\s*profile\.role\s*!==\s*"Developer"/,
+  ],
+  [
+    "requirePersonnelAdmin",
+    /profile\.role\s*!==\s*"Admin"/,
+  ],
+];
+for (const [guardName, roleRule] of guardContracts) {
+  const declaration = `export async function ${guardName}(`;
+  const start = personnelGuardSourceForResolution.indexOf(declaration);
+  assert(start >= 0, `${guardName} is declared in personnel-guard.ts`);
+  const next = personnelGuardSourceForResolution.indexOf(
+    "\nexport async function",
+    start + declaration.length
+  );
+  const guardSource = personnelGuardSourceForResolution.slice(
+    start,
+    next >= 0 ? next : personnelGuardSourceForResolution.length
+  );
+
+  const resolutionCalls = (
+    guardSource.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
+  assert(
+    resolutionCalls === 1,
+    `${guardName} resolves the authenticated request exactly once per invocation`
+  );
+  assert(
+    roleRule.test(guardSource),
+    `${guardName} retains its role rule unchanged`
+  );
+  assert(
+    /profile\.status !== "Active"/.test(guardSource) &&
+      /session\.mustChangePassword \|\| session\.mustSetRecovery/.test(guardSource) &&
+      /eventType: "PersonnelDirectoryAccessDenied"/.test(guardSource),
+    `${guardName} retains its Active-status, first-login and denial-event behaviour`
+  );
+}
+assert(
+  !/getSessionUser\s*\(/.test(personnelGuardSourceForResolution) &&
+    !/getSession\s*\(/.test(personnelGuardSourceForResolution) &&
+    !/getUserById/.test(personnelGuardSourceForResolution),
+  "the personnel guards perform no second session or user lookup"
+);
+
+process.stdout.write("\nPersonnel directory verification passed: every assertion above succeeded.\n");

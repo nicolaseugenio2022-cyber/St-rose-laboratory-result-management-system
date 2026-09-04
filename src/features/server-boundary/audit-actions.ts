@@ -3,17 +3,22 @@
 import "server-only";
 
 import { parseAuditReadInput } from "@/features/server-boundary/audit-action-inputs";
-import { getSession } from "@/lib/session";
+import { resolveAuthenticatedRequest } from "@/lib/session";
 import { auditService } from "@/services/audit-service-instance";
 import { auditReadService } from "@/services/audit-read-service-instance";
 import type {
   AuditPageTransport,
   AuditReaderRole,
 } from "@/services/audit-read-service";
-import { userService } from "@/services/user-service-instance";
 
 async function requireAuditCaller(): Promise<{ role: AuditReaderRole }> {
-  const session = await getSession();
+  // SHADCN-07C1-R1: ONE resolution per operation. React cache() is a per-render memo and is not a
+  // dependable dedupe inside a Server Action, so the earlier two-step session-then-profile pair
+  // could genuinely read the user row twice. Resolving once removes the second read outright
+  // rather than relying on a memo, and guarantees session and profile describe the same row.
+  const resolved = await resolveAuthenticatedRequest();
+  const session = resolved?.session ?? null;
+  const profile = resolved?.user ?? null;
   if (!session) {
     await auditService.emit({
       category: "SecurityDenial",
@@ -36,7 +41,6 @@ async function requireAuditCaller(): Promise<{ role: AuditReaderRole }> {
     throw new Error("First-login account setup must be completed before accessing audit data.");
   }
 
-  const profile = await userService.getUserById(session.userId);
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",

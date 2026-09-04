@@ -179,14 +179,31 @@ function verifyAuditActionAuthorization(): void {
     "the audit action must not reuse requireOperationalCaller"
   );
   assert(callerGuard, "the audit action must define its own caller guard");
+  // SHADCN-07C1-R1: session and profile both come from ONE resolveAuthenticatedRequest(). React
+  // cache() is a per-render memo and is not a dependable dedupe inside a Server Action, so the
+  // earlier getSession() + getSessionUser() pair could genuinely read the user row twice. The
+  // intent of this assertion is unchanged and is what it always was - the role is derived
+  // server-side from the session-resolved profile and never from client input - so only the
+  // mechanism conjunct moves. Every other conjunct is carried verbatim.
+  //
+  // The resolution is COUNTED, not merely detected: a presence test would pass just as happily on
+  // a guard that resolved twice, which is exactly the defect being corrected.
+  const auditResolutionCalls = (
+    callerGuard.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
   assert(
-    /getSession\s*\(\s*\)/.test(callerGuard) &&
-      /getUserById\s*\(\s*session\.userId\s*\)/.test(callerGuard) &&
+    auditResolutionCalls === 1 &&
       /profile\.status\s*!==\s*["']Active["']/.test(callerGuard) &&
       /profile\.role\s*!==\s*["']Admin["']/.test(callerGuard) &&
       /profile\.role\s*!==\s*["']Developer["']/.test(callerGuard) &&
       /return\s*\{\s*role:\s*profile\.role\s*\}/.test(callerGuard),
-    "the audit action guard must derive and authorize the caller role from the session profile"
+    "the audit action guard must resolve the request exactly once and authorize the caller role from that profile"
+  );
+  assert(
+    !/getSessionUser\s*\(/.test(actionSource) &&
+      !/getSession\s*\(/.test(actionSource) &&
+      !/getUserById/.test(actionSource),
+    "the audit action must not re-read the session or user profile it already resolved for this request"
   );
   assert(
     !/^\s*(?:role|[A-Za-z_$][\w$]*role[\w$]*)\s*:/im.test(inputSource),

@@ -624,6 +624,44 @@ async function main(): Promise<void> {
     /from\("report_signatories"\)[\s\S]{0,200}?\.eq\("report_id"/.test(proxySource),
     "case 92 the frozen address resolves from the report's own signatory row"
   );
+  // SHADCN-07C1-R1: the proxy resolves the request EXACTLY ONCE and threads that profile onward.
+  // It previously re-read the user once per request and once more per denial. React cache() is a
+  // per-render memo and is not a dependable dedupe inside a Route Handler, so those were real
+  // extra reads. The guard is unchanged - status, role and denial reasons all still derive from a
+  // server-resolved profile - so this pins only that one resolution happens and no lookup returns.
+  //
+  // Counted, not merely detected: a presence test would pass on a handler that resolved twice.
+  const proxyHandler =
+    /export async function GET\([\s\S]*$/.exec(proxySource)?.[0] ?? "";
+  const proxyResolutionCalls = (
+    proxyHandler.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
+  assert(
+    proxyHandler.length > 0 && proxyResolutionCalls === 1,
+    "case 92 the signature proxy resolves the authenticated request exactly once per operation"
+  );
+  assert(
+    !/getSessionUser\s*\(/.test(proxySource) &&
+      !/getSession\s*\(/.test(proxySource) &&
+      !/getUserById/.test(proxySource),
+    "case 92 the signature proxy performs no second session or user lookup"
+  );
+  // The denial helper must be handed the profile, never resolve one itself: a lookup there cost an
+  // extra read on every denial and could disagree with the row the checks used.
+  const emitDenialSource =
+    /async function emitDenial\([\s\S]*?\n\}/.exec(proxySource)?.[0] ?? "";
+  assert(
+    emitDenialSource.length > 0 &&
+      /profile\?:/.test(emitDenialSource) &&
+      !/resolveAuthenticatedRequest|getSessionUser|getSession\s*\(|getUserById/.test(emitDenialSource),
+    "case 92 emitDenial receives the resolved profile and performs no authentication lookup"
+  );
+  assert(
+    /profile\.status\s*!==\s*"Active"/.test(proxySource) &&
+      /profile\.role\s*!==\s*"Admin"/.test(proxySource) &&
+      /profile\.role\s*!==\s*"User"/.test(proxySource),
+    "case 92 the signature proxy retains its Active-status and Admin/User role checks"
+  );
   assert(
     /identifierAddress:\s*"private, no-store"/.test(proxySource),
     "case 92 an identifier-addressed signature response is never cached"

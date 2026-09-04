@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSession, getSessionUser } from "@/lib/session";
+import { resolveAuthenticatedRequest } from "@/lib/session";
 import { ForbiddenError } from "@/lib/errors";
 import { auditService } from "@/services/audit-service-instance";
 
@@ -11,7 +11,14 @@ type PersonnelReaderProfile = {
 };
 
 export async function requirePersonnelReader(): Promise<PersonnelReaderProfile> {
-  const session = await getSession();
+  // SHADCN-07C1-R2: ONE resolution per invocation. React cache() gives reuse within a Server
+  // Component render; it is not a dependable dedupe inside a Server Action, so the earlier
+  // two-step session-then-profile pair could genuinely read the user row twice. Resolving once
+  // removes the second read outright rather than relying on a memo, and guarantees the session and
+  // the profile describe the same row. Every check, denial reason, audit field, thrown error and
+  // returned value below is unchanged.
+  const resolved = await resolveAuthenticatedRequest();
+  const session = resolved?.session ?? null;
   if (!session) {
     await auditService.emit({
       category: "SecurityDenial",
@@ -34,7 +41,7 @@ export async function requirePersonnelReader(): Promise<PersonnelReaderProfile> 
     throw new ForbiddenError("First-login account setup must be completed before accessing personnel data.");
   }
 
-  const profile = await getSessionUser();
+  const profile = resolved?.user ?? null;
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",
@@ -64,7 +71,14 @@ export async function requirePersonnelReader(): Promise<PersonnelReaderProfile> 
 }
 
 export async function requirePersonnelAdmin(): Promise<PersonnelReaderProfile> {
-  const session = await getSession();
+  // SHADCN-07C1-R2: ONE resolution per invocation. React cache() gives reuse within a Server
+  // Component render; it is not a dependable dedupe inside a Server Action, so the earlier
+  // two-step session-then-profile pair could genuinely read the user row twice. Resolving once
+  // removes the second read outright rather than relying on a memo, and guarantees the session and
+  // the profile describe the same row. Every check, denial reason, audit field, thrown error and
+  // returned value below is unchanged.
+  const resolved = await resolveAuthenticatedRequest();
+  const session = resolved?.session ?? null;
   if (!session) {
     await auditService.emit({
       category: "SecurityDenial",
@@ -87,7 +101,7 @@ export async function requirePersonnelAdmin(): Promise<PersonnelReaderProfile> {
     throw new ForbiddenError("First-login account setup must be completed before managing personnel.");
   }
 
-  const profile = await getSessionUser();
+  const profile = resolved?.user ?? null;
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",

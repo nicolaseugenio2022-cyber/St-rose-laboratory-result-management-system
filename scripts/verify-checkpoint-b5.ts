@@ -2305,10 +2305,38 @@ assert(
   liveCodeIndexOf(authorizeWrapperSource, "} catch {") < 0,
   "authorizeOperationalCaller has no unrestricted catch-to-denial fallback"
 );
+// SHADCN-07C1-R2: the file-wide ban was over-broad and is replaced by an honest boundary.
+//
+// The property that ever mattered is that the WRAPPER performs no separate authentication preload
+// of its own - an earlier revision preloaded the session there and then classified any throw from
+// the guard as a refusal. The guard itself must resolve, and now does so exactly once, because
+// React cache() is not a dependable dedupe inside a Server Action. Banning the call file-wide
+// conflated those two and would have forced the guard to keep its duplicate read.
 assert(
-  liveCodeIndexOf(authorizeWrapperSource, "resolveAuthenticatedRequest") < 0 &&
-    liveCodeIndexOf(serverActionsSource, "resolveAuthenticatedRequest") < 0,
+  liveCodeIndexOf(authorizeWrapperSource, "resolveAuthenticatedRequest") < 0,
   "authorizeOperationalCaller performs no separate authentication preload"
+);
+const operationalGuardSource = extractBracedSource(
+  serverActionsSource,
+  serverActionsSource.indexOf(
+    "{",
+    serverActionsSource.indexOf("async function requireOperationalCaller(")
+  )
+);
+assert(
+  operationalGuardSource.length > 0,
+  "requireOperationalCaller body region is non-empty"
+);
+// Counted, not merely detected: a presence test would pass on a guard that resolved twice.
+assert(
+  (operationalGuardSource.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []).length === 1,
+  "requireOperationalCaller resolves the authenticated request exactly once per invocation"
+);
+assert(
+  liveCodeIndexOf(operationalGuardSource, "getSessionUser(") < 0 &&
+    liveCodeIndexOf(operationalGuardSource, "getSession(") < 0 &&
+    liveCodeIndexOf(operationalGuardSource, "getUserById") < 0,
+  "requireOperationalCaller performs no second session or user lookup"
 );
 // It calls the guard directly, and reads nothing off the caught value.
 assert(

@@ -5,7 +5,7 @@ import "server-only";
 import type { HydratedTemplateSpec } from "@/services/interfaces";
 import type { IPersonnel, IPatientReportSession } from "@/domain/models/interfaces";
 import type { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
-import { getSession, getSessionUser } from "@/lib/session";
+import { resolveAuthenticatedRequest } from "@/lib/session";
 import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
 import {
   DraftNotDeletableError,
@@ -51,7 +51,14 @@ export type SessionHistoryEntryTransport = {
 };
 
 async function requireOperationalCaller(): Promise<OperationalCaller> {
-  const session = await getSession();
+  // SHADCN-07C1-R2: ONE resolution per invocation. React cache() gives reuse within a Server
+  // Component render; it is not a dependable dedupe inside a Server Action, so the earlier
+  // two-step session-then-profile pair could genuinely read the user row twice. Resolving once
+  // removes the second read outright rather than relying on a memo, and guarantees the session and
+  // the profile describe the same row. Every check, denial reason, audit field, thrown error and
+  // returned value below is unchanged.
+  const resolved = await resolveAuthenticatedRequest();
+  const session = resolved?.session ?? null;
   if (!session) {
     await auditService.emit({
       category: "SecurityDenial",
@@ -74,7 +81,7 @@ async function requireOperationalCaller(): Promise<OperationalCaller> {
     throw new OperationalAccessDeniedError("first_login_incomplete");
   }
 
-  const profile = await getSessionUser();
+  const profile = resolved?.user ?? null;
   if (!profile || profile.status !== "Active") {
     await auditService.emit({
       category: "SecurityDenial",

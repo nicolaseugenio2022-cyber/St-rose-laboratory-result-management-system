@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { NavigationMenu } from "./NavigationMenu";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { SYSTEM_CONSTANTS } from "@/lib/constants";
 import { UserRole } from "@/domain/types";
 

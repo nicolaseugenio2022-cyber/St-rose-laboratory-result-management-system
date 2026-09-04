@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { filterNavigationForRole, NavItemConfig } from "@/config/navigation";
 import { UserRole } from "@/domain/types";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { useWorkspaceNavigationRequester } from "./workspace-navigation-guard";
 
 const iconMap: Record<NavItemConfig["iconName"], LucideIcon> = {

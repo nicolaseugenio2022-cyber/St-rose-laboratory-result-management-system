@@ -4,7 +4,7 @@ import type { ParameterSpec } from "@/domain/types/report-definition";
 import type { CalculationMode } from "@/domain/calculation-mode";
 import { resolveComputedValidationMessage } from "@/services/generic-report-resolver";
 import { fieldSurfaceClassName } from "@/components/ui/Input";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { Info, Lock, Pencil } from "lucide-react";
 import { ParameterRow } from "./ParameterRow";
 

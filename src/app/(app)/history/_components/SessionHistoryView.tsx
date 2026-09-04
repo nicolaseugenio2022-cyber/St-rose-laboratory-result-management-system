@@ -21,7 +21,7 @@ import { fromSessionTransport } from "@/features/server-boundary/session-transpo
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";

@@ -3,7 +3,7 @@ import { RequestedByPolicySpec } from "@/domain/types/report-definition";
 import { listAutoSuggestionsAction } from "@/features/server-boundary/server-actions";
 import { fieldLabelClassName, fieldSurfaceClassName } from "@/components/ui/Input";
 import { mergePhysicianSuggestions } from "../_lib/encoding/physician-suggestions";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { Stethoscope } from "lucide-react";
 
 /**

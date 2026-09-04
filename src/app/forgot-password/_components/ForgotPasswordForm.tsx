@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { AuthShell } from "../../_components/AuthShell";
 import {
   completeRecoveryResetAction,

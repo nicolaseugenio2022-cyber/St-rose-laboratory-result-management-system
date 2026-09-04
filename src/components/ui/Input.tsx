@@ -1,7 +1,7 @@
 import React, { forwardRef, useId } from "react";
 import { Input as RheaInput } from "@/components/shadcn/input";
 import { Label } from "@/components/shadcn/label";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;

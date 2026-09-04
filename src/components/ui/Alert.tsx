@@ -6,7 +6,7 @@ import {
   AlertDescription as RheaAlertDescription,
   AlertTitle as RheaAlertTitle,
 } from "@/components/shadcn/alert";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export type AlertVariant = "info" | "success" | "warning" | "destructive";
 

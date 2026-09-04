@@ -1,6 +1,6 @@
 import React from "react";
 import { Skeleton as RheaSkeleton } from "@/components/shadcn/skeleton";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Render as a circle (avatars, icon placeholders). Defaults to a rounded block. */

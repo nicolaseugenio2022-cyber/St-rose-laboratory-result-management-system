@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { daysUntilExpiry, type RecentWorkItem } from "../../_lib/recent-work";
 
 export interface SessionRowProps {

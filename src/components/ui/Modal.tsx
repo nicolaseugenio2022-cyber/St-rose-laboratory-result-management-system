@@ -8,7 +8,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/shadcn/dialog";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface ModalProps {
   isOpen: boolean;

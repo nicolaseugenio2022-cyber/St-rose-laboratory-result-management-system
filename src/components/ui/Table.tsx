@@ -7,7 +7,7 @@ import {
   TableHeader as RheaTableHeader,
   TableRow as RheaTableRow,
 } from "@/components/shadcn/table";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
   /** Tint every second body row. For long, uniform record tables; leave off for tables with detail rows. */

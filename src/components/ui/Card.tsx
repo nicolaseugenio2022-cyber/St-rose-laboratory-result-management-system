@@ -1,6 +1,6 @@
 import React from "react";
 import { Card as RheaCard, CardContent as RheaCardContent } from "@/components/shadcn/card";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   /**

@@ -5,7 +5,7 @@ import { Check, Eye, EyeOff, Loader2, LogOut } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { AuthShell } from "../../_components/AuthShell";
 import {
   changeFirstLoginPasswordAction,

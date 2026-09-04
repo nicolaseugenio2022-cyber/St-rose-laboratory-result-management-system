@@ -1,6 +1,6 @@
 import React from "react";
 import { Badge as RheaBadge } from "@/components/shadcn/badge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: "success" | "warning" | "neutral" | "indigo" | "purple" | "blue" | "danger" | "navy";

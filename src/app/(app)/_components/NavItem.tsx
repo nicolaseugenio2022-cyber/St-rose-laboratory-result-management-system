@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, FileEdit, History, Users, UserCheck, ShieldCheck, LucideIcon } from "lucide-react";
 import { NavItemConfig } from "@/config/navigation";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 const iconMap: Record<NavItemConfig["iconName"], LucideIcon> = {
   LayoutDashboard,

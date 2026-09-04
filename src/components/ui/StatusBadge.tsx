@@ -2,7 +2,7 @@ import React from "react";
 import type { EvaluationOutcome, SessionStatus } from "@/domain/types";
 import { Badge as RheaBadge } from "@/components/shadcn/badge";
 import { badgeShapeClassName } from "@/components/ui/Badge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 /** Account lifecycle state, as already used by the Users and Personnel screens. */
 export type AccountStatus = "Active" | "Inactive";

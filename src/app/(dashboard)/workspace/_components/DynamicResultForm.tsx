@@ -18,7 +18,7 @@ import { RequestedBySection } from "./RequestedBySection";
 import { AdditionalEncodingFieldsSection } from "./AdditionalEncodingFieldsSection";
 import { PanelIcon } from "./PanelIcon";
 import { Button } from "@/components/ui/Button";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { CheckCircle2, CheckSquare, FileSpreadsheet, Square } from "lucide-react";
 
 export interface DynamicResultFormProps {

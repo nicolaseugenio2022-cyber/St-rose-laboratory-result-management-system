@@ -3,7 +3,7 @@ import type { EvaluationOutcome, PatientSex } from "@/domain/types";
 import type { ParameterSpec } from "@/domain/types/report-definition";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { displayUnit } from "../../_lib/encoding/evaluate-encoding-result";
 
 /**

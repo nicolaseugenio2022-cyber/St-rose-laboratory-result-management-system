@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { HydratedTemplateSpec } from "@/services/interfaces";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { X, MoreVertical, Trash2, XCircle, Check, FileText } from "lucide-react";
 

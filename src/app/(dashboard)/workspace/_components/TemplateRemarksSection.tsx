@@ -1,7 +1,7 @@
 import React from "react";
 import { MessageSquare } from "lucide-react";
 import { fieldLabelClassName } from "@/components/ui/Input";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface TemplateRemarksSectionProps {
   remarks?: string | null;

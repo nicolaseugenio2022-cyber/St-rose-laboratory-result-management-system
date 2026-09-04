@@ -2,7 +2,7 @@ import React, { forwardRef, useId } from "react";
 import { ChevronDown } from "lucide-react";
 import { Label } from "@/components/shadcn/label";
 import { fieldErrorClassName, fieldLabelClassName, fieldSurfaceClassName } from "@/components/ui/Input";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export interface SelectOption {
   label: string;

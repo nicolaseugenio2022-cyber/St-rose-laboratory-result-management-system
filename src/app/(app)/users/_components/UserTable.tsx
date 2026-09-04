@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { UserRole, UserStatus } from "@/types/user";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";

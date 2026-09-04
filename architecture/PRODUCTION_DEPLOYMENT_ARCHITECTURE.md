@@ -29,7 +29,7 @@ The system enforces a strict 3-tier deployment environment model:
 |---|---|---|---|
 | **Database RLS** | Enabled & Enforced | Enabled & Enforced | Enabled & Enforced |
 | **Storage Bucket** | Local Mock / Staging Bucket | Protected (`personnel-signatures`) | Protected (`personnel-signatures`) |
-| **Auth Provider** | Mock / Supabase Auth Dev | Supabase Auth (Staging Tenant) | Supabase Auth (Production Tenant) |
+| **Auth Provider** | Application-owned (scrypt) | Application-owned (scrypt) | Application-owned (scrypt) — corrected under SHADCN-06D; Supabase Auth is not used |
 | **Branch Target** | Feature Branches (`feature/*`) | `develop` Branch | `main` Branch |
 
 ## 2.2 Infrastructure Region & Operational Location
@@ -62,7 +62,6 @@ Co-locating database storage and compute infrastructure in Singapore minimizes i
 ```mermaid
 graph TD
     subgraph "Supabase Cloud Infrastructure"
-        Auth["Supabase Auth (GoTrue)"]
         PostgreSQL["PostgreSQL Engine (pgVector / RLS)"]
         Storage["Supabase Storage Engine"]
     end

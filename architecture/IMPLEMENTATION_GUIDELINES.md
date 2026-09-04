@@ -31,7 +31,7 @@ This document is strictly **subordinate** to the frozen architecture baseline:
 2. **Domain Layer Purity**: Domain models and business logic must remain pure JavaScript/TypeScript, completely decoupled from Next.js, React, or Supabase SDK abstractions.
 3. **Strict Type Safety**: TypeScript strict mode (`"strict": true`) must be enabled. The `any` type is strictly forbidden (`@typescript-eslint/no-explicit-any`).
 4. **Single Source of Truth**: Template behavior originates from `ReportRegistryService`. Visual output originates from the `SharedRenderingEngine`.
-5. **Zero Password Storage**: Identity credentials and passwords belong exclusively to Supabase Auth (`auth.users`). Application code must never handle or store raw password hashes.
+5. **Application-Owned Credentials** *(corrected under SHADCN-06D)*: authentication is application-owned. Passwords are stored only as salted one-way scrypt hashes with independent salts and constant-time verification (`SECURITY_MODEL.md` §5.1, `ADR-005`). Supabase Auth is not used. Raw passwords are never stored or logged.
 6. **Defensive Error Handling**: API endpoints must return generic, sanitized error messages while logging detailed diagnostics to server logs.
 
 ---
@@ -131,7 +131,8 @@ graph TD
 - **Expected Deliverables**: Shared render engine, A4 paper boundary layout, signature PNG rendering, preview modal, print stylesheet, PDF output adapter.
 
 ### Phase 6: Security Integration
-- **Objective**: Wire Supabase Auth authentication, active status checks (`status = 'Active'`), `Admin`-only route protection for `/users` and `/personnel`, signature storage protection, and RLS policies.
+- **Objective**: Wire application-owned authentication *(corrected under SHADCN-06D — the original text said Supabase Auth)*, active status checks, the `/users` and `/personnel` authorization boundary, signature storage protection, and RLS policies.
+- **`/users` and `/personnel` boundary** *(corrected under SHADCN-06D — the original text said these routes are `Admin`-only, which is not the implemented contract)*: `Admin` may manage ordinary accounts and personnel records, including create, edit, deactivate, delete and password reset. `Developer` may reach only the restricted read-only projections the existing server guards permit (`authorizeOrdinaryAccountRead`, `requirePersonnelReader`) and holds **no** ordinary-account or personnel write capability — a Developer write is refused as `role_not_authorized` (`authorizeOrdinaryAccountWrite`, `requirePersonnelAdmin`). Every other role remains denied, as implemented.
 - **Dependencies**: Phase 3 Patient Report Session, Repositories, Database Schema.
 - **Expected Deliverables**: Auth middleware, protected API endpoints, non-public signature storage proxy, active status verification.
 

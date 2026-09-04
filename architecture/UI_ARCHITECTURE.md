@@ -9,17 +9,15 @@ This document defines the official **Application UI Architecture Specification**
 
 It specifies the application shell layout, route organization, module boundaries, guided workspace architecture, dynamic form generation, navigation guards, keyboard workflows, preview transition rules, responsive layouts, accessibility standards, and state handling.
 
-## 1.1 Authority Hierarchy Alignment
+## 1.1 Authority Alignment
 
-This document operates strictly within the project authority hierarchy:
+Authority in this project is **separated by concern**; there is no universal precedence ladder
+(`AGENTS.md` §1.2). This document is authoritative for its own concern only. For which document
+governs which concern, and for the minimum-reading task router, see `architecture/README.md`.
 
-1. **PROJECT.md**: Authoritative source for project vision, milestone roadmaps, technology stack, and system-wide business rules.
-2. **LABORATORY_TEMPLATE_SPECIFICATION.md**: Authoritative specification for official laboratory report templates, parameter definitions, reference rules, signatories, and renderer behavior.
-3. **Architecture/DOMAIN_MODEL.md (FROZEN)**: Authoritative business domain specification defining entities, aggregate roots, value objects, domain services, lifecycles, and business invariants.
-4. **Architecture/DATABASE_DESIGN.md (FROZEN)**: Authoritative relational database architecture and schema specification.
-5. **Architecture/REPORT_REGISTRY_ARCHITECTURE.md (FROZEN)**: Authoritative Report Registry metadata specification.
-6. **Architecture/REPORT_RENDERING_ARCHITECTURE.md (FROZEN)**: Authoritative Report Rendering architecture specification.
-7. **Current Source Code**: Contextual reference only. Code never overrides architecture specifications.
+Where two authorities disagree, stop and report the exact conflict rather than choosing a winner
+(`AGENTS.md` §1.4). Where documentation and the running system disagree, that is a reportable
+defect requiring investigation and is resolved in neither direction by default (`AGENTS.md` §1.3).
 
 ---
 

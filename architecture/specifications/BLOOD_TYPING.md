@@ -2,11 +2,18 @@
 
 > **Specification Status**
 >
-> Draft
+> Maintained detailed specification. Authority is separated by concern:
+> `architecture/report-specifications/Summary.md` governs the client requirements it explicitly
+> records; this document governs the detail where `Summary.md` is silent. See
+> `architecture/README.md`.
 >
 > This document is the authoritative engineering specification for the Blood Typing laboratory report.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -18,7 +25,7 @@
 | Official Template Name | Blood Typing |
 | Examination Family | Blood Bank |
 | Renderer Family | SimpleResult |
-| Source Word Template | Templates/BLOOD_TYPING.docx |
+| Source Word Template (historical; not in repository) | Templates/BLOOD_TYPING.docx |
 | Current Version | 1.0 |
 | Last Reviewed | Pending |
 
@@ -34,7 +41,7 @@ Records the patient's ABO Blood Group and Rh Factor using a simple single-page l
 
 ## Visual Authority
 
-The official Microsoft Word template defines:
+Visual authority for this report is separated across this specification, `REPORT_RENDERING_ARCHITECTURE.md` and `PDF_VALIDATION_CHECKLIST.md`, which define:
 
 - Header layout
 - Typography
@@ -70,7 +77,7 @@ This specification defines:
 | Address | Yes | Printed in header |
 | Sex | Yes | Male / Female |
 | Requested By | Optional | Physician |
-| Status | Optional | Patient status |
+| Status | Not collected | Omitted; not collected in the encoding UI |
 
 ---
 
@@ -78,8 +85,8 @@ This specification defines:
 
 | Display Name | Parameter Code | Input Type | Unit | Required | Selectable |
 |--------------|---------------|-----------|------|----------|------------|
-| Blood Type | BLOOD_GROUP | SingleSelect | — | Yes | No |
-| Rh Factor | RH_FACTOR | SingleSelect | — | Yes | No |
+| Blood Type | ABO_TYPING | SingleSelect | — | Yes | No |
+| Rh Factor | RH_TYPING | SingleSelect | — | Yes | No |
 
 Display order MUST remain exactly as shown.
 
@@ -223,7 +230,7 @@ Any layout difference is an architectural defect.
 
 # 17. Client Notes
 
-The original Word template contains the following approved client instructions:
+The original Word template contained the following approved client instructions, recorded here as the approved requirement:
 
 > Ang result here is yung "B" at positive.
 
@@ -263,7 +270,7 @@ No reference range exists.
 
 AI MUST
 
-- Preserve the Word template layout.
+- Preserve the approved report layout recorded in this specification and `REPORT_RENDERING_ARCHITECTURE.md`.
 - Use only approved dropdown values.
 - Preserve display order.
 - Render exactly one A4 page.
@@ -281,9 +288,9 @@ AI MUST NOT
 
 | Requirement | Source |
 |-------------|--------|
-| Layout | Word Template |
+| Layout | This specification — historical origin: Word template, not in repository |
 | Dropdown values | Client Notes |
-| Signatories | Word Template |
+| Signatories | This specification — historical origin: Word template, not in repository |
 | Renderer Family | REPORT_REGISTRY_ARCHITECTURE.md |
 | Examination Family | REPORT_REGISTRY_ARCHITECTURE.md |
 
@@ -313,3 +320,4 @@ None.
 | Version | Date | Notes |
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
+| 1.1 | SHADCN-06D | Reconciled to verified runtime (`src/domain/definitions/`): Status demographic policy; parameter codes ABO_TYPING / RH_TYPING; visual-authority statement |

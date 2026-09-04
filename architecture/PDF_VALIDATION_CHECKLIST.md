@@ -20,31 +20,31 @@ Every template output rendered via `SharedRenderingEngine` and exported as PDF m
 10. **Page Breaks**: Multi-page sessions split cleanly at document boundaries using CSS `break-after: page`.
 11. **Multi-Page Behavior**: Header and patient demographics re-stated cleanly on page headers if session spans multiple physical pages.
 12. **Print Scaling at 100%**: Zero browser print distortion or horizontal scrollbars at 100% zoom scale.
-13. **Visual Comparison vs. Official Source**: Visual and structural alignment against official Microsoft Word `.docx` templates located in `Templates/`.
+13. **Visual Comparison vs. Official Source** *(historical criterion — not currently executable)*: this step compared output against the official Microsoft Word `.docx` templates, which are historical source material and are **not present in the repository**. Current visual acceptance runs against criteria 1–12 above, `REPORT_RENDERING_ARCHITECTURE.md`, and the approved deterministic rendering contracts.
 
 ---
 
-## 2. Template-Specific Validation Checklist Matrix (75 Reconciled Parameters)
+## 2. Template-Specific Validation Checklist Matrix (74 Reconciled Parameters)
 
-| Template Code | Official Template Name | Family | Renderer Family | Authoritative Params | Remarks Support | Kit Info Required | Signatories Count | Word Template Status |
+| Template Code | Official Template Name | Family | Renderer Family | Authoritative Params | Remarks Support | Kit Info Required | Signatories Count | Validation Status |
 |---|---|---|---|---|---|---|---|---|
 | **CBC** | Complete Blood Count | Hematology | Tabular | 10 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
-| **ESR** | Erythrocyte Sedimentation Rate | Hematology | Tabular | 1 | ❌ No | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
-| **CT_BT** | Clotting & Bleeding Time | Hematology | Tabular | 2 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
+| **ESR** | Erythrocyte Sedimentation Rate | Hematology | SimpleResult | 1 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
+| **CT_BT** | Clotting & Bleeding Time | Hematology | SimpleResult | 2 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
 | **CHEM_8** | Chemistry 8 Panel | Clinical Chemistry | Tabular | 6 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
 | **CHEM_10** | Chemistry 10 Panel | Clinical Chemistry | Tabular | 10 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
-| **HDL_LDL** | Lipid Profile (HDL/LDL) | Clinical Chemistry | Tabular | 4 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
-| **OGTT** | Oral Glucose Tolerance Test | Clinical Chemistry | Tabular | 3 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **RBS** | Random Blood Sugar | Clinical Chemistry | SimpleResult | 1 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **HBA1C** | HbA1c Report | Clinical Chemistry | SimpleResult | 1 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **URINALYSIS** | Urinalysis Examination | Clinical Microscopy | DiagnosticGrid | 14 | ✅ Yes | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **FECALYSIS** | Fecalysis Examination | Clinical Microscopy | DiagnosticGrid | 11 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **HBSAG** | Hepatitis B Screening | Serology | SimpleResult | 1 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **RPR** | RPR Syphilis Test | Serology | SimpleResult | 1 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **PREG_TEST** | Pregnancy Test | Serology | SimpleResult | 1 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **DENGUE_DUO** | Dengue Duo Rapid Test | Serology | SimpleResult | 3 | ❌ No | ✅ Yes | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **HIV_RESULT** | AIDS Free / HIV Result | Serology | NarrativeCertificate | 1 | ❌ No | ✅ Yes | 3 | SOURCE AVAILABLE — VALIDATION PENDING |
-| **BLOOD_TYPING** | Blood Typing Report | Blood Bank | SimpleResult | 2 | ❌ No | ❌ No | 2 | SOURCE AVAILABLE — VALIDATION PENDING |
+| **HDL_LDL** | Lipid Profile (HDL/LDL) | Clinical Chemistry | Tabular | 8 | ✅ Yes | ❌ No | 2 | ✅ PHASE 2A VERIFIED |
+| **OGTT** | Oral Glucose Tolerance Test | Clinical Chemistry | Tabular | 3 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
+| **RBS** | Random Blood Sugar | Clinical Chemistry | SimpleResult | 1 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
+| **HBA1C** | HbA1c Report | Clinical Chemistry | SimpleResult | 1 | ✅ Yes | ✅ Yes | 2 | VALIDATION PENDING |
+| **URINALYSIS** | Urinalysis Examination | Clinical Microscopy | DiagnosticGrid | 12 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
+| **FECALYSIS** | Fecalysis Examination | Clinical Microscopy | Tabular | 11 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
+| **HBSAG** | Hepatitis B Screening | Serology | SimpleResult | 1 | ✅ Yes | ✅ Yes | 2 | VALIDATION PENDING |
+| **RPR** | RPR Syphilis Test | Serology | SimpleResult | 1 | ✅ Yes | ✅ Yes | 2 | VALIDATION PENDING |
+| **PREG_TEST** | Pregnancy Test | Serology | SimpleResult | 1 | ✅ Yes | ✅ Yes | 2 | VALIDATION PENDING |
+| **DENGUE_DUO** | Dengue Duo Rapid Test | Serology | SimpleResult | 3 | ✅ Yes | ✅ Yes | 2 | VALIDATION PENDING |
+| **HIV_RESULT** | AIDS Free / HIV Result | Serology | Dedicated Certificate | 1 | ✅ Yes | ✅ Yes | 3 | VALIDATION PENDING |
+| **BLOOD_TYPING** | Blood Typing Report | Blood Bank | SimpleResult | 2 | ✅ Yes | ❌ No | 2 | VALIDATION PENDING |
 
 ---
 
@@ -53,7 +53,7 @@ Every template output rendered via `SharedRenderingEngine` and exported as PDF m
 For each of the 17 templates, the following objective validation deliverables are used during QA audit:
 
 1. **Validation Checklist File**: Dedicated Markdown checklist verifying all 13 layout criteria.
-2. **Overlay Comparison Tool**: Interactive comparison via `PrintFidelityValidationOverlay.tsx` against `Templates/*.docx`.
+2. **Overlay Comparison Tool**: Interactive comparison via `PrintFidelityValidationOverlay.tsx`. The `Templates/*.docx` overlay source is historical and is no longer available in the repository; the tool is used against the approved geometry constants in §1.
 3. **Deviation Register**: Detailed list of layout deviations (if any).
 4. **Pass/Fail Result**: Final validation verdict.
 5. **Client Approval Record**: Documented sign-off record.

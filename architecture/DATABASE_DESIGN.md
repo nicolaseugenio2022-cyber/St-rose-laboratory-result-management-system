@@ -9,18 +9,19 @@ This document defines the official **Database Architecture & PostgreSQL Schema S
 
 It provides a production-ready relational database design that faithfully maps the frozen **Business Domain Model** ([Architecture/DOMAIN_MODEL.md](file:///c:/Projects/St-rose-laboratory-result-management-system/Architecture/DOMAIN_MODEL.md)) to Supabase PostgreSQL.
 
-## 1.1 Authority Hierarchy Alignment
+## 1.1 Authority Alignment
 
-This document operates strictly within the project authority hierarchy:
+Authority in this project is **separated by concern**; there is no universal precedence ladder
+(`AGENTS.md` §1.2). This document is authoritative for its own concern only. For which document
+governs which concern, and for the minimum-reading task router, see `architecture/README.md`.
 
-1. **PROJECT.md**: Authoritative source for project vision, milestone roadmaps, technology stack, and system-wide business rules.
-2. **LABORATORY_TEMPLATE_SPECIFICATION.md**: Authoritative specification for official laboratory report templates, parameter definitions, reference rules, signatories, and renderer behavior.
-3. **Architecture/DOMAIN_MODEL.md (FROZEN)**: Authoritative business domain specification defining entities, aggregate roots, value objects, domain services, lifecycles, and business invariants.
-4. **Current Source Code**: Contextual reference only. Code never overrides database specifications.
+Where two authorities disagree, stop and report the exact conflict rather than choosing a winner
+(`AGENTS.md` §1.4). Where documentation and the running system disagree, that is a reportable
+defect requiring investigation and is resolved in neither direction by default (`AGENTS.md` §1.3).
 
 ## 1.2 Scope & Technical Boundaries
 
-- **IN SCOPE**: Supabase Auth integration model, application user profiles, table schemas, data types, primary/foreign keys, nullability rules, cascade delete behavior, historical snapshot fields, indexing strategies, CHECK constraints, JSONB schema specifications, Row-Level Security (RLS) policies, and 30-day retention purge routines.
+- **IN SCOPE**: Application-owned authentication storage *(corrected under SHADCN-06D — the original text said Supabase Auth integration model)*, application user profiles, table schemas, data types, primary/foreign keys, nullability rules, cascade delete behavior, historical snapshot fields, indexing strategies, CHECK constraints, JSONB schema specifications, Row-Level Security (RLS) policies, and 30-day retention purge routines.
 - **EXCLUDED**: React component state, Next.js page routes, CSS design tokens, PDF rendering logic, and UI layout code.
 
 ---
@@ -88,7 +89,9 @@ erDiagram
 
     personnel {
         uuid id PK
-        varchar full_name
+        text first_name
+        text last_name
+        text middle_initial
         varchar role
         varchar prc_license_number
         varchar credentials
@@ -188,7 +191,7 @@ erDiagram
         uuid id PK
         uuid report_id FK
         uuid personnel_id FK
-        varchar role_as_signatory
+        text role
         varchar printed_full_name
         varchar printed_credentials
         varchar printed_prc_license_number
@@ -324,10 +327,20 @@ This diagnostic used the browser/anon credential and is valid only as a pre-hard
 ### 4.2.1 `personnel`
 Stores licensed Pathologists and Medical Technologists whose signatures appear on printed reports.
 
+> **Corrected under SHADCN-06D.** `supabase/migrations/` defines the intended schema and this document
+> was reconciled to it: the `personnel` name columns, the absence of `role_as_signatory`, the absence of
+> `uq_report_personnel`, and the absence of an `ON DELETE RESTRICT` clause on
+> `report_signatories.personnel_id`. Field-level differences beyond those four (column types, and
+> `personnel.status` versus the migration's `is_active`) are **not** yet reconciled. **Live
+> production-schema confirmation belongs to SHADCN-07A**; no database was accessed in this
+> documentation round.
+
 ```sql
 CREATE TABLE personnel (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    full_name VARCHAR(150) NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    middle_initial TEXT,
     role VARCHAR(30) NOT NULL CHECK (role IN ('Pathologist', 'MedicalTechnologist')),
     prc_license_number VARCHAR(50) NOT NULL,
     credentials VARCHAR(100) NOT NULL,
@@ -500,17 +513,16 @@ Junction table linking laboratory reports to assigned personnel signatories, cap
 CREATE TABLE report_signatories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     report_id UUID NOT NULL REFERENCES laboratory_reports(id) ON DELETE CASCADE,
-    personnel_id UUID NOT NULL REFERENCES personnel(id) ON DELETE RESTRICT,
-    role_as_signatory VARCHAR(30) NOT NULL CHECK (
-        role_as_signatory IN ('Pathologist', 'MedicalTechnologist')
+    personnel_id UUID NOT NULL REFERENCES personnel(id),
+    role TEXT NOT NULL CHECK (
+        role IN ('Pathologist', 'MedicalTechnologist')
     ),
     -- Historical Fidelity Snapshot Fields (Frozen at completion time)
     printed_full_name VARCHAR(150) NOT NULL,
     printed_credentials VARCHAR(100) NOT NULL,
     printed_prc_license_number VARCHAR(50) NOT NULL,
     signature_image_url TEXT NULL,
-    display_order INTEGER NOT NULL DEFAULT 0,
-    CONSTRAINT uq_report_personnel UNIQUE (report_id, personnel_id)
+    display_order INTEGER NOT NULL DEFAULT 1
 );
 ```
 
@@ -634,7 +646,7 @@ All application tables enable Supabase Row-Level Security (`ALTER TABLE ... ENAB
 
 | Domain Requirement / Invariant | Database Architecture Mapping | Verification Status |
 |---|---|---|
-| **Supabase Auth Integration** | `user_profiles.id` references `auth.users(id)`; no password hash stored | ✅ Pass |
+| **Application-Owned Authentication** | `user_profiles` stores a salted scrypt `password_hash`; Supabase Auth is not used (`SECURITY_MODEL.md` §5.1, `ADR-005`). Corrected under SHADCN-06D. | ✅ Pass |
 | **Refined Extensibility Rules** | Config-only for existing renderer families; code changes for new renderers | ✅ Pass |
 | **INV-001** (1 Visit = 1 Session) | `patient_report_sessions` primary key `id` | ✅ Pass |
 | **INV-002** (Shared Demographics) | Demographics stored as columns on `patient_report_sessions` | ✅ Pass |

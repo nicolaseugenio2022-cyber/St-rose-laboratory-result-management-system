@@ -59,12 +59,19 @@ accessibility, navigation and client performance only: no clinical semantics, no
 retention rule, no authorization boundary and no schema were altered by it. See **UI/UX Improvement
 Program** below for what shipped and what remains deferred.
 
-**A subsequent client QA stabilization program is active.** It runs after the completed UX0–UX6
-program above and addresses client-reported production behaviour; it does not reopen, rename or
-extend that program. QA-02, QA-03 and QA-07 are published. QA-01 and QA-09 remain parked pending
-production evidence. QA-04 awaits an explicit output-contract decision. QA-05, QA-06 and QA-08 are
-queued. **UX-10**, the user-centered Workspace Encoding/Live Preview redesign, remains deferred
-until QA-01 through QA-09 are stable. See **Client QA Stabilization Program** below.
+**A client QA stabilization program ran after the completed UX0–UX6 program** and addressed
+client-reported production behaviour; it did not reopen, rename or extend that program. As recorded
+on 2026-08-24: QA-02, QA-03 and QA-07 were published; QA-01 and QA-09 were parked pending production
+evidence; QA-04 awaited an explicit output-contract decision; QA-05, QA-06 and QA-08 were queued; and
+**UX-10**, the user-centered Workspace Encoding/Live Preview redesign, was deferred behind QA-01
+through QA-09. That is the status as at that date and is retained as historical context; it is not a
+current active direction. See **Client QA Stabilization Program** below.
+
+**The single current active direction is the SHADCN migration, documentation consolidation, and the
+upcoming backend, API, reliability and performance review (SHADCN-07A).** No other program is active. SHADCN-06B colocated
+route UI under `src/app/**/_components/`; SHADCN-06D reconciled the architecture documentation to
+verified runtime and made `architecture/README.md` the single navigation entry point. The
+Whole-System UI/UX plan is delivered historical guidance rather than a live handoff.
 
 ---
 
@@ -82,9 +89,23 @@ Defines:
 - Cross-report rendering policy
 - System-wide business and implementation decisions
 
+## Client Requirements Summary
+
+`architecture/report-specifications/Summary.md` is the source of truth for the client-reported UI, workflow, clinical-display, and report-output requirements it explicitly records, together with the acceptance expectations attached to them.
+
+This authority is scoped, and authority remains separated by concern. Where `Summary.md` is silent, the detailed report specifications retain authority for exact formulas, parameters, reference ranges, validation, and report geometry. ADRs retain authority for their approved technical decisions. `architecture/SECURITY_MODEL.md` and `architecture/DATABASE_DESIGN.md` retain authority for security, authorization, privacy, schema, and persistence. Completed snapshots remain authoritative for historical completed output.
+
+`Summary.md` must never silently alter a formula, reference range, security rule, database behavior, or completed snapshot. Where it conflicts with an older document on a requirement it explicitly records, the older document is reconciled to `Summary.md`. Where the conflict concerns a formula, reference range, security rule, database contract, or completed snapshot and the intended resolution is not explicit, the conflict must be investigated and reported rather than silently resolved.
+
 ## Report Specifications
 
-`architecture/report-specifications/` and the approved normalized specification set define:
+`architecture/specifications/<TEMPLATE_CODE>.md` is the **maintained detailed specification set**. It is the set indexed by `LABORATORY_TEMPLATE_SPECIFICATION.md` and cited as the Specification Source by the validation evidence, and it is the set corrected and kept current going forward.
+
+`architecture/report-specifications/` is a **preserved historical archive** of client notes and implementation-source records. It is not maintained and is not the specification of record — with one exception: `architecture/report-specifications/Summary.md`, which remains authoritative for the client requirements it explicitly records.
+
+Where `Summary.md` is silent, the maintained detailed specification governs. Under SHADCN-06D the maintained set was reconciled to verified runtime behaviour and to existing deterministic contracts; where a disputed item was not actually proven it was left unresolved and reported rather than guessed. A contradiction discovered between any two authorities is a stop-and-ask, never a silent resolution.
+
+The maintained detailed specifications define:
 
 - Clinical content and terminology
 - Parameters and ordering
@@ -101,7 +122,7 @@ Defines:
 
 ## Original Templates and Render References
 
-Original DOCX templates and approved render references remain evidence for validated report content and report-specific requirements when normalized specifications are missing or genuinely ambiguous. They are not production artwork and do not require the Native Report Engine to reproduce historical formatting pixel-for-pixel.
+Original DOCX templates are historical source material and are not present in the repository. Where a normalized specification is missing or genuinely ambiguous, the maintained `architecture/specifications/<TEMPLATE_CODE>.md`, `architecture/report-specifications/Summary.md`, the preserved `architecture/report-specifications/` archive and the approved render references are the evidence of record. They are not production artwork and do not require the Native Report Engine to reproduce historical formatting pixel-for-pixel.
 
 ## AGENTS.md
 

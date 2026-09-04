@@ -129,7 +129,7 @@ No template may exceed the printable page boundaries.
 
 # Margins
 
-Margins shall match the official Microsoft Word templates.
+Margins shall match the approved page geometry recorded in `REPORT_RENDERING_ARCHITECTURE.md` §8.1 and `PDF_VALIDATION_CHECKLIST.md`.
 
 The rendering engine must preserve printable safe areas.
 
@@ -163,7 +163,7 @@ The rendering engine must reproduce:
 - Border colors
 - Accent colors
 
-exactly as defined by the official template.
+exactly as defined by the template's static metadata palette recorded in `REPORT_REGISTRY_ARCHITECTURE.md` and the maintained `architecture/specifications/<TEMPLATE_CODE>.md`.
 
 ---
 
@@ -325,9 +325,9 @@ Repeated rendering of unchanged reports should avoid unnecessary recomputation.
 AI MUST
 
 - Use the Shared Rendering Engine exclusively.
-- Preserve official layouts.
-- Preserve official colors.
-- Preserve official typography.
+- Preserve the approved layouts recorded in `architecture/specifications/<TEMPLATE_CODE>.md` and `REPORT_RENDERING_ARCHITECTURE.md`.
+- Preserve the approved colors recorded in the template's static metadata palette.
+- Preserve the approved typography recorded in `REPORT_RENDERING_ARCHITECTURE.md` §8.2.
 - Preserve A4 dimensions.
 - Preserve spacing.
 - Preserve signature placement.

@@ -8,6 +8,56 @@ import { serverAutoSuggestionLearningService } from "../services/auto-suggestion
 import { supabaseServer } from "../lib/supabase/server";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 
+/**
+ * Why a draft deletion was refused, as a CLOSED set (SHADCN-07B2).
+ *
+ * The four refusals below were previously four `new Error(...)` calls with four different
+ * sentences, which left the only way to tell them apart - or to tell any of them apart from a
+ * Supabase transport fault - a comparison against the message text. Message matching is exactly
+ * what the caller must not do: it is brittle, it silently reclassifies when wording changes, and
+ * it cannot distinguish an expected refusal from an infrastructure failure that happens to carry
+ * a similar string.
+ *
+ * The reason travels for SERVER-SIDE diagnosis only. The action deliberately collapses all four
+ * into one operator-facing sentence, because "no such draft", "not your draft" and "already
+ * completed" must not be distinguishable from the browser - see OPERATIONAL_ACTION_MESSAGE.
+ */
+export type DraftDeletionRefusalReason =
+  | "not_found"
+  | "not_owned"
+  | "not_draft"
+  | "delete_affected_wrong_row_count";
+
+export class DraftNotDeletableError extends Error {
+  constructor(public readonly reason: DraftDeletionRefusalReason) {
+    super("Draft session is not deletable.");
+    this.name = "DraftNotDeletableError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Why an existing session was refused for a write, as a CLOSED set (SHADCN-07B2).
+ *
+ * These were two plain `new Error(...)` calls, so the only way to tell an ownership refusal from a
+ * retention refusal - or either from a Supabase transport fault - was to compare message text.
+ * Message matching is what the caller must not do: it is brittle, it silently reclassifies when
+ * wording changes, and it cannot separate an expected refusal from an outage.
+ *
+ * The reason travels for SERVER-SIDE diagnosis only. The actions collapse both into one
+ * operator-facing sentence, because "not your session" and "past its retention window" must not be
+ * distinguishable from the browser.
+ */
+export type SessionUnavailableReason = "not_owned" | "retention_expired";
+
+export class SessionUnavailableError extends Error {
+  constructor(public readonly reason: SessionUnavailableReason) {
+    super("Session is not available for this operation.");
+    this.name = "SessionUnavailableError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 type SessionRepositoryCaller = {
   userId: string;
   role: "Admin" | "User";
@@ -85,8 +135,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
       .maybeSingle();
 
     if (error) throw error;
+    // A MISSING row stays permitted: a genuinely new Draft has no persisted row yet, and refusing
+    // here would make it impossible to create one. Only a row that exists and belongs to someone
+    // else is a refusal.
     if (data && (data as SessionOwnershipRow).created_by_user_id !== caller.userId) {
-      throw new Error("Session ownership validation failed.");
+      throw new SessionUnavailableError("not_owned");
     }
   }
 
@@ -105,9 +158,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
         row.expires_at !== null &&
         new Date(row.expires_at).getTime() < Date.now()
       ) {
-        throw new Error(
-          "The session has passed its 30-day retention window and is permanently immutable."
-        );
+        throw new SessionUnavailableError("retention_expired");
       }
     }
   }
@@ -373,8 +424,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
       .eq("id", id)
       .maybeSingle();
 
+    // A transport/PostgREST fault still throws raw and stays UNEXPECTED. Only the four decided
+    // refusals below become the typed class, so the caller can classify by type without reading
+    // any message, and without mistaking an outage for a refusal.
     if (error) throw error;
-    if (!data) throw new Error("Session not found.");
+    if (!data) throw new DraftNotDeletableError("not_found");
 
     const storedSession = data as {
       id: string;
@@ -382,7 +436,7 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
       created_by_user_id: string;
     };
     if (storedSession.created_by_user_id !== caller.userId) {
-      throw new Error("Session ownership validation failed.");
+      throw new DraftNotDeletableError("not_owned");
     }
     if (storedSession.status === "Draft") {
       const { data: deletedRows, error: deleteError } = await supabaseServer
@@ -395,12 +449,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
 
       if (deleteError) throw deleteError;
       if (!deletedRows || deletedRows.length !== 1) {
-        throw new Error("Draft deletion did not affect exactly one session.");
+        throw new DraftNotDeletableError("delete_affected_wrong_row_count");
       }
       return;
     }
 
-    throw new Error("Only draft sessions may be deleted.");
+    throw new DraftNotDeletableError("not_draft");
   }
 
   private withAssignedAccession(

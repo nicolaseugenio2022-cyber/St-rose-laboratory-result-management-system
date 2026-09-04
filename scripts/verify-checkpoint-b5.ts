@@ -1162,9 +1162,13 @@ assert(
   "getReopenableSessionAction source region is non-empty"
 );
 
+// SHADCN-07B2: authorization is still the FIRST operation, but its refusal is now a returned typed
+// result rather than a thrown error, so the call goes through authorizeOperationalCaller - a
+// wrapper that leaves the SHA-256-frozen requireOperationalCaller bytes untouched and converts its
+// throw by control flow. The ordering this index protects is unchanged; only the call spelling is.
 const reopenActionCallerIndex = liveCodeIndexOf(
   getReopenableSessionActionSource,
-  "const caller = await requireOperationalCaller();"
+  "const authorization = await authorizeOperationalCaller("
 );
 const reopenActionParserIndex = liveCodeIndexOf(
   getReopenableSessionActionSource,
@@ -1204,9 +1208,14 @@ const reopenDenialEmitIndex = liveCodeIndexOf(
   reopenDenialGuardSource,
   "await auditService.emit({"
 );
-const reopenDenialThrowIndex = liveCodeIndexOf(
+// SHADCN-07B2: the refusal is a RETURNED typed result now, not a throw. A thrown Server Action
+// error never delivers its message - Next.js replaces it with a redaction string and a digest - so
+// an expected refusal had to become a value to be sayable at all. The ordering this assertion
+// protects is unchanged and still pinned below: the SecurityDenial audit is awaited before the
+// refusal leaves the function. Only the exit form moved, so the pin moves with it.
+const reopenDenialReturnIndex = liveCodeIndexOf(
   reopenDenialGuardSource,
-  'throw new Error("This session cannot be reopened.");'
+  "return operationalFailure("
 );
 const reopenDenialEmitSource = extractBracedSource(
   reopenDenialGuardSource,
@@ -1222,8 +1231,11 @@ assert(
   reopenDenialEmitIndex >= 0 &&
     liveCodeIndexOf(reopenDenialEmitSource, 'category: "SecurityDenial"') >= 0 &&
     liveCodeIndexOf(reopenDenialEmitSource, 'eventType: "SessionReopenDenied"') >= 0 &&
-    reopenDenialThrowIndex > reopenDenialEmitIndex,
-  "getReopenableSessionAction awaits SessionReopenDenied SecurityDenial before throwing"
+    reopenDenialReturnIndex > reopenDenialEmitIndex &&
+    liveCodeIndexOf(reopenDenialGuardSource, '"SESSION_NOT_REOPENABLE"') >
+      reopenDenialReturnIndex &&
+    liveCodeIndexOf(reopenDenialGuardSource, "throw ") < 0,
+  "getReopenableSessionAction awaits SessionReopenDenied SecurityDenial before returning the typed refusal, and never throws it"
 );
 const reopenDenialDetailsIndex = liveCodeIndexOf(
   reopenDenialEmitSource,
@@ -1271,9 +1283,10 @@ assert(
   "legacy replaceable-session load names are absent"
 );
 
+// SHADCN-07B2: same authorization-call move as the reopen region above.
 const replaceActionCallerIndex = liveCodeIndexOf(
   replaceSessionActionSource,
-  "const caller = await requireOperationalCaller();"
+  "const authorization = await authorizeOperationalCaller("
 );
 const replaceActionRepositoryIndex = liveCodeIndexOf(
   replaceSessionActionSource,
@@ -1308,9 +1321,12 @@ const replacementDenialEventIndex = liveCodeIndexOf(
   replacementStatusGuardSource,
   'eventType: "SessionReplacementDenied"'
 );
-const replacementDenialThrowIndex = liveCodeIndexOf(
+// SHADCN-07B2: returned typed refusal instead of a throw, for the reason recorded on the reopen
+// denial above. Every field of the SecurityDenial emit stays pinned exactly as it was, and the
+// audit is still required to be awaited BEFORE the refusal leaves the function.
+const replacementDenialReturnIndex = liveCodeIndexOf(
   replacementStatusGuardSource,
-  'throw new Error("Only completed sessions may be replaced.");'
+  "return operationalFailure("
 );
 assert(
   replacementStatusGuardIndex >= 0 &&
@@ -1322,8 +1338,11 @@ assert(
     liveCodeIndexOf(replacementStatusGuardSource, "performedByUserId: caller.userId") > replacementDenialEventIndex &&
     liveCodeIndexOf(replacementStatusGuardSource, "performedByUsername: caller.username") > replacementDenialEventIndex &&
     liveCodeIndexOf(replacementStatusGuardSource, 'details: { reasonCode: "session_not_completed" }') > replacementDenialEventIndex &&
-    replacementDenialThrowIndex > replacementDenialEventIndex,
-  "replaceSessionAction rejects non-completed input with the required SecurityDenial before throwing"
+    replacementDenialReturnIndex > replacementDenialEventIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, '"REPLACEMENT_LIFECYCLE_INVALID"') >
+      replacementDenialReturnIndex &&
+    liveCodeIndexOf(replacementStatusGuardSource, "throw ") < 0,
+  "replaceSessionAction rejects non-completed input with the required SecurityDenial before returning the typed refusal, and never throws it"
 );
 
 // UX-10M6S2: the single-line form was pinned verbatim. The aggregate is now hoisted to a local
@@ -1358,18 +1377,24 @@ const replacementSuccessEventIndex = liveCodeIndexOf(
   replaceSessionActionSource,
   'eventType: "SessionReplaced"'
 );
+// SHADCN-07B2: the success path returns the transport wrapped in the typed success result, so the
+// literal moves. Pinning the wrapped form is strictly stronger than the bare one: it also proves
+// the happy path cannot be mistaken for, or silently become, a failure result.
 const replacementReturnIndex = liveCodeIndexOf(
   replaceSessionActionSource,
-  "return toSessionTransport("
+  "return operationalSuccess(toSessionTransport("
 );
 assert(
   replacementSuccessEventIndex > replaceActionCallIndex &&
     replacementReturnIndex > replacementSuccessEventIndex,
   "replaceSessionAction emits SessionReplaced only after successful replacement and before returning"
 );
+// SHADCN-07B2: the declaration is hoisted so the persistence call sits in a real try/catch that
+// classifies SessionUnavailableError. The `const` moved; the await and the ordering did not, and
+// both are still pinned below.
 const awaitedReplacementCallIndex = liveCodeIndexOf(
   replaceSessionActionSource,
-  "const replaced = await repository.replaceSession("
+  "replaced = await repository.replaceSession("
 );
 const replacementCallIndices = liveCodeIndicesOf(
   replaceSessionActionSource,
@@ -1845,9 +1870,10 @@ const completeSessionActionSource = completeSessionActionStart >= 0
   : "";
 assert(completeSessionActionStart >= 0 && completeSessionActionSource.length > 0, "completeSessionAction source region is non-empty");
 
+// SHADCN-07B2: hoisted declaration for the same reason as the replacement call above.
 const awaitedCompletionCallIndex = liveCodeIndexOf(
   completeSessionActionSource,
-  "const completed = await repository.completeSession("
+  "completed = await repository.completeSession("
 );
 const completionCallIndices = liveCodeIndicesOf(
   completeSessionActionSource,
@@ -1861,9 +1887,10 @@ const completionSuccessEventIndex = liveCodeIndexOf(
   completeSessionActionSource,
   'eventType: "SessionCompleted"'
 );
+// SHADCN-07B2: same move as the replacement return above, for the same reason.
 const completionReturnIndex = liveCodeIndexOf(
   completeSessionActionSource,
-  "return toSessionTransport("
+  "return operationalSuccess(toSessionTransport("
 );
 assert(
   completionSuccessEventIndex > awaitedCompletionCallIndex &&
@@ -1969,5 +1996,330 @@ assert(
     ) >= 0,
   "SessionCompleted audit summary derives reportCount and templateCodes from the completed reports"
 );
+
+// ── SHADCN-07B2: typed operational action results ────────────────────────────
+//
+// These assertions prove the five in-scope actions answer EXPECTED failures with a closed typed
+// result and keep UNEXPECTED ones loud. They are deliberately structural rather than keyword
+// searches: an earlier revision asserted "never throws an expected failure" by looking for
+// `throw new Error(` inside the exported body, which proved nothing at all - not one of the real
+// expected failures is raised there. They are raised by called helpers and by the domain
+// aggregate, so the assertion passed while the guarantee was absent.
+const operationalResultActions: {
+  action: string;
+  route: string;
+  expectedCodes: string[];
+  classifiedTypes: string[];
+  stages: string[];
+}[] = [
+  {
+    action: "saveDraftAction",
+    route: "/workspace",
+    expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "DRAFT_SAVE_LIFECYCLE_INVALID", "SESSION_UNAVAILABLE"],
+    classifiedTypes: ["SessionUnavailableError"],
+    stages: ["saveDraft"],
+  },
+  {
+    action: "completeSessionAction",
+    route: "/workspace",
+    expectedCodes: [
+      "OPERATIONAL_ACCESS_DENIED",
+      "COMPLETION_LIFECYCLE_INVALID",
+      "SESSION_UNAVAILABLE",
+      "SIGNATORY_VALIDATION_FAILED",
+      "REPORT_VALIDATION_FAILED",
+    ],
+    classifiedTypes: ["SessionUnavailableError", "ValidationError"],
+    stages: ["resolveSignatories", "sessionCompletion"],
+  },
+  {
+    action: "replaceSessionAction",
+    route: "/workspace",
+    expectedCodes: [
+      "OPERATIONAL_ACCESS_DENIED",
+      "REPLACEMENT_LIFECYCLE_INVALID",
+      "SESSION_UNAVAILABLE",
+      "SIGNATORY_VALIDATION_FAILED",
+      "REPORT_VALIDATION_FAILED",
+    ],
+    classifiedTypes: ["SessionUnavailableError", "ValidationError", "DomainInvariantError"],
+    stages: ["resolveSignatories", "recompleteSession", "sessionReplacement"],
+  },
+  {
+    action: "getReopenableSessionAction",
+    route: "/workspace",
+    expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "SESSION_NOT_REOPENABLE"],
+    classifiedTypes: [],
+    stages: ["findReopenableSession"],
+  },
+  {
+    action: "deleteDraftSessionAction",
+    route: "/history",
+    expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "DRAFT_NOT_DELETABLE"],
+    classifiedTypes: ["DraftNotDeletableError"],
+    stages: ["deleteDraftSession"],
+  },
+];
+for (const { action, route, expectedCodes, classifiedTypes, stages } of operationalResultActions) {
+  const declaration = `export async function ${action}(`;
+  const start = serverActionsSource.indexOf(declaration);
+  assert(start >= 0, `${action} is declared in server-actions.ts`);
+  const end = serverActionsSource.indexOf("\nexport async function", start + declaration.length);
+  const actionSource = serverActionsSource.slice(
+    start,
+    end >= 0 ? end : serverActionsSource.length
+  );
+
+  assert(
+    liveCodeIndexOf(actionSource, "Promise<OperationalActionResult<") >= 0,
+    `${action} declares a typed OperationalActionResult return`
+  );
+
+  // Operational-access conversion. Authorization must be the FIRST statement, it must go through
+  // the converting wrapper, and its refusal must be RETURNED - not allowed to escape. Requiring
+  // the refusal branch to sit before the parser index is what stops a regression that authorizes
+  // first but only converts later, after input has already been parsed.
+  const authorizationIndex = liveCodeIndexOf(
+    actionSource,
+    "const authorization = await authorizeOperationalCaller("
+  );
+  assert(
+    liveCodeIndexOf(
+      actionSource,
+      `const authorization = await authorizeOperationalCaller("${route}");`
+    ) >= 0,
+    `${action} supplies its own fixed route ${route} so an access failure is logged against it`
+  );
+  const accessRefusalIndex = liveCodeIndexOf(
+    actionSource,
+    'if (!authorization.ok) return operationalFailure("OPERATIONAL_ACCESS_DENIED");'
+  );
+  assert(
+    authorizationIndex >= 0 && accessRefusalIndex > authorizationIndex,
+    `${action} converts an operational-access refusal into a returned typed failure`
+  );
+  assert(
+    liveCodeIndexOf(actionSource, "requireOperationalCaller()") < 0,
+    `${action} authorizes only through the converting wrapper, never the raw frozen guard`
+  );
+  for (const laterStep of [
+    "parseSessionMutationInput(input)",
+    "parseSessionLoadInput(input)",
+    "new SupabasePatientReportSessionRepository",
+  ]) {
+    const laterIndex = liveCodeIndexOf(actionSource, laterStep);
+    assert(
+      laterIndex < 0 || laterIndex > accessRefusalIndex,
+      `${action} refuses an unauthorized caller before ${laterStep}`
+    );
+  }
+
+  // Every expected failure this action can produce is present, and every failure is built from the
+  // code alone so the message cannot be mismatched with it.
+  for (const expectedCode of expectedCodes) {
+    assert(
+      liveCodeIndexOf(actionSource, `operationalFailure("${expectedCode}")`) >= 0,
+      `${action} returns ${expectedCode} as a code-derived typed failure`
+    );
+  }
+  assert(
+    !/operationalFailure\(\s*"[A-Z_]+"\s*,/.test(actionSource),
+    `${action} never passes a message alongside a code, which could pair the wrong sentence`
+  );
+
+  // Expected repository and domain outcomes are classified by TYPE. A message comparison would be
+  // the failure mode this slice exists to remove, so the closed classes must appear by name.
+  for (const classifiedType of classifiedTypes) {
+    assert(
+      liveCodeIndexOf(actionSource, `error instanceof ${classifiedType}`) >= 0,
+      `${action} classifies ${classifiedType} by type rather than by message text`
+    );
+  }
+
+  // Unexpected failures stay unexpected: sanitized diagnostic, then rethrow, at every stage that
+  // can produce one.
+  for (const stage of stages) {
+    assert(
+      liveCodeIndexOf(actionSource, `reportUnexpectedActionFailure("`) >= 0 &&
+        liveCodeIndexOf(actionSource, `"${stage}", error)`) >= 0,
+      `${action} routes an unexpected ${stage} failure through the sanitized diagnostic and rethrow`
+    );
+  }
+
+  // Safe disclosure: no field of a caught value may be read anywhere in the action.
+  for (const disclosureField of [".message", ".stack", ".details", ".hint", ".digest", ".cause"]) {
+    assert(
+      liveCodeIndexOf(actionSource, disclosureField) < 0,
+      `${action} never reads ${disclosureField} off a caught value`
+    );
+  }
+}
+
+// The replacement validation site, asserted where it actually is. recompleteSession() runs
+// synchronously and raises both DomainInvariantError (lifecycle and retention) and, through
+// ReportCompletionService.validateAndCompose, ValidationError (report content). Both must be
+// classified around THAT call - after signatory resolution and before the persistence call, which
+// never sees either error.
+// Brace-extracted, not a fixed character window: the recompletion call must be inside the body of
+// the try it is attributed to, and the classification must be in THAT try's own catch. A window
+// would let an adjacent block - the signatory-resolution try/catch immediately above, which also
+// handles ValidationError - satisfy this while the recompletion call sat outside any classification.
+const recompletionIndex = liveCodeIndexOf(replaceSessionActionSource, "candidate.recompleteSession()");
+assert(recompletionIndex >= 0, "replaceSessionAction still recompletes through candidate.recompleteSession()");
+const recompletionTryIndex = replaceSessionActionSource.lastIndexOf("try {", recompletionIndex);
+const recompletionTryBody = extractBracedSource(
+  replaceSessionActionSource,
+  recompletionTryIndex >= 0 ? replaceSessionActionSource.indexOf("{", recompletionTryIndex) : -1
+);
+assert(
+  recompletionTryBody.length > 0 &&
+    liveCodeIndexOf(recompletionTryBody, "candidate.recompleteSession()") >= 0,
+  "replaceSessionAction wraps candidate.recompleteSession() in expected-error classification"
+);
+const recompletionCatchStart = replaceSessionActionSource.indexOf(
+  "catch (error: unknown) {",
+  recompletionTryIndex + recompletionTryBody.length
+);
+const recompletionCatchBody = extractBracedSource(
+  replaceSessionActionSource,
+  recompletionCatchStart >= 0
+    ? replaceSessionActionSource.indexOf("{", recompletionCatchStart)
+    : -1
+);
+assert(
+  recompletionCatchBody.length > 0,
+  "replaceSessionAction recompletion classification has its own catch region"
+);
+assert(
+  liveCodeIndexOf(recompletionCatchBody, "error instanceof ValidationError") >= 0 &&
+    liveCodeIndexOf(recompletionCatchBody, 'operationalFailure("REPORT_VALIDATION_FAILED")') >= 0,
+  "replaceSessionAction maps recompletion ValidationError to the typed report-validation refusal"
+);
+assert(
+  liveCodeIndexOf(recompletionCatchBody, "error instanceof DomainInvariantError") >= 0 &&
+    liveCodeIndexOf(recompletionCatchBody, 'operationalFailure("REPLACEMENT_LIFECYCLE_INVALID")') >= 0,
+  "replaceSessionAction maps recompletion DomainInvariantError to the typed replacement refusal"
+);
+assert(
+  recompletionIndex > replaceActionResolutionIndex && recompletionIndex < replaceActionCallIndex,
+  "replaceSessionAction classifies recompletion after signatory resolution and before persistence"
+);
+
+// The repository refuses ownership and retention with closed classes, not plain errors, and the
+// missing-row case stays permitted so a genuinely new Draft can still be created.
+const sessionRepositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
+assert(
+  liveCodeIndexOf(sessionRepositorySource, "class SessionUnavailableError") >= 0 &&
+    liveCodeIndexOf(sessionRepositorySource, 'throw new SessionUnavailableError("not_owned")') >= 0 &&
+    liveCodeIndexOf(sessionRepositorySource, 'throw new SessionUnavailableError("retention_expired")') >= 0,
+  "the session repository refuses ownership and retention with a closed error class"
+);
+assert(
+  liveCodeIndexOf(sessionRepositorySource, 'throw new Error("Session ownership validation failed.")') < 0 &&
+    liveCodeIndexOf(sessionRepositorySource, "is permanently immutable.") < 0,
+  "the session repository no longer raises plain ownership or retention errors"
+);
+assert(
+  liveCodeIndexOf(
+    sessionRepositorySource,
+    "if (data && (data as SessionOwnershipRow).created_by_user_id !== caller.userId) {"
+  ) >= 0,
+  "a missing session row remains permitted so a new Draft can still be created"
+);
+
+// One code, one sentence, derived by lookup. operationalFailure takes the code alone, and the map
+// is keyed by the union so a code without a sentence does not compile.
+const operationalResultContractSource = readNormalizedSource(
+  "src/features/server-boundary/operational-action-result.ts"
+);
+assert(
+  liveCodeIndexOf(
+    operationalResultContractSource,
+    "export function operationalFailure<T>(\n  code: OperationalActionErrorCode\n): OperationalActionResult<T> {"
+  ) >= 0,
+  "operationalFailure takes only a code, so a message can never be paired with the wrong one"
+);
+assert(
+  liveCodeIndexOf(
+    operationalResultContractSource,
+    "Record<OperationalActionErrorCode, string>"
+  ) >= 0 &&
+    liveCodeIndexOf(operationalResultContractSource, "error: OPERATIONAL_ACTION_MESSAGE[code]") >= 0,
+  "every failure message is derived from its own code through the total code-to-message map"
+);
+for (const lifecycleCode of [
+  "DRAFT_SAVE_LIFECYCLE_INVALID",
+  "COMPLETION_LIFECYCLE_INVALID",
+  "REPLACEMENT_LIFECYCLE_INVALID",
+]) {
+  assert(
+    liveCodeIndexOf(operationalResultContractSource, `${lifecycleCode}:`) >= 0,
+    `${lifecycleCode} has its own distinct sentence`
+  );
+}
+
+
+// SHADCN-07B2-R2: the authorization wrapper itself, inspected as a body rather than trusted.
+//
+// The defect this replaces was invisible to a call-site assertion: every action authorized first
+// and returned a typed refusal, so every per-action check above passed - while the wrapper quietly
+// converted a failed denial-audit write, a Supabase outage and any programming fault into
+// OPERATIONAL_ACCESS_DENIED. Only reading the wrapper's own body can tell the two apart, so these
+// assertions do that.
+const authorizeWrapperSource = extractBracedSource(
+  serverActionsSource,
+  serverActionsSource.indexOf(
+    "{",
+    serverActionsSource.indexOf("async function authorizeOperationalCaller(")
+  )
+);
+assert(
+  authorizeWrapperSource.length > 0,
+  "authorizeOperationalCaller body region is non-empty"
+);
+// Only the closed deliberate-refusal type may become a denial, and the denial must be guarded by
+// that instanceof test rather than reached unconditionally.
+const deniedGuardIndex = liveCodeIndexOf(
+  authorizeWrapperSource,
+  "if (error instanceof OperationalAccessDeniedError) {"
+);
+const deniedReturnIndex = liveCodeIndexOf(authorizeWrapperSource, "return { ok: false };");
+assert(
+  deniedGuardIndex >= 0 &&
+    deniedReturnIndex > deniedGuardIndex &&
+    liveCodeIndicesOf(authorizeWrapperSource, "return { ok: false }").length === 1,
+  "authorizeOperationalCaller returns a denial only for the closed OperationalAccessDeniedError"
+);
+// Everything else is unexpected: sanitized diagnostic, then rethrow. reportUnexpectedActionFailure
+// returns never, so its presence after the guard is what makes the catch exhaustive without a
+// second denial path.
+assert(
+  liveCodeIndexOf(
+    authorizeWrapperSource,
+    'reportUnexpectedActionFailure(route, "authorizeOperationalCaller", error);'
+  ) > deniedReturnIndex,
+  "authorizeOperationalCaller sends every non-refusal through the sanitized diagnostic and rethrow"
+);
+// No unrestricted catch-to-denial fallback, and no re-derived authentication preload.
+assert(
+  liveCodeIndexOf(authorizeWrapperSource, "} catch {") < 0,
+  "authorizeOperationalCaller has no unrestricted catch-to-denial fallback"
+);
+assert(
+  liveCodeIndexOf(authorizeWrapperSource, "resolveAuthenticatedRequest") < 0 &&
+    liveCodeIndexOf(serverActionsSource, "resolveAuthenticatedRequest") < 0,
+  "authorizeOperationalCaller performs no separate authentication preload"
+);
+// It calls the guard directly, and reads nothing off the caught value.
+assert(
+  liveCodeIndexOf(authorizeWrapperSource, "await requireOperationalCaller()") >= 0,
+  "authorizeOperationalCaller calls the operational guard directly"
+);
+for (const disclosureField of [".message", ".stack", ".details", ".hint", ".digest", ".cause"]) {
+  assert(
+    liveCodeIndexOf(authorizeWrapperSource, disclosureField) < 0,
+    `authorizeOperationalCaller never reads ${disclosureField} off a caught value`
+  );
+}
 
 console.log("=== ALL CHECKPOINT B5 VERIFICATION TESTS PASSED ===");

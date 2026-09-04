@@ -340,11 +340,11 @@ export function SessionHistoryView({
         if (superseded) return;
         setEntries(data.map(toHistoryEntry));
         setLoadError(null);
-      } catch (error: unknown) {
+      } catch {
         if (superseded) return;
-        setLoadError(
-          error instanceof Error ? error.message : "Session history could not be loaded."
-        );
+        // listRecentSessionsAction still throws (out of scope for SHADCN-07B2); the fixed
+        // fallback is now the only wording it can produce.
+        setLoadError("Session history could not be loaded.");
       } finally {
         if (!superseded) setLoading(false);
       }
@@ -419,14 +419,20 @@ export function SessionHistoryView({
     setIsDeletingId(session.id);
     setDeleteError(null);
     try {
-      await deleteDraftSession({ sessionId: session.id });
+      const deleted = await deleteDraftSession({ sessionId: session.id });
       setPendingDeleteEntry(null);
+      if (!deleted.success) {
+        // Expected refusal - missing, not owned, or no longer a draft. All three share one
+        // sentence by design, so this never becomes an existence oracle. The list is NOT
+        // refreshed: nothing was deleted.
+        setDeleteError(deleted.error);
+        return;
+      }
       setReloadToken((current) => current + 1);
-    } catch (error: unknown) {
+    } catch {
+      // Unexpected rejection only; never the thrown message.
       setPendingDeleteEntry(null);
-      setDeleteError(
-        error instanceof Error ? error.message : "The draft could not be deleted."
-      );
+      setDeleteError("The draft could not be deleted.");
     } finally {
       setIsDeletingId(null);
     }

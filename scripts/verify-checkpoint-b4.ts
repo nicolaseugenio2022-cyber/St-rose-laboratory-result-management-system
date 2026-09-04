@@ -721,8 +721,54 @@ const recoverySaveEffect = guidedWorkspaceSource.match(/useEffect\(\(\) => \{\n 
 assert(recoverySaveEffect.length > 0, "GuidedWorkspace recovery save effect region is non-empty");
 assert(recoverySaveEffect.includes('if (session.accessionNumber !== null || session.status !== "Draft") return;'), "GuidedWorkspace never writes recovery for a persisted session");
 assert(recoverySaveEffect.indexOf("saveWorkspaceRecovery(") > recoverySaveEffect.indexOf("if (reopenSessionId || isReplacementMode) return;"), "GuidedWorkspace never writes recovery for a reopened or Replacement Mode session");
-for (const clearSite of ["saveDraftAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();", "completeSessionAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();"]) {
-  assert(guidedWorkspaceSource.includes(clearSite), "GuidedWorkspace clears recovery immediately after the successful persistence call it follows");
+// SHADCN-07B2: the persistence actions return a typed result instead of throwing, so the clear can
+// no longer sit on the line after the call - a returned failure would fall straight through it and
+// wipe the operator's only copy of unsaved work. "Immediately after the call" therefore becomes
+// "only on the success branch of the call", which is the guarantee the original pin was buying.
+// This is checked for EVERY occurrence of each call, not just the first, and requires a failure
+// branch that RETURNS between the call and the clear - strictly stronger than the adjacency pin.
+// SHADCN-07B2 safe disclosure, client side. Neither operational surface may put a caught value's
+// own text in front of the operator. In production that text is not even the real error - Next.js
+// has already replaced a thrown Server Action message with its redaction string and an opaque
+// digest - and in development it can carry server internals. Expected refusals now arrive as a
+// typed result carrying application-authored wording, so a `.message` read here is always either
+// a leak or a lie. The digest is included: it identifies a server log line and belongs in a
+// support reference, never in an inline error message.
+for (const [surfaceLabel, surfaceSource] of [
+  ["GuidedWorkspace", guidedWorkspaceSource],
+  ["SessionHistoryView", sessionHistorySource],
+] as [string, string][]) {
+  for (const disclosureField of [".message", ".stack", ".digest", ".cause"]) {
+    assert(
+      !surfaceSource.includes(disclosureField),
+      `${surfaceLabel} never surfaces ${disclosureField} from a caught value to the operator`
+    );
+  }
+}
+
+const recoveryClearingCallSites: [string, string][] = [
+  ["saveDraftAction({ session: toSessionTransport(session) });", "saved"],
+  ["completeSessionAction({ session: toSessionTransport(session) });", "completed"],
+];
+for (const [callSite, resultName] of recoveryClearingCallSites) {
+  const callIndices: number[] = [];
+  for (
+    let found = guidedWorkspaceSource.indexOf(callSite);
+    found >= 0;
+    found = guidedWorkspaceSource.indexOf(callSite, found + callSite.length)
+  ) {
+    callIndices.push(found);
+  }
+  assert(callIndices.length > 0, `GuidedWorkspace still persists through ${callSite}`);
+  for (const callIndex of callIndices) {
+    const clearIndex = guidedWorkspaceSource.indexOf("clearWorkspaceRecovery();", callIndex);
+    assert(clearIndex > callIndex, "GuidedWorkspace clears recovery after the persistence call it follows");
+    const betweenCallAndClear = guidedWorkspaceSource.slice(callIndex + callSite.length, clearIndex);
+    assert(
+      betweenCallAndClear.includes(`if (!${resultName}.success) {`) && betweenCallAndClear.includes("return;"),
+      "GuidedWorkspace clears recovery only on the success branch of the persistence call it follows"
+    );
+  }
 }
 assert(/const handleDiscardAndExit = useCallback\(\(\) => \{\s*clearWorkspaceRecovery\(\);/.test(guidedWorkspaceSource), "GuidedWorkspace clears recovery when the operator discards and exits");
 const headerSource = readFileSync(join(process.cwd(), "src/app/(app)/_components/Header.tsx"), "utf8").replace(/\r\n/g, "\n");

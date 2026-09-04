@@ -310,10 +310,10 @@ export function GuidedWorkspace({
       try {
         const hydratedSpecs = await listRegistryTemplatesAction({});
         setAllActiveTemplates(hydratedSpecs);
-      } catch (error: unknown) {
-        setValidationError(
-          error instanceof Error ? error.message : "The report registry could not be loaded."
-        );
+      } catch {
+        // Loader actions still throw on failure (out of scope for SHADCN-07B2). The fixed
+        // fallback is now the only wording: the thrown message is a Next.js digest in production.
+        setValidationError("The report registry could not be loaded.");
       }
     }
     loadTemplates();
@@ -326,10 +326,8 @@ export function GuidedWorkspace({
       .then((directory) => {
         setAvailablePersonnel(directory.personnel);
       })
-      .catch((error: unknown) => {
-        setValidationError(
-          error instanceof Error ? error.message : "Active personnel could not be loaded."
-        );
+      .catch(() => {
+        setValidationError("Active personnel could not be loaded.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -406,9 +404,16 @@ export function GuidedWorkspace({
 
     let cancelled = false;
     getReopenableSessionAction({ sessionId: reopenSessionId })
-      .then((transport) => {
+      .then((result) => {
         if (cancelled) return;
-        const reopened = fromSessionTransport(transport);
+        if (!result.success) {
+          // Expected refusal - ownership, status or retention. The server already decided and
+          // audited it; this only shows the sentence it chose.
+          setReopenError(result.error);
+          setReopenStatus("failed");
+          return;
+        }
+        const reopened = fromSessionTransport(result.data);
         const templateCodes = reopened.reports.map((report) => report.templateCode);
         setSession(reopened);
         setSelectedTemplateCodes(templateCodes);
@@ -419,11 +424,12 @@ export function GuidedWorkspace({
         setValidationError(null);
         setReopenStatus("ready");
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (cancelled) return;
-        setReopenError(
-          error instanceof Error ? error.message : "This session could not be reopened."
-        );
+        // Unexpected rejection only. Never the thrown message: in production Next.js has already
+        // replaced it with its redaction string and a digest, and in development it could carry
+        // server internals. The fixed sentence is the whole contract here.
+        setReopenError("This session could not be reopened.");
         setReopenStatus("failed");
       });
 
@@ -563,8 +569,13 @@ export function GuidedWorkspace({
     setSaveStatus("saving");
     try {
       const saved = await saveDraftAction({ session: toSessionTransport(session) });
+      if (!saved.success) {
+        setSaveStatus("unsaved");
+        setValidationError(saved.error);
+        return;
+      }
       clearWorkspaceRecovery();
-      setSession(fromSessionTransport(saved));
+      setSession(fromSessionTransport(saved.data));
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
@@ -642,19 +653,22 @@ export function GuidedWorkspace({
     setSaveStatus("saving");
     try {
       const completed = await completeSessionAction({ session: toSessionTransport(session) });
+      if (!completed.success) {
+        setSaveStatus("unsaved");
+        setValidationError(completed.error);
+        return;
+      }
       clearWorkspaceRecovery();
-      setSession(fromSessionTransport(completed));
+      setSession(fromSessionTransport(completed.data));
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
       setWorkspaceMode("preview");
-    } catch (err: unknown) {
+    } catch {
+      // Unexpected rejection only - every expected refusal arrived as a typed result above.
+      // The caught message is never shown: it is Next.js's redaction plus a digest in production.
       setSaveStatus("unsaved");
-      if (err instanceof Error) {
-        setValidationError(err.message);
-      } else {
-        setValidationError("An unexpected error occurred while completing the session.");
-      }
+      setValidationError("An unexpected error occurred while completing the session.");
     } finally {
       submissionInFlightRef.current = false;
       setPendingConfirmation(null);
@@ -683,18 +697,21 @@ export function GuidedWorkspace({
     setSaveStatus("saving");
     try {
       const replaced = await replaceSessionAction({ session: toSessionTransport(session) });
-      setSession(fromSessionTransport(replaced));
+      if (!replaced.success) {
+        setSaveStatus("unsaved");
+        setValidationError(replaced.error);
+        return;
+      }
+      setSession(fromSessionTransport(replaced.data));
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
       setWorkspaceMode("preview");
-    } catch (err: unknown) {
+    } catch {
+      // Unexpected rejection only. Recovery is deliberately never cleared on this path - a
+      // Replacement Mode session never wrote recovery in the first place.
       setSaveStatus("unsaved");
-      if (err instanceof Error) {
-        setValidationError(err.message);
-      } else {
-        setValidationError("An unexpected error occurred while replacing the report.");
-      }
+      setValidationError("An unexpected error occurred while replacing the report.");
     } finally {
       submissionInFlightRef.current = false;
       setPendingConfirmation(null);
@@ -708,7 +725,12 @@ export function GuidedWorkspace({
     setShowExitModal(false);
     setSaveStatus("saving");
     try {
-      await saveDraftAction({ session: toSessionTransport(session) });
+      const saved = await saveDraftAction({ session: toSessionTransport(session) });
+      if (!saved.success) {
+        setSaveStatus("unsaved");
+        setValidationError(saved.error);
+        return;
+      }
       clearWorkspaceRecovery();
       setIsDirty(false);
       setSaveStatus("saved");

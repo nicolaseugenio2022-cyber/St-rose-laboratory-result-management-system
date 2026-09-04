@@ -283,7 +283,7 @@ assert(
 );
 
 const EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH =
-  "76edad60505111ba64c51f6de79a9c9656920f9310c070af27192de9f40cb2bc";
+  "f8ed1788ffaa3cbaebcb80253b95ed7fa2421e069cfce3749a0d8532a2072b7b";
 const requireOperationalCallerFunction = extractDeclaredFunction(
   serverActionsSource,
   "async function requireOperationalCaller"
@@ -294,6 +294,34 @@ assert(
   ),
   "requireOperationalCaller gates callers to exactly Admin or User"
 );
+
+// SHADCN-07B2-R2 structural proof, alongside the re-minted hash above. The guard's four DELIBERATE
+// refusals now raise the closed OperationalAccessDeniedError instead of a plain Error, so a caller
+// can distinguish a refusal from a failed denial-audit write or a Supabase outage WITHOUT catching
+// everything. Every condition, audit event, actor/target field and reasonCode is byte-identical -
+// only the thrown type changed - so the exact-body pin is re-minted, never relaxed. These
+// assertions additionally stop a future edit reintroducing a plain throw the hash alone would
+// simply re-pin away.
+const deliberateRefusalThrows =
+  requireOperationalCallerFunction.match(/throw new [A-Za-z]+/g) ?? [];
+assert(
+  deliberateRefusalThrows.length === 4 &&
+    deliberateRefusalThrows.every(
+      (thrown) => thrown === "throw new OperationalAccessDeniedError"
+    ),
+  "every deliberate requireOperationalCaller refusal throws the closed OperationalAccessDeniedError"
+);
+for (const detailExpression of [
+  'details: { reasonCode: "unauthenticated" },',
+  'details: { reasonCode: "first_login_incomplete" },',
+  'details: { reasonCode: profile ? "account_inactive" : "unauthenticated" },',
+  'details: { reasonCode: "role_not_authorized" },',
+]) {
+  assert(
+    requireOperationalCallerFunction.includes(detailExpression),
+    `requireOperationalCaller still records the denial reason ${detailExpression}`
+  );
+}
 const requireOperationalCallerHash = sha256(requireOperationalCallerFunction.replace(/\r\n/g, "\n"));
 assert(
   requireOperationalCallerHash === EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH,

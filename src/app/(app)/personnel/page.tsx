@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { PersonnelDirectoryView } from "@/features/personnel/components/PersonnelDirectoryView";
+import { PersonnelDirectoryView } from "./_components/PersonnelDirectoryView";
 import {
   listPersonnelAction,
   createPersonnelAction,

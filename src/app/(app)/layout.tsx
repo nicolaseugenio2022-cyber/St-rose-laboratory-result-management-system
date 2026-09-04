@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import React from "react";
-import { AppShell } from "@/components/layout/AppShell";
-import { AccountLoadError } from "@/features/auth/components/AccountLoadError";
+import { AppShell } from "./_components/AppShell";
+import { AccountLoadError } from "@/app/_components/AccountLoadError";
 import { loadAuthenticatedShellProfile } from "@/lib/authenticated-shell";
 
 export default async function AppRouteGroupLayout({

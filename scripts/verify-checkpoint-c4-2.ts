@@ -248,8 +248,10 @@ async function main(): Promise<void> {
     `the QA-04 fixture must actually reach Low, High, Normal, NoEvaluation and Invalid or the marker assertions prove nothing - measured ${JSON.stringify(Object.fromEntries(markedOutcomes))}`
   );
 
-  assert(markerFor(markedPage, "FBS").length === 1 && markerFor(markedPage, "FBS")[0].text === "L", "a Low result must render exactly one L marker");
-  assert(markerFor(markedPage, "TRIGLYCERIDES").length === 1 && markerFor(markedPage, "TRIGLYCERIDES")[0].text === "H", "a High result must render exactly one H marker");
+  // REPORT-QA-01 replaces the QA-04 H / L initials with the complete words. The marker text is
+  // pinned by exact equality, so an initial - or any abbreviation of either word - fails here.
+  assert(markerFor(markedPage, "FBS").length === 1 && markerFor(markedPage, "FBS")[0].text === "LOW", `a Low result must render exactly one complete-word LOW marker - measured ${JSON.stringify(markerFor(markedPage, "FBS").map((primitive) => primitive.text))}`);
+  assert(markerFor(markedPage, "TRIGLYCERIDES").length === 1 && markerFor(markedPage, "TRIGLYCERIDES")[0].text === "HIGH", `a High result must render exactly one complete-word HIGH marker - measured ${JSON.stringify(markerFor(markedPage, "TRIGLYCERIDES").map((primitive) => primitive.text))}`);
   assert(markerPrimitives(markedPage).length === 2, `Normal, Invalid and NoEvaluation results must render no marker - measured ${markerPrimitives(markedPage).map((primitive) => primitive.id).join(", ")}`);
 
   const fbs = markedReport.results.find((result) => result.parameterCode === "FBS")!;
@@ -262,7 +264,10 @@ async function main(): Promise<void> {
     const valueLine = textPrimitives(markedPage).find((primitive) => primitive.id === `result-${parameterCode}-value-line-1`);
     assert(valueLine, `${parameterCode} must still render its own RESULT value line beside the marker`);
     assert(marker.fontWeight === "bold" && marker.text === marker.text.toLocaleUpperCase(), `${parameterCode} marker must be bold and uppercase`);
-    const expectedTone = marker.text === "H" ? NATIVE_REPORT_THEME.colors.abnormalHigh : NATIVE_REPORT_THEME.colors.abnormalLow;
+    // The complete word is what carries the clinical meaning, so the printed marker may only ever be
+    // one of the two approved words - never an initial, and never a truncation of either.
+    assert(marker.text === "HIGH" || marker.text === "LOW", `${parameterCode} marker must print the complete word HIGH or LOW - measured "${marker.text}"`);
+    const expectedTone = marker.text === "HIGH" ? NATIVE_REPORT_THEME.colors.abnormalHigh : NATIVE_REPORT_THEME.colors.abnormalLow;
     assert(marker.color === expectedTone, `${parameterCode} marker must carry its semantic QA-04 tone`);
     assert(marker.width != null && valueLine.width != null, `${parameterCode} marker and value line must both declare a measurable box`);
     assert(marker.x >= valueLine.x && marker.x + marker.width <= valueLine.x + valueLine.width, `${parameterCode} marker must sit inside the existing RESULT column and create no fourth column`);
@@ -273,7 +278,8 @@ async function main(): Promise<void> {
   assert(approximately(markedPage.contentBottomMm, unmarkedPage.contentBottomMm), `markers must not move contentBottomMm - marked ${markedPage.contentBottomMm}, unmarked ${unmarkedPage.contentBottomMm}`);
   assert(approximately(primitiveBottomByIdMm(markedPage, "result-grid-bottom"), primitiveBottomByIdMm(unmarkedPage, "result-grid-bottom")), "the result grid must close at the same y with and without markers");
 
-  // QA-04 retires CBC suppression: CBC now participates in the shared H / L output policy.
+  // QA-04 retired CBC suppression: CBC participates in the shared output policy, which REPORT-QA-01
+  // now expresses as the complete words HIGH and LOW.
   const cbcRendered = cbcReport.results.filter((result) => result.omission === "Render");
   const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
   const cbcLows = cbcRendered.filter((result) => result.evaluationOutcome === "Low");
@@ -282,9 +288,9 @@ async function main(): Promise<void> {
   for (const result of cbcRendered) {
     const markers = markerFor(cbc, result.parameterCode);
     if (result.evaluationOutcome === "High") {
-      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+      assert(markers.length === 1 && markers[0].text === "HIGH" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold complete-word HIGH in the abnormalHigh token`);
     } else if (result.evaluationOutcome === "Low") {
-      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+      assert(markers.length === 1 && markers[0].text === "LOW" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold complete-word LOW in the abnormalLow token`);
     } else {
       assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
     }

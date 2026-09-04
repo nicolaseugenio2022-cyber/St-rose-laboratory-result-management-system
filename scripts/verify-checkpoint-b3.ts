@@ -72,7 +72,7 @@ assert(cbc.parameters.length === 10, `CBC must have exactly 10 parameters`);
 assert(cbc.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `CBC default physician = "Dr. Ralph Roland Asperas"`);
 assert(cbc.requestedByPolicy.isRequired === true, `CBC Requested By is REQUIRED`);
 assert(cbc.defaultRemarks === "TEST/S RECHECKED; RESULT/S VERIFIED", `CBC default remarks = "TEST/S RECHECKED; RESULT/S VERIFIED"`);
-assert(cbc.suppressAbnormalIndicators === undefined, `CBC must declare no abnormal-indicator suppression - QA-04 retired it and CBC follows the shared H / L output policy`);
+assert(cbc.suppressAbnormalIndicators === undefined, `CBC must declare no abnormal-indicator suppression - QA-04 retired it and CBC follows the shared complete-word HIGH / LOW output policy`);
 assert(cbc.statusPolicy.demographicCollection === false, `CBC statusPolicy.demographicCollection must be false`);
 assert(cbc.statusPolicy.type === "Static" && cbc.statusPolicy.staticLabel === "Status", `CBC preserves static output label "Status"`);
 

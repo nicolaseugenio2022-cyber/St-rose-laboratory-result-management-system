@@ -109,7 +109,7 @@ const personnelActionsSource = getSource("src/features/server-boundary/personnel
 const personnelGuardSource = getSource("src/lib/personnel-guard.ts");
 const authGuardsSource = getSource("src/lib/auth-guards.ts");
 const serverActionsSource = getSource("src/features/server-boundary/server-actions.ts");
-const personnelFormSource = getSource("src/features/personnel/components/PersonnelForm.tsx");
+const personnelFormSource = getSource("src/app/(app)/personnel/_components/PersonnelForm.tsx");
 
 // ── Assertion 1: Every write action calls requirePersonnelAdmin() before any repository call ──
 for (const actionName of ["createPersonnelAction", "updatePersonnelAction", "togglePersonnelStatusAction"]) {
@@ -348,14 +348,14 @@ assert(
 
 const directoryEntrySource = getSource("src/features/personnel/personnel-directory-entry.ts");
 const personnelDirectoryViewSource = getSource(
-  "src/features/personnel/components/PersonnelDirectoryView.tsx"
+  "src/app/(app)/personnel/_components/PersonnelDirectoryView.tsx"
 );
-const personnelTableSource = getSource("src/features/personnel/components/PersonnelTable.tsx");
+const personnelTableSource = getSource("src/app/(app)/personnel/_components/PersonnelTable.tsx");
 const personnelFormModalSource = getSource(
-  "src/features/personnel/components/PersonnelFormModal.tsx"
+  "src/app/(app)/personnel/_components/PersonnelFormModal.tsx"
 );
 const personnelSignatureFieldSource = getSource(
-  "src/features/personnel/components/PersonnelSignatureField.tsx"
+  "src/app/(app)/personnel/_components/PersonnelSignatureField.tsx"
 );
 
 // The interface body only - the file's own doc comment quotes the forbidden identifier while

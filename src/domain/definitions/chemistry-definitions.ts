@@ -49,7 +49,11 @@ export const CHEM_8_DEFINITION: ClinicalReportDefinition = {
     { ...CREATININE_PARAM, displayOrder: 6 },
   ],
   requestedByPolicy: {
-    defaultPhysician: null, // Required staff entry, no default physician
+    // CHEM_8.md: "Requested By defaults to Dr. Ralph Roland Asperas but remains editable."
+    // The former null left this required field empty on a freshly selected CHEM_8, so the report
+    // opened already failing its own completion check. The default is applied only at report
+    // initialization; a physician the operator then types or selects is never overwritten.
+    defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
     isRequired: true,
   },

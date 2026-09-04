@@ -2,7 +2,7 @@
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "../src/domain/models/laboratory-report-domain";
-import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection } from "../src/features/workspace/encoding/report-encoding";
+import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
 import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import { ValidationError, DomainInvariantError } from "../src/lib/errors";

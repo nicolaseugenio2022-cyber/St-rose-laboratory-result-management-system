@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { UserManagementView } from "@/features/users/components/UserManagementView";
+import { UserManagementView } from "./_components/UserManagementView";
 import {
   toAccountDirectory,
   type AccountDirectory,

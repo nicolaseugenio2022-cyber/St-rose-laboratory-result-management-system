@@ -1,4 +1,5 @@
 import React from "react";
+import { Skeleton as RheaSkeleton } from "@/components/shadcn/skeleton";
 import { cn } from "@/utils/cn";
 
 export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -20,14 +21,16 @@ export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
  *   never announce placeholder content. Mark the surrounding region with
  *   `aria-busy="true"` so the loading state is conveyed once, semantically.
  *
- * Motion: animates only when the user has not requested reduced motion.
+ * Motion: animates only when the user has not requested reduced motion. The Rhea
+ * primitive pulses unconditionally, so `animate-none` cancels that and the
+ * `motion-safe:` variant reinstates it for users who have not asked for less motion.
  */
 export function Skeleton({ className, circle = false, ...props }: SkeletonProps) {
   return (
-    <div
+    <RheaSkeleton
       aria-hidden="true"
       className={cn(
-        "bg-brand-border motion-safe:animate-pulse",
+        "bg-brand-border animate-none motion-safe:animate-pulse",
         circle ? "rounded-full" : "rounded-md",
         className
       )}

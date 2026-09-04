@@ -137,7 +137,7 @@ async function main(): Promise<void> {
 
   /* ============================================================ 2. inbound: the projection */
 
-  const actionSource = getSource("src/features/server-boundary/workspace-personnel-actions.ts");
+  const actionSource = getSource("src/app/(dashboard)/workspace/_actions/workspace-personnel-actions.ts");
   const toWorkspaceEntryBody = actionSource.match(/function toWorkspaceEntry\([\s\S]*?\n\}/)?.[0] || "";
 
   assert(
@@ -207,9 +207,9 @@ async function main(): Promise<void> {
   /* ============================================================ 3. inbound: client code */
 
   for (const [label, relativePath] of [
-    ["GuidedWorkspace", "src/features/workspace/GuidedWorkspace.tsx"],
-    ["SignatorySelectionSection", "src/features/workspace/components/SignatorySelectionSection.tsx"],
-    ["EncodingReportFooter", "src/features/workspace/components/EncodingReportFooter.tsx"],
+    ["GuidedWorkspace", "src/app/(dashboard)/workspace/_components/GuidedWorkspace.tsx"],
+    ["SignatorySelectionSection", "src/app/(dashboard)/workspace/_components/SignatorySelectionSection.tsx"],
+    ["EncodingReportFooter", "src/app/(dashboard)/workspace/_components/EncodingReportFooter.tsx"],
     ["SuggestedSignatoryProvider", "src/services/suggested-signatory-provider.ts"],
   ] as const) {
     const clientSource = withoutComments(getSource(relativePath));
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
 
   // The Workspace composes its own render addresses. `personnelId` names WHO; the stored URL
   // names WHERE, and only the server may hold that.
-  const workspaceCode = withoutComments(getSource("src/features/workspace/GuidedWorkspace.tsx"));
+  const workspaceCode = withoutComments(getSource("src/app/(dashboard)/workspace/_components/GuidedWorkspace.tsx"));
   assert(
     /\/api\/signatures\/proxy\?personnelId=\$\{encodeURIComponent\(person\.id\)\}/.test(
       workspaceCode

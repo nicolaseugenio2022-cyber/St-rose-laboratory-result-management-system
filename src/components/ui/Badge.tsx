@@ -1,4 +1,5 @@
 import React from "react";
+import { Badge as RheaBadge } from "@/components/shadcn/badge";
 import { cn } from "@/utils/cn";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -12,11 +13,15 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
  * Square-cornered like StatusBadge, so the system has one badge shape, and ringed
  * rather than bordered so a size="sm" Badge and a size="sm" StatusBadge are the same
  * height. `navy` is the identity chip - a role label beside a username, never a status.
+ *
+ * Built on the Rhea badge primitive, overridden back to that shape: Rhea's pill radius
+ * and fixed 20px height would put a second badge geometry into a system that has one,
+ * and its own variants carry none of the semantic tints below.
  */
-export function Badge({ className, variant = "neutral", size = "md", children, ...props }: BadgeProps) {
-  const baseStyles =
-    "inline-flex items-center whitespace-nowrap rounded-md font-semibold ring-1 ring-inset transition-colors";
+export const badgeShapeClassName =
+  "h-auto rounded-md border-0 font-semibold ring-1 ring-inset";
 
+export function Badge({ className, variant = "neutral", size = "md", children, ...props }: BadgeProps) {
   const variants = {
     success: "bg-brand-success-bg text-brand-success ring-brand-success-border",
     warning: "bg-brand-warning-bg text-brand-warning ring-brand-warning-border",
@@ -34,8 +39,8 @@ export function Badge({ className, variant = "neutral", size = "md", children, .
   };
 
   return (
-    <span className={cn(baseStyles, variants[variant], sizes[size], className)} {...props}>
+    <RheaBadge className={cn(badgeShapeClassName, variants[variant], sizes[size], className)} {...props}>
       {children}
-    </span>
+    </RheaBadge>
   );
 }

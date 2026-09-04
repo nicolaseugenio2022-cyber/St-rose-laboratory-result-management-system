@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { FirstLoginForm } from "@/features/auth/components/FirstLoginForm";
+import { FirstLoginForm } from "../_components/FirstLoginForm";
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
 import { getSession } from "@/lib/session";
 import { userService } from "@/services/user-service-instance";

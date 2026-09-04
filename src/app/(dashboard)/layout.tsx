@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import React from "react";
-import { WorkspaceShell } from "@/components/layout/WorkspaceShell";
-import { AccountLoadError } from "@/features/auth/components/AccountLoadError";
+import { WorkspaceShell } from "./_components/WorkspaceShell";
+import { AccountLoadError } from "@/app/_components/AccountLoadError";
 import { loadAuthenticatedShellProfile } from "@/lib/authenticated-shell";
 
 export default async function WorkspaceRouteGroupLayout({

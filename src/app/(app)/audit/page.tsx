@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import React from "react";
-import { AuditLogView } from "@/features/audit/components/AuditLogView";
+import { AuditLogView } from "./_components/AuditLogView";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 import {
   toAuditReaderRole,

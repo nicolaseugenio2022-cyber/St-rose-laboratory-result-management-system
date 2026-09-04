@@ -1,4 +1,6 @@
 import React, { forwardRef, useId } from "react";
+import { Input as RheaInput } from "@/components/shadcn/input";
+import { Label } from "@/components/shadcn/label";
 import { cn } from "@/utils/cn";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -6,6 +8,32 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   error?: string;
   helperText?: string;
 }
+
+/**
+ * The field surface, shared by Input and the native Select.
+ *
+ * Rhea's field is a 32px pill on a tinted fill; the application's is a 36px desktop /
+ * 44px touch control on the white working surface with a 6px radius, and those heights
+ * are what line a field up with the medium Button beside it. These classes override only
+ * that geometry and colour - the primitive keeps its transition, its disabled handling,
+ * its aria-invalid wiring and its focus border, and the keyboard focus indicator itself
+ * comes from the shared `[data-slot]:focus-visible` rule established in globals.css.
+ *
+ * `aria-invalid:ring-0` cancels Rhea's permanent 3px error ring: an invalid field is
+ * marked by its red border and its error text, not by a second ring that would collide
+ * with the focus outline. `disabled:pointer-events-auto` restores the not-allowed cursor
+ * the application has always shown on a disabled field.
+ */
+export const fieldSurfaceClassName =
+  "h-11 rounded-md border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-[color,border-color,box-shadow] hover:border-brand-border-strong disabled:pointer-events-auto disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80 aria-invalid:ring-0 sm:h-9 md:text-[13px]";
+
+/** Applied on top of the surface when the field carries an error. */
+export const fieldErrorClassName =
+  "border-brand-danger hover:border-brand-danger aria-invalid:border-brand-danger";
+
+/** The 11px uppercase field label, shared by Input and Select. */
+export const fieldLabelClassName =
+  "block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted";
 
 /**
  * Text field.
@@ -28,11 +56,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
+          <Label htmlFor={inputId} className={fieldLabelClassName}>
             {label}
-          </label>
+          </Label>
         )}
-        <input
+        <RheaInput
           type={type}
           id={inputId}
           ref={ref}
@@ -40,8 +68,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            "flex h-11 w-full rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text placeholder:text-slate-500 transition-[border-color,box-shadow] hover:border-brand-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80 sm:h-9",
-            error && "border-brand-danger hover:border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger",
+            fieldSurfaceClassName,
+            "placeholder:text-slate-500",
+            error && fieldErrorClassName,
             className
           )}
           {...props}

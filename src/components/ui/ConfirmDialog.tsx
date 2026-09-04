@@ -70,7 +70,8 @@ export function ConfirmDialog({
       initialFocusRef={cancelRef}
       dismissible={!isPending}
       closeLabel="Close without confirming"
-      className="max-w-md"
+      // Both breakpoints, because Modal caps its own width per breakpoint.
+      className="max-w-md sm:max-w-md"
     >
       {children && <div className="pb-4 text-sm text-brand-text">{children}</div>}
 

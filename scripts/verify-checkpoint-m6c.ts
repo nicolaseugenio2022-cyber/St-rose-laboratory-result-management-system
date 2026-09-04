@@ -611,7 +611,7 @@ function verifyPurgeAuthorization(): void {
 }
 
 function verifyCredentialVisibilityControls(): void {
-  const firstLoginSource = read("src/features/auth/components/FirstLoginForm.tsx");
+  const firstLoginSource = read("src/app/first-login/_components/FirstLoginForm.tsx");
   assert(
     /\[showAnswer,\s*setShowAnswer\]\s*=\s*useState\s*\(\s*false\s*\)/.test(
       firstLoginSource
@@ -659,7 +659,7 @@ function verifyCredentialVisibilityControls(): void {
   );
 
   const forgotPasswordSource = read(
-    "src/features/auth/components/ForgotPasswordForm.tsx"
+    "src/app/forgot-password/_components/ForgotPasswordForm.tsx"
   );
   for (const [stateName, inputName] of [
     ["showAnswer", "answer"],

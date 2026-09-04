@@ -1,5 +1,5 @@
 import React from "react";
-import { SessionHistoryView } from "@/features/history/components/SessionHistoryView";
+import { SessionHistoryView } from "./_components/SessionHistoryView";
 import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 

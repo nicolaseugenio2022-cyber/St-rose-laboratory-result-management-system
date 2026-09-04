@@ -1,6 +1,16 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* No dark theme. The application has no theme switch; binding the dark variant to a
+   .dark ancestor (the shadcn convention) keeps every dark: utility dormant instead of
+   following the operating-system preference. */
+@custom-variant dark (&:is(.dark *));
+
+/* Tailwind v4 limits hover styles to devices that support hover. The application has
+   always applied them everywhere, so the v3 behaviour is kept, as the upgrade guide
+   describes. Remove this line to adopt the v4 behaviour. */
+@custom-variant hover (&:hover);
 
 /* ==========================================================================
    ST. ROSE DIAGNOSTIC LABORATORY - CENTRALIZED APPLICATION DESIGN TOKENS
@@ -12,85 +22,123 @@
    These design tokens govern the Web Application UI (Shell, Dashboard, Forms, Tables).
    They MUST NOT control Laboratory Report Rendering (Preview, Print, PDF).
    Laboratory reports inherit strictly from their official Word templates.
+
+   Each token here is a Tailwind theme variable, so it is both a CSS variable
+   (--color-brand-primary) and a utility family (bg-brand-primary, text-brand-text,
+   ring-brand-focus-ring). "static" keeps every token in the emitted stylesheet whether
+   or not a utility currently reaches it, as the token sheet always has been.
    ========================================================================== */
 
-:root {
+@theme static {
   /* --- IDENTITY --- */
   /* Teal: the action colour. Primary buttons, active navigation rail, links, focus. */
-  --color-primary: #0B6384;
-  --color-primary-hover: #084D68;
-  --color-primary-foreground: #ffffff;
+  --color-brand-primary: #0B6384;
+  --color-brand-primary-hover: #084D68;
+  --color-brand-primary-foreground: #ffffff;
 
   /* Deep navy: the identity colour. Brand blocks, page titles, strong headings,
-     secondary actions. Text on navy uses --color-navy-foreground / --color-navy-muted. */
-  --color-navy: #0D2B40;
-  --color-navy-hover: #0A2233;
-  --color-navy-foreground: #ffffff;
-  --color-navy-muted: #B7CBD8;
+     secondary actions. Text on navy uses navy-foreground / navy-muted. */
+  --color-brand-navy: #0D2B40;
+  --color-brand-navy-hover: #0A2233;
+  --color-brand-navy-foreground: #ffffff;
+  --color-brand-navy-muted: #B7CBD8;
 
   /* Brand tint, decorative pink, and accessible rose (unchanged brand values). */
-  --color-tint: #E8F3F6;
-  --color-decorative-pink: #F8A8B8;
-  --color-accessible-rose: #8E3F58;
+  --color-brand-tint: #E8F3F6;
+  --color-brand-decorative-pink: #F8A8B8;
+  --color-brand-accessible-rose: #8E3F58;
 
   /* Secondary actions are navy, so the button hierarchy is teal (do) / navy (also do)
      / outline (could do) / ghost (quiet). */
-  --color-secondary: var(--color-navy);
-  --color-secondary-hover: var(--color-navy-hover);
-  --color-secondary-foreground: var(--color-navy-foreground);
+  --color-brand-secondary: var(--color-brand-navy);
+  --color-brand-secondary-hover: var(--color-brand-navy-hover);
+  --color-brand-secondary-foreground: var(--color-brand-navy-foreground);
 
   /* --- THREE-SURFACE SYSTEM --- */
   /* 1 - CANVAS. The application ground behind every page. Cool blue-gray, clearly
      darker than white so working surfaces lift off it without shadow. */
-  --color-canvas: #E2E9EF;
+  --color-brand-canvas: #E2E9EF;
 
   /* 2 - STRUCTURAL. Navigation, header, table header bands, panel header bands,
      filter bars, sticky context strips, section grouping tints. Between canvas and
      working surface: structure, not content. */
-  --color-structural: #EEF3F7;
-  --color-structural-hover: #E4ECF2;
+  --color-brand-structural: #EEF3F7;
+  --color-brand-structural-hover: #E4ECF2;
 
   /* 3 - WORKING SURFACE. The only pure white: forms, inputs, result grids, important
      tables, dialogs and focused content. Clinical data earns the clearest ground. */
-  --color-surface: #ffffff;
-  --color-surface-hover: #F3F7FA;
+  --color-brand-surface: #ffffff;
+  --color-brand-surface-hover: #F3F7FA;
 
   /* Retained name, re-pointed. Its consumers are structural bands - table headers,
      recessed encoding sections, catalog family headers. */
-  --color-background: var(--color-structural);
+  --color-brand-background: var(--color-brand-structural);
 
   /* --- BORDERS & SEPARATORS --- */
   /* Cool borders that read on white AND on structural tint. */
-  --color-border: #D5DFE7;
+  --color-brand-border: #D5DFE7;
   /* For an edge that must read against the canvas (shell dividers). */
-  --color-border-strong: #BCCCD7;
+  --color-brand-border-strong: #BCCCD7;
   /* Hairlines inside a working surface. */
-  --color-border-subtle: #E8EEF3;
+  --color-brand-border-subtle: #E8EEF3;
 
   /* --- TYPOGRAPHY & TEXT --- */
-  --color-text: #0F1F2E;
-  --color-text-muted: #4A5D6E;
+  --color-brand-text: #0F1F2E;
+  --color-brand-text-muted: #4A5D6E;
   /* Subdued colour for decorative icons only. Never for placeholder text. */
-  --color-text-subtle: #8A9CAB;
+  --color-brand-text-subtle: #8A9CAB;
 
   /* --- SEMANTIC UI STATES (STRICTLY SEPARATED FROM BRANDING) --- */
-  --color-success: #047857;
-  --color-success-bg: #ecfdf5;
-  --color-success-border: #a7f3d0;
+  --color-brand-success: #047857;
+  --color-brand-success-bg: #ecfdf5;
+  --color-brand-success-border: #a7f3d0;
 
-  --color-warning: #92400e;
-  --color-warning-bg: #fffbeb;
-  --color-warning-border: #fde68a;
+  --color-brand-warning: #92400e;
+  --color-brand-warning-bg: #fffbeb;
+  --color-brand-warning-border: #fde68a;
 
-  --color-danger: #b91c1c;
-  --color-danger-bg: #fef2f2;
-  --color-danger-border: #fecaca;
+  --color-brand-danger: #b91c1c;
+  --color-brand-danger-bg: #fef2f2;
+  --color-brand-danger-border: #fecaca;
 
-  --color-info: #0B6384;
-  --color-info-bg: #E8F3F6;
-  --color-info-border: #bce3ee;
+  --color-brand-info: #0B6384;
+  --color-brand-info-bg: #E8F3F6;
+  --color-brand-info-border: #bce3ee;
 
-  /* Semantic Role Colors */
+  /* --- NAVIGATION & SIDEBAR --- */
+  /* Navigation body is structural; the brand block above it is navy. */
+  --color-brand-sidebar: var(--color-brand-structural);
+  /* Active item fill: a teal tint that holds against the structural sidebar. */
+  --color-brand-sidebar-active: #D6E7EE;
+  /* Active label colour: navy, with the teal rail carrying the accent. */
+  --color-brand-sidebar-active-text: var(--color-brand-navy);
+  --color-brand-sidebar-text: #3E5568;
+
+  /* --- CARDS & MODALS --- */
+  --color-brand-card: #ffffff;
+  --color-brand-card-border: var(--color-brand-border);
+
+  /* --- ACCESSIBILITY & FOCUS --- */
+  --color-brand-focus-ring: #0B6384;
+
+  /* --- ELEVATION --- */
+  /* Two levels. LOW for working surfaces and sticky chrome; OVERLAY for dialogs,
+     menus, drawers and popovers only. Tinted toward navy, never neutral black.
+     The size ramp is deliberately collapsed: xs/sm and the bare shadow are the low
+     step, md/lg/xl the overlay step, so a five-size ramp that made everything look
+     like a floating card cannot be reached by accident. */
+  --shadow-low: 0 1px 2px 0 rgb(13 43 64 / 0.06), 0 1px 3px 0 rgb(13 43 64 / 0.05);
+  --shadow-overlay: 0 12px 28px -8px rgb(13 43 64 / 0.22), 0 4px 10px -4px rgb(13 43 64 / 0.10);
+  --shadow-xs: var(--shadow-low);
+  --shadow-sm: var(--shadow-low);
+  --shadow: var(--shadow-low);
+  --shadow-md: var(--shadow-overlay);
+  --shadow-lg: var(--shadow-overlay);
+  --shadow-xl: var(--shadow-overlay);
+}
+
+:root {
+  /* Semantic role colours. Not a utility family; consumed by name only. */
   --color-role-admin: #4338ca;
   --color-role-admin-bg: #eef2ff;
   --color-role-admin-border: #c7d2fe;
@@ -98,28 +146,117 @@
   --color-role-user: #334155;
   --color-role-user-bg: #f1f5f9;
   --color-role-user-border: #e2e8f0;
+}
 
-  /* --- NAVIGATION & SIDEBAR --- */
-  /* Navigation body is structural; the brand block above it is navy. */
-  --color-sidebar: var(--color-structural);
-  /* Active item fill: a teal tint that holds against the structural sidebar. */
-  --color-sidebar-active: #D6E7EE;
-  /* Active label colour: navy, with the teal rail carrying the accent. */
-  --color-sidebar-active-text: var(--color-navy);
-  --color-sidebar-text: #3E5568;
+/* ==========================================================================
+   SHADCN / RHEA SEMANTIC TOKENS - MAPPED ONTO THE ST. ROSE SYSTEM
 
-  /* --- CARDS & MODALS --- */
-  --color-card: #ffffff;
-  --color-card-border: var(--color-border);
+   The shadcn registry (Rhea preset) reads these names. Each one points at a brand
+   token above, so the two vocabularies cannot drift. The inline theme block below
+   exposes them as bg-primary, text-muted-foreground, border-border, ring-ring and so
+   on, opacity modifiers included.
 
-  /* --- ELEVATION --- */
-  /* Two levels. LOW for working surfaces and sticky chrome; OVERLAY for dialogs,
-     menus, drawers and popovers only. Tinted toward navy, never neutral black. */
-  --shadow-low: 0 1px 2px 0 rgb(13 43 64 / 0.06), 0 1px 3px 0 rgb(13 43 64 / 0.05);
-  --shadow-overlay: 0 12px 28px -8px rgb(13 43 64 / 0.22), 0 4px 10px -4px rgb(13 43 64 / 0.10);
+   Surfaces keep the three-surface system: --background, --card and --popover are the
+   working surface, --muted and --sidebar are the structural tint, and the canvas stays
+   the brand canvas token on <body> (layout.tsx).
+   ========================================================================== */
 
-  /* --- ACCESSIBILITY & FOCUS --- */
-  --color-focus-ring: #0B6384;
+:root {
+  /* Working surface and text. */
+  --background: var(--color-brand-surface);
+  --foreground: var(--color-brand-text);
+  --card: var(--color-brand-card);
+  --card-foreground: var(--color-brand-text);
+  --popover: var(--color-brand-surface);
+  --popover-foreground: var(--color-brand-text);
+
+  /* Teal is the action colour. shadcn reads secondary as its quiet fill, so it is the
+     structural tint with navy text; the navy secondary action itself is applied by the
+     application Button. */
+  --primary: var(--color-brand-primary);
+  --primary-foreground: var(--color-brand-primary-foreground);
+  --secondary: var(--color-brand-structural);
+  --secondary-foreground: var(--color-brand-navy);
+
+  /* Structural tint for quiet fills; brand tint for highlighted rows and items. */
+  --muted: var(--color-brand-structural);
+  --muted-foreground: var(--color-brand-text-muted);
+  --accent: var(--color-brand-tint);
+  --accent-foreground: var(--color-brand-navy);
+
+  /* Semantic danger, unchanged in meaning. */
+  --destructive: var(--color-brand-danger);
+
+  /* Borders, fields and focus. */
+  --border: var(--color-brand-border);
+  --input: var(--color-brand-border);
+  --ring: var(--color-brand-focus-ring);
+
+  /* Data series, from the brand ramp. */
+  --chart-1: var(--color-brand-primary);
+  --chart-2: var(--color-brand-navy);
+  --chart-3: var(--color-brand-accessible-rose);
+  --chart-4: var(--color-brand-navy-muted);
+  --chart-5: var(--color-brand-text-subtle);
+
+  /* Rhea geometry: the base radius the sm/md/lg/xl scale is derived from. */
+  --radius: 0.625rem;
+
+  /* Navigation: structural body, teal accent, navy active label. */
+  --sidebar: var(--color-brand-sidebar);
+  --sidebar-foreground: var(--color-brand-sidebar-text);
+  --sidebar-primary: var(--color-brand-primary);
+  --sidebar-primary-foreground: var(--color-brand-primary-foreground);
+  --sidebar-accent: var(--color-brand-sidebar-active);
+  --sidebar-accent-foreground: var(--color-brand-sidebar-active-text);
+  --sidebar-border: var(--color-brand-border-strong);
+  --sidebar-ring: var(--color-brand-focus-ring);
+}
+
+@theme inline {
+  /* Inter, published by next/font in the root layout. Only sans is redefined; mono and
+     serif keep the Tailwind defaults, which is what preserves font-mono for accession
+     numbers, result values, timestamps, error digests and technical identifiers. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Rhea radius relationships, from the shadcn Tailwind v4 template. The bare rounded
+     utility keeps its own 0.25rem and does not follow --radius. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 /* Baseline A4 Print Rules - Independent from Application Theme */
@@ -140,15 +277,15 @@
    ========================================================================== */
 
 ::selection {
-  background-color: var(--color-tint);
-  color: var(--color-text);
+  background-color: var(--color-brand-tint);
+  color: var(--color-brand-text);
 }
 
 input,
 textarea,
 select,
 [contenteditable] {
-  caret-color: var(--color-primary);
+  caret-color: var(--color-brand-primary);
 }
 
 /* Numeric columns and identifiers read as columns only when digits share a width. */
@@ -204,4 +341,52 @@ table th {
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ==========================================================================
+   BASE LAYER - shadcn defaults plus the v3 behaviours the upgrade guide preserves
+   ========================================================================== */
+
+@layer base {
+  /* shadcn base. The native focus outline keeps the established full-strength teal
+     focus colour, so an element that still relies on the browser ring stays as
+     visible as it is today. */
+  * {
+    @apply border-border outline-ring;
+  }
+  /* The page ground is the canvas token on <body>; this is the shadcn fallback beneath it. */
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Tailwind v4 gives buttons the default cursor; the application has always shown a
+     pointer on enabled buttons. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Tailwind v4 draws placeholders in the current text colour at half opacity; fields
+     that do not set their own placeholder colour keep the v3 gray they had. */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+}
+
+/* ==========================================================================
+   RHEA FOCUS
+   Every shadcn primitive carries a data-slot attribute. On keyboard focus it shows
+   the established St. Rose focus indicator - a 2px full-strength teal outline with a
+   2px offset - instead of the preset 3px ring at 30% opacity, which measured under
+   2:1 and vanished on teal and navy fills. Declared outside the cascade layers so it
+   outranks the utility classes on the primitive, and it clears the ring variables so
+   there is one indicator, never two.
+   ========================================================================== */
+
+[data-slot]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }

@@ -1,6 +1,6 @@
-import { GuidedWorkspace } from "@/features/workspace/GuidedWorkspace";
+import { GuidedWorkspace } from "./_components/GuidedWorkspace";
 import { listRegistryTemplatesAction } from "@/features/server-boundary/server-actions";
-import { listWorkspacePersonnelAction } from "@/features/server-boundary/workspace-personnel-actions";
+import { listWorkspacePersonnelAction } from "./_actions/workspace-personnel-actions";
 
 export const runtime = "nodejs";
 

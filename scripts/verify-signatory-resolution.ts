@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "../src/domain/models/laboratory-report-domain";
-import { buildEncodingReport, applyEncodingResultValue } from "../src/features/workspace/encoding/report-encoding";
+import { buildEncodingReport, applyEncodingResultValue } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
 import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { IPersonnel } from "../src/domain/models/interfaces";

@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
-import DashboardView from "@/features/dashboard/components/DashboardView";
-import { UnauthorizedNotice } from "@/features/dashboard/components/UnauthorizedNotice";
+import DashboardView from "./_components/DashboardView";
+import { UnauthorizedNotice } from "./_components/UnauthorizedNotice";
 import { getCurrentUserProfile } from "@/lib/auth-guards";
 
 export default async function DashboardPage() {

@@ -36,10 +36,10 @@ function assert(condition: unknown, message: string): void {
   }
 }
 
-const view = read("src/features/dashboard/components/DashboardView.tsx");
-const recentWork = read("src/features/dashboard/recent-work.ts");
-const row = read("src/features/dashboard/components/primitives/SessionRow.tsx");
-const developer = read("src/features/dashboard/components/compositions/DeveloperDashboard.tsx");
+const view = read("src/app/(app)/dashboard/_components/DashboardView.tsx");
+const recentWork = read("src/app/(app)/dashboard/_lib/recent-work.ts");
+const row = read("src/app/(app)/dashboard/_components/primitives/SessionRow.tsx");
+const developer = read("src/app/(app)/dashboard/_components/compositions/DeveloperDashboard.tsx");
 
 const recentWorkCode = code(recentWork);
 const developerCode = code(developer);

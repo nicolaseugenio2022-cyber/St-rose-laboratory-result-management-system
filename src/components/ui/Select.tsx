@@ -1,5 +1,7 @@
 import React, { forwardRef, useId } from "react";
 import { ChevronDown } from "lucide-react";
+import { Label } from "@/components/shadcn/label";
+import { fieldErrorClassName, fieldLabelClassName, fieldSurfaceClassName } from "@/components/ui/Input";
 import { cn } from "@/utils/cn";
 
 export interface SelectOption {
@@ -20,6 +22,12 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
  * The browser arrow is replaced by the lucide chevron so the control matches the fields
  * beside it; the element stays a real <select>, so keyboard, mobile pickers and form
  * semantics are untouched.
+ *
+ * Deliberately not migrated onto the registry's Select: that primitive is a Radix
+ * listbox built from divs, which would drop the native mobile picker, the native
+ * type-ahead and the native form contract this component's consumers rely on. It shares
+ * the Rhea field surface with Input instead, and carries a data-slot so it picks up the
+ * same keyboard focus indicator as every migrated primitive.
  */
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, options, error, helperText, id, disabled, children, ...props }, ref) => {
@@ -32,20 +40,23 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className="w-full space-y-1.5">
         {label && (
-          <label htmlFor={selectId} className="block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
+          <Label htmlFor={selectId} className={fieldLabelClassName}>
             {label}
-          </label>
+          </Label>
         )}
         <div className="relative">
           <select
+            data-slot="native-select"
             id={selectId}
             ref={ref}
             disabled={disabled}
             aria-invalid={error ? true : undefined}
             aria-describedby={describedBy}
             className={cn(
-              "flex h-11 w-full appearance-none rounded-md border border-brand-border bg-brand-surface pl-3 pr-9 text-[13px] text-brand-text transition-[border-color,box-shadow] hover:border-brand-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80 sm:h-9",
-              error && "border-brand-danger hover:border-brand-danger focus-visible:border-brand-danger focus-visible:ring-brand-danger",
+              "flex w-full appearance-none border border-transparent outline-none focus-visible:border-ring",
+              fieldSurfaceClassName,
+              "pl-3 pr-9",
+              error && fieldErrorClassName,
               className
             )}
             {...props}

@@ -197,9 +197,9 @@ async function main(): Promise<void> {
   const cbcText = pageText(pages.get("CBC")!);
   assert(pages.get("CBC")!.compositionSource === "StandardAdaptiveTabular", "active CBC preview must not resolve to the legacy native pilot");
   assert(!pages.get("CBC")!.primitives.some((primitive) => primitive.id === "report-title") && cbcText.includes("Status"), "CBC native preview rules must remain intact");
-  // QA-04 retires the former CBC abnormal-indicator prohibition that this assertion also carried.
-  // CBC now follows the shared H / L output policy, so the negative clause is replaced by positive
-  // coverage rather than dropped.
+  // QA-04 retired the former CBC abnormal-indicator prohibition that this assertion also carried, and
+  // REPORT-QA-01 replaced the H / L initials with the complete words. CBC follows that shared
+  // HIGH / LOW output policy, so the negative clause stays replaced by positive coverage.
   const cbcModel = resolvedDraft.reports.find((report) => report.templateCode === "CBC")!;
   const cbcRendered = cbcModel.results.filter((result) => result.omission === "Render");
   const cbcHighs = cbcRendered.filter((result) => result.evaluationOutcome === "High");
@@ -210,13 +210,52 @@ async function main(): Promise<void> {
   for (const result of cbcRendered) {
     const markers = cbcMarkers.filter((primitive) => primitive.id === `result-${result.parameterCode}-indicator`);
     if (result.evaluationOutcome === "High") {
-      assert(markers.length === 1 && markers[0].text === "H" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold H in the abnormalHigh token`);
+      assert(markers.length === 1 && markers[0].text === "HIGH" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalHigh, `CBC ${result.parameterCode} High must render exactly one bold complete-word HIGH in the abnormalHigh token`);
     } else if (result.evaluationOutcome === "Low") {
-      assert(markers.length === 1 && markers[0].text === "L" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold L in the abnormalLow token`);
+      assert(markers.length === 1 && markers[0].text === "LOW" && markers[0].fontWeight === "bold" && markers[0].color === NATIVE_REPORT_THEME.colors.abnormalLow, `CBC ${result.parameterCode} Low must render exactly one bold complete-word LOW in the abnormalLow token`);
     } else {
       assert(markers.length === 0, `CBC ${result.parameterCode} (${result.evaluationOutcome}) must render no abnormal marker`);
     }
   }
+  // REPORT-QA-01 requirement 2: the five Serology reports display no reference value anywhere in the
+  // shared native primitive model, which is the single source Live Preview, Print and PDF all render
+  // from. Nothing here suppresses a reference at render time - absence is proved at its real origin,
+  // the definitions, and then again in the composed output, so a referenceRule added to one of these
+  // parameters later fails at the declaration rather than being quietly hidden downstream.
+  const serologyReferenceFreeCodes = ["HBSAG", "RPR", "DENGUE_DUO", "PREG_TEST", "HIV_RESULT"];
+  const serologyResultOptions: Record<string, string[]> = {
+    HBSAG_RESULT: ["Nonreactive", "Reactive"],
+    RPR_RESULT: ["Nonreactive", "Reactive"],
+    DENGUE_NS1: ["Negative", "Positive"],
+    DENGUE_IGG: ["Negative", "Positive"],
+    DENGUE_IGM: ["Negative", "Positive"],
+    PREG_RESULT: ["Negative", "Positive"],
+    HIV_RESULT: ["Nonreactive", "Reactive"],
+  };
+  for (const templateCode of serologyReferenceFreeCodes) {
+    const serologyDefinition = ReportDefinitionRegistry.getDefinition(templateCode)!;
+    for (const parameter of serologyDefinition.parameters) {
+      assert(parameter.referenceRule == null, `${templateCode}/${parameter.parameterCode} must declare no referenceRule - a displayed reference value is prohibited on this report`);
+      assert(parameter.evaluationPolicy.mode === "ValidEntryOnly", `${templateCode}/${parameter.parameterCode} must keep its ValidEntryOnly evaluation and introduce no Normal/Abnormal interpretation - measured ${parameter.evaluationPolicy.mode}`);
+      assert(JSON.stringify(parameter.options) === JSON.stringify(serologyResultOptions[parameter.parameterCode]), `${templateCode}/${parameter.parameterCode} result options must remain exactly ${JSON.stringify(serologyResultOptions[parameter.parameterCode])} - measured ${JSON.stringify(parameter.options)}`);
+    }
+    const serologyReport = resolvedDraft.reports.find((report) => report.templateCode === templateCode)!;
+    for (const result of serologyReport.results) {
+      assert(result.referenceDisplay === null, `${templateCode}/${result.parameterCode} must resolve no reference display - measured ${JSON.stringify(result.referenceDisplay)}`);
+    }
+    const serologyPage = pages.get(templateCode)!;
+    const referencePrimitives = serologyPage.primitives.filter((primitive) => primitive.id.startsWith(`result-`) && primitive.id.includes("-reference"));
+    assert(referencePrimitives.length === 0, `${templateCode} must emit no reference primitive - measured ${referencePrimitives.map((primitive) => primitive.id).join(", ")}`);
+    assert(!/\bRef:/.test(pageText(serologyPage)), `${templateCode} output must carry no Ref: label`);
+  }
+  // The shared grid keeps its third column: the cell is empty, the column is not removed, so the
+  // EXAMINATION and RESULT tracks stay exactly where every other report puts them.
+  for (const templateCode of ["HBSAG", "RPR", "DENGUE_DUO", "PREG_TEST"]) {
+    const serologyPage = pages.get(templateCode)!;
+    const headers = serologyPage.primitives.filter((primitive) => /^result-header-\d+$/.test(primitive.id));
+    assert(headers.length === 3, `${templateCode} must keep all three result headers so the reference column stays structurally aligned - measured ${headers.length}`);
+  }
+
   assert(!pageText(pages.get("BLOOD_TYPING")!).includes("Dr."), "Blood Typing blank Requested By must remain blank");
   assert(normalizedPageText(pages.get("HIV_RESULT")!).includes("C4 Patient of C4 Edited Address was examined"), "HIV preview must use the resolved Patient Address");
   const urineText = pageText(pages.get("URINALYSIS")!);

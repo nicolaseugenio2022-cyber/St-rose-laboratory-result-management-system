@@ -1,5 +1,8 @@
 import React, { forwardRef } from "react";
-import { cn } from "@/utils/cn";
+import { Loader2 } from "lucide-react";
+
+import { Button as RheaButton } from "@/components/shadcn/button";
+import { cn } from "@/lib/utils";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
@@ -8,68 +11,87 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 /**
- * The one button.
+ * The one button - the application-facing contract over the shadcn Rhea primitive.
  *
- * Hierarchy is carried by fill, not by size: teal is the primary action, navy the
+ * The public API is unchanged, so no consumer needs an edit: five application variants,
+ * three sizes, isLoading, a forwarded ref and every native button prop. What changed is
+ * the rendering underneath. `@/components/shadcn/button` is the generated Rhea primitive
+ * and supplies the fill, radius, press feedback, transition and icon sizing, the Rhea focus
+ * rule in globals.css supplies the keyboard focus indicator, and the shadcn
+ * semantic tokens in globals.css point those at the St. Rose palette.
+ *
+ * Hierarchy is still carried by fill, not by size: teal is the primary action, navy the
  * secondary one, outline the reversible alternative, ghost the quiet utility, danger the
- * destructive one. Heights are 32 / 36 / 44 so a control lines up with the 36px field
- * beside it on a desktop and reaches a 44px target where it must.
+ * destructive one - Rhea's tinted destructive rather than a solid red block.
  */
+const RHEA_VARIANT = {
+  primary: "default",
+  secondary: "secondary",
+  outline: "outline",
+  ghost: "ghost",
+  danger: "destructive",
+} as const;
+
+/**
+ * Where Rhea's states were tuned for a near-black primary on white, the St. Rose fills
+ * need their established state colours. Every value here is an existing application
+ * token, and each entry replaces exactly one Rhea state class:
+ * - primary: Rhea lightens to 80% on hover, which leaves white text at 4.3:1 on teal;
+ *   the application deepens instead, as it always has.
+ * - secondary: the shadcn `secondary` token is the quiet structural fill the registry
+ *   expects, so the navy fill of the application's secondary action lives here.
+ * - outline / ghost: Rhea hovers to the muted fill, which is the same structural tint
+ *   as the table-header and filter bands these buttons sit on; the hover step is the
+ *   established structural-hover so it reads on both surfaces.
+ * - danger: Rhea's tinted destructive is used as-is.
+ */
+const VARIANT_STATES = {
+  primary: "hover:bg-brand-primary-hover",
+  secondary: "bg-brand-navy text-brand-navy-foreground hover:bg-brand-navy-hover",
+  outline: "hover:bg-brand-structural-hover",
+  ghost: "hover:bg-brand-structural-hover",
+  danger: "",
+} as const;
+
+const RHEA_SIZE = {
+  sm: "sm",
+  md: "default",
+  lg: "lg",
+} as const;
+
+/**
+ * Rhea's own heights are 28 / 32 / 36. The application keeps its established 32 / 36 / 44
+ * so a control still lines up with the 36px field beside it on a desktop and still reaches
+ * a 44px target where it must; the field primitives migrate in a later slice and the heights
+ * are revisited with them. Each entry overrides only the height, gap, padding and type size
+ * of the Rhea size it extends - everything else is Rhea's.
+ */
+const SIZE_GEOMETRY = {
+  sm: "h-8 gap-1.5 px-3 text-xs",
+  md: "h-9 gap-2 px-3.5 text-[13px]",
+  lg: "h-11 gap-2.5 px-5 text-sm",
+} as const;
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading = false, disabled, children, ...props }, ref) => {
-    const baseStyles =
-      "inline-flex items-center justify-center whitespace-nowrap rounded-md font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:opacity-60 disabled:pointer-events-none";
-
-    // danger darkens along its own hue: --color-danger is #b91c1c (red-700), so
-    // rose-700/800 swung the button toward pink on hover rather than deepening it.
-    const variants = {
-      primary:
-        "bg-brand-primary text-brand-primary-foreground shadow-low hover:bg-brand-primary-hover active:shadow-none",
-      secondary:
-        "bg-brand-navy text-brand-navy-foreground shadow-low hover:bg-brand-navy-hover active:shadow-none",
-      outline:
-        "border border-brand-border-strong bg-brand-surface text-brand-text hover:border-brand-navy-muted hover:bg-brand-surface-hover active:bg-brand-structural-hover",
-      ghost:
-        "text-brand-text-muted hover:bg-brand-structural-hover hover:text-brand-navy active:bg-brand-border-subtle",
-      danger: "bg-brand-danger text-white shadow-low hover:bg-red-800 active:bg-red-900 active:shadow-none",
-    };
-
-    const sizes = {
-      sm: "h-8 px-3 text-xs gap-1.5",
-      md: "h-9 px-3.5 text-[13px] gap-2",
-      lg: "h-11 px-5 text-sm gap-2.5",
-    };
-
     return (
-      <button
+      <RheaButton
         ref={ref}
+        variant={RHEA_VARIANT[variant]}
+        size={RHEA_SIZE[size]}
         disabled={disabled || isLoading}
         aria-busy={isLoading || undefined}
-        className={cn(baseStyles, variants[variant], sizes[size], className)}
+        className={cn(VARIANT_STATES[variant], SIZE_GEOMETRY[size], className)}
         {...props}
       >
         {/* The label survives the pending state. Replacing children with "Loading..."
             discarded the only thing that said WHICH action was running, changed the
             accessible name mid-submit, and jumped the width -- reflowing the dialog
-            footer it sits in. aria-busy carries the state instead. */}
-        {isLoading && (
-          <svg
-            aria-hidden="true"
-            className="h-4 w-4 shrink-0 animate-spin text-current"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-        )}
+            footer it sits in. aria-busy carries the state instead; the primitive sizes
+            the spinner to its icon slot. */}
+        {isLoading && <Loader2 aria-hidden="true" className="animate-spin" />}
         {children}
-      </button>
+      </RheaButton>
     );
   }
 );

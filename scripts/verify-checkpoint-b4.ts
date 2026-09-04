@@ -5,24 +5,24 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
-import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, applyAllSelectableParameters, reevaluateEncodingReport, addRepeatableFinding, updateRepeatableFinding, moveRepeatableFinding, removeRepeatableFinding, formatConditionalChoiceValue, parseConditionalChoiceValue } from "../src/features/workspace/encoding/report-encoding";
+import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, applyAllSelectableParameters, reevaluateEncodingReport, addRepeatableFinding, updateRepeatableFinding, moveRepeatableFinding, removeRepeatableFinding, formatConditionalChoiceValue, parseConditionalChoiceValue } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "../src/domain/models/laboratory-report-domain";
 import { PatientDemographics, RendererFamily } from "../src/domain/types";
-import { PatientDemographicsForm } from "../src/features/workspace/components/PatientDemographicsForm";
-import { NumericTextInput } from "../src/features/workspace/components/controls/NumericTextInput";
-import { SingleSelectInput } from "../src/features/workspace/components/controls/SingleSelectInput";
-import { ComboboxInput } from "../src/features/workspace/components/controls/ComboboxInput";
-import { FreeTextInput } from "../src/features/workspace/components/controls/FreeTextInput";
-import { ComputedInput } from "../src/features/workspace/components/controls/ComputedInput";
-import { DEFAULT_NEW_SESSION_ADDRESS, initializeNewSessionAddress } from "../src/features/workspace/encoding/new-session-demographics";
+import { PatientDemographicsForm } from "../src/app/(dashboard)/workspace/_components/PatientDemographicsForm";
+import { NumericTextInput } from "../src/app/(dashboard)/workspace/_components/controls/NumericTextInput";
+import { SingleSelectInput } from "../src/app/(dashboard)/workspace/_components/controls/SingleSelectInput";
+import { ComboboxInput } from "../src/app/(dashboard)/workspace/_components/controls/ComboboxInput";
+import { FreeTextInput } from "../src/app/(dashboard)/workspace/_components/controls/FreeTextInput";
+import { ComputedInput } from "../src/app/(dashboard)/workspace/_components/controls/ComputedInput";
+import { DEFAULT_NEW_SESSION_ADDRESS, initializeNewSessionAddress } from "../src/app/(dashboard)/workspace/_lib/encoding/new-session-demographics";
 import { resolveReferenceDisplay } from "../src/domain/reference-display";
-import { evaluateEncodingResult } from "../src/features/workspace/encoding/evaluate-encoding-result";
-import { RESULT_INPUT_SELECTOR, advanceToNextResultInput, type ResultInputEntry, type ResultInputLike, type ResultTabEvent } from "../src/features/workspace/encoding/result-tab-navigation";
-import { ParameterRow } from "../src/features/workspace/components/controls/ParameterRow";
+import { evaluateEncodingResult } from "../src/app/(dashboard)/workspace/_lib/encoding/evaluate-encoding-result";
+import { RESULT_INPUT_SELECTOR, advanceToNextResultInput, type ResultInputEntry, type ResultInputLike, type ResultTabEvent } from "../src/app/(dashboard)/workspace/_lib/encoding/result-tab-navigation";
+import { ParameterRow } from "../src/app/(dashboard)/workspace/_components/controls/ParameterRow";
 import { evaluateParameterValue } from "../src/services/parameter-evaluation-service";
 import { GenericReportResolver } from "../src/services/generic-report-resolver";
-import { HistorySessionActions } from "../src/features/history/components/HistorySessionActions";
+import { HistorySessionActions } from "../src/app/(app)/history/_components/HistorySessionActions";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
@@ -65,7 +65,7 @@ assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bPUB
 assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\banon\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from anon");
 assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bauthenticated\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from authenticated");
 
-const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/features/workspace/GuidedWorkspace.tsx"), "utf8").replace(/\r\n/g, "\n");
+const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/app/(dashboard)/workspace/_components/GuidedWorkspace.tsx"), "utf8").replace(/\r\n/g, "\n");
 assert(!guidedWorkspaceSource.includes("AccessionNumberGenerator.generate"), "GuidedWorkspace no longer generates accession numbers client-side");
 assert(!guidedWorkspaceSource.includes("p-01"), "GuidedWorkspace contains no hardcoded placeholder personnel id");
 assert(!/(?:const|let|var)\s+(?:\[\s*)?availablePersonnel(?:\s*,[^\]]*)?\]?\s*=\s*(?:useState<[^>]+>\s*\()?\s*\[\s*\{[\s\S]*/.test(guidedWorkspaceSource), "GuidedWorkspace contains no literal availablePersonnel array of personnel objects");
@@ -311,6 +311,25 @@ assert(resolveReferenceDisplay(chemUricAcid.referenceRule, "Female", chemUricAci
 const cbcRowMarkup = renderToStaticMarkup(React.createElement(NumericTextInput, { parameter: cbcHemoglobin, value: "", isSelected: true, patientSex: "Female", onChange: noOp, onToggleSelect: noOp }));
 const chemRowMarkup = renderToStaticMarkup(React.createElement(NumericTextInput, { parameter: chemUricAcid, value: "", isSelected: true, patientSex: "Female", onChange: noOp, onToggleSelect: noOp }));
 assert(cbcRowMarkup.includes("data-parameter-row") && chemRowMarkup.includes("data-parameter-row") && cbcRowMarkup.includes("Ref:") && chemRowMarkup.includes("Ref:"), "CBC and Chemistry share one tabular parameter row with visible references");
+// REPORT-QA-01 requirement 2, Encoding half: the five Serology reports must display no reference
+// value at all. This is the counterpart of the two positive assertions above - CBC and Chemistry
+// keep their visible Ref:, and these five never acquire one. The absence is proved at its origin
+// (no referenceRule declared) and in the rendered row, so nothing has to suppress a reference at
+// display time and a rule added to one of these parameters later fails here rather than silently
+// printing on a clinical report.
+const serologyReferenceFreeCodes = ["HBSAG", "RPR", "DENGUE_DUO", "PREG_TEST", "HIV_RESULT"];
+for (const serologyCode of serologyReferenceFreeCodes) {
+  const serologyDefinition = ReportDefinitionRegistry.getDefinition(serologyCode)!;
+  for (const serologyParameter of serologyDefinition.parameters) {
+    assert(serologyParameter.referenceRule == null, `${serologyCode}/${serologyParameter.parameterCode} must declare no referenceRule`);
+    assert(resolveReferenceDisplay(serologyParameter.referenceRule, "Female", serologyParameter.unit) === null && resolveReferenceDisplay(serologyParameter.referenceRule, "Male", serologyParameter.unit) === null && resolveReferenceDisplay(serologyParameter.referenceRule, null, serologyParameter.unit) === null, `${serologyCode}/${serologyParameter.parameterCode} must resolve no reference display for any Sex`);
+    assert(serologyParameter.evaluationPolicy.mode === "ValidEntryOnly", `${serologyCode}/${serologyParameter.parameterCode} must keep ValidEntryOnly evaluation - measured ${serologyParameter.evaluationPolicy.mode}`);
+    const serologyRowMarkup = renderToStaticMarkup(React.createElement(SingleSelectInput, { parameter: serologyParameter, value: "", isSelected: true, patientSex: "Female", onChange: noOp, onToggleSelect: noOp }));
+    assert(serologyRowMarkup.includes("data-parameter-row"), `${serologyCode}/${serologyParameter.parameterCode} must still render the shared tabular parameter row`);
+    assert(!serologyRowMarkup.includes("Ref:") && !serologyRowMarkup.includes("data-reference-display"), `${serologyCode}/${serologyParameter.parameterCode} Encoding row must display no reference value`);
+    for (const option of serologyParameter.options!) assert(serologyRowMarkup.includes(option), `${serologyCode}/${serologyParameter.parameterCode} must preserve its ${option} result option`);
+  }
+}
 assert(evaluateEncodingResult("1asd", cbcHemoglobin) === "Invalid", "non-empty malformed NumericText is invalid");
 for (const validNumeric of ["1", "1.25", ".5"]) assert(evaluateEncodingResult(validNumeric, cbcHemoglobin) !== "Invalid", `NumericText accepts valid ${validNumeric} input`);
 const invalidNumericMarkup = renderToStaticMarkup(React.createElement(NumericTextInput, { parameter: cbcHemoglobin, value: "1asd", isSelected: true, patientSex: "Female", onChange: noOp, onToggleSelect: noOp }));
@@ -497,7 +516,7 @@ assert(evaluateParameterValue(amorphousParameter, partialConditional, { sex: "Fe
 const progressNodeRequire = createRequire(join(process.cwd(), "package.json"));
 const progressActionsId = progressNodeRequire.resolve(join(process.cwd(), "src/features/server-boundary/server-actions"));
 progressNodeRequire.cache[progressActionsId] = { id: progressActionsId, filename: progressActionsId, loaded: true, children: [], paths: [], exports: { listAutoSuggestionsAction: async () => [] } } as never;
-const { DynamicResultForm } = progressNodeRequire(join(process.cwd(), "src/features/workspace/components/DynamicResultForm")) as { DynamicResultForm: unknown };
+const { DynamicResultForm } = progressNodeRequire(join(process.cwd(), "src/app/(dashboard)/workspace/_components/DynamicResultForm")) as { DynamicResultForm: unknown };
 const progressSpec = { template: urineDefinition, parameters: urineDefinition.parameters, signatoryRequirement: { requiredPathologistsCount: 1, requiredMedtechsCount: 1 } };
 const progressBaseReport = buildEncodingReport({ definition: urineDefinition, sessionId: "s", reportId: "r", rendererFamily: "DiagnosticGrid", signatories: [] });
 const renderedCompletedCount = (progressReport: unknown): number => {
@@ -544,7 +563,7 @@ findings = moveRepeatableFinding(findings, "f-0", 1);
 findings = removeRepeatableFinding(findings, "f-24");
 assert(findings.length === 24 && findings[1].value === "Calcium Oxalate Crystals: Rare", "Urinalysis supports unlimited editable findings and preserves visual order after reorder/remove");
 
-const workspaceSources = ["src/features/workspace/components/DynamicResultForm.tsx", "src/features/workspace/components/controls/NumericTextInput.tsx", "src/features/workspace/components/controls/SingleSelectInput.tsx", "src/features/workspace/components/controls/ComboboxInput.tsx", "src/features/workspace/components/controls/FreeTextInput.tsx"].map((file) => readFileSync(join(process.cwd(), file), "utf8")).join("\n");
+const workspaceSources = ["src/app/(dashboard)/workspace/_components/DynamicResultForm.tsx", "src/app/(dashboard)/workspace/_components/controls/NumericTextInput.tsx", "src/app/(dashboard)/workspace/_components/controls/SingleSelectInput.tsx", "src/app/(dashboard)/workspace/_components/controls/ComboboxInput.tsx", "src/app/(dashboard)/workspace/_components/controls/FreeTextInput.tsx"].map((file) => readFileSync(join(process.cwd(), file), "utf8")).join("\n");
 assert(!workspaceSources.includes("querySelector") && !workspaceSources.includes('e.key === "Enter"'), "Encoding relies on native DOM Tab order with no manual Enter/querySelector focus logic");
 
 const fecalysis = build("FECALYSIS");
@@ -590,7 +609,7 @@ assert(rebuildFromPersisted(false).results.filter((r) => r.isSelected === false)
 const freshBuildSelection = build("URINALYSIS").results.find((r) => r.parameterCode === deselectedCode);
 assert(freshBuildSelection?.isSelected === true, `a fresh URINALYSIS encoding report still selects ${deselectedCode} by default`);
 
-const sessionHistorySource = readFileSync(join(process.cwd(), "src/features/history/components/SessionHistoryView.tsx"), "utf8").replace(/\r\n/g, "\n");
+const sessionHistorySource = readFileSync(join(process.cwd(), "src/app/(app)/history/_components/SessionHistoryView.tsx"), "utf8").replace(/\r\n/g, "\n");
 
 // Two invariants, verified by the cheapest sound method for each.
 //
@@ -706,7 +725,7 @@ for (const clearSite of ["saveDraftAction({ session: toSessionTransport(session)
   assert(guidedWorkspaceSource.includes(clearSite), "GuidedWorkspace clears recovery immediately after the successful persistence call it follows");
 }
 assert(/const handleDiscardAndExit = useCallback\(\(\) => \{\s*clearWorkspaceRecovery\(\);/.test(guidedWorkspaceSource), "GuidedWorkspace clears recovery when the operator discards and exits");
-const headerSource = readFileSync(join(process.cwd(), "src/components/layout/Header.tsx"), "utf8").replace(/\r\n/g, "\n");
+const headerSource = readFileSync(join(process.cwd(), "src/app/(app)/_components/Header.tsx"), "utf8").replace(/\r\n/g, "\n");
 const headerLogoutIndex = headerSource.indexOf("m.logoutAction()");
 const headerClearIndex = headerSource.indexOf("clearWorkspaceRecovery();");
 assert(headerClearIndex >= 0 && headerLogoutIndex > headerClearIndex, "Logout clears workspace recovery before signing the operator out");

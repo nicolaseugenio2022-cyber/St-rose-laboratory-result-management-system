@@ -1,5 +1,11 @@
 import React from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import {
+  Alert as RheaAlert,
+  AlertAction as RheaAlertAction,
+  AlertDescription as RheaAlertDescription,
+  AlertTitle as RheaAlertTitle,
+} from "@/components/shadcn/alert";
 import { cn } from "@/utils/cn";
 
 export type AlertVariant = "info" | "success" | "warning" | "destructive";
@@ -22,7 +28,12 @@ export interface AlertProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "
  *
  * Live-region semantics follow urgency — problems interrupt, confirmations do
  * not: `destructive` and `warning` use role="alert" (assertive), while `info`
- * and `success` use role="status" (polite).
+ * and `success` use role="status" (polite). The Rhea primitive hardcodes
+ * role="alert" before its prop spread, so the urgency-derived role below still
+ * wins and a confirmation does not interrupt a screen reader.
+ *
+ * Rhea's grid supplies the icon column and the title/body rows; the tints, the
+ * compact padding and the square radius are the application's own.
  */
 export function Alert({
   variant = "info",
@@ -51,34 +62,40 @@ export function Alert({
   const isUrgent = variant === "destructive" || variant === "warning";
 
   return (
-    <div
+    <RheaAlert
       role={isUrgent ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-xs",
+        "items-start rounded-md px-3 py-2.5 text-xs has-data-[slot=alert-action]:pr-10",
         surfaces[variant],
         className
       )}
       {...props}
     >
-      <Icon className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
-      <div className="min-w-0 flex-1 break-words">
-        {title && <p className="font-semibold leading-tight">{title}</p>}
-        {children && (
-          <div className={cn("leading-relaxed", title && "mt-0.5 font-normal opacity-90")}>
-            {children}
-          </div>
-        )}
-      </div>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={dismissLabel}
-          className="-mr-1 -mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-current transition-colors hover:bg-black/5 active:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+      <Icon className="shrink-0" aria-hidden="true" />
+      {title && <RheaAlertTitle className="font-semibold leading-tight">{title}</RheaAlertTitle>}
+      {children && (
+        <RheaAlertDescription
+          className={cn(
+            "text-xs leading-relaxed text-current",
+            title && "font-normal opacity-90"
+          )}
         >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
+          {children}
+        </RheaAlertDescription>
       )}
-    </div>
+      {onDismiss && (
+        <RheaAlertAction className="top-2 right-2">
+          <button
+            data-slot="alert-dismiss"
+            type="button"
+            onClick={onDismiss}
+            aria-label={dismissLabel}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-current outline-none transition-colors hover:bg-black/5 active:bg-black/10"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </RheaAlertAction>
+      )}
+    </RheaAlert>
   );
 }

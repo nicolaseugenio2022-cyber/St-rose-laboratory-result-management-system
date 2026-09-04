@@ -1,5 +1,7 @@
 import React from "react";
 import type { EvaluationOutcome, SessionStatus } from "@/domain/types";
+import { Badge as RheaBadge } from "@/components/shadcn/badge";
+import { badgeShapeClassName } from "@/components/ui/Badge";
 import { cn } from "@/utils/cn";
 
 /** Account lifecycle state, as already used by the Users and Personnel screens. */
@@ -27,7 +29,8 @@ export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> 
  * amber, Normal emerald, Entered blue, unevaluated slate. This component exists
  * to stop that mapping being retyped per screen; it does not introduce a new
  * one, and no status is assigned a colour implying clinical meaning it did not
- * already carry.
+ * already carry. The Rhea primitive underneath supplies shape and layout only:
+ * it contributes no colour to a clinical status.
  *
  * Colour is never the sole signal — the status word itself is the label.
  *
@@ -64,9 +67,10 @@ export function StatusBadge({ status, label, size = "md", className, ...props }:
   };
 
   return (
-    <span
+    <RheaBadge
       className={cn(
-        "inline-flex items-center whitespace-nowrap rounded-md font-semibold uppercase tracking-wide ring-1 ring-inset",
+        badgeShapeClassName,
+        "uppercase tracking-wide",
         tones[status],
         sizes[size],
         className
@@ -74,6 +78,6 @@ export function StatusBadge({ status, label, size = "md", className, ...props }:
       {...props}
     >
       {label ?? status}
-    </span>
+    </RheaBadge>
   );
 }

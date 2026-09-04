@@ -26,9 +26,15 @@ const BODY = COLOR.text;
 const DEMOGRAPHIC_VALUE_LINE_MM = 3.6;
 const DEMOGRAPHIC_LABEL_HEIGHT_MM = 2.4;
 const RESULT_LINE_MM = 4.55;
-// QA-04 abnormal marker geometry. The marker is right-aligned inside the existing RESULT column,
-// so it introduces no fourth column and leaves the value's wrapping width (widths[1] - 2) untouched.
-const RESULT_INDICATOR_WIDTH_MM = 3.2;
+// QA-04 abnormal marker geometry, widened by REPORT-QA-01 to carry the complete word. The marker is
+// right-aligned inside the existing RESULT column, so it introduces no fourth column and leaves the
+// value's wrapping width (widths[1] - 2) untouched. 7.6 mm holds "HIGH" - the wider of the two words,
+// 6.967 mm bold at referencePt - with headroom, so neither the jsPDF `maxWidth` split nor the
+// preview's `white-space: nowrap` overflow can break or clip it onto a second line. The narrowest
+// RESULT column is 45 mm (StandardAdaptiveTabular), and the widest value any directional parameter
+// can reach there measures 24.201 mm centred, ending 1.7 mm clear of the marker's left edge, so the
+// word never overlaps the clinical value.
+const RESULT_INDICATOR_WIDTH_MM = 7.6;
 const RESULT_INDICATOR_INSET_MM = 1.5;
 
 function text(options: Omit<NativeTextPrimitive, "kind" | "fontRole"> & { fontRole?: string }): NativeTextPrimitive {
@@ -238,12 +244,13 @@ function resolvedResultPresentation(result: ResolvedResultRenderModel): string {
  * frozen into its snapshot. Only the two directional numeric outcomes are marked: Normal, Abnormal,
  * Invalid, Entered and NoEvaluation deliberately return null, so an unevaluated or malformed value can
  * never acquire a clinical marker (DOMAIN_MODEL INVARIANT 3). The policy is shared by every registered
- * examination that can reach High or Low - CBC included - and the letter, not the tone, is what makes
- * the marker readable in monochrome.
+ * examination that can reach High or Low - CBC included - and REPORT-QA-01 makes the complete word,
+ * not the tone and not an initial, what carries the meaning: a clinician reading a monochrome
+ * photocopy sees HIGH or LOW spelled out rather than a letter that has to be decoded.
  */
-function abnormalIndicator(result: ResolvedResultRenderModel): { text: "H" | "L"; color: string } | null {
-  if (result.evaluationOutcome === "High") return { text: "H", color: COLOR.abnormalHigh };
-  if (result.evaluationOutcome === "Low") return { text: "L", color: COLOR.abnormalLow };
+function abnormalIndicator(result: ResolvedResultRenderModel): { text: "HIGH" | "LOW"; color: string } | null {
+  if (result.evaluationOutcome === "High") return { text: "HIGH", color: COLOR.abnormalHigh };
+  if (result.evaluationOutcome === "Low") return { text: "LOW", color: COLOR.abnormalLow };
   return null;
 }
 

@@ -327,8 +327,8 @@ function verifyAuditReaderRoleNarrowing(): void {
   const dashboardServiceSource = read("src/services/developer-dashboard-service.ts");
   const dashboardPathSource = [
     dashboardServiceSource,
-    read("src/features/dashboard/components/DeveloperDashboardSection.tsx"),
-    read("src/features/dashboard/components/DashboardView.tsx"),
+    read("src/app/(app)/dashboard/_components/DeveloperDashboardSection.tsx"),
+    read("src/app/(app)/dashboard/_components/DashboardView.tsx"),
   ].join("\n");
 
   assert(!/\bas\s+AuditReaderRole\b/.test(allSource), "no as AuditReaderRole cast may remain");
@@ -357,7 +357,7 @@ function verifyAuditReaderRoleNarrowing(): void {
 }
 
 function verifyAuditClientBoundary(): void {
-  const source = read("src/features/audit/components/AuditLogView.tsx");
+  const source = read("src/app/(app)/audit/_components/AuditLogView.tsx");
   assert(/^\s*["']use client["'];/m.test(source), "AuditLogView must remain a client component");
 
   const modules = importedModules(source);

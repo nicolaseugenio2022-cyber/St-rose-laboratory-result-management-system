@@ -2674,7 +2674,7 @@ function verifyOrdinaryAccountWritesUseTheAdminGuard(): void {
   // stop claiming a capability the role does not hold.
   const managementView = codeOnly(
     readFileSync(
-      new URL("../src/features/users/components/UserManagementView.tsx", import.meta.url),
+      new URL("../src/app/(app)/users/_components/UserManagementView.tsx", import.meta.url),
       "utf8"
     )
   );

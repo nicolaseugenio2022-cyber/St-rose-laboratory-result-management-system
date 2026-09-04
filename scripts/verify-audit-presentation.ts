@@ -84,7 +84,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const root = process.cwd();
-const AUDIT_VIEW = "src/features/audit/components/AuditLogView.tsx";
+const AUDIT_VIEW = "src/app/(app)/audit/_components/AuditLogView.tsx";
 
 function read(relativePath: string): string {
   return readFileSync(path.join(root, relativePath), "utf8").replace(/\r\n/g, "\n");

@@ -1,5 +1,13 @@
-import React, { useCallback, useEffect, useId, useRef } from "react";
+"use client";
+
+import React, { useRef } from "react";
 import { X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/shadcn/dialog";
 import { cn } from "@/utils/cn";
 
 export interface ModalProps {
@@ -25,9 +33,37 @@ export interface ModalProps {
   closeLabel?: string;
 }
 
-const FOCUSABLE =
-  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
-
+/**
+ * The shared dialog, on the Rhea dialog primitive.
+ *
+ * The public contract is unchanged, and most of what the hand-rolled version implemented by
+ * hand is now the primitive's: focus is trapped and looped inside the dialog, the page behind
+ * is scroll-locked, and Escape and an outside press dismiss. Four of those needed steering
+ * to keep this system's rules rather than the registry defaults:
+ *
+ * - Radix would focus the first control on open. `onOpenAutoFocus` overrides that to put
+ *   focus on the dialog container instead, so opening a confirmation never lands on its
+ *   destructive action.
+ * - Focus restoration stays hand-written. Radix restores to whatever its focus scope saw
+ *   before mount, which lands correctly only when a `DialogTrigger` opened the dialog - and
+ *   every consumer here drives `isOpen` imperatively instead, so closing returned focus to
+ *   <body> and a keyboard user was dropped at the top of the document. The opener is captured
+ *   in `onOpenAutoFocus`, which fires before focus moves, and restored in `onCloseAutoFocus`,
+ *   which runs on every close route: Escape, the close control, an outside press, and a
+ *   parent simply setting `isOpen` false. The default is prevented only when there is a
+ *   connected element to return to, so exactly one focus move happens and an opener that
+ *   left the DOM still falls back to the primitive's own behaviour.
+ * - `dismissible={false}` prevents both the Escape and the outside-press dismissals, and
+ *   removes the close control - a locked dialog offers no dismissal route rather than a
+ *   dead one.
+ * - Radix sets role="dialog" before its prop spread, so the "alertdialog" role passes
+ *   through unchanged.
+ *
+ * The dialog is a column capped to the viewport: the header band stays put and only the
+ * body scrolls, so a long form never pushes its own footer off screen. The width follows
+ * the previous wrapper-padding geometry - full width less the page inset, capped at lg -
+ * so a consumer's own `max-w-*` still narrows it without overflowing a phone.
+ */
 export function Modal({
   isOpen,
   onClose,
@@ -40,165 +76,74 @@ export function Modal({
   role = "dialog",
   closeLabel = "Close dialog",
 }: ModalProps) {
-  // Unique per mounted instance, so two concurrent dialogs cannot collide on id.
-  const reactId = useId();
-  const titleId = `modal-title-${reactId}`;
-  const descriptionId = `modal-description-${reactId}`;
-
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // The element that had focus when the dialog opened. Read in `onOpenAutoFocus` because that
+  // is dispatched before the focus scope moves focus anywhere, so it still names the opener.
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
-  // Consumers pass inline arrows, so onClose changes identity every render.
-  // Holding it in a ref keeps the effects below from re-running on each render.
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  const dismissibleRef = useRef(dismissible);
-  useEffect(() => {
-    dismissibleRef.current = dismissible;
-  }, [dismissible]);
-
-  const getFocusable = useCallback(
-    () =>
-      Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-        (el) => el.offsetParent !== null || el === document.activeElement
-      ),
-    []
-  );
-
-  // Escape to dismiss, and Tab/Shift+Tab contained within the dialog.
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (dismissibleRef.current) onCloseRef.current();
-        return;
-      }
-      if (e.key !== "Tab") return;
-
-      const focusable = getFocusable();
-      if (focusable.length === 0) {
-        // Nothing to move to — keep focus on the dialog itself.
-        e.preventDefault();
-        dialogRef.current?.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-
-      // Initial focus sits on the dialog container itself. `contains` reports true for the
-      // container, so the boundary checks below never matched it: forward Tab fell naturally
-      // to the first control, but Shift+Tab walked straight out of the dialog. Wrap it to
-      // the last control instead.
-      if (active === dialogRef.current) {
-        if (e.shiftKey) {
-          e.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (!dialogRef.current?.contains(active)) {
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
-        return;
-      }
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    // Restore the exact previous inline value rather than a hardcoded "unset": a drawer
-    // or an outer dialog may already hold its own lock, and clobbering it would unlock
-    // the page underneath a surface that is still open.
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, [isOpen, getFocusable]);
-
-  // Focus capture, placement and restoration. Deliberately keyed on `isOpen`
-  // alone: the cleanup also runs when the component unmounts while still open,
-  // which is how at least one consumer closes, so focus is restored either way.
-  useEffect(() => {
-    if (!isOpen) return;
-
-    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
-
-    const frame = requestAnimationFrame(() => {
-      const target = initialFocusRef?.current ?? dialogRef.current;
-      target?.focus();
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      const previous = previouslyFocusedRef.current;
-      previouslyFocusedRef.current = null;
-      if (previous && document.contains(previous)) previous.focus();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
-      {/* Backdrop: navy at 55%, so the page recedes into the brand ground rather than grey. */}
-      <div
-        className="fixed inset-0 bg-[rgb(13_43_64_/_0.55)] transition-opacity"
-        onClick={dismissible ? onClose : undefined}
-        aria-hidden="true"
-      />
-
-      {/* Dialog Window */}
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className={cn(
-          // The dialog is a column capped to the viewport: the header band stays put and only
-          // the body scrolls, so a long form never pushes its own footer off screen.
-          "relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-brand-border bg-brand-surface shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:max-h-[calc(100dvh-3rem)]",
-          className
-        )}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && dismissible) onClose();
+      }}
+    >
+      <DialogContent
+        ref={contentRef}
         role={role}
         aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
+        showCloseButton={false}
+        // Navy at 55%, so the page recedes into the brand ground rather than grey.
+        overlayClassName="bg-[rgb(13_43_64_/_0.55)] backdrop-blur-none supports-backdrop-filter:backdrop-blur-none"
+        onOpenAutoFocus={(event) => {
+          const opener = document.activeElement;
+          previouslyFocusedRef.current =
+            opener instanceof HTMLElement && opener !== document.body ? opener : null;
+          event.preventDefault();
+          (initialFocusRef?.current ?? contentRef.current)?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          const opener = previouslyFocusedRef.current;
+          previouslyFocusedRef.current = null;
+          // Nothing captured, or the opener has since left the DOM: leave the primitive's own
+          // restoration in place rather than prevent it and move focus nowhere.
+          if (!opener?.isConnected) return;
+          event.preventDefault();
+          opener.focus();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (!dismissible) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (!dismissible) event.preventDefault();
+        }}
+        className={cn(
+          // shadow-lg is the overlay elevation step (globals.css maps md/lg/xl to
+          // --shadow-overlay), so it replaces the primitive's shadow-xl rather than
+          // stacking with it.
+          "flex max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-lg flex-col gap-0 overflow-hidden rounded-lg border border-brand-border bg-brand-surface p-0 text-brand-text shadow-lg ring-0 sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100%-3rem)] sm:max-w-lg",
+          className
+        )}
       >
         {/* Structural header band: the dialog is a working surface with the same header
             vocabulary as a page panel, so a modal reads as part of the system. */}
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-brand-border bg-brand-structural px-4 py-3">
           <div className="min-w-0">
-            <h3 id={titleId} className="text-[13px] font-semibold leading-tight text-brand-navy">
+            <DialogTitle className="text-[13px] font-semibold leading-tight text-brand-navy">
               {title}
-            </h3>
+            </DialogTitle>
             {description && (
-              <p id={descriptionId} className="mt-0.5 text-[11px] leading-snug text-brand-text-muted">
+              <DialogDescription className="mt-0.5 text-[11px] leading-snug text-brand-text-muted">
                 {description}
-              </p>
+              </DialogDescription>
             )}
           </div>
-          {/* Correction 3: a non-dismissible dialog offers no dismissal route at all.
-              Escape and the backdrop already respected `dismissible`; the close control did
-              not, so it stayed enabled and simply did nothing - which reads as a broken
-              control rather than a locked one. It is now absent while dismissal is off. */}
           {dismissible && (
             <button
+              data-slot="dialog-close"
               type="button"
               onClick={onClose}
-              className="-my-1.5 -mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:bg-brand-structural-hover hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-8 sm:w-8"
+              className="-my-1.5 -mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-text-muted outline-none transition-colors hover:bg-brand-structural-hover hover:text-brand-navy sm:h-8 sm:w-8"
               aria-label={closeLabel}
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -207,7 +152,7 @@ export function Modal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

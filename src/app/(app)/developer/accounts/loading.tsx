@@ -1,6 +1,6 @@
 import React from "react";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
-import { DeveloperAccountDirectorySkeleton } from "@/features/developer-accounts/components/DeveloperAccountDirectorySkeleton";
+import { DeveloperAccountDirectorySkeleton } from "./_components/DeveloperAccountDirectorySkeleton";
 
 /**
  * Route placeholder for the Developer Accounts module.

@@ -352,9 +352,27 @@ hashing, preserve exact-content equality otherwise, and never relax a pin into a
 ## 8. Supabase and production SQL
 
 - Agents **may** inspect the database read-only and **prepare** migrations and SQL.
-- Agents **must not apply production SQL**, DDL, or any schema change.
-- **The user applies approved SQL manually in Supabase.**
-- **Live verification happens afterward**, against the applied state.
+- Outside the bounded SHADCN-07D exception below, agents **must not apply production SQL**, DDL,
+  schema changes, or data migrations. The user applies other approved SQL manually in Supabase.
+- **SHADCN-07D exception — Claude-executed database optimization.** The user has explicitly
+  authorized Claude to apply the exact reviewed SHADCN-07D production database optimization through
+  the project-scoped Supabase MCP. Claude may execute it only after all of the following are true:
+  1. SHADCN-07A produced measurement or query-plan evidence that justifies the change;
+  2. the complete migration and rollback or recovery procedure are frozen;
+  3. a separate, fresh, read-only Claude context has returned a written **APPROVED** verdict with no
+     blocking finding on the exact migration;
+  4. the user has explicitly approved execution of that reviewed migration;
+  5. Claude has re-confirmed the production target by project reference **and** data fingerprint,
+     captured a pre-write baseline for every post-write assertion, and stated the exact blast radius.
+- The implementing Claude context may then apply **only the independently reviewed bytes**. Any
+  material SQL change invalidates the approval and returns the slice to review. Destructive DDL or
+  data mutation requires separate, operation-specific user authorization and a tested recovery path.
+- Claude must stop on any target, baseline, permission, migration-state, or postcondition mismatch.
+  After execution it records the statements applied, provider response, migration state, live
+  post-write evidence, and whether recovery was needed, without exposing secrets or sensitive rows.
+- The user authorizes and approves the reviewed operation but does not need to paste or execute the
+  SQL manually. This exception applies only to SHADCN-07D and creates no standing permission for any
+  other live-database write.
 
 A dashboard project ref is not proof of the target database — confirm by data fingerprint. PostgREST
 may take up to a minute to expose new functions after a schema reload, so immediate absence is not

@@ -67,6 +67,51 @@ const TRANSIENT_TRANSPORT_CODES = new Set([
   "EAI_AGAIN",
 ]);
 
+/**
+ * QA-01R-R1: never present the opaque server key as a Bearer token.
+ *
+ * What is established:
+ *   - supabase-js 2.112.2 places the opaque server key in `Authorization: Bearer …` for REST
+ *     requests. It ships `isNewApiKey` to prevent exactly that, but wires the protection only into
+ *     `functionsFetch` (index.cjs:644); the REST client is built on the unprotected `this.fetch`
+ *     (index.cjs:643, consumed at :651), and with no Supabase Auth session the bearer falls back
+ *     to the raw key.
+ *   - Supabase documents that new-format opaque keys are not JWTs and belong in `apikey` only -
+ *     the library repeats this verbatim at index.cjs:263-268.
+ *   - One captured login failed with PGRST303 (HTTP 401, "JWT claims validation or parsing
+ *     failed"), surfacing as a postgrest-js plain-object envelope.
+ *   - Another request under the SAME key and the SAME code succeeded end to end.
+ *
+ * So the provider-side intermittency - why PostgREST rejected one request and accepted another -
+ * is NOT established, and this comment does not claim it. What is deterministic is the precondition
+ * being removed: after this normalization no PostgREST request carries a bearer token that is not a
+ * JWT, which is what Supabase documents as correct regardless of how the server chooses to treat
+ * an invalid one.
+ *
+ * The correction is deliberately narrow. The header is dropped ONLY when its value is exactly the
+ * bearer form of this deployment's own opaque key, so:
+ *   - `apikey` is untouched and remains the sole credential, which is what PostgREST expects;
+ *   - a genuine user JWT in Authorization is never removed;
+ *   - a legacy JWT-format key is never touched, because `isOpaqueApiKey` is false for it and the
+ *     library's Bearer fallback remains correct for that key type.
+ *
+ * The key value is compared, never logged.
+ */
+function isOpaqueApiKey(value: string): boolean {
+  return value.startsWith("sb_secret_") || value.startsWith("sb_publishable_");
+}
+
+function stripSelfIssuedBearer(init?: RequestInit): RequestInit | undefined {
+  if (!init?.headers || !supabaseSecretKey || !isOpaqueApiKey(supabaseSecretKey)) return init;
+
+  const selfIssued = `Bearer ${supabaseSecretKey}`;
+  const headers = new Headers(init.headers as HeadersInit);
+  if (headers.get("Authorization") !== selfIssued) return init;
+
+  headers.delete("Authorization");
+  return { ...init, headers };
+}
+
 function isReadRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   const method =
     init?.method ?? (typeof input === "object" && "method" in input ? input.method : undefined);
@@ -94,9 +139,12 @@ export async function resilientFetch(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
-  if (!isReadRequest(input, init)) {
+  // Normalized once, before either dispatch path, so reads and writes are covered identically.
+  const request = stripSelfIssuedBearer(init);
+
+  if (!isReadRequest(input, request)) {
     // Writes: original semantics, untouched. No added signal, no timeout, no retry.
-    return fetch(input, init);
+    return fetch(input, request);
   }
 
   const deadline = Date.now() + READ_TOTAL_BUDGET_MS;
@@ -107,13 +155,13 @@ export async function resilientFetch(
     if (remaining <= 0) break;
 
     const attemptSignal = AbortSignal.timeout(Math.min(READ_ATTEMPT_TIMEOUT_MS, remaining));
-    const signal = init?.signal ? AbortSignal.any([init.signal, attemptSignal]) : attemptSignal;
+    const signal = request?.signal ? AbortSignal.any([request.signal, attemptSignal]) : attemptSignal;
 
     try {
-      return await fetch(input, { ...init, signal });
+      return await fetch(input, { ...request, signal });
     } catch (error) {
       // Caller cancellation always wins and is never retried.
-      if (init?.signal?.aborted) throw error;
+      if (request?.signal?.aborted) throw error;
       lastError = error;
       const retryable = isAttemptTimeout(error) || isTransientTransportError(error);
       if (attempt === 2 || !retryable) throw error;

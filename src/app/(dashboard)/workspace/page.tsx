@@ -1,5 +1,6 @@
 import { GuidedWorkspace } from "./_components/GuidedWorkspace";
 import { listRegistryTemplatesAction } from "@/features/server-boundary/server-actions";
+import { describeErrorShape } from "@/lib/safe-error";
 import { listWorkspacePersonnelAction } from "./_actions/workspace-personnel-actions";
 
 export const runtime = "nodejs";
@@ -26,7 +27,15 @@ export default async function WorkspacePage({
       listRegistryTemplatesAction({}),
       listWorkspacePersonnelAction(),
     ]);
-  } catch {
+  } catch (error: unknown) {
+    // Both fall back to the client fetches exactly as before. The bootstrap covers two dependencies
+    // in one Promise.all, so a failure here previously erased the registry and the roster with no
+    // record of which one failed or why. Shape only; no template, personnel or session data.
+    console.error("Workspace bootstrap load failed.", {
+      route: "/workspace",
+      stage: "registryAndPersonnelBootstrap",
+      ...describeErrorShape(error),
+    });
     initialTemplates = undefined;
     initialDirectory = undefined;
   }

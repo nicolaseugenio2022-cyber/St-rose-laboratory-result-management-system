@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parseRecentSessionsInput } from "../src/features/server-boundary/action-inputs";
+import { safeApiErrorMessage } from "../src/lib/api/safe-error-response";
+import { LastActiveAdminError } from "../src/services/userService";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`M6C verification failed: ${message}`);
@@ -608,6 +610,84 @@ function verifyPurgeAuthorization(): void {
       purgeServiceIndex > adminGuardIndex,
     "the purge route must require Admin authorization before executing the purge service"
   );
+
+  // SHADCN-07B1: a refusal is not a malfunction. The guard threw inside the same try that wrapped
+  // execution, so a non-Admin caller received HTTP 500. The refusal must be answered as 403, and
+  // that answer must be reached before the purge service can run - order matters as much as status.
+  const forbiddenBranchIndex = liveCodeIndexOf(source, "error instanceof ForbiddenError");
+  assert(
+    forbiddenBranchIndex >= 0 &&
+      /error instanceof ForbiddenError[\s\S]{0,300}?status:\s*403/.test(source) &&
+      purgeServiceIndex > forbiddenBranchIndex,
+    "the purge route must answer an authorization refusal with HTTP 403 before the purge service runs"
+  );
+}
+
+/**
+ * SHADCN-07B1: an unrecognised failure must never carry its own message to a browser.
+ *
+ * Behavioural rather than textual, because the property under test is what the mapper RETURNS,
+ * not how it is written. The collection route previously used `catch (error: any)` with
+ * `error?.message`, so a PostgREST rejection - whose message is composed by Postgres and can name
+ * a relation, a constraint or a connection target - was returned verbatim with HTTP 400.
+ *
+ * Both directions are asserted together so the assertion cannot be satisfied by a mapper that
+ * simply returns the fallback for everything: an allowlisted domain error must still keep its own
+ * operator-facing sentence.
+ */
+function verifySafeApiErrorRedaction(): void {
+  const FALLBACK = "Failed to create user";
+  const leaky = new Error(
+    "postgres://svc:hunter2@db.internal:5432 - relation user_profiles permission denied"
+  );
+
+  const redacted = safeApiErrorMessage(leaky, FALLBACK);
+  const recognised = safeApiErrorMessage(new LastActiveAdminError(), FALLBACK);
+
+  assert(
+    redacted === FALLBACK &&
+      !redacted.includes("hunter2") &&
+      !redacted.includes("postgres://") &&
+      !redacted.includes("user_profiles") &&
+      recognised === new LastActiveAdminError().message,
+    "an unrecognised error must map to the generic API fallback and never carry its own message, while an allowlisted domain error keeps its own"
+  );
+}
+
+/**
+ * SHADCN-07B1: the sanitized diagnostic shape must emit only closed-set values.
+ *
+ * Shape-checking alone was not enough. An earlier revision accepted any identifier-shaped `name`
+ * and any short alphanumeric `code`, and `sk_live_ABC123`, `SECRET_TOKEN_123` and `PASSWORD123`
+ * are all identifier-shaped - so a thrown value carrying a key in either field would have been
+ * written to the server log verbatim. Both fields are now closed sets, and this proves it by
+ * calling the sanitizer rather than by reading its source.
+ *
+ * `safe-error.ts` reaches the Supabase server module, which builds its client at import time and
+ * refuses to load without credentials. A security gate must not depend on a configured
+ * environment, so the module is required lazily behind inert placeholders. `describeErrorShape`
+ * only calls a pure predicate, so nothing here opens a connection, and no real secret is read.
+ */
+function verifySanitizedErrorShapeIsClosed(): void {
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://verifier.invalid";
+  process.env.SUPABASE_SECRET_KEY ||= "verifier-placeholder-not-a-credential";
+  const { describeErrorShape } =
+    require("../src/lib/safe-error") as typeof import("../src/lib/safe-error");
+
+  const errorNamedLikeAKey = new Error("boom");
+  errorNamedLikeAKey.name = "sk_live_ABC123";
+
+  class SECRET_TOKEN_123 {}
+  const objectNamedLikeASecret = new SECRET_TOKEN_123();
+
+  assert(
+    describeErrorShape(errorNamedLikeAKey).errorName === "Error" &&
+      describeErrorShape(objectNamedLikeASecret).errorName === "object" &&
+      describeErrorShape({ code: "PASSWORD123" }).postgrestCode === null &&
+      describeErrorShape({ code: "42P01" }).postgrestCode === "42P01" &&
+      describeErrorShape({ code: "PGRST116" }).postgrestCode === "PGRST116",
+    "the sanitized error shape must emit only allowlisted error names and recognised SQLSTATE/PostgREST codes"
+  );
 }
 
 function verifyCredentialVisibilityControls(): void {
@@ -908,6 +988,8 @@ verifyBehaviouralFreeze();
 verifyUserServiceInvariants();
 verifyAdminInvariantApi();
 verifyPurgeAuthorization();
+verifySafeApiErrorRedaction();
+verifySanitizedErrorShapeIsClosed();
 verifyCredentialVisibilityControls();
 verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();

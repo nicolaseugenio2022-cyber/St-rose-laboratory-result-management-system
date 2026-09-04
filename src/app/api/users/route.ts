@@ -9,6 +9,7 @@ import {
   toAccountDirectory,
   toAdminAccountEntry,
 } from "@/features/users/account-directory-entry";
+import { safeApiErrorMessage } from "@/lib/api/safe-error-response";
 import { createUserSchema } from "@/lib/validations/userValidation";
 import type { User } from "@/types/user";
 
@@ -43,8 +44,16 @@ export async function POST(request: Request) {
   let user: User;
   try {
     user = await userService.createUser(parsed.data);
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Failed to create user" }, { status: 400 });
+  } catch (error: unknown) {
+    // Allowlisted domain failures keep their operator-facing sentence; everything else - a
+    // PostgREST plain object, a Postgres error, an infrastructure fault - collapses to this
+    // route's own existing generic string. `catch (error: any)` with `error?.message` previously
+    // returned whichever message the thrown value happened to carry, including one composed by
+    // the database.
+    return NextResponse.json(
+      { error: safeApiErrorMessage(error, "Failed to create user") },
+      { status: 400 }
+    );
   }
 
   // The audit event still reads the full record - it runs on the server and target_reference and

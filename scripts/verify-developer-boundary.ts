@@ -1668,6 +1668,9 @@ async function verifySuccessfulDeveloperAuthenticationIsAudited(): Promise<void>
     authenticated.id === created.id,
     "case 54 must authenticate the Developer account with the correct password"
   );
+  // SHADCN-07B3: verified credentials alone are no longer a completed login. The success event is
+  // emitted once the session exists, so the login path is reproduced here in the same order.
+  await subject.service.emitAuthenticatedSessionEstablished(authenticated);
   const entries = audit.entries.filter(
     (e) => e.eventType === "AuthenticationSucceeded"
   );
@@ -1702,6 +1705,7 @@ async function verifySuccessfulOrdinaryAuthenticationIsAudited(): Promise<void> 
     authenticated.id === created.id,
     "case 55 must authenticate the ordinary account with the correct password"
   );
+  await subject.service.emitAuthenticatedSessionEstablished(authenticated);
   const entries = audit.entries.filter(
     (e) => e.eventType === "AuthenticationSucceeded"
   );
@@ -1727,6 +1731,7 @@ async function verifySuccessfulAuthenticationAuditFailureIsSwallowedWithoutRetry
   audit.failures = 1;
   const emitCallsBeforeAuthentication = audit.emitCalls;
   const authenticated = await subject.service.authenticate(created.username, loginPassword);
+  await subject.service.emitAuthenticatedSessionEstablished(authenticated);
   assert(
     authenticated.id === created.id,
     "case 56 must still succeed and return the account when success-audit persistence fails"

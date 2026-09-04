@@ -378,8 +378,12 @@ function verifyBehaviouralFreeze(): void {
     "auth-guards.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
   );
 
+  // SHADCN-07B3 approved real-boundary correction: AuthenticationSucceeded now means credentials
+  // were verified AND createSession() completed, so the emit moved into loginAction after the
+  // session write. The pin is re-minted, never relaxed - still exact-content equality on the whole
+  // file, with only line endings normalized.
   const APPROVED_AUTH_ACTIONS_SHA256 =
-    "a2020c3858e81fe53081c7ef54e85a58e42d7de0fa933690ea5e5b4e37b41c55";
+    "01985a5b8111200caf166facf30d5e057819f7948562d0b4aa553b7ff1bbf1e1";
   // Persistent repository pins normalize line endings for portability; transient local candidate hashes may use raw bytes because they do not outlive the verification session.
   assert(
     normalizedSha256(read("src/features/auth/authActions.ts")) ===

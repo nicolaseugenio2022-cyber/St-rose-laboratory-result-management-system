@@ -317,7 +317,9 @@ export class UserService implements IUserService {
     }
   }
 
-  private async emitAuthenticationSuccess(record: AuthCredentialRecord): Promise<void> {
+  private async emitAuthenticationSuccess(
+    record: Pick<AuthCredentialRecord, "id" | "role" | "username">
+  ): Promise<void> {
     try {
       await this.recoveryAudit.emit({
         category: "AuthAccount",
@@ -736,6 +738,24 @@ export class UserService implements IUserService {
     }
   }
 
+  /**
+   * SHADCN-07B3: record a completed login, once the session actually exists.
+   *
+   * `AuthenticationSucceeded` means credentials were verified AND `createSession()` completed.
+   * Correct credentials alone are not a successful login: the QA-01R sequence showed the audit row
+   * being written and the session write then failing, leaving a durable claim of success for a
+   * login the operator never got. `authenticate()` therefore no longer emits it; the caller does,
+   * after the session is established.
+   *
+   * This is the only way in, and it delegates to the single existing writer rather than rebuilding
+   * the event, so the payload, the classification and the swallow-without-retry behaviour are
+   * exactly the ones already pinned. It cannot throw: a failed audit write must never turn a
+   * successfully issued session into a false login failure.
+   */
+  async emitAuthenticatedSessionEstablished(user: User): Promise<void> {
+    await this.emitAuthenticationSuccess(user);
+  }
+
   async authenticate(usernameInput: string, password: string, clientIp: string | null = null): Promise<User> {
     const username = canonicalizeUsername(usernameInput);
     await this.loginRateLimiter.assertAllowed(username, clientIp);
@@ -747,7 +767,8 @@ export class UserService implements IUserService {
     await this.loginRateLimiter.record(username, clientIp, authenticated);
     if (!authenticated) await this.emitAuthenticationFailure(username, record);
     if (!record || !authenticated) throw new InvalidCredentialsError();
-    await this.emitAuthenticationSuccess(record);
+    // SHADCN-07B3: the success audit moved to the caller, after createSession() succeeds. Rate-limit
+    // recording and the failure audit above are unchanged and still run here.
     return toUser(record);
   }
 

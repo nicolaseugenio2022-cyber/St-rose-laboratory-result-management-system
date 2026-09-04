@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { firstLoginRedirectPath } from "@/lib/first-login-gate";
 import { LoginRateLimitError } from "@/lib/login-rate-limit";
 import { normalizeSecurityAnswer } from "@/lib/password";
+import { describeErrorShape } from "@/lib/safe-error";
 import { createSession, deleteSession, getSession } from "@/lib/session";
 import { canonicalizeUsername } from "@/lib/username";
 import { emitLogoutAuditForSession } from "@/features/auth/logout-audit";
@@ -49,7 +50,13 @@ export async function loginAction(formData: FormData): Promise<AuthActionResult>
   let destination: string;
   try {
     const user = await userService.authenticate(username, passwordValue, await getClientIp());
+    // SHADCN-07B3: the session is established BEFORE the success audit claims one exists. If
+    // createSession throws, control leaves for the catch below and no AuthenticationSucceeded row
+    // is ever written - the audit can no longer assert a login the operator did not get. The emit
+    // itself swallows its own persistence failure, so a lost audit write still cannot turn a
+    // successfully issued session into a false failure.
     await createSession(user, rememberMe);
+    await userService.emitAuthenticatedSessionEstablished(user);
     destination = destinationFor(user);
   } catch (error: unknown) {
     if (error instanceof LoginRateLimitError) {
@@ -67,10 +74,14 @@ export async function loginAction(formData: FormData): Promise<AuthActionResult>
     }
     // Anything else is an infrastructure failure - a stalled connection, a rate-limiter backend
     // error, a session-write failure - and telling the user their password was wrong would be
-    // false. Log sanitized metadata only, following the established precedent: never the username,
-    // the credential material, or the raw error message.
+    // false. SHADCN-07B3: the diagnostic is the SHADCN-07B1 sanitized shape rather than the raw
+    // constructor name it logged before - an unallowlisted, caller-influenceable string of exactly
+    // the kind 07B1 closed elsewhere. Fixed route and stage identifiers only: never the username,
+    // the form data, the credential material, a token, a cookie, or the raw message.
     console.error("Login failed for a non-credential reason.", {
-      errorName: error instanceof Error ? error.name : typeof error,
+      route: "/login",
+      stage: "loginAction",
+      ...describeErrorShape(error),
     });
     return { success: false, error: "Unable to sign in right now. Please try again." };
   }

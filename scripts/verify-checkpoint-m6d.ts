@@ -717,20 +717,89 @@ function verifyAuthenticationSuccessAuditWriter(): void {
     "the successful-authentication persistence log must not expose identity, credential, database, payload, or client-IP data"
   );
 
+  // SHADCN-07B3: AuthenticationSucceeded now means credentials were verified AND createSession()
+  // completed. Correct credentials alone are not a successful login, so the emit no longer lives in
+  // authenticate() - it lives in loginAction, after the session write. The guarantee this block
+  // protects is unchanged in substance and strengthened in reach: a rejected login still cannot
+  // emit success, and now neither can a login whose session was never issued.
   const authenticate = /async\s+authenticate\b[\s\S]*?(?=\n\s*async\s+changeFirstLoginPassword\b)/.exec(
     source
   )?.[0];
   assert(authenticate, "UserService.authenticate must remain present");
   const rejectionIndex = authenticate.indexOf("throw new InvalidCredentialsError();");
-  const successEmitIndex = authenticate.indexOf(
-    "await this.emitAuthenticationSuccess(record);"
-  );
   const returnIndex = authenticate.indexOf("return toUser(record);");
   assert(
-    rejectionIndex !== -1 &&
-      successEmitIndex > rejectionIndex &&
-      returnIndex > successEmitIndex,
-    "successful-authentication auditing must run after rejection and before return so rejected logins can never emit success"
+    rejectionIndex !== -1 && returnIndex > rejectionIndex,
+    "authenticate must still reject invalid credentials before returning an authenticated user"
+  );
+  assert(
+    !authenticate.includes("emitAuthenticationSuccess"),
+    "authenticate must not emit success itself; verified credentials alone are not a completed login"
+  );
+
+  // The single exposed writer, delegating to the existing pinned helper rather than rebuilding the
+  // event, so the payload and the swallow-without-retry behaviour stay the ones asserted above.
+  const exposedWriter = /async\s+emitAuthenticatedSessionEstablished\b[\s\S]*?\n  \}/.exec(source)?.[0];
+  assert(
+    exposedWriter && /await\s+this\.emitAuthenticationSuccess\(user\);/.test(exposedWriter),
+    "the exposed success writer must delegate to the single existing audit helper"
+  );
+  assert(
+    (source.match(/this\.emitAuthenticationSuccess\(/g) ?? []).length === 1,
+    "exactly one call site may attempt the successful-authentication audit"
+  );
+
+  // loginAction ordering: credentials, then session, then the audit, then redirect - and the
+  // redirect stays outside the catch so a failure cannot be reported as a completed login.
+  const loginActionSource = /export\s+async\s+function\s+loginAction\b[\s\S]*?\n\}/.exec(
+    read("src/features/auth/authActions.ts")
+  )?.[0];
+  assert(loginActionSource, "loginAction must remain present");
+  const credentialIndex = loginActionSource.indexOf("userService.authenticate(");
+  const sessionIndex = loginActionSource.indexOf("await createSession(user, rememberMe);");
+  const auditIndex = loginActionSource.indexOf(
+    "await userService.emitAuthenticatedSessionEstablished(user);"
+  );
+  const catchIndex = loginActionSource.indexOf("} catch (error: unknown) {");
+  const redirectIndex = loginActionSource.indexOf("redirect(destination);");
+  assert(
+    credentialIndex !== -1 &&
+      sessionIndex > credentialIndex &&
+      auditIndex > sessionIndex &&
+      catchIndex > auditIndex,
+    "loginAction must verify credentials, then establish the session, then audit success - all before the catch"
+  );
+  assert(
+    redirectIndex > catchIndex,
+    "loginAction must redirect outside the catch"
+  );
+  assert(
+    (loginActionSource.match(/emitAuthenticatedSessionEstablished/g) ?? []).length === 1,
+    "loginAction must attempt the success audit exactly once, only on the established-session path"
+  );
+  // The audit must be UNREACHABLE when createSession throws, and index ordering alone does not
+  // prove that: wrapping the session write in its own swallowing try would keep every index in
+  // order while letting a failed session emit a success row - the QA-01R defect in a new shape.
+  // Adjacency inside the same try is the property that actually forbids it, so nothing but
+  // whitespace and comments may separate the two statements.
+  const betweenSessionAndAudit = loginActionSource.slice(
+    sessionIndex + "await createSession(user, rememberMe);".length,
+    auditIndex
+  );
+  assert(
+    !/\btry\b|\bcatch\b|[{}]/.test(betweenSessionAndAudit),
+    "nothing may sit between establishing the session and auditing success; an intervening catch would let a failed session write emit a false AuthenticationSucceeded"
+  );
+
+  // The non-credential diagnostic is the SHADCN-07B1 sanitized shape, and carries nothing else.
+  const loginLogCall = /console\.error\([\s\S]*?\);/.exec(loginActionSource)?.[0] ?? "";
+  assert(
+    /describeErrorShape\(error\)/.test(loginLogCall) && !/error\.(name|message|stack)/.test(loginActionSource),
+    "loginAction must diagnose a non-credential failure through describeErrorShape, never a raw error field"
+  );
+  assert(
+    !/username|password|passwordValue|formData|token|cookie|secret|hash|answer/i.test(loginLogCall),
+    "the loginAction failure log must carry no credential, session or form value"
   );
 }
 

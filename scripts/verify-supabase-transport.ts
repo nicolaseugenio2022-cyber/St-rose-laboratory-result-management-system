@@ -16,7 +16,7 @@
  *
  * Only fabricated keys appear here. The real deployment key is never read, printed, or compared.
  */
-process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://verifier.invalid";
+process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://verifier.invalid";
 
 const OPAQUE_KEY = "sb_secret_VERIFIER_FAKE_NOT_A_REAL_KEY";
 const LEGACY_JWT_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.verifierfake";
@@ -67,7 +67,7 @@ async function capture(
   }) as typeof globalThis.fetch;
 
   try {
-    const response = await resilientFetch("http://verifier.invalid/rest/v1/auth_attempts", init);
+    const response = await resilientFetch("https://verifier.invalid/rest/v1/auth_attempts", init);
     return { calls, response, threw: null };
   } catch (error) {
     return { calls, response: null, threw: error };

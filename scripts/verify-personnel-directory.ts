@@ -503,14 +503,18 @@ const personnelGuardSourceForResolution = stripComments(getSource("src/lib/perso
 // literal slashes and stripped them with slice(1, -1) before new RegExp() - fragile, and it left the
 // dot in `profile.role` as a wildcard that would have matched `profileXrole`. These are escaped
 // literals in genuine regex literals, so the rule they pin is the rule they read.
+// Terminated at the closing `) {`, so each rule pins the WHOLE condition rather than a prefix of
+// it. Unanchored, `requirePersonnelAdmin`'s rule was a substring of
+// `profile.role !== "Admin" && profile.role !== "Developer"`, so widening that guard to admit
+// another role would have satisfied the assertion that exists to forbid exactly that.
 const guardContracts: Array<[string, RegExp]> = [
   [
     "requirePersonnelReader",
-    /profile\.role\s*!==\s*"Admin"\s*&&\s*profile\.role\s*!==\s*"Developer"/,
+    /profile\.role\s*!==\s*"Admin"\s*&&\s*profile\.role\s*!==\s*"Developer"\s*\)\s*\{/,
   ],
   [
     "requirePersonnelAdmin",
-    /profile\.role\s*!==\s*"Admin"/,
+    /profile\.role\s*!==\s*"Admin"\s*\)\s*\{/,
   ],
 ];
 for (const [guardName, roleRule] of guardContracts) {

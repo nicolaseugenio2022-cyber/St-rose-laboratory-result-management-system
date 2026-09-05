@@ -737,7 +737,7 @@ function verifySafeApiErrorRedaction(): void {
  * only calls a pure predicate, so nothing here opens a connection, and no real secret is read.
  */
 function verifySanitizedErrorShapeIsClosed(): void {
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://verifier.invalid";
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://verifier.invalid";
   process.env.SUPABASE_SECRET_KEY ||= "verifier-placeholder-not-a-credential";
   const { describeErrorShape } =
     require("../src/lib/safe-error") as typeof import("../src/lib/safe-error");

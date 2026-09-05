@@ -22,7 +22,7 @@ import type { IReportRegistryRepository } from "../src/repositories/interfaces";
  * own fake repository, so `SupabaseReportRegistryRepository` is never constructed, and no real
  * secret is read.
  */
-process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://verifier.invalid";
+process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://verifier.invalid";
 process.env.SUPABASE_SECRET_KEY ||= "verifier-placeholder-not-a-credential";
 const { ReportRegistryService } =
   require("../src/services/report-registry-service") as typeof import("../src/services/report-registry-service");

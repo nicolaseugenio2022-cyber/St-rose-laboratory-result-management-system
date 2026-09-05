@@ -835,8 +835,22 @@ function verifyAuthenticationSuccessAuditWriter(): void {
       catchIndex > auditIndex,
     "loginAction must verify credentials, then establish the session, then audit success - all before the catch"
   );
+  // The catch block is BOUNDED, because "after the catch opened" is not "outside the catch": a
+  // redirect sited inside the catch body also has an index greater than catchIndex, so the previous
+  // form passed for the exact arrangement its message forbids. Brace-match from the catch body to
+  // its closing brace and require the redirect beyond it.
+  const catchBodyStart = loginActionSource.indexOf("{", catchIndex + 1);
+  let catchDepth = 0;
+  let catchEndIndex = -1;
+  for (let i = catchBodyStart; i >= 0 && i < loginActionSource.length; i++) {
+    if (loginActionSource[i] === "{") catchDepth++;
+    else if (loginActionSource[i] === "}" && --catchDepth === 0) {
+      catchEndIndex = i;
+      break;
+    }
+  }
   assert(
-    redirectIndex > catchIndex,
+    catchBodyStart > catchIndex && catchEndIndex > catchBodyStart && redirectIndex > catchEndIndex,
     "loginAction must redirect outside the catch"
   );
   assert(

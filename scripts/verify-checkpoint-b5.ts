@@ -2414,10 +2414,19 @@ const operationalResultActions: {
   },
 ];
 for (const { action, route, expectedCodes, classifiedTypes, stages } of operationalResultActions) {
+  // Both boundaries come from LIVE code, like every probe inside this loop. With a raw indexOf a
+  // commented `export async function` sited inside an action body ended the region early, and the
+  // NEGATIVE assertions below - the raw-guard absence check, the later-step ordering checks and
+  // the disclosure-field checks - then passed on a truncated region without ever reaching the code
+  // they name.
   const declaration = `export async function ${action}(`;
-  const start = serverActionsSource.indexOf(declaration);
+  const start = liveCodeIndexOf(serverActionsSource, declaration);
   assert(start >= 0, `${action} is declared in server-actions.ts`);
-  const end = serverActionsSource.indexOf("\nexport async function", start + declaration.length);
+  const end = liveCodeIndexOf(
+    serverActionsSource,
+    "\nexport async function",
+    start + declaration.length
+  );
   const actionSource = serverActionsSource.slice(
     start,
     end >= 0 ? end : serverActionsSource.length

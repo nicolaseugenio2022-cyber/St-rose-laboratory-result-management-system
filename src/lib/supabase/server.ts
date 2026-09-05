@@ -15,6 +15,33 @@ if (!supabaseUrl) {
 }
 
 /**
+ * The transport itself must be encrypted, or the credential correction below is moot.
+ *
+ * `stripSelfIssuedBearer` keeps the opaque server key out of `Authorization` so it travels only in
+ * `apikey` - but `apikey` is still a header, and over `http:` it crosses the wire in clear text
+ * along with every row it fetches. Existence of the variable was previously the only requirement,
+ * so a misconfigured deployment could downgrade the whole database transport silently.
+ *
+ * Failing at module load is deliberate: this module builds the client at import time, so an
+ * unencrypted target must stop the server starting rather than surface later as a request that
+ * quietly succeeded over plaintext. The URL is parsed rather than string-matched so that neither
+ * `https://x@http:` nor casing tricks can satisfy it.
+ */
+const supabaseProtocol = (() => {
+  try {
+    return new URL(supabaseUrl).protocol;
+  } catch {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL is not a valid absolute URL.");
+  }
+})();
+
+if (supabaseProtocol !== "https:") {
+  throw new Error(
+    `NEXT_PUBLIC_SUPABASE_URL must use https: - refusing to send the server key over '${supabaseProtocol}'.`
+  );
+}
+
+/**
  * Transport resilience for READS ONLY (M6 P2).
  *
  * Measured baseline on this deployment: healthy reads p50 ~105ms, p90 ~213ms, worst observed

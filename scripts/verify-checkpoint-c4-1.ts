@@ -186,8 +186,12 @@ async function main(): Promise<void> {
   // unchanged from the pre-enlargement geometry. These are the measured values, pinned exactly, so
   // any future header change that pushes the body down fails here rather than silently eating the
   // client's 4 mm reserve above the A4 midpoint.
+  // REPORT-QA-02B re-mints the FECALYSIS entry only. The approved two-column Fecalysis layout
+  // returns the reference track's width to the RESULT column, so two rows that previously wrapped
+  // onto a second line now fit on one and the report ends 9.1 mm higher - two row heights exactly.
+  // Every other pin is untouched, which is what proves the change stayed inside one report.
   const EXPECTED_REPORT_BOTTOMS_MM: Record<string, number> = {
-    FECALYSIS: 144.3, CHEM_10: 130.65, CBC: 130.65, HDL_LDL: 121.55, HIV_RESULT: 120.8,
+    FECALYSIS: 135.2, CHEM_10: 130.65, CBC: 130.65, HDL_LDL: 121.55, HIV_RESULT: 120.8,
     CHEM_8: 112.45, URINALYSIS: 109.95, DENGUE_DUO: 104.2, OGTT: 98.8, HBA1C: 95.1,
     HBSAG: 95.1, RPR: 95.1, PREG_TEST: 95.1, BLOOD_TYPING: 94.25, CT_BT: 94.25,
     RBS: 89.7, ESR: 89.7,
@@ -197,7 +201,7 @@ async function main(): Promise<void> {
     const measuredBottomMm = pages.get(code)!.contentBottomMm;
     assert(Math.abs(measuredBottomMm - expectedBottomMm) < 0.001, `${code} report bottom must remain exactly ${expectedBottomMm} mm after the logo enlargement (measured ${measuredBottomMm})`);
   }
-  assert(Math.abs(pages.get("FECALYSIS")!.contentBottomMm - 144.3) < 0.001, "Fecalysis must remain the tightest report at exactly 144.30 mm");
+  assert(Math.abs(pages.get("FECALYSIS")!.contentBottomMm - 135.2) < 0.001, "Fecalysis must remain the tightest report at exactly 135.20 mm");
   const cbc = pages.get("CBC")!;
   assert(cbc.compositionSource === "StandardAdaptiveTabular", "active CBC must use StandardAdaptiveTabular, never the legacy pilot");
   assert(!cbc.primitives.some((primitive) => primitive.id === "laboratory-logo" || primitive.id === "cbc-result-table"), "active CBC must contain no old-pilot primitive identifiers");

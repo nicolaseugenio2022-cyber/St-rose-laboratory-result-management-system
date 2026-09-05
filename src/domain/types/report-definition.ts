@@ -63,6 +63,33 @@ export type EvaluationPolicySpec =
   | { mode: "ValidEntryOnly" }
   | { mode: "Unresolved"; reason: string };
 
+/**
+ * Declarative presentation of a RESULT value. Presentation only: it never changes what is entered,
+ * validated, evaluated or persisted, and a completed snapshot keeps the exact bytes it froze.
+ *
+ * `casing` is baked into the string at the render-model boundary rather than applied as a render
+ * style, for two reasons. Uppercase text is wider than mixed case, so the value has to reach text
+ * measurement in its final form or wrapping is computed against a narrower string than the one that
+ * is painted. And the native `uppercase` style flag is honoured only by the preview DOM, so using
+ * it would silently diverge the exported PDF from Live Preview.
+ *
+ * `emphasis` cannot be baked into a string, so it travels to the renderers as a style flag and is
+ * resolved by each of them - CSS `font-style` in the preview, a jsPDF font-style name in the PDF.
+ */
+export interface ResultPresentationSpec {
+  casing?: "Uppercase";
+  emphasis?: "Italic";
+  /**
+   * The render-contract version this presentation was introduced at. It is REQUIRED, so a
+   * presentation can never be added without stating when it takes effect.
+   *
+   * A completed report renders at the contract version frozen into its snapshot, so a report issued
+   * before this version keeps the exact output it was issued with. Drafts and newly completed
+   * reports render at the definition's current version and receive the new presentation.
+   */
+  sinceRenderContractVersion: number;
+}
+
 export interface ParameterSpec {
   parameterCode: string;
   legacyParameterCodes?: string[];
@@ -80,6 +107,8 @@ export interface ParameterSpec {
   displayPrecision?: number | null;
   blankOmission?: boolean; // If true, optional blank finding is omitted from output
   conditionalChoiceSpec?: ConditionalChoiceSpec | null;
+  /** Presentation of the result value only - never its entry, validation, evaluation or storage. */
+  resultPresentation?: ResultPresentationSpec | null;
   evaluationPolicy: EvaluationPolicySpec;
 }
 
@@ -162,6 +191,13 @@ export interface CertificateStaticContentSpec {
 
 export interface DeclarativeRenderContractSpec {
   renderContractVersion: number;
+  /**
+   * Earlier render-contract versions this definition can still render faithfully. A completed
+   * snapshot frozen at one of these versions is rendered with the presentation of that version
+   * rather than rejected. Any frozen version that is neither current nor listed here is still a
+   * hard error - superseding a contract is a declaration, never an inference.
+   */
+  supersededRenderContractVersions?: number[];
   staticContentVersion: string;
   sourceReference?: string;
   staticContent?: CertificateStaticContentSpec;
@@ -170,9 +206,18 @@ export interface DeclarativeRenderContractSpec {
     layoutVariant?: "Standard" | "CBC";
   };
   standardComposition?: {
-    resultHeaders?: [string, string, string];
-    columnRatios?: [number, number, number];
+    // Two or three columns. A two-entry declaration is a report that carries no reference track at
+    // all: the column is absent from the header row and no reference cell is composed for any row,
+    // rather than a third column being rendered empty.
+    resultHeaders?: [string, string, string] | [string, string];
+    columnRatios?: [number, number, number] | [number, number];
     uppercaseParameterLabels?: boolean;
+    /**
+     * When set, this composition applies only from that render-contract version onward. A report
+     * rendering at an earlier version falls back to its layout family's defaults, which is what
+     * preserves the output of reports completed before the layout changed.
+     */
+    sinceRenderContractVersion?: number;
   };
   specializedComposition?:
     | {

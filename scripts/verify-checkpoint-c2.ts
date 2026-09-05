@@ -2,10 +2,11 @@ import { readFile, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
+import type { CompletedSessionSnapshot } from "../src/domain/completion/completed-snapshot";
 import type { ILaboratoryReport, IPatientReportSession } from "../src/domain/models/interfaces";
 import type { RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
-import { resolveDraftSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
+import { resolveCompletedSessionRenderModel, resolveDraftSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
 import { createNativeReportPdf, type NativePdfAssetResolver } from "../src/rendering/native/native-pdf-exporter";
 import { NATIVE_REPORT_THEME } from "../src/rendering/native/theme";
 import type { NativeComposedPage, NativePagePrimitive, NativeTextPrimitive } from "../src/rendering/native/types";
@@ -13,6 +14,7 @@ import {
   NativeCompositionOverflowError,
   STANDARD_PAGE,
   composeStandardNativeReportPage,
+  createStandardNativeCompositionDefinition,
   getAllStandardNativeCompositionDefinitions,
   getStandardNativeCompositionDefinition,
 } from "../src/rendering/native/standard";
@@ -111,7 +113,9 @@ function sessionFor(reports: ILaboratoryReport[]): IPatientReportSession {
 
 function composeAll(session: ResolvedSessionRenderModel): Map<string, NativeComposedPage> {
   return new Map(session.reports.map((report) => {
-    const definition = getStandardNativeCompositionDefinition(report.templateCode);
+    // Resolve at the report's own contract version, exactly as the application composer does,
+    // so a completed report composes with the layout it was issued under.
+    const definition = getStandardNativeCompositionDefinition(report.templateCode, report.renderContractVersion);
     assert(definition, `${report.templateCode} must have a C2 definition`);
     return [report.templateCode, composeStandardNativeReportPage(definition, session, report)];
   }));
@@ -150,7 +154,7 @@ function expectOverflow(
   report: ResolvedReportRenderModel,
   reason: string
 ): void {
-  const definition = getStandardNativeCompositionDefinition(report.templateCode)!;
+  const definition = getStandardNativeCompositionDefinition(report.templateCode, report.renderContractVersion)!;
   let error: unknown;
   try { composeStandardNativeReportPage(definition, session, report); } catch (caught) { error = caught; }
   assert(error instanceof NativeCompositionOverflowError, `${reason} must produce NativeCompositionOverflowError`);
@@ -239,6 +243,258 @@ async function main(): Promise<void> {
   const fecPage = composeAll(fecSession).get("FECALYSIS")!;
   const hpfRenderedResult = textByIdPrefix(fecPage, `result-${hpf.parameterCode}-value`);
   assert(hpfRenderedResult.endsWith("/HPF") && (hpfRenderedResult.match(/\/HPF/g) || []).length === 1, "/HPF suffix must render exactly once in the result");
+
+  // ----- REPORT-QA-02B: Fecalysis client corrections -----
+  // The fixture above deliberately blanks every optional row to prove omission reserves no
+  // primitives, which omits PARASITES. These corrections need the opposite: a Fecalysis report with
+  // its rows populated. So this is a SEPARATE fixture, leaving that omission proof exactly as it is.
+  const fecalysisDefinition = ReportDefinitionRegistry.getDefinition("FECALYSIS")!;
+  const fecalysisComposition = getStandardNativeCompositionDefinition("FECALYSIS")!;
+  const populatedFecPage = composeAll(
+    resolveDraftSessionRenderModel(sessionFor([reportFor(fecalysisDefinition)]))
+  ).get("FECALYSIS")!;
+
+  // 1. COLOR and CONSISTENCY both render uppercase, and neither is uppercased in storage. Every
+  // fixture value below is a declared option in its stored mixed case, so a rendered uppercase
+  // proves the value was uppercased on its way out rather than having arrived that way. The second
+  // fixture carries a multi-word value and a non-first option, which proves the whole value is
+  // uppercased and that nothing here depends on the first declared option.
+  const uppercasedFecFixtures: ReadonlyArray<Readonly<Record<string, string>>> = [
+    { COLOR: "Brown", CONSISTENCY: "Soft" },
+    { COLOR: "Yellowish Brown", CONSISTENCY: "Loose" },
+  ];
+  for (const fixture of uppercasedFecFixtures) {
+    const uppercasedFecReport = reportFor(fecalysisDefinition);
+    for (const [parameterCode, storedValue] of Object.entries(fixture)) {
+      const parameter = fecalysisDefinition.parameters.find(
+        (candidate) => candidate.parameterCode === parameterCode
+      )!;
+      assert(
+        parameter.options!.includes(storedValue) && storedValue !== storedValue.toLocaleUpperCase(),
+        `the ${parameterCode} fixture value "${storedValue}" must be a declared option still in mixed case or this proves nothing`
+      );
+      assert(
+        parameter.resultPresentation?.casing === "Uppercase" &&
+          parameter.resultPresentation?.sinceRenderContractVersion === 2,
+        `FECALYSIS ${parameterCode} must declare the version-2 uppercase result presentation`
+      );
+      uppercasedFecReport.results.find((result) => result.parameterCode === parameterCode)!.resultValue = storedValue;
+    }
+    const uppercasedFecModel = resolveDraftSessionRenderModel(sessionFor([uppercasedFecReport]));
+    const uppercasedFecPage = composeAll(uppercasedFecModel).get("FECALYSIS")!;
+    const uppercasedFecResults = uppercasedFecModel.reports.find(
+      (report) => report.templateCode === "FECALYSIS"
+    )!.results;
+    for (const [parameterCode, storedValue] of Object.entries(fixture)) {
+      assert(
+        textByIdPrefix(uppercasedFecPage, `result-${parameterCode}-value`) === storedValue.toLocaleUpperCase(),
+        `FECALYSIS ${parameterCode} must render "${storedValue}" as "${storedValue.toLocaleUpperCase()}"`
+      );
+      assert(
+        uppercasedFecResults.find((result) => result.parameterCode === parameterCode)!.rawValue === storedValue,
+        `FECALYSIS ${parameterCode} must leave the stored value "${storedValue}" in its entered case`
+      );
+    }
+  }
+
+  // 2. PARASITES / OVA renders italic - the value primitive only, never the examination label. The
+  // default fixture carries the negative phrase; the second carries a detected organism, so both
+  // the "nothing seen" wording and a parasite name are proven to receive the same emphasis.
+  const detectedFecReport = reportFor(fecalysisDefinition);
+  detectedFecReport.results.find((result) => result.parameterCode === "PARASITES")!.resultValue = "ENTAMOEBA COLI";
+  const detectedFecPage = composeAll(
+    resolveDraftSessionRenderModel(sessionFor([detectedFecReport]))
+  ).get("FECALYSIS")!;
+  for (const [page, expected] of [
+    [populatedFecPage, "NO INTESTINAL PARASITES OR OVA SEEN"],
+    [detectedFecPage, "ENTAMOEBA COLI"],
+  ] as const) {
+    assert(textByIdPrefix(page, "result-PARASITES-value") === expected, `FECALYSIS must render the PARASITES value "${expected}"`);
+    const valuePrimitives = page.primitives.filter(
+      (primitive) => primitive.kind === "text" && primitive.id.startsWith("result-PARASITES-value")
+    );
+    assert(valuePrimitives.length > 0, `FECALYSIS must compose a PARASITES result value for "${expected}"`);
+    assert(
+      valuePrimitives.every((primitive) => (primitive as NativeTextPrimitive).italic === true),
+      `FECALYSIS PARASITES result value must render italic for "${expected}"`
+    );
+    assert(
+      page.primitives.every(
+        (primitive) =>
+          primitive.kind !== "text" ||
+          !primitive.id.startsWith("result-PARASITES-label") ||
+          !(primitive as NativeTextPrimitive).italic
+      ),
+      "the PARASITES / OVA examination label must never be italicised"
+    );
+    // Emphasis is scoped to that one result: nothing else on the page may become italic.
+    assert(
+      page.primitives.every(
+        (primitive) =>
+          primitive.kind !== "text" ||
+          primitive.id.startsWith("result-PARASITES-value") ||
+          !(primitive as NativeTextPrimitive).italic
+      ),
+      "no FECALYSIS primitive other than the PARASITES result value may be italic"
+    );
+  }
+
+  // 3. No Fecalysis reference survives composition - not a value, not a cell, not a column header.
+  // Encoding shares the root cause: no parameter declares a referenceRule, and ParameterRow renders
+  // its Ref: element only when a reference actually resolves.
+  assert(
+    fecalysisDefinition.parameters.every((parameter) => !parameter.referenceRule),
+    "no FECALYSIS parameter may declare a referenceRule, so Encoding resolves no Ref: element"
+  );
+  assert(
+    !populatedFecPage.primitives.some((primitive) => primitive.id.includes("-reference")),
+    "FECALYSIS composition must emit no reference primitive on any row"
+  );
+  assert(
+    fecalysisComposition.resultHeaders.length === 2 &&
+      !fecalysisComposition.resultHeaders.some((header) => /NORMAL|REFERENCE/i.test(header)),
+    "FECALYSIS must declare two result columns with no normal-values header"
+  );
+  assert(
+    !populatedFecPage.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "FECALYSIS must compose no third result-column header"
+  );
+
+  // 4. Every other examination keeps its reference behaviour. CHEM_8 is the control: three columns,
+  // its NORMAL VALUES header intact, and reference primitives still composed.
+  const chem8Composition = getStandardNativeCompositionDefinition("CHEM_8")!;
+  assert(chem8Composition.resultHeaders.length === 3, "CHEM_8 must keep three result columns");
+  assert(
+    chem8Composition.resultHeaders.some((header) => /NORMAL/i.test(header)),
+    "CHEM_8 must keep its NORMAL VALUES header"
+  );
+  const chem8Page = pages.get("CHEM_8")!;
+  assert(
+    chem8Page.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "CHEM_8 must keep its third result-column header"
+  );
+  assert(
+    chem8Page.primitives.some((primitive) => primitive.id.includes("-reference")),
+    "CHEM_8 must still emit reference primitives"
+  );
+
+  // 5. A Fecalysis report completed BEFORE the corrections must render exactly as it was issued.
+  // The presentation contract is versioned: the corrections are declared from version 2, and a
+  // snapshot frozen at version 1 resolves the version-1 presentation. Both versions are composed
+  // from the same snapshot content here, so any difference is attributable to the frozen version
+  // alone.
+  // The realistic completed value: the approved automatic default. It wraps onto two lines in the
+  // version-1 result column and fits on one in the wider version-2 column, so the frozen version
+  // changes the page geometry as well as the styling.
+  const completedFecReport = reportFor(fecalysisDefinition);
+  const frozenFecSnapshot = (renderContractVersion: number): CompletedSessionSnapshot => ({
+    snapshotVersion: 2,
+    completedAt: "2026-01-01T00:00:00.000Z",
+    demographics: sessionFor([completedFecReport]).demographics,
+    reports: [
+      {
+        templateCode: "FECALYSIS",
+        templateTitle: fecalysisDefinition.templateTitle,
+        rendererFamily: fecalysisDefinition.rendererFamily as CompletedSessionSnapshot["reports"][number]["rendererFamily"],
+        renderContractVersion,
+        printedTitle: fecalysisDefinition.reportTitle ?? null,
+        staticContentVersion: "standard-report-v1",
+        requestedBy: fecalysisDefinition.requestedByPolicy.defaultPhysician ?? "",
+        additionalFields: {},
+        results: fecalysisDefinition.parameters.map((parameter) => ({
+          parameterCode: parameter.parameterCode,
+          parameterName: parameter.parameterName,
+          rawResultValue: inputValue(parameter),
+          formattedResultValue: inputValue(parameter),
+          referenceDisplay: null,
+          referenceRule: null,
+          unit: parameter.unit ?? null,
+          suffix: parameter.suffixSpec?.suffix ?? null,
+          evaluationOutcome: "NoEvaluation",
+          computationMetadata: null,
+          displayOrder: parameter.displayOrder,
+        })),
+        remarks: "",
+        reagentKitInfo: null,
+        repeatableFindings: {},
+        signatories: [pathologist()],
+      },
+    ],
+  });
+
+  const legacyFecPage = composeAll(resolveCompletedSessionRenderModel(frozenFecSnapshot(1))).get("FECALYSIS")!;
+  const currentFecPage = composeAll(resolveCompletedSessionRenderModel(frozenFecSnapshot(2))).get("FECALYSIS")!;
+
+  // Frozen at version 1: the three-column layout, its NORMAL VALUES header, mixed-case COLOR and CONSISTENCY
+  // and an upright PARASITES value - the exact output that report was issued with.
+  assert(
+    legacyFecPage.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "a FECALYSIS report completed at contract v1 must keep its third result-column header"
+  );
+  assert(
+    textByIdPrefix(legacyFecPage, "result-COLOR-value") === "Brown",
+    "a FECALYSIS report completed at contract v1 must keep its mixed-case COLOR value"
+  );
+  assert(
+    textByIdPrefix(legacyFecPage, "result-CONSISTENCY-value") === "Soft",
+    "a FECALYSIS report completed at contract v1 must keep its mixed-case CONSISTENCY value"
+  );
+  assert(
+    legacyFecPage.primitives.every(
+      (primitive) => primitive.kind !== "text" || !(primitive as NativeTextPrimitive).italic
+    ),
+    "a FECALYSIS report completed at contract v1 must contain no italic primitive"
+  );
+
+  // Frozen at version 2: the corrections apply, from identical snapshot content.
+  assert(
+    !currentFecPage.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "a FECALYSIS report completed at contract v2 must compose no third result-column header"
+  );
+  assert(
+    textByIdPrefix(currentFecPage, "result-COLOR-value") === "BROWN",
+    "a FECALYSIS report completed at contract v2 must render COLOR uppercase"
+  );
+  assert(
+    textByIdPrefix(currentFecPage, "result-CONSISTENCY-value") === "SOFT",
+    "a FECALYSIS report completed at contract v2 must render CONSISTENCY uppercase"
+  );
+  assert(
+    currentFecPage.primitives.some(
+      (primitive) =>
+        primitive.id.startsWith("result-PARASITES-value") && (primitive as NativeTextPrimitive).italic === true
+    ),
+    "a FECALYSIS report completed at contract v2 must render the PARASITES value italic"
+  );
+
+  // The two must actually differ, or the version gate is not doing anything.
+  assert(
+    legacyFecPage.contentBottomMm !== currentFecPage.contentBottomMm,
+    "the two frozen contract versions must produce different Fecalysis geometry"
+  );
+
+  // 6. Column declarations fail closed. A header/ratio length mismatch and a non-positive ratio are
+  // both declaration errors and must be rejected at resolution rather than composed.
+  for (const [broken, reason] of [
+    [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, 30, 30] as [number, number, number] }, "length mismatch"],
+    [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, 0] as [number, number] }, "zero ratio"],
+    [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, -60] as [number, number] }, "negative ratio"],
+    [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, Number.NaN] as [number, number] }, "non-finite ratio"],
+  ] as const) {
+    let rejected = false;
+    try {
+      createStandardNativeCompositionDefinition({
+        ...fecalysisDefinition,
+        renderContract: {
+          ...fecalysisDefinition.renderContract!,
+          standardComposition: { ...broken, sinceRenderContractVersion: 1 },
+        },
+      });
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, `an invalid column declaration (${reason}) must be rejected at resolution`);
+  }
   const omitted = fecSession.reports[0].results.filter((result) => result.omission === "Omit");
   assert(omitted.length > 0 && omitted.every((result) => !fecPage.primitives.some((primitive) => primitive.id.startsWith(`result-${result.parameterCode}-`))), "omitted Fecalysis rows must reserve no primitives");
 

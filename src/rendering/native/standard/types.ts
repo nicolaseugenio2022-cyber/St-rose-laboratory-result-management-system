@@ -11,8 +11,8 @@ export interface StandardNativeCompositionDefinition {
   templateCode: string;
   layoutFamily: StandardNativeLayoutFamily;
   demographicsVariant: "Standard" | "CBC";
-  resultHeaders: [string, string, string];
-  columnRatios: [number, number, number];
+  resultHeaders: [string, string, string] | [string, string];
+  columnRatios: [number, number, number] | [number, number];
   uppercaseParameterLabels: boolean;
   showRemarks: boolean;
   showKitInfo: boolean;

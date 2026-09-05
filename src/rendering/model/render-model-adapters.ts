@@ -11,7 +11,11 @@ import type {
 } from "@/domain/models/interfaces";
 import { getResultDisplayValue } from "@/domain/models/interfaces";
 import type { PatientDemographics, SignatorySnapshot } from "@/domain/types";
-import type { ClinicalReportDefinition, ParameterSpec } from "@/domain/types/report-definition";
+import type {
+  ClinicalReportDefinition,
+  ParameterSpec,
+  ResultPresentationSpec,
+} from "@/domain/types/report-definition";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
 import { stripFixedSuffix } from "@/services/formatter-registry";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
@@ -241,6 +245,10 @@ function draftReport(
     evaluationContext: { sex: demographics.sex || null },
     calculationModes: normalizeCalculationModes(report.encodingData?.calculationModes),
   });
+  // A draft always renders at the definition's current contract version.
+  const draftContractVersion = definition.renderContract?.renderContractVersion ?? STANDARD_RENDER_CONTRACT_VERSION;
+  const draftPresentation = (parameter: ParameterSpec) =>
+    appliedPresentation(parameter.resultPresentation, draftContractVersion);
   const results: ResolvedResultRenderModel[] = [...definition.parameters]
     .sort((left, right) => left.displayOrder - right.displayOrder)
     .map((parameter) => {
@@ -252,7 +260,8 @@ function draftReport(
         parameterCode: parameter.parameterCode,
         label: parameter.parameterName,
         rawValue: value.rawResultValue,
-        formattedValue: value.formattedResultValue || "",
+        formattedValue: presentedResultValue(value.formattedResultValue || "", draftPresentation(parameter)),
+        emphasis: draftPresentation(parameter)?.emphasis ?? null,
         referenceDisplay: resolveReferenceDisplay(
           parameter.referenceRule,
           demographics.sex || null,
@@ -312,8 +321,15 @@ function validatedSnapshotMetadata(
   if (report.renderContractVersion == null || report.printedTitle === undefined || !report.staticContentVersion) {
     throw new Error(`Completed snapshot v2 report '${report.templateCode}' is missing frozen render metadata.`);
   }
+  // A frozen version is acceptable when it is the current contract, or one the definition
+  // explicitly declares it still renders faithfully. Anything else remains a hard error: rendering
+  // a report under a contract nobody declared support for is exactly the silent drift this guards.
+  const supportedVersions = [
+    current.renderContractVersion,
+    ...(definition.renderContract?.supersededRenderContractVersions ?? []),
+  ];
   if (
-    report.renderContractVersion !== current.renderContractVersion ||
+    !supportedVersions.includes(report.renderContractVersion) ||
     report.staticContentVersion !== current.staticContentVersion
   ) {
     throw new Error(`Unsupported frozen render contract for '${report.templateCode}'.`);
@@ -323,6 +339,35 @@ function validatedSnapshotMetadata(
     printedTitle: report.printedTitle,
     staticContentVersion: report.staticContentVersion,
   };
+  // NOTE: the returned version is the FROZEN one, not the current one, so every downstream
+  // presentation decision for a completed report is made against the contract it was issued under.
+}
+
+/**
+ * Applies a parameter's declared result presentation to the reported value.
+ *
+ * Casing is resolved HERE, at the single boundary both render origins pass through, rather than in
+ * composition. Doing it here means the value the renderers measure is the value they paint, and it
+ * means a completed report presents identically to the draft it was frozen from - the snapshot's
+ * stored bytes are never rewritten, only presented. Emphasis cannot be folded into a string and is
+ * carried alongside it for the renderers to resolve.
+ */
+function appliedPresentation(
+  presentation: ResultPresentationSpec | null | undefined,
+  renderContractVersion: number
+): ResultPresentationSpec | null {
+  if (!presentation) return null;
+  // A completed report renders at the contract version frozen into its snapshot. A presentation
+  // introduced after that version is not applied, so a report already issued keeps the exact output
+  // it was issued with; drafts and newly completed reports render at the current version.
+  return renderContractVersion >= presentation.sinceRenderContractVersion ? presentation : null;
+}
+
+function presentedResultValue(
+  value: string,
+  presentation: ResultPresentationSpec | null | undefined
+): string {
+  return presentation?.casing === "Uppercase" ? value.toLocaleUpperCase() : value;
 }
 
 function completedReport(
@@ -331,11 +376,24 @@ function completedReport(
   definition: ClinicalReportDefinition
 ): ResolvedReportRenderModel {
   const metadata = validatedSnapshotMetadata(snapshot, report, definition);
+  // The snapshot is the authority for WHAT a completed report says, and the contract version it
+  // froze is the authority for HOW it is presented. A presentation introduced after that version is
+  // not applied here, so a previously completed report renders exactly as it was issued.
+  const presentationByParameterCode = new Map(
+    definition.parameters.map((parameter) => [
+      parameter.parameterCode,
+      appliedPresentation(parameter.resultPresentation, metadata.renderContractVersion),
+    ])
+  );
   const results: ResolvedResultRenderModel[] = report.results.map((result) => ({
     parameterCode: result.parameterCode,
     label: result.parameterName,
     rawValue: result.rawResultValue,
-    formattedValue: result.formattedResultValue,
+    formattedValue: presentedResultValue(
+      result.formattedResultValue,
+      presentationByParameterCode.get(result.parameterCode)
+    ),
+    emphasis: presentationByParameterCode.get(result.parameterCode)?.emphasis ?? null,
     referenceDisplay: result.referenceDisplay,
     unit: result.unit,
     unitDisplay: result.suffix ? null : result.unit,
@@ -421,11 +479,21 @@ function legacyCompletedReport(
   definition: ClinicalReportDefinition,
   demographics: PatientDemographics
 ): ResolvedReportRenderModel {
+  // Legacy completed reports carry no frozen contract metadata at all, so they resolve at the
+  // baseline version and never acquire a presentation introduced later.
+  const legacyContractVersion = STANDARD_RENDER_CONTRACT_VERSION;
+  const legacyPresentation = new Map(
+    definition.parameters.map((parameter) => [
+      parameter.parameterCode,
+      appliedPresentation(parameter.resultPresentation, legacyContractVersion),
+    ])
+  );
   const results: ResolvedResultRenderModel[] = report.results.map((result) => ({
     parameterCode: result.parameterCode,
     label: result.parameterName,
     rawValue: result.rawResultValue ?? result.resultValue,
-    formattedValue: getResultDisplayValue(result),
+    formattedValue: presentedResultValue(getResultDisplayValue(result), legacyPresentation.get(result.parameterCode)),
+    emphasis: legacyPresentation.get(result.parameterCode)?.emphasis ?? null,
     referenceDisplay: null,
     unit: result.unit || null,
     unitDisplay: legacyUnitDisplay(getResultDisplayValue(result), result.unit),

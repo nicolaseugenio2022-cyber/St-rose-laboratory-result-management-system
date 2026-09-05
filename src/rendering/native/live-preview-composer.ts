@@ -15,7 +15,10 @@ export type NativeLivePreviewCompositionDefinition =
   | StandardNativeCompositionDefinition
   | SpecializedNativeCompositionDefinition;
 
-type LivePreviewDefinitionResolver = (templateCode: string) => NativeLivePreviewCompositionDefinition | null;
+type LivePreviewDefinitionResolver = (
+  templateCode: string,
+  renderContractVersion: number
+) => NativeLivePreviewCompositionDefinition | null;
 type LivePreviewComposer = (
   definition: NativeLivePreviewCompositionDefinition,
   session: ResolvedSessionRenderModel,
@@ -49,7 +52,9 @@ const LIVE_PREVIEW_COMPOSERS: Readonly<Record<
 export function getNativeLivePreviewCompositionDefinition(
   report: ResolvedReportRenderModel
 ): NativeLivePreviewCompositionDefinition | null {
-  return LIVE_PREVIEW_DEFINITION_RESOLVERS[report.layoutFamily](report.templateCode);
+  // The report's own contract version selects the composition, so a completed report keeps the
+  // column layout it was issued with while a draft resolves the definition's current one.
+  return LIVE_PREVIEW_DEFINITION_RESOLVERS[report.layoutFamily](report.templateCode, report.renderContractVersion);
 }
 
 export function composeNativeLivePreviewReportPage(

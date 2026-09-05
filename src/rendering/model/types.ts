@@ -40,6 +40,8 @@ export interface ResolvedResultRenderModel {
   displayOrder: number;
   omission: ResolvedOmissionState;
   conditionalLabel: string | null;
+  /** Resolved from the parameter's declared result presentation; null when unemphasised. */
+  emphasis: "Italic" | null;
 }
 
 export interface ResolvedRequestedByRenderModel {

@@ -2,11 +2,18 @@
 
 > **Specification Status**
 >
-> Draft
+> Maintained detailed specification. Authority is separated by concern:
+> `architecture/report-specifications/Summary.md` governs the client requirements it explicitly
+> records; this document governs the detail where `Summary.md` is silent. See
+> `architecture/README.md`.
 >
 > This document is the authoritative behavioral specification for the Pregnancy Test laboratory report.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -18,8 +25,8 @@
 | Official Template Name | Pregnancy Test (Urine) |
 | Examination Family | Serology & Immunology |
 | Renderer Family | SimpleResult |
-| Source Word Template | Templates/PREG_TEST.docx |
-| Supports Remarks | No |
+| Source Word Template (historical; not in repository) | Templates/PREG_TEST.docx |
+| Supports Remarks | Yes |
 | Requires Kit Information | Yes |
 
 ---
@@ -40,7 +47,7 @@ Records the qualitative urine pregnancy test result.
 | Date | Yes | Current date by default; editable |
 | Address | Yes | Default value; editable |
 | Requested By | Yes | Default physician; editable |
-| Status | Optional | Printed |
+| Status | Not collected | Omitted; not collected in the encoding UI |
 
 ---
 
@@ -125,7 +132,9 @@ Editable to another physician.
 
 # 11. Remarks
 
-Not supported.
+Supported.
+
+No default remarks value. The field starts empty and remains editable.
 
 ---
 
@@ -236,7 +245,7 @@ Allowed values:
 
 AI MUST
 
-- Preserve the official Word layout.
+- Preserve the approved report layout recorded in this specification and `REPORT_RENDERING_ARCHITECTURE.md`.
 - Require reagent kit information.
 - Preserve qualitative dropdown values.
 - Auto-populate default Address.
@@ -256,10 +265,10 @@ AI MUST NOT
 
 | Requirement | Source |
 |-------------|--------|
-| Layout | Word Template |
+| Layout | This specification — historical origin: Word template, not in repository |
 | Result Dropdown | Client Word Comment |
 | Reagent Kit Information | Client Word Comment |
-| Requested By | Word Template |
+| Requested By | This specification — historical origin: Word template, not in repository |
 | Renderer Family | REPORT_REGISTRY_ARCHITECTURE.md |
 
 ---
@@ -287,3 +296,4 @@ None.
 | Version | Date | Notes |
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
+| 1.1 | SHADCN-06D | Reconciled to verified runtime (`src/domain/definitions/`): Status demographic policy; remarks supported with no default; visual-authority statement |

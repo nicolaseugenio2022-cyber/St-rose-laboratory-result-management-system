@@ -98,7 +98,9 @@ jobs:
             verify-personnel-directory.ts
             verify-personnel-signatures.ts
             verify-recovery-flow.ts
+            verify-registry-cache.ts
             verify-signatory-resolution.ts
+            verify-supabase-transport.ts
             verify-workspace-signatory-boundary.ts
           )
 

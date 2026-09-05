@@ -167,8 +167,54 @@ function verifyServerOnlyAuditBoundary(): void {
   }
 }
 
+/**
+ * Comments removed before any authorization predicate reads the source.
+ *
+ * Every check in `verifyAuditActionAuthorization` is a raw-text `test()`, so a comment naming
+ * `resolveAuthenticatedRequest()`, a role rule or a status check would satisfy it while the
+ * executable guard no longer did - the assertion would pass on prose. Line comments go to the end
+ * of the line and block comments to their terminator; string contents are left alone, because the
+ * predicates below match string literals such as `role: profile.role`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
 function verifyAuditActionAuthorization(): void {
-  const actionSource = read("src/features/server-boundary/audit-actions.ts");
+  const actionSource = stripComments(read("src/features/server-boundary/audit-actions.ts"));
   const inputSource = read("src/features/server-boundary/audit-action-inputs.ts");
   const callerGuard = /async\s+function\s+requireAuditCaller\b[\s\S]*?(?=\nexport\s+async\s+function)/.exec(
     actionSource
@@ -179,14 +225,31 @@ function verifyAuditActionAuthorization(): void {
     "the audit action must not reuse requireOperationalCaller"
   );
   assert(callerGuard, "the audit action must define its own caller guard");
+  // SHADCN-07C1-R1: session and profile both come from ONE resolveAuthenticatedRequest(). React
+  // cache() is a per-render memo and is not a dependable dedupe inside a Server Action, so the
+  // earlier getSession() + getSessionUser() pair could genuinely read the user row twice. The
+  // intent of this assertion is unchanged and is what it always was - the role is derived
+  // server-side from the session-resolved profile and never from client input - so only the
+  // mechanism conjunct moves. Every other conjunct is carried verbatim.
+  //
+  // The resolution is COUNTED, not merely detected: a presence test would pass just as happily on
+  // a guard that resolved twice, which is exactly the defect being corrected.
+  const auditResolutionCalls = (
+    callerGuard.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
   assert(
-    /getSession\s*\(\s*\)/.test(callerGuard) &&
-      /getUserById\s*\(\s*session\.userId\s*\)/.test(callerGuard) &&
+    auditResolutionCalls === 1 &&
       /profile\.status\s*!==\s*["']Active["']/.test(callerGuard) &&
       /profile\.role\s*!==\s*["']Admin["']/.test(callerGuard) &&
       /profile\.role\s*!==\s*["']Developer["']/.test(callerGuard) &&
       /return\s*\{\s*role:\s*profile\.role\s*\}/.test(callerGuard),
-    "the audit action guard must derive and authorize the caller role from the session profile"
+    "the audit action guard must resolve the request exactly once and authorize the caller role from that profile"
+  );
+  assert(
+    !/getSessionUser\s*\(/.test(actionSource) &&
+      !/getSession\s*\(/.test(actionSource) &&
+      !/getUserById/.test(actionSource),
+    "the audit action must not re-read the session or user profile it already resolved for this request"
   );
   assert(
     !/^\s*(?:role|[A-Za-z_$][\w$]*role[\w$]*)\s*:/im.test(inputSource),
@@ -647,7 +710,10 @@ function verifyFailedAuthenticationAuditWriter(): void {
 }
 
 function verifyAuthenticationSuccessAuditWriter(): void {
-  const source = read("src/services/userService.ts");
+  // Comment-stripped before extraction, ordering and counting alike. Every predicate below reads
+  // raw text, so a commented-out authentication sequence could satisfy the emission count and the
+  // session-then-audit ordering while the executable login path no longer did.
+  const source = stripComments(read("src/services/userService.ts"));
   const helper = /private\s+async\s+emitAuthenticationSuccess\b[\s\S]*?(?=\n\s*private\s+async\s+emitAuthenticationFailure\b)/.exec(
     source
   )?.[0];
@@ -717,20 +783,124 @@ function verifyAuthenticationSuccessAuditWriter(): void {
     "the successful-authentication persistence log must not expose identity, credential, database, payload, or client-IP data"
   );
 
+  // SHADCN-07B3: AuthenticationSucceeded now means credentials were verified AND createSession()
+  // completed. Correct credentials alone are not a successful login, so the emit no longer lives in
+  // authenticate() - it lives in loginAction, after the session write. The guarantee this block
+  // protects is unchanged in substance and strengthened in reach: a rejected login still cannot
+  // emit success, and now neither can a login whose session was never issued.
   const authenticate = /async\s+authenticate\b[\s\S]*?(?=\n\s*async\s+changeFirstLoginPassword\b)/.exec(
     source
   )?.[0];
   assert(authenticate, "UserService.authenticate must remain present");
   const rejectionIndex = authenticate.indexOf("throw new InvalidCredentialsError();");
-  const successEmitIndex = authenticate.indexOf(
-    "await this.emitAuthenticationSuccess(record);"
-  );
   const returnIndex = authenticate.indexOf("return toUser(record);");
   assert(
-    rejectionIndex !== -1 &&
-      successEmitIndex > rejectionIndex &&
-      returnIndex > successEmitIndex,
-    "successful-authentication auditing must run after rejection and before return so rejected logins can never emit success"
+    rejectionIndex !== -1 && returnIndex > rejectionIndex,
+    "authenticate must still reject invalid credentials before returning an authenticated user"
+  );
+  assert(
+    !authenticate.includes("emitAuthenticationSuccess"),
+    "authenticate must not emit success itself; verified credentials alone are not a completed login"
+  );
+
+  // The single exposed writer, delegating to the existing pinned helper rather than rebuilding the
+  // event, so the payload and the swallow-without-retry behaviour stay the ones asserted above.
+  const exposedWriter = /async\s+emitAuthenticatedSessionEstablished\b[\s\S]*?\n  \}/.exec(source)?.[0];
+  assert(
+    exposedWriter && /await\s+this\.emitAuthenticationSuccess\(user\);/.test(exposedWriter),
+    "the exposed success writer must delegate to the single existing audit helper"
+  );
+  assert(
+    (source.match(/this\.emitAuthenticationSuccess\(/g) ?? []).length === 1,
+    "exactly one call site may attempt the successful-authentication audit"
+  );
+
+  // loginAction ordering: credentials, then session, then the audit, then redirect - and the
+  // redirect stays outside the catch so a failure cannot be reported as a completed login.
+  const loginActionSource = /export\s+async\s+function\s+loginAction\b[\s\S]*?\n\}/.exec(
+    stripComments(read("src/features/auth/authActions.ts"))
+  )?.[0];
+  assert(loginActionSource, "loginAction must remain present");
+  const credentialIndex = loginActionSource.indexOf("userService.authenticate(");
+  const sessionIndex = loginActionSource.indexOf("await createSession(user, rememberMe);");
+  const auditIndex = loginActionSource.indexOf(
+    "await userService.emitAuthenticatedSessionEstablished(user);"
+  );
+  const catchIndex = loginActionSource.indexOf("} catch (error: unknown) {");
+  const redirectIndex = loginActionSource.indexOf("redirect(destination);");
+  assert(
+    credentialIndex !== -1 &&
+      sessionIndex > credentialIndex &&
+      auditIndex > sessionIndex &&
+      catchIndex > auditIndex,
+    "loginAction must verify credentials, then establish the session, then audit success - all before the catch"
+  );
+  // The catch block is BOUNDED, because "after the catch opened" is not "outside the catch": a
+  // redirect sited inside the catch body also has an index greater than catchIndex, so the previous
+  // form passed for the exact arrangement its message forbids. Brace-match from the catch body to
+  // its closing brace and require the redirect beyond it.
+  const catchBodyStart = loginActionSource.indexOf("{", catchIndex + 1);
+  let catchDepth = 0;
+  let catchEndIndex = -1;
+  for (let i = catchBodyStart; i >= 0 && i < loginActionSource.length; i++) {
+    if (loginActionSource[i] === "{") catchDepth++;
+    else if (loginActionSource[i] === "}" && --catchDepth === 0) {
+      catchEndIndex = i;
+      break;
+    }
+  }
+  assert(
+    catchBodyStart > catchIndex && catchEndIndex > catchBodyStart && redirectIndex > catchEndIndex,
+    "loginAction must redirect outside the catch"
+  );
+  assert(
+    (loginActionSource.match(/emitAuthenticatedSessionEstablished/g) ?? []).length === 1,
+    "loginAction must attempt the success audit exactly once, only on the established-session path"
+  );
+  // The audit must be UNREACHABLE when createSession throws, and index ordering alone does not
+  // prove that: wrapping the session write in its own swallowing try would keep every index in
+  // order while letting a failed session emit a success row - the QA-01R defect in a new shape.
+  // Adjacency inside the same try is the property that actually forbids it, so nothing but
+  // whitespace and comments may separate the two statements.
+  const betweenSessionAndAudit = loginActionSource.slice(
+    sessionIndex + "await createSession(user, rememberMe);".length,
+    auditIndex
+  );
+  assert(
+    !/\btry\b|\bcatch\b|[{}]/.test(betweenSessionAndAudit),
+    "nothing may sit between establishing the session and auditing success; an intervening catch would let a failed session write emit a false AuthenticationSucceeded"
+  );
+
+  // The non-credential diagnostic is the SHADCN-07B1 sanitized shape, and carries nothing else.
+  //
+  // Bound to the catch body, and required to be the ONLY logger in it. Selecting the first
+  // console.error in the whole action let an earlier safe logger stand in for an unsafe one sited
+  // later, and neither probe rejected a bare `error` argument - so
+  // `console.error("login failed", describeErrorShape(error), error)` passed while writing the raw
+  // value this assertion exists to keep out of the log.
+  const catchBody = loginActionSource.slice(catchBodyStart, catchEndIndex + 1);
+  const catchLogCalls = catchBody.match(/console\.error\([\s\S]*?\);/g) ?? [];
+  assert(
+    catchLogCalls.length === 1,
+    "loginAction's catch must contain exactly one diagnostic logger, so no later logger can bypass the checks below"
+  );
+  const loginLogCall = catchLogCalls[0];
+  assert(
+    /describeErrorShape\(error\)/.test(loginLogCall) && !/error\.(name|message|stack)/.test(loginActionSource),
+    "loginAction must diagnose a non-credential failure through describeErrorShape, never a raw error field"
+  );
+  // With the sanitized wrapper removed, no reference to the caught value may remain in the call.
+  // The callee is dropped first: `console.error` itself contains `error` after a word boundary.
+  const loginLogArguments = loginLogCall
+    .replace(/^console\.error\(/, "")
+    .replace(/describeErrorShape\(\s*error\s*\)/g, "");
+  assert(
+    !/\berror\b/.test(loginLogArguments),
+    "the loginAction failure log must pass the caught value only through describeErrorShape, never alongside it"
+  );
+  assert(
+    !/username|password|passwordValue|formData|token|cookie|secret|hash|answer/i.test(loginLogCall),
+    "the loginAction failure log must carry no credential, session or form value"
   );
 }
 

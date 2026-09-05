@@ -66,6 +66,50 @@ assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bano
 assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bauthenticated\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from authenticated");
 
 const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/app/(dashboard)/workspace/_components/GuidedWorkspace.tsx"), "utf8").replace(/\r\n/g, "\n");
+
+/**
+ * Remove every comment, for the ordering assertions that read this component positionally.
+ *
+ * Scanned character by character rather than pattern-replaced: a line-comment regex would take any
+ * code preceding the `//` on the same line. String contents are preserved, since the predicates
+ * below match literals such as `clearWorkspaceRecovery();`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
 assert(!guidedWorkspaceSource.includes("AccessionNumberGenerator.generate"), "GuidedWorkspace no longer generates accession numbers client-side");
 assert(!guidedWorkspaceSource.includes("p-01"), "GuidedWorkspace contains no hardcoded placeholder personnel id");
 assert(!/(?:const|let|var)\s+(?:\[\s*)?availablePersonnel(?:\s*,[^\]]*)?\]?\s*=\s*(?:useState<[^>]+>\s*\()?\s*\[\s*\{[\s\S]*/.test(guidedWorkspaceSource), "GuidedWorkspace contains no literal availablePersonnel array of personnel objects");
@@ -721,8 +765,90 @@ const recoverySaveEffect = guidedWorkspaceSource.match(/useEffect\(\(\) => \{\n 
 assert(recoverySaveEffect.length > 0, "GuidedWorkspace recovery save effect region is non-empty");
 assert(recoverySaveEffect.includes('if (session.accessionNumber !== null || session.status !== "Draft") return;'), "GuidedWorkspace never writes recovery for a persisted session");
 assert(recoverySaveEffect.indexOf("saveWorkspaceRecovery(") > recoverySaveEffect.indexOf("if (reopenSessionId || isReplacementMode) return;"), "GuidedWorkspace never writes recovery for a reopened or Replacement Mode session");
-for (const clearSite of ["saveDraftAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();", "completeSessionAction({ session: toSessionTransport(session) });\n      clearWorkspaceRecovery();"]) {
-  assert(guidedWorkspaceSource.includes(clearSite), "GuidedWorkspace clears recovery immediately after the successful persistence call it follows");
+// SHADCN-07B2: the persistence actions return a typed result instead of throwing, so the clear can
+// no longer sit on the line after the call - a returned failure would fall straight through it and
+// wipe the operator's only copy of unsaved work. "Immediately after the call" therefore becomes
+// "only on the success branch of the call", which is the guarantee the original pin was buying.
+// This is checked for EVERY occurrence of each call, not just the first, and requires a failure
+// branch that RETURNS between the call and the clear - strictly stronger than the adjacency pin.
+// SHADCN-07B2 safe disclosure, client side. Neither operational surface may put a caught value's
+// own text in front of the operator. In production that text is not even the real error - Next.js
+// has already replaced a thrown Server Action message with its redaction string and an opaque
+// digest - and in development it can carry server internals. Expected refusals now arrive as a
+// typed result carrying application-authored wording, so a `.message` read here is always either
+// a leak or a lie. The digest is included: it identifies a server log line and belongs in a
+// support reference, never in an inline error message.
+for (const [surfaceLabel, surfaceSource] of [
+  ["GuidedWorkspace", guidedWorkspaceSource],
+  ["SessionHistoryView", sessionHistorySource],
+] as [string, string][]) {
+  // Member access is not the only spelling. Destructuring the message out, or coercing the value
+  // into a string, discloses exactly the same text while matching none of the four reads above.
+  for (const disclosureField of [
+    ".message",
+    ".stack",
+    ".digest",
+    ".cause",
+    "String(error)",
+    "${error}",
+    "{ message }",
+  ]) {
+    assert(
+      !surfaceSource.includes(disclosureField),
+      `${surfaceLabel} never surfaces ${disclosureField} from a caught value to the operator`
+    );
+  }
+}
+
+const recoveryClearingCallSites: [string, string][] = [
+  ["saveDraftAction({ session: toSessionTransport(session) });", "saved"],
+  ["completeSessionAction({ session: toSessionTransport(session) });", "completed"],
+];
+// Comment-free, and every index in this block comes from that one copy so they share a coordinate
+// space. These are positive, ordering-sensitive assertions over a component whose failure branches
+// carry explanatory comments, so raw text would let a commented-out persistence call, clear, or
+// failure branch stand in for the executable one.
+const guidedWorkspaceLive = stripComments(guidedWorkspaceSource);
+for (const [callSite, resultName] of recoveryClearingCallSites) {
+  const callIndices: number[] = [];
+  for (
+    let found = guidedWorkspaceLive.indexOf(callSite);
+    found >= 0;
+    found = guidedWorkspaceLive.indexOf(callSite, found + callSite.length)
+  ) {
+    callIndices.push(found);
+  }
+  assert(callIndices.length > 0, `GuidedWorkspace still persists through ${callSite}`);
+  for (const callIndex of callIndices) {
+    const clearIndex = guidedWorkspaceLive.indexOf("clearWorkspaceRecovery();", callIndex);
+    assert(clearIndex > callIndex, "GuidedWorkspace clears recovery after the persistence call it follows");
+    const betweenCallAndClear = guidedWorkspaceLive.slice(callIndex + callSite.length, clearIndex);
+    // `includes("return;")` on the whole span matched a `return;` belonging to ANY branch between
+    // the call and the clear, so the two probes proved only co-occurrence. The early return has to
+    // be inside the failure branch itself, or the clear below is not actually success-only: take
+    // the guard's own body - it contains no nested block - and require the return there.
+    const guardOpen = `if (!${resultName}.success) {`;
+    const guardIndex = betweenCallAndClear.indexOf(guardOpen);
+    const guardBody =
+      guardIndex < 0
+        ? ""
+        : betweenCallAndClear.slice(guardIndex + guardOpen.length).split("}")[0];
+    // The guard must sit at the CALL's own nesting level. Taking the first occurrence anywhere in
+    // the span accepted a dead wrapper - `if (false) { if (!saved.success) { return; } }` resolves
+    // the index, yields a body containing `return;`, and still lets the clear below run. The
+    // verifier would report a success-only clear while a returned failure fell through and wiped
+    // the operator's only copy of unsaved work: precisely what this block exists to prevent.
+    // Same depth-0 requirement `verify-checkpoint-m6c.ts` applies to the purge refusal.
+    let guardDepth = 0;
+    for (let i = 0; i >= 0 && i < guardIndex; i += 1) {
+      if (betweenCallAndClear[i] === "{") guardDepth += 1;
+      else if (betweenCallAndClear[i] === "}") guardDepth -= 1;
+    }
+    assert(
+      guardIndex >= 0 && guardDepth === 0 && guardBody.includes("return;"),
+      "GuidedWorkspace clears recovery only on the success branch of the persistence call it follows"
+    );
+  }
 }
 assert(/const handleDiscardAndExit = useCallback\(\(\) => \{\s*clearWorkspaceRecovery\(\);/.test(guidedWorkspaceSource), "GuidedWorkspace clears recovery when the operator discards and exits");
 const headerSource = readFileSync(join(process.cwd(), "src/app/(app)/_components/Header.tsx"), "utf8").replace(/\r\n/g, "\n");

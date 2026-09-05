@@ -4,11 +4,13 @@ import { DashboardSection } from "../primitives/DashboardSection";
 import { ActionCard } from "../primitives/ActionCard";
 import { SectionLink } from "../primitives/SectionLink";
 import { SessionRow } from "../primitives/SessionRow";
+import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { RecentWork } from "../../_lib/recent-work";
 
 export interface LaboratoryUserDashboardProps {
-  recentWork: RecentWork;
+  /** `null` means the operational read failed transiently - not that there is no recent work. */
+  recentWork: RecentWork | null;
 }
 
 /**
@@ -41,8 +43,8 @@ const viewAllHistory = <SectionLink href="/history">View all history</SectionLin
  * the row they would act on anyway.
  */
 export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardProps) {
-  const drafts = recentWork.myDrafts.slice(0, 5);
-  const completed = recentWork.recentCompleted.slice(0, 5);
+  const drafts = recentWork ? recentWork.myDrafts.slice(0, 5) : [];
+  const completed = recentWork ? recentWork.recentCompleted.slice(0, 5) : [];
 
   return (
     <div className="space-y-4">
@@ -64,6 +66,14 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
           this page the operator is expected to act on. `items-start` keeps each panel the
           height of its own rows - a three-row list must not be stretched to match a five-row
           one with a blank white tail. */}
+      {/* Both panels on this screen are projections of the same operational read, so a transient
+          failure states the fact once rather than repeating it in two adjacent panels. Unavailable
+          is not empty: an empty list here would assert that no unfinished work exists. */}
+      {recentWork === null ? (
+        <Alert variant="warning">
+          Recent activity is temporarily unavailable. Try again shortly.
+        </Alert>
+      ) : (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr] xl:items-start">
         <DashboardSection
           title="Continue your work"
@@ -108,6 +118,7 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
           )}
         </DashboardSection>
       </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import "server-only";
 
-import { getSession } from "@/lib/session";
-import { userService } from "@/services/user-service-instance";
+import { resolveAuthenticatedRequest } from "@/lib/session";
+import type { User } from "@/types/user";
 import { supabaseServer } from "@/lib/supabase/server";
 import { SYSTEM_CONSTANTS } from "@/lib/constants";
 import { isValidSignatureObjectPath } from "@/lib/signature-storage";
@@ -37,8 +37,19 @@ type DenialReason =
   | "malformed_path"
   | "path_not_referenced";
 
-async function emitDenial(reason: DenialReason, session?: { userId: string } | null): Promise<void> {
-  const profile = session ? await userService.getUserById(session.userId) : null;
+/**
+ * SHADCN-07C1-R1: the resolved profile is PASSED IN, never looked up here.
+ *
+ * This helper used to resolve the caller itself, so every denial cost another user read on top of
+ * the request's own resolution. It now mirrors `emitAssetDenial` below, which already took the
+ * profile as a parameter. The emitted fields are unchanged - the caller hands over the same row
+ * the authorization checks used, so actorRole and performedByUsername are exactly what they were.
+ */
+async function emitDenial(
+  reason: DenialReason,
+  session?: { userId: string } | null,
+  profile?: Pick<User, "role" | "username"> | null
+): Promise<void> {
   await auditService.emit({
     category: "SecurityDenial",
     eventType: "SignatureAssetAccessDenied",
@@ -233,28 +244,33 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Authorization: identical for both modes, and unchanged from the original route ─────────
-  const session = await getSession();
+  // SHADCN-07C1-R1: ONE resolution per request. React cache() is a per-render memo and is not a
+  // dependable dedupe inside a Route Handler, so the earlier two-step session-then-profile pair
+  // could genuinely read the user row twice. Resolving once removes the second read outright
+  // instead of relying on a memo, and guarantees session and profile describe the same row.
+  const resolved = await resolveAuthenticatedRequest();
+  const session = resolved?.session ?? null;
+  const profile = resolved?.user ?? null;
   if (!session) {
     await emitDenial("unauthenticated");
     return NextResponse.json({ error: "Authentication is required." }, { status: 403 });
   }
 
   if (session.mustChangePassword || session.mustSetRecovery) {
-    await emitDenial("first_login_incomplete", session);
+    await emitDenial("first_login_incomplete", session, profile);
     return NextResponse.json(
       { error: "First-login account setup must be completed." },
       { status: 403 }
     );
   }
 
-  const profile = await userService.getUserById(session.userId);
   if (!profile || profile.status !== "Active") {
-    await emitDenial(profile ? "account_inactive" : "unauthenticated", session);
+    await emitDenial(profile ? "account_inactive" : "unauthenticated", session, profile);
     return NextResponse.json({ error: "Authentication is required." }, { status: 403 });
   }
 
   if (profile.role !== "Admin" && profile.role !== "User") {
-    await emitDenial("role_not_authorized", session);
+    await emitDenial("role_not_authorized", session, profile);
     return NextResponse.json(
       { error: "This role is not authorized to access signature assets." },
       { status: 403 }

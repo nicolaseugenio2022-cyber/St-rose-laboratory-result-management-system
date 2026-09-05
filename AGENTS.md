@@ -47,7 +47,9 @@ This file is authoritative for **process**:
 
 1. **`AGENTS.md`** — agent operating rules, requirements integrity, scope control, decision handling
 2. **`PROJECT.md`** — confirmed project decisions, milestones, phase gates, render policy
-3. **Approved architecture handoffs** — `architecture/`, ADRs, frozen specifications, approved plans
+3. **Approved architecture handoffs** — `architecture/`, ADRs, frozen specifications, approved plans.
+   Enter through `architecture/README.md`, the single navigation entry point; it routes a task to the
+   minimum set of documents. Do not scan `architecture/` document by document.
 4. **Repository / runtime truth** — what the code and the running system actually do
 5. **Delegated implementation instructions** — a frozen slice contract or delegation prompt
 
@@ -60,9 +62,21 @@ justify overriding them:
 | Authority | Authoritative for |
 |---|---|
 | `LABORATORY_TEMPLATE_SPECIFICATION.md` and other approved clinical / report specifications | **Clinical and report meaning** — parameters, reference rules, evaluation, omissions, titles, signatory requirements |
+| `architecture/report-specifications/Summary.md` | **The client-reported UI, workflow, clinical-display and report-output requirements it explicitly records**, and the acceptance expectations attached to them |
 | **Completed snapshots** | **Frozen historical state and output** for any completed report |
 | `PROJECT.md` | **Project state, milestones, and the authority-by-concern mapping itself** |
 | **Approved architecture handoffs** | **Intended implementation design within their bounded slice** |
+
+**Scope of the `Summary.md` authority.** It governs only the client requirements it **explicitly
+records**. Where `Summary.md` is silent, the detailed clinical and report specifications keep
+authority for exact formulas, parameters, reference ranges, validation and report geometry; ADRs
+keep authority for their approved technical decisions; the security and database documents keep
+authority for security, authorization, privacy, schema and persistence; and completed snapshots
+keep authority for historical completed output. **`Summary.md` never silently alters a formula, a
+reference range, a security rule, database behaviour, or a completed snapshot.** Where it conflicts
+with an older document on a requirement it explicitly records, the older document is reconciled to
+it. Where the conflict concerns a formula, reference range, security rule, database contract or
+completed snapshot and the intended resolution is not explicit, **stop and report it** (§1.4).
 
 **A process rule never authorizes a clinical, report-semantic, or historical-output change.** If
 following a rule in this file would require one, that is a conflict — stop and report it (§1.4).
@@ -338,9 +352,27 @@ hashing, preserve exact-content equality otherwise, and never relax a pin into a
 ## 8. Supabase and production SQL
 
 - Agents **may** inspect the database read-only and **prepare** migrations and SQL.
-- Agents **must not apply production SQL**, DDL, or any schema change.
-- **The user applies approved SQL manually in Supabase.**
-- **Live verification happens afterward**, against the applied state.
+- Outside the bounded SHADCN-07D exception below, agents **must not apply production SQL**, DDL,
+  schema changes, or data migrations. The user applies other approved SQL manually in Supabase.
+- **SHADCN-07D exception — Claude-executed database optimization.** The user has explicitly
+  authorized Claude to apply the exact reviewed SHADCN-07D production database optimization through
+  the project-scoped Supabase MCP. Claude may execute it only after all of the following are true:
+  1. SHADCN-07A produced measurement or query-plan evidence that justifies the change;
+  2. the complete migration and rollback or recovery procedure are frozen;
+  3. a separate, fresh, read-only Claude context has returned a written **APPROVED** verdict with no
+     blocking finding on the exact migration;
+  4. the user has explicitly approved execution of that reviewed migration;
+  5. Claude has re-confirmed the production target by project reference **and** data fingerprint,
+     captured a pre-write baseline for every post-write assertion, and stated the exact blast radius.
+- The implementing Claude context may then apply **only the independently reviewed bytes**. Any
+  material SQL change invalidates the approval and returns the slice to review. Destructive DDL or
+  data mutation requires separate, operation-specific user authorization and a tested recovery path.
+- Claude must stop on any target, baseline, permission, migration-state, or postcondition mismatch.
+  After execution it records the statements applied, provider response, migration state, live
+  post-write evidence, and whether recovery was needed, without exposing secrets or sensitive rows.
+- The user authorizes and approves the reviewed operation but does not need to paste or execute the
+  SQL manually. This exception applies only to SHADCN-07D and creates no standing permission for any
+  other live-database write.
 
 A dashboard project ref is not proof of the target database — confirm by data fingerprint. PostgREST
 may take up to a minute to expose new functions after a schema reload, so immediate absence is not
@@ -379,11 +411,14 @@ authorized publication step.
 
 ## 11. Current program
 
-**A Whole-System User-Centered UI/UX Improvement Program is the approved active direction.**
+**The approved active direction is the SHADCN migration, documentation consolidation, and the
+upcoming backend, API, reliability and performance review (SHADCN-07A).**
 
-- Governing handoff: `architecture/whole-system-user-centered-ui-ux-improvement-plan.md`
-- Focus: usability · visual hierarchy · consistency · speed · accessibility · keyboard efficiency ·
-  responsive behavior · error prevention · workflow clarity · professional clinical polish
+- Enter through `architecture/README.md`.
+- The Whole-System User-Centered UI/UX Improvement Program is **complete and published**
+  (`PROJECT.md`). `architecture/whole-system-user-centered-ui-ux-improvement-plan.md` is
+  **delivered historical guidance**, not a live handoff; its findings, baselines and quoted
+  evidence describe the tree as it was.
 - **Do not redesign working behavior purely for aesthetics.**
 - **UI UX Pro Max** and **Taste** are **advisory skills only**, subordinate to §7.
 

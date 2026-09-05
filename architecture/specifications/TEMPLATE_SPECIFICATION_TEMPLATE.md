@@ -8,7 +8,11 @@
 >
 > It defines the complete business behavior, implementation requirements, and rendering expectations.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -20,7 +24,7 @@
 | Official Template Name | |
 | Examination Family | |
 | Renderer Family | |
-| Source Word Template | Templates/...docx |
+| Source Word Template (historical; not in repository) | Templates/...docx |
 | Current Version | |
 | Last Reviewed | |
 
@@ -36,7 +40,8 @@ Describe the purpose of this laboratory report.
 
 ## Visual Authority
 
-Official Word Template
+This specification, `REPORT_RENDERING_ARCHITECTURE.md` and `PDF_VALIDATION_CHECKLIST.md`.
+(The original Word template is historical source material and is not present in the repository.)
 
 Responsible for:
 
@@ -265,7 +270,7 @@ Copy EVERY client instruction.
 
 Examples
 
-Comments inside Word
+Comments recorded from the historical Word documents (`architecture/report-specifications/` archive)
 
 Handwritten notes
 

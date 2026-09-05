@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import type {
   NativeComposedPage,
+  NativeFontWeight,
   NativeImagePrimitive,
   NativePagePrimitive,
   NativeRichTextPrimitive,
@@ -46,9 +47,27 @@ function encodeStandardPdfFontText(value: string): string {
   return value.replaceAll("\u2013", "\u0096");
 }
 
+/**
+ * jsPDF registers exactly four built-in Helvetica faces - normal, bold, italic and bolditalic - and
+ * will not synthesise an oblique, so weight and italic have to be resolved into one of those four
+ * exact names before the font is selected. Any other string silently falls back.
+ */
+/**
+ * Narrowed to the four styles jsPDF actually has registered for Helvetica. `string` let any future
+ * edit return a name the font does not carry, which jsPDF resolves silently rather than refusing -
+ * so the text would render in the wrong face with nothing to show for it.
+ */
+function pdfFontStyle(
+  primitive: { fontWeight?: NativeFontWeight; italic?: boolean }
+): "normal" | "bold" | "italic" | "bolditalic" {
+  const bold = primitive.fontWeight === "bold";
+  if (bold) return primitive.italic ? "bolditalic" : "bold";
+  return primitive.italic ? "italic" : "normal";
+}
+
 function drawText(pdf: jsPDF, page: NativeComposedPage, primitive: NativeTextPrimitive): void {
   const role = page.fontRoles[primitive.fontRole];
-  pdf.setFont(role?.pdfFamily || "helvetica", primitive.fontWeight === "bold" ? "bold" : "normal");
+  pdf.setFont(role?.pdfFamily || "helvetica", pdfFontStyle(primitive));
   pdf.setFontSize(primitive.fontSizePt);
   setColor(pdf, primitive.color || "#000000", "text");
 
@@ -90,7 +109,7 @@ function drawRichText(pdf: jsPDF, page: NativeComposedPage, primitive: NativeRic
     const baselineY = primitive.y + fontSizeMm(primitive.fontSizePt) * 0.78 + lineIndex * lineHeight;
     for (const run of line) {
       const size = run.fontSizePt || primitive.fontSizePt;
-      pdf.setFont(family, primitive.fontWeight === "bold" ? "bold" : "normal");
+      pdf.setFont(family, pdfFontStyle(primitive));
       pdf.setFontSize(size);
       const encodedText = encodeStandardPdfFontText(run.text);
       pdf.text(encodedText, cursorX, baselineY + (run.riseMm || 0));

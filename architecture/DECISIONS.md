@@ -13,11 +13,11 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 # 2. Confirmed Architectural Decisions Index
 
-### DEC-001: Official Word Templates as Visual Authority
-- **Decision**: The Microsoft Word document templates located in `Templates/` serve as the supreme visual layout authority for laboratory report output.
+### DEC-001: Official Word Templates as Visual Authority — CORRECTED
+- **Decision**: *(Corrected under SHADCN-06D.)* The Microsoft Word document templates formerly in `Templates/` are **historical source material and are not present in the repository**. Current visual authority is separated across `report-specifications/Summary.md` for explicit client acceptance requirements, the maintained detailed specifications, `REPORT_RENDERING_ARCHITECTURE.md`, `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and completed snapshots.
 - **Why**: Ensures printed reports match the physical paper layouts approved by the laboratory client.
-- **Consequence**: HTML/CSS rendering engines must reproduce Word template typography, borders, margins, and headers down to the millimeter.
-- **Related Authority**: `PROJECT.md`, `Templates/*.docx`, `REPORT_RENDERING_ARCHITECTURE.md`.
+- **Consequence**: The Native Report Engine reproduces the approved geometry recorded in `REPORT_RENDERING_ARCHITECTURE.md` and `PDF_VALIDATION_CHECKLIST.md`. Pixel-for-pixel reproduction of the historical Word appearance is not required (`PROJECT.md`).
+- **Related Authority**: `PROJECT.md`, `report-specifications/Summary.md`, `REPORT_RENDERING_ARCHITECTURE.md`, `PDF_VALIDATION_CHECKLIST.md`.
 
 ---
 
@@ -101,7 +101,12 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 ---
 
-### DEC-012: Supabase Auth Ownership of Credentials
+### DEC-012: Supabase Auth Ownership of Credentials — SUPERSEDED
+> **SUPERSEDED under SHADCN-06D by `ADR-005` and `SECURITY_MODEL.md` §5.1.** Authentication is
+> application-owned; Supabase provides database and storage only and Supabase Auth is not used.
+> Passwords are stored as salted scrypt hashes (`user_profiles.password_hash`,
+> `supabase/migrations/02_tables.sql`). The decision text below is retained as the historical record
+> and no longer states current behaviour.
 - **Decision**: Passwords, identity authentication, and token issuance are managed exclusively by Supabase Auth (`auth.users`).
 - **Why**: Guarantees industry-standard identity security and prevents credential leaks.
 - **Consequence**: The application database stores **zero** password hashes. `user_profiles` references `auth.users(id)` via 1:1 primary key.
@@ -239,9 +244,12 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 # 3. Unresolved Open Decisions
 
-> [!WARNING]
+> [!NOTE]
 > **OPEN POLICY DECISION 01: Completed Report Visibility & Edit Scope Across Standard Users**
-> - **Status**: **Awaiting Client Confirmation**.
+> - **Status**: **RESOLVED under SHADCN-06D.** `Admin` and standard `User` accounts may retrieve
+>   completed laboratory reports system-wide under the approved retention policy. This matches
+>   `SECURITY_MODEL.md` §6.2 and `ADR-006`, which already recorded the resolution; only this entry
+>   was stale. The original statement and constraint are retained below as the historical record.
 > - **Recorded Statement**: *"Completed Report visibility and edit scope across different users requires client confirmation."*
 > - **Details**: Current authority documents establish that `Admin` users have full system-wide administrative access. However, they do not state whether standard `User` accounts may view/edit **all completed laboratory reports system-wide** or **only Patient Report Sessions they originally created**.
 > - **Constraint**: To preserve requirements integrity, this scope is **NOT** inferred or hardcoded in architecture. The database RLS architecture permits either policy once client confirmation is provided.
@@ -252,7 +260,7 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 
 | Decision ID | Decision Title | Verification against Authority Baseline | Status |
 |---|---|---|---|
-| **DEC-001** | Word Templates Visual Authority | Aligns 100% with `PROJECT.md` & `REPORT_RENDERING_ARCHITECTURE.md` | ✅ Verified |
+| **DEC-001** | Visual Authority | **Corrected** — the Word templates are historical source material and are not in the repository; visual authority is separated across `report-specifications/Summary.md`, the maintained specifications, `REPORT_RENDERING_ARCHITECTURE.md` and `PDF_VALIDATION_CHECKLIST.md` | ⚠️ Corrected |
 | **DEC-002** | Template Spec Authority | Aligns 100% with `LABORATORY_TEMPLATE_SPECIFICATION.md` | ✅ Verified |
 | **DEC-003** | Report-Centric Architecture | Aligns 100% with `PROJECT.md` & `DOMAIN_MODEL.md` | ✅ Verified |
 | **DEC-004** | Patient Report Session Aggregate | Aligns 100% with frozen `DOMAIN_MODEL.md` | ✅ Verified |
@@ -263,7 +271,7 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 | **DEC-009** | 1 Test = 1 Physical A4 Page | Aligns 100% with frozen `REPORT_RENDERING_ARCHITECTURE.md` | ✅ Verified |
 | **DEC-010** | Dual Branding Separation | Aligns 100% with frozen `UI_ARCHITECTURE.md` | ✅ Verified |
 | **DEC-011** | Auth User vs Personnel Decoupling | Aligns 100% with frozen `DOMAIN_MODEL.md` & `SECURITY_MODEL.md` | ✅ Verified |
-| **DEC-012** | Supabase Auth Ownership | Aligns 100% with frozen `DATABASE_DESIGN.md` & `SECURITY_MODEL.md` | ✅ Verified |
+| **DEC-012** | Supabase Auth Ownership | **Superseded** by `ADR-005` and `SECURITY_MODEL.md` §5.1 — authentication is application-owned with scrypt hashes | ⚠️ Superseded |
 | **DEC-013** | Personnel Signatory Model | Aligns 100% with frozen `DOMAIN_MODEL.md` & `SECURITY_MODEL.md` | ✅ Verified |
 | **DEC-014** | Template Signatory Requirements | Aligns 100% with `LABORATORY_TEMPLATE_SPECIFICATION.md` | ✅ Verified |
 | **DEC-015** | Metadata Input Controls | Aligns 100% with frozen `REPORT_REGISTRY_ARCHITECTURE.md` | ✅ Verified |
@@ -279,4 +287,4 @@ It summarizes key technical and domain decisions, their rationale, consequences,
 | **DEC-025** | Defense-in-Depth Security | Aligns 100% with frozen `SECURITY_MODEL.md` | ✅ Verified |
 | **DEC-026** | Configuration-First Expansion | Aligns 100% with frozen `REPORT_REGISTRY_ARCHITECTURE.md` | ✅ Verified |
 | **DEC-027** | Shared Validation & Clinical Evaluation Pipeline | Single State Discriminator (`EvaluationOutcome` including `Invalid`); syntactic validation precedes clinical reference evaluation | ✅ Verified |
-| **OPEN-01** | Standard User Report Visibility | Recorded as explicit open decision awaiting client confirmation | ⚠️ Recorded |
+| **OPEN-01** | Standard User Report Visibility | **Resolved** — `Admin` and standard `User` accounts may retrieve completed reports system-wide under the approved retention policy (`SECURITY_MODEL.md` §6.2, `ADR-006`) | ✅ Resolved |

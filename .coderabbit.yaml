@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  review_status: true
+
+  auto_review:
+    enabled: false
+    auto_incremental_review: true
+    labels:
+      - coderabbit-review
+
+  path_filters:
+    - "!scratch/**"
+    - "!**/.next/**"
+    - "!**/*.md"
+    - "!package-lock.json"
+
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        Review substantive correctness, security, privacy, reliability,
+        authorization, data minimization, database-query, performance, and
+        error-handling defects.
+
+        Preserve server-side role enforcement, draft ownership, completed
+        retention visibility, canReopen derivation, audit semantics, completed
+        snapshots, clinical behavior, and report output.
+
+        Flag unnecessary session aggregates, snapshots, results, signatories,
+        signature paths, owner identifiers, credentials, secrets, clinical
+        data, or other sensitive fields crossing client boundaries.
+
+        Do not request aesthetic refactors, naming cleanup, speculative
+        abstractions, documentation expansion, or unrelated restructuring.
+
+    - path: "scripts/**"
+      instructions: |
+        Flag weakened, deleted, vacuous, bypassable, masked, or
+        scope-inaccurate assertions. Existing unrelated security, ownership,
+        retention, snapshot, clinical, and report guarantees must remain
+        intact.
+
+    - path: "supabase/**"
+      instructions: |
+        Treat migrations, RLS, functions, schema, and security policies as
+        sensitive boundaries. Flag destructive, unauthorized, unreviewed, or
+        measurement-free changes.
+
+chat:
+  auto_reply: true

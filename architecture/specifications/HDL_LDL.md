@@ -2,11 +2,18 @@
 
 > **Specification Status**
 >
-> Draft
+> Maintained detailed specification. Authority is separated by concern:
+> `architecture/report-specifications/Summary.md` governs the client requirements it explicitly
+> records; this document governs the detail where `Summary.md` is silent. See
+> `architecture/README.md`.
 >
 > This document is the authoritative behavioral specification for the Lipid Profile (HDL/LDL) laboratory report.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -18,7 +25,7 @@
 | Official Template Name | Lipid Profile Panel (HDL/LDL) |
 | Examination Family | Clinical Chemistry |
 | Renderer Family | Tabular |
-| Source Word Template | Templates/HDL_LDL.docx |
+| Source Word Template (historical; not in repository) | Templates/HDL_LDL.docx |
 | Supports Remarks | Yes |
 | Requires Kit Information | No |
 
@@ -40,7 +47,7 @@ Records Lipid Profile (HDL/LDL) laboratory examination results using the officia
 | Date | Yes | Current date by default; editable |
 | Address | Yes | Default value; editable |
 | Requested By | Yes | Default physician; editable |
-| Status | Optional | Printed |
+| Status | Not collected | Omitted; not collected in the encoding UI |
 
 ---
 
@@ -48,10 +55,14 @@ Records Lipid Profile (HDL/LDL) laboratory examination results using the officia
 
 Display order MUST remain exactly:
 
-1. Cholesterol
-2. Triglycerides
-3. HDL
-4. LDL
+1. FBS
+2. Cholesterol
+3. Triglycerides
+4. HDL
+5. LDL
+6. Uric Acid
+7. SGPT
+8. Creatinine
 
 ---
 
@@ -90,6 +101,13 @@ Display order MUST remain exactly:
 ## LDL
 
 < 150 mg/dL
+
+---
+
+## FBS, Uric Acid, SGPT, Creatinine
+
+These four are the shared clinical-chemistry parameters. Their reference values are the same as
+documented in `CHEM_10.md` §6 and are not restated here.
 
 ---
 
@@ -177,8 +195,8 @@ LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)
 | Field | Default | Editable |
 |--------|----------|----------|
 | Address | STA. ROSA, NUEVA ECIJA | Yes |
-| Requested By | Dr. Ralph Roland Asperas | Yes |
-| Remarks | TEST/S RECHECKED; RESULT/S VERIFIED | Yes |
+| Requested By | Dr. Heinz Roland Asperas | Yes |
+| Remarks | (no default) | Yes |
 | Date | Current Date | Yes |
 | Sex | None | Required |
 
@@ -197,7 +215,7 @@ LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)
 
 Default
 
-- Dr. Ralph Roland Asperas
+- Dr. Heinz Roland Asperas
 
 Available
 
@@ -336,7 +354,7 @@ AI MUST
 - Auto-populate default Remarks.
 - Allow editing of default values; direct entry of HDL or LDL is permitted only once the
   operator has switched that parameter to Manual mode.
-- Preserve the official Word layout.
+- Preserve the approved report layout recorded in this specification and `REPORT_RENDERING_ARCHITECTURE.md`.
 
 AI MUST NOT
 
@@ -351,11 +369,11 @@ AI MUST NOT
 
 | Requirement | Source |
 |-------------|--------|
-| Layout | Word Template |
-| Reference Values | Word Template |
+| Layout | This specification — historical origin: Word template, not in repository |
+| Reference Values | This specification — historical origin: Word template, not in repository |
 | Historical/source LDL formula wording | Client Word Comment |
 | Corrected operative LDL formula and calculation-mode policy | DEC-028 / ADR-009 |
-| Default Remarks | Word Template |
+| Default Remarks | This specification — historical origin: Word template, not in repository |
 | Renderer Family | REPORT_REGISTRY_ARCHITECTURE.md |
 
 ---
@@ -385,3 +403,4 @@ None.
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
 | 1.1 | DEC-028 / ADR-009 | LDL operand order corrected to `LDL = Total Cholesterol − active HDL − (Triglycerides ÷ 5)`; independent Auto/Manual calculation modes for formula-bound HDL and LDL; formula-source attribution corrected to separate the historical client wording from the approved operative contract |
+| 1.2 | SHADCN-06D | Reconciled to verified runtime (`src/domain/definitions/`): Status demographic policy; removed unset TEST/S RECHECKED default; parameter set 4 to 8; default physician Dr. Heinz Roland Asperas; visual-authority statement |

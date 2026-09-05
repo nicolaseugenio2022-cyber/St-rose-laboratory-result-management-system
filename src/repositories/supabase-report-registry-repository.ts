@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IReportRegistryRepository } from "./interfaces";
+import { IReportRegistryRepository, markDegradedRegistryResult } from "./interfaces";
 import { 
   IReportTemplate, 
   ITemplateParameter, 
@@ -166,6 +166,21 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
         throw new Error("Failed to load templates from Supabase");
       }
 
+      // A PARTIAL success is not a hydrated registry. Both results below are consumed through
+      // `|| []`, so an errored query silently became "this template has no parameters" or "use the
+      // default signatory requirement" - a complete-LOOKING result, unmarked, which warmCache would
+      // then commit as the authoritative registry and serve for the life of the process. Reports
+      // would render with no result rows and nothing would indicate why. Only `error` and a missing
+      // payload are treated as failures here: how many rows a healthy table holds is not this
+      // method's rule to invent.
+      if (parametersResult.error || !parametersResult.data) {
+        throw new Error("Failed to load template parameters from Supabase");
+      }
+
+      if (requirementsResult.error || !requirementsResult.data) {
+        throw new Error("Failed to load template signatory requirements from Supabase");
+      }
+
       const templates = templatesResult.data.map((dataItem: Record<string, unknown>) => ({
         id: String(dataItem.id || ""),
         templateCode: String(dataItem.template_code || ""),
@@ -215,17 +230,22 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
         },
       }));
     } catch {
-      // Fallback to seed data
-      return INITIAL_REPORT_TEMPLATES.filter((t) => t.isActive).map((template) => ({
-        template,
-        parameters: INITIAL_TEMPLATE_PARAMETERS.filter((p) => p.templateCode === template.templateCode),
-        signatoryRequirement: INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS.find((s) => s.templateCode === template.templateCode) || {
-          id: `default-${template.templateCode}`,
-          templateCode: template.templateCode,
-          requiredPathologistsCount: 1,
-          requiredMedtechsCount: 1,
-        },
-      }));
+      // Fallback to seed data - MARKED, so the service can tell it apart from a database
+      // load. The fallback itself is unchanged: this caller still receives a usable registry.
+      // Marking it only stops it being committed as the complete, authoritative one, which
+      // would otherwise keep serving seed parameters and reference ranges after recovery.
+      return markDegradedRegistryResult(
+        INITIAL_REPORT_TEMPLATES.filter((t) => t.isActive).map((template) => ({
+          template,
+          parameters: INITIAL_TEMPLATE_PARAMETERS.filter((p) => p.templateCode === template.templateCode),
+          signatoryRequirement: INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS.find((s) => s.templateCode === template.templateCode) || {
+            id: `default-${template.templateCode}`,
+            templateCode: template.templateCode,
+            requiredPathologistsCount: 1,
+            requiredMedtechsCount: 1,
+          },
+        }))
+      );
     }
   }
 }

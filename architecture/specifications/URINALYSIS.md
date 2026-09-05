@@ -2,11 +2,18 @@
 
 > **Specification Status**
 >
-> Draft
+> Maintained detailed specification. Authority is separated by concern:
+> `architecture/report-specifications/Summary.md` governs the client requirements it explicitly
+> records; this document governs the detail where `Summary.md` is silent. See
+> `architecture/README.md`.
 >
 > This document is the authoritative behavioral specification for the Urinalysis laboratory report.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -18,7 +25,7 @@
 | Official Template Name | Urinalysis |
 | Examination Family | Clinical Microscopy |
 | Renderer Family | DiagnosticGrid |
-| Source Word Template | Templates/URINALYSIS.docx |
+| Source Word Template (historical; not in repository) | Templates/URINALYSIS.docx |
 | Supports Remarks | Yes |
 | Requires Kit Information | No |
 
@@ -40,7 +47,7 @@ Records routine macroscopic and microscopic urinalysis findings.
 | Date | Yes | Current date by default; editable |
 | Address | Yes | Default value; editable |
 | Requested By | Yes | Editable |
-| Status | Optional | Printed |
+| Status | Not collected | Omitted; not collected in the encoding UI |
 
 ---
 
@@ -93,7 +100,7 @@ Displayed below both columns.
 | Mucus Threads | SingleSelect |
 | Crystal Type | SingleSelect |
 | Crystal Severity | SingleSelect |
-| Other Findings | FreeText |
+| Additional Microscopic Findings | FreeText, repeatable |
 | Remarks | FreeText |
 
 ---
@@ -252,9 +259,10 @@ Examples
 
 ---
 
-## Other Findings
+## Additional Microscopic Findings
 
-Free-text.
+Free-text, and **repeatable** — a patient may present several
+crystals or findings, so entries can be added, removed and reordered rather than confined to one row.
 
 Examples
 
@@ -298,7 +306,7 @@ Amorphous Phosphates: Rare
 
 If another crystal or microscopic finding is observed
 
-Record it under **Other Findings**.
+Record it under **Additional Microscopic Findings**, adding one entry per finding.
 
 Examples
 
@@ -310,7 +318,7 @@ Calcium Oxalate Crystals: Rare
 WBC seen in clumps
 ```
 
-The client prefers additional crystal findings to appear in **Other Findings** instead of expanding the main report layout.
+The client requires that additional crystal findings are not confined to a single row (`Summary.md`, Urinalysis). They are recorded as repeatable **Additional Microscopic Findings** entries rather than by expanding the main report layout.
 
 ---
 
@@ -490,7 +498,7 @@ The client prefers this instead of adding more rows to the report.
 
 AI MUST
 
-- Preserve the official Word layout.
+- Preserve the approved report layout recorded in this specification and `REPORT_RENDERING_ARCHITECTURE.md`.
 - Preserve the two-column arrangement.
 - Preserve "/HPF".
 - Support custom Color and Clarity.
@@ -504,7 +512,7 @@ AI MUST NOT
 - Force numeric validation on WBC/RBC.
 - Remove "/HPF".
 - Display crystal severity when no crystal is selected.
-- Add additional crystal rows.
+- Add additional crystal rows to the fixed two-column grid (repeatable Additional Microscopic Findings entries are the approved mechanism).
 - Modify the approved layout.
 
 ---
@@ -513,7 +521,7 @@ AI MUST NOT
 
 | Requirement | Source |
 |-------------|--------|
-| Layout | Word Template |
+| Layout | This specification — historical origin: Word template, not in repository |
 | Crystal Behavior | Client Word Comment |
 | Dropdown Lists | Client Word Comment |
 | Other Findings | Client Word Comment |
@@ -545,3 +553,4 @@ None.
 | Version | Date | Notes |
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
+| 1.1 | SHADCN-06D | Reconciled to verified runtime (`src/domain/definitions/`): Status demographic policy; additional microscopic findings are repeatable; crystal-row prohibition scoped to the fixed grid; visual-authority statement |

@@ -1,6 +1,6 @@
 import type { IPatientReportSession, ILaboratoryReport } from "@/domain/models/interfaces";
 import type { CompletedReportSnapshot, CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
-import type { SignatorySnapshot } from "@/domain/types";
+import type { PatientDemographics, SignatorySnapshot } from "@/domain/types";
 import { LaboratoryReportDomain } from "@/domain/models/laboratory-report-domain";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 
@@ -56,6 +56,49 @@ export type PatientReportSessionTransport = Omit<
 > & {
   reports: ClientReport[];
   completedSnapshot?: ClientCompletedSnapshot | null;
+};
+
+/**
+ * The session as a LIST ROW is allowed to see it (SHADCN-07C2).
+ *
+ * Dashboard recent work and Completed History render a summary line each: who the patient is, what
+ * the accession is, where the session sits in its lifecycle, and which examinations it carries.
+ * They previously received `PatientReportSessionTransport` - the complete aggregate, with every
+ * `laboratory_results` row, every `report_signatories` row and the frozen `completedSnapshot`
+ * attached - for fifty sessions at a time, so a list view was shipping the entire retained clinical
+ * record of every session it listed in order to draw a name, a badge and three template-code chips.
+ *
+ * This type is the narrow replacement, and it is deliberately a SEPARATE declaration rather than a
+ * `Pick` of the transport, so that widening the full transport can never silently widen the list.
+ * Every field below is one a list interface genuinely renders or filters on; the types are taken
+ * from the existing domain contracts rather than restated, so the DTO cannot drift from them.
+ *
+ * What it CANNOT express, by construction: `results`, `signatories`, any signature reference,
+ * `remarks`, `reagentKitInfo`, `encodingData`, reference-rule snapshots, evaluation detail,
+ * `completedSnapshot`, a complete report object, or any ownership identifier. Preview, Print, PDF
+ * and the Workspace still receive the complete frozen data - loaded on demand, per session, through
+ * their own authorized boundaries.
+ */
+export type SessionListDemographics = Pick<
+  PatientDemographics,
+  "fullName" | "age" | "ageUnit" | "sex" | "requestingPhysician" | "examinationDate"
+>;
+
+/** One examination on a list row: enough for the report count and the template-code chips. */
+export type SessionListReport = Pick<ILaboratoryReport, "id" | "templateCode">;
+
+export type PatientReportSessionListEntry = Pick<
+  IPatientReportSession,
+  "id" | "accessionNumber" | "status" | "createdAt"
+> & {
+  demographics: SessionListDemographics;
+  reports: SessionListReport[];
+  /**
+   * Required rather than optional. The full aggregate leaves both absent for a session that has
+   * neither, which every list consumer then has to re-normalise; a list row always states them.
+   */
+  completedAt: string | null;
+  expiresAt: string | null;
 };
 
 /**

@@ -13,6 +13,8 @@ import { validEntryOnly } from "./evaluation-policies";
  * FECALYSIS:
  * Color: Combobox (options + editable text)
  * Consistency: Combobox (options + editable text)
+ * Color & Consistency: result reported uppercase from render-contract version 2; the stored
+ *   option value keeps its mixed case
  * Pus Cells & Red Cells: FreeText raw input with fixed " /HPF" suffix
  * Bacteria: FreeText with initial default "4+" (editable)
  * Parasites: FreeText with initial automatic default "NO INTESTINAL PARASITES OR OVA SEEN" (editable)
@@ -23,6 +25,24 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "FECALYSIS",
   templateTitle: "Routine Fecalysis",
   reportTitle: "ROUTINE FECALYSIS",
+  // Fecalysis reports no reference or normal values, so it declares a two-column result grid. No
+  // parameter below carries a referenceRule, so the third column could only ever have printed an
+  // empty cell under a "NORMAL VALUES" heading; declaring two columns removes the heading as well
+  // and returns the width to the result. The layout family is unchanged - this is a declared
+  // override of the shared Tabular composition, not a new renderer.
+  renderContract: {
+    // Version 2 carries the approved client corrections. Version 1 - the three-column layout with
+    // the NORMAL VALUES header - remains supported so every Fecalysis report completed before this
+    // change renders byte-for-byte as it was issued.
+    renderContractVersion: 2,
+    supersededRenderContractVersions: [1],
+    staticContentVersion: "standard-report-v1",
+    standardComposition: {
+      resultHeaders: ["EXAMINATION", "RESULT"],
+      columnRatios: [40, 60],
+      sinceRenderContractVersion: 2,
+    },
+  },
   examinationFamily: "Clinical Microscopy",
   rendererFamily: "Tabular",
   parameters: [
@@ -40,6 +60,9 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
         "Red",
         "Reddish Brown",
       ],
+      // The stored value keeps the mixed-case option exactly as selected or typed; only the
+      // reported value is uppercased, so "Brown" is persisted and BROWN is printed.
+      resultPresentation: { casing: "Uppercase", sinceRenderContractVersion: 2 },
       isRequired: true,
       isSelectable: true,
       displayOrder: 1,
@@ -50,6 +73,9 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
       parameterName: "Consistency",
       inputType: "Combobox",
       options: ["Soft", "Loose", "Semi-Formed", "Formed", "Mushy", "Watery"],
+      // The stored value keeps the mixed-case option exactly as selected or typed; only the
+      // reported value is uppercased, so "Loose" is persisted and LOOSE is printed.
+      resultPresentation: { casing: "Uppercase", sinceRenderContractVersion: 2 },
       isRequired: true,
       isSelectable: true,
       displayOrder: 2,
@@ -134,6 +160,9 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
       parameterName: "Parasites / Ova",
       inputType: "FreeText",
       defaultValue: "NO INTESTINAL PARASITES OR OVA SEEN", // Exact approved automatic default
+      // Organism names and the negative phrase are both reported in italics; the examination label
+      // is not, because the emphasis belongs to the result value primitive alone.
+      resultPresentation: { emphasis: "Italic", sinceRenderContractVersion: 2 },
       isRequired: false,
       isSelectable: true,
       displayOrder: 10,

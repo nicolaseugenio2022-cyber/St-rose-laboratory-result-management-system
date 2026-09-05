@@ -2,11 +2,18 @@
 
 > **Specification Status**
 >
-> Draft
+> Maintained detailed specification. Authority is separated by concern:
+> `architecture/report-specifications/Summary.md` governs the client requirements it explicitly
+> records; this document governs the detail where `Summary.md` is silent. See
+> `architecture/README.md`.
 >
 > This document is the authoritative behavioral specification for the Complete Blood Count (CBC) laboratory report.
 >
-> The official Microsoft Word template remains the visual authority.
+> The original Microsoft Word templates are **historical source material** and are not present in
+> the repository. Current visual authority is separated across `Summary.md` (explicit client
+> acceptance requirements), this specification, `REPORT_RENDERING_ARCHITECTURE.md`,
+> `PDF_VALIDATION_CHECKLIST.md`, and the approved deterministic rendering contracts and
+> completed snapshots.
 
 ---
 
@@ -18,7 +25,7 @@
 | Official Template Name | Complete Blood Count |
 | Examination Family | Hematology |
 | Renderer Family | Tabular |
-| Source Word Template | Templates/CBC.docx |
+| Source Word Template (historical; not in repository) | Templates/CBC.docx |
 | Supports Remarks | Yes |
 | Requires Kit Information | No |
 
@@ -40,7 +47,7 @@ Records Complete Blood Count (CBC) laboratory examination results using the offi
 | Date | Yes | Current date by default; editable |
 | Address | Yes | Default value; editable |
 | Requested By | Yes | Default physician; editable |
-| Status | Optional | Printed |
+| Status | Not collected | Static report header label; not collected in the encoding UI |
 
 ---
 
@@ -321,7 +328,7 @@ AI MUST
 - Auto-populate default Requested By.
 - Auto-populate default Remarks.
 - Allow editing of all default values.
-- Preserve the official Word layout.
+- Preserve the approved report layout recorded in this specification and `REPORT_RENDERING_ARCHITECTURE.md`.
 
 AI MUST NOT
 
@@ -336,11 +343,11 @@ AI MUST NOT
 
 | Requirement | Source |
 |-------------|--------|
-| Layout | Word Template |
-| Reference Values | Word Template |
-| Client Notes | Word Template |
-| Default Physician | Word Template |
-| Default Remarks | Word Template |
+| Layout | This specification — historical origin: Word template, not in repository |
+| Reference Values | This specification — historical origin: Word template, not in repository |
+| Client Notes | This specification — historical origin: Word template, not in repository |
+| Default Physician | This specification — historical origin: Word template, not in repository |
+| Default Remarks | This specification — historical origin: Word template, not in repository |
 | Renderer Family | REPORT_REGISTRY_ARCHITECTURE.md |
 
 ---
@@ -369,3 +376,4 @@ None.
 | Version | Date | Notes |
 |----------|------|------|
 | 1.0 | Initial Draft | Reverse engineered from official Word template |
+| 1.1 | SHADCN-06D | Reconciled to verified runtime (`src/domain/definitions/`): Status demographic policy (static header label); visual-authority statement |

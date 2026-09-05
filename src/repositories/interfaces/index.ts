@@ -175,6 +175,40 @@ export interface IUserProfileRepository {
   updateStatus(id: string, status: UserStatus): Promise<IUserProfile>;
 }
 
+/**
+ * Marks a bulk hydration result that came from SEED data because the database read failed.
+ *
+ * The seed fallback is deliberate resilience and is unchanged: the caller that asked during an
+ * outage still gets a usable registry. What the marker adds is the ability to tell that result
+ * apart from a database-hydrated one, so it is never committed as the complete registry - a cached
+ * fallback would keep serving seed parameters and reference ranges long after the database
+ * recovered, with nothing to indicate the data was not authoritative.
+ *
+ * A symbol on the array, rather than a changed return type: every existing caller keeps reading the
+ * array exactly as before, and an implementation that never degrades needs no change at all.
+ */
+export const DEGRADED_REGISTRY_RESULT = Symbol.for("stRose.degradedRegistryResult");
+
+/** True only for a bulk result the repository explicitly marked as a seed fallback. */
+export function isDegradedRegistryResult(specs: HydratedTemplateSpec[]): boolean {
+  return (specs as unknown as Record<symbol, unknown>)[DEGRADED_REGISTRY_RESULT] === true;
+}
+
+/** Marks a bulk result as seed-derived, returning the same array for the caller to hand back. */
+export function markDegradedRegistryResult(specs: HydratedTemplateSpec[]): HydratedTemplateSpec[] {
+  return Object.defineProperty(specs, DEGRADED_REGISTRY_RESULT, {
+    value: true,
+    enumerable: false,
+  });
+}
+
+/**
+ * The interface body below is SHA-pinned to the Milestone 6B baseline by
+ * `verify-checkpoint-m6c.ts`, so the contract note for `getAllHydratedTemplates` lives here rather
+ * than inside it: a result carrying `DEGRADED_REGISTRY_RESULT` is seed-derived and must not be
+ * cached as the complete registry, while an unmarked result is database-hydrated and is cached
+ * normally. No method or signature changes - only the marker travelling on the returned array.
+ */
 export interface IReportRegistryRepository {
   getTemplateByCode(templateCode: string): Promise<IReportTemplate | null>;
   getParametersByTemplateCode(templateCode: string): Promise<ITemplateParameter[]>;

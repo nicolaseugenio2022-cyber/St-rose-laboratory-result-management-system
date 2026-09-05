@@ -1,6 +1,7 @@
 import React from "react";
 import { History, PlayCircle, ShieldCheck, UserCheck, Users, UserX } from "lucide-react";
 import { SessionRow } from "../primitives/SessionRow";
+import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { RecentWork } from "../../_lib/recent-work";
 import { DashboardSection } from "../primitives/DashboardSection";
@@ -13,7 +14,8 @@ export interface AdminDashboardProps {
   activeUsers: number;
   inactiveUsers: number;
   adminUsers: number;
-  recentWork: RecentWork;
+  /** `null` means the operational read failed transiently - not that there is no recent work. */
+  recentWork: RecentWork | null;
 }
 
 /**
@@ -43,7 +45,7 @@ export function AdminDashboard({
   adminUsers,
   recentWork,
 }: AdminDashboardProps) {
-  const completed = recentWork.recentCompleted.slice(0, 5);
+  const completed = recentWork ? recentWork.recentCompleted.slice(0, 5) : [];
 
   return (
     <div className="space-y-4">
@@ -67,7 +69,13 @@ export function AdminDashboard({
           icon={History}
           action={<SectionLink href="/history">View all history</SectionLink>}
         >
-          {completed.length === 0 ? (
+          {/* Unavailable is not empty. Only the activity panel degrades - the account figures
+              beside it come from a different read that succeeded, and are left untouched. */}
+          {recentWork === null ? (
+            <Alert variant="warning">
+              Recent activity is temporarily unavailable. Try again shortly.
+            </Alert>
+          ) : completed.length === 0 ? (
             <EmptyState
               icon={History}
               title="No recent laboratory activity"

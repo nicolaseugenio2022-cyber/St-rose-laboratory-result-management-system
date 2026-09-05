@@ -4,9 +4,14 @@ import { listRecentSessionsAction } from "@/features/server-boundary/server-acti
 /**
  * Minimal dashboard projection of a recent session.
  *
- * Deliberately narrow. The underlying transport carries the full aggregate —
- * `reports[]` with raw `results`, `signatories` and `completedSnapshot`. None of
- * that is needed to decide what to work on next, so none of it is carried here.
+ * Deliberately narrow, and narrower than what now arrives. The underlying transport
+ * used to be the full aggregate — `reports[]` with raw `results`, `signatories` and
+ * `completedSnapshot` — and this projection existed to keep that off the dashboard.
+ * Since SHADCN-07C2 the list transport is itself a summary DTO that cannot express
+ * any of them and never fetches them, so this is no longer the only thing standing
+ * between the dashboard and a report body. It stays because the two narrowings answer
+ * different questions: the DTO decides what a list row may carry, and this decides
+ * what a tile needs to say what to work on next.
  */
 export interface RecentWorkItem {
   id: string;

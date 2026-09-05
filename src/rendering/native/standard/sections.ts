@@ -230,9 +230,28 @@ function displayOwnsUnit(display: string | null | undefined, unit: string | null
   return normalizedDisplayText(display).includes(normalizedDisplayText(unit));
 }
 
-function resolvedResultPresentation(result: ResolvedResultRenderModel): string {
+/**
+ * Suppressing the unit is a DEDUPLICATION, so it may only consider text the report actually prints.
+ *
+ * The reference display is one such place - a range reading "3.5-5.0 mmol/L" already carries the
+ * unit, so repeating it on the value is noise. But a two-column contract composes no reference cell
+ * at all, and consulting it there deduplicated against something the operator never sees: a value
+ * whose unit appeared only in the reference lost that unit entirely, in a clinical result.
+ *
+ * No current definition is affected - the only two-column contract today is FECALYSIS, whose
+ * parameters declare no unit - so this changes no report as it stands. It is the contract that was
+ * wrong: any later two-column definition with a unit would have dropped it silently.
+ */
+function resolvedResultPresentation(
+  result: ResolvedResultRenderModel,
+  hasReferenceColumn: boolean
+): string {
   const unit = result.unitDisplay?.trim();
-  if (!unit || displayOwnsUnit(result.formattedValue, unit) || displayOwnsUnit(result.referenceDisplay, unit)) {
+  if (
+    !unit ||
+    displayOwnsUnit(result.formattedValue, unit) ||
+    (hasReferenceColumn && displayOwnsUnit(result.referenceDisplay, unit))
+  ) {
     return result.formattedValue;
   }
   return result.formattedValue ? `${result.formattedValue} ${unit}` : unit;
@@ -254,11 +273,15 @@ function abnormalIndicator(result: ResolvedResultRenderModel): { text: "HIGH" | 
   return null;
 }
 
-function resultCellLines(result: ResolvedResultRenderModel, label: string, widths: [number, number, number]) {
+function resultCellLines(result: ResolvedResultRenderModel, label: string, widths: number[]) {
   return {
     label: fixedLines(`result-${result.parameterCode}-label`, label, widths[0] - 3, TYPE.resultLabelPt),
-    value: fixedLines(`result-${result.parameterCode}-value`, resolvedResultPresentation(result), widths[1] - 2, TYPE.resultValuePt),
-    reference: fixedLines(`result-${result.parameterCode}-reference`, result.referenceDisplay || "", widths[2] - 3, TYPE.referencePt),
+    value: fixedLines(`result-${result.parameterCode}-value`, resolvedResultPresentation(result, widths.length > 2), widths[1] - 2, TYPE.resultValuePt),
+    // A declared two-column grid has no reference track. The cell is not composed empty - it is not
+    // composed at all, so no `result-*-reference` primitive exists to measure, paint or export.
+    reference: widths.length > 2
+      ? fixedLines(`result-${result.parameterCode}-reference`, result.referenceDisplay || "", widths[2] - 3, TYPE.referencePt)
+      : [],
   };
 }
 
@@ -269,7 +292,7 @@ function composeResultGrid(
 ): NativeFlowSectionResult {
   const ratios = definition.columnRatios;
   const ratioTotal = ratios.reduce((sum, ratio) => sum + ratio, 0);
-  const widths = ratios.map((ratio) => PAGE_WIDTH * ratio / ratioTotal) as [number, number, number];
+  const widths = ratios.map((ratio) => PAGE_WIDTH * ratio / ratioTotal);
   const primitives: NativePagePrimitive[] = [
     { kind: "rect", id: "result-header-fill", x: PAGE_X, y, width: PAGE_WIDTH, height: 5, fill: COLOR.tealTint },
     { kind: "line", id: "result-header-rule", x1: PAGE_X, y1: y + 5, x2: PAGE_X + PAGE_WIDTH, y2: y + 5, color: COLOR.primary, widthMm: 0.2 },
@@ -304,12 +327,16 @@ function composeResultGrid(
     if (index % 2 === 1) {
       primitives.push({ kind: "rect", id: `result-${result.parameterCode}-stripe`, x: PAGE_X, y: cursorY, width: PAGE_WIDTH, height, fill: COLOR.tealTint });
     }
-    const addLines =(id: string, values: string[], cellX: number, width: number, align: NativeTextAlignment, weight: "normal" | "bold" = "normal", fontSizePt: number = TYPE.resultLabelPt, color: string = BODY) => values.forEach((value, index) => primitives.push(text({
+    const addLines =(id: string, values: string[], cellX: number, width: number, align: NativeTextAlignment, weight: "normal" | "bold" = "normal", fontSizePt: number = TYPE.resultLabelPt, color: string = BODY, italic = false) => values.forEach((value, index) => primitives.push(text({
       id: `${id}-line-${index + 1}`, text: value, x: cellX, y: cursorY + index * RESULT_LINE_MM + 0.25, width, height: RESULT_LINE_MM - 0.25, fontSizePt, fontWeight: weight, color, align,
+      // Set only when emphasised, so an unemphasised primitive keeps the exact shape it had.
+      ...(italic ? { italic: true } : {}),
     })));
     addLines(`result-${result.parameterCode}-label`, lines.label, PAGE_X + 1.5, widths[0] - 3, "left", "bold", TYPE.resultLabelPt);
-    addLines(`result-${result.parameterCode}-value`, lines.value, PAGE_X + widths[0], widths[1], "center", "bold", TYPE.resultValuePt, COLOR.primaryDark);
-    addLines(`result-${result.parameterCode}-reference`, lines.reference, PAGE_X + widths[0] + widths[1] + 1.5, widths[2] - 3, "center", "normal", TYPE.referencePt, COLOR.mutedText);
+    addLines(`result-${result.parameterCode}-value`, lines.value, PAGE_X + widths[0], widths[1], "center", "bold", TYPE.resultValuePt, COLOR.primaryDark, result.emphasis === "Italic");
+    if (widths.length > 2) {
+      addLines(`result-${result.parameterCode}-reference`, lines.reference, PAGE_X + widths[0] + widths[1] + 1.5, widths[2] - 3, "center", "normal", TYPE.referencePt, COLOR.mutedText);
+    }
     // QA-04 emits the marker as its own primitive rather than folding it into the value text: the
     // RESULT cell stays byte-identical to `resolvedResultPresentation`, and the marker occupies the
     // column's right inset instead of the value's wrapping width. It is pinned to the row's first

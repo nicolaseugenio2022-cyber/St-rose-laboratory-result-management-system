@@ -9,14 +9,15 @@ This document defines the official **Business Domain Model** for the **St. Rose 
 
 It serves as the frozen, authoritative domain specification for **Milestone 2 (Laboratory Domain Foundation)** and subsequent development milestones.
 
-## 1.1 Authority Hierarchy Alignment
+## 1.1 Authority Alignment
 
-This document operates strictly within the project authority hierarchy:
+Authority in this project is **separated by concern**; there is no universal precedence ladder
+(`AGENTS.md` §1.2). This document is authoritative for its own concern only. For which document
+governs which concern, and for the minimum-reading task router, see `architecture/README.md`.
 
-1. **PROJECT.md**: Authoritative source for project vision, milestone roadmaps, technology stack, and high-level business rules.
-2. **LABORATORY_TEMPLATE_SPECIFICATION.md**: Authoritative specification for official laboratory report templates, parameter definitions, reference rules, signatories, and renderer behavior.
-3. **Microsoft Word Templates (`Templates/`)**: Authoritative source for visual layout, typography, borders, margins, colors, and printed document fidelity.
-4. **Current Source Code**: Contextual reference only. Code never overrides authority specifications.
+Where two authorities disagree, stop and report the exact conflict rather than choosing a winner
+(`AGENTS.md` §1.4). Where documentation and the running system disagree, that is a reportable
+defect requiring investigation and is resolved in neither direction by default (`AGENTS.md` §1.3).
 
 ---
 

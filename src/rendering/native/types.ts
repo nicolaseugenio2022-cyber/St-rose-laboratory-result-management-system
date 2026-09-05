@@ -18,6 +18,11 @@ export interface NativeTextStyle {
   lineHeightMm?: number;
   uppercase?: boolean;
   underline?: boolean;
+  /**
+   * Italic cannot be pre-baked into `text` the way casing can, so it is resolved by each renderer:
+   * CSS `font-style` in the preview DOM, and a jsPDF built-in font-style name in the PDF.
+   */
+  italic?: boolean;
 }
 
 export interface NativeRichTextRun {

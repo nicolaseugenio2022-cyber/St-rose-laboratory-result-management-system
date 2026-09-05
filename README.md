@@ -99,11 +99,11 @@ Before production:
 
 Developer monitoring is implemented in:
 
-`src/features/dashboard/components/DeveloperDashboardSection.tsx`
+`src/app/(app)/dashboard/_components/DeveloperDashboardSection.tsx`
 
 and integrated into:
 
-`src/features/dashboard/components/DashboardView.tsx`
+`src/app/(app)/dashboard/_components/DashboardView.tsx`
 
 The Developer Dashboard displays:
 
@@ -153,7 +153,7 @@ Additional API:
 Utility scripts:
 
 * `scripts/checkSupabase.js`
-* `scripts/check-navigation.js`
+* `scripts/check-navigation.ts`
 
 ## Audit Logs
 
@@ -210,20 +210,18 @@ Only use this when sufficient RAM is available.
 src/
 ├── app/
 │   ├── (app)/          # dashboard, history, audit, users, personnel, developer
-│   ├── (dashboard)/    # workspace
+│   │                   #   each route colocates its UI in _components/
+│   ├── (dashboard)/    # workspace; shell in _components/, encoding in workspace/_lib/
 │   ├── api/
 │   └── login/
 ├── components/
-│   ├── layout/
+│   ├── common/         # GlobalErrorBoundary
+│   ├── shadcn/         # shadcn primitives
 │   └── ui/             # shared Table, Button, Badge, Alert, Input, Select, Modal
 ├── config/
 ├── domain/             # models, types, declarative report definitions
-├── features/
-│   ├── audit/
+├── features/           # non-component feature modules; route UI is colocated under app/
 │   ├── auth/
-│   ├── dashboard/
-│   ├── developer-accounts/
-│   ├── history/
 │   ├── personnel/
 │   ├── server-boundary/
 │   ├── users/
@@ -233,8 +231,7 @@ src/
 ├── rendering/          # shared render engine, native layout families, A4 styles
 ├── repositories/       # Supabase data access
 ├── services/
-├── types/
-└── utils/
+└── types/
 ```
 
 Architecture principles:
@@ -319,7 +316,10 @@ and file-backed user storage was replaced by `user_profiles`.
 
 For any new AI coding agent:
 
-* Read `README.md` first.
+* Read the repository-root `AGENTS.md` first — it is the project operating authority.
+* Read `architecture/README.md` next. It is the single navigation entry point for architecture
+  documentation and routes each task to the minimum set of documents; do not scan `architecture/`.
+* Read this `README.md` for the codebase orientation below.
 * Inspect existing code before editing.
 * Do not start from scratch.
 * Preserve working authentication and RBAC.

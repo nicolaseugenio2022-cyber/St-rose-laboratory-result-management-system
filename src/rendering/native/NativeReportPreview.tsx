@@ -29,6 +29,7 @@ function textStyle(
     fontFamily: font?.previewFamily || "Helvetica, Arial, sans-serif",
     fontSize: primitive.fontSizePt * PX_PER_PT * scale,
     fontWeight: primitive.fontWeight === "bold" ? 700 : 400,
+    fontStyle: primitive.italic ? "italic" : undefined,
     lineHeight: primitive.lineHeightMm
       ? `${primitive.lineHeightMm * PX_PER_MM * scale}px`
       : 1.05,

@@ -40,6 +40,55 @@ const getSource = (relativePath: string): string => readFileSync(join(root, rela
 /** Strip doc comments, so a file explaining why an identifier is banned does not fail on it. */
 const withoutComments = (source: string): string => source.replace(/\/\*\*[\s\S]*?\*\//g, "");
 
+/**
+ * Strip EVERY comment form, for the assertions that COUNT occurrences rather than ban them.
+ *
+ * `withoutComments` above is deliberately narrow: a ban assertion only needs the explanatory doc
+ * block removed. A count is different - a `//` comment naming the call is indistinguishable from
+ * the call itself to a raw `match`, so removing the executable line and leaving the comment keeps
+ * the count correct while the guard is gone.
+ *
+ * Scanned character by character rather than pattern-replaced: a line-comment regex would take the
+ * whole line including any code before the `//`, and would also fire on the `//` inside a URL
+ * literal - and this handler composes signature-proxy addresses.
+ */
+const withoutAnyComment = (source: string): string => {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+};
+
 /* ------------------------------------------------------------------ sentinels */
 
 // Distinct on purpose. "The frozen value survived" and "the override was applied" are different
@@ -624,6 +673,69 @@ async function main(): Promise<void> {
     /from\("report_signatories"\)[\s\S]{0,200}?\.eq\("report_id"/.test(proxySource),
     "case 92 the frozen address resolves from the report's own signatory row"
   );
+  // SHADCN-07C1-R1: the proxy resolves the request EXACTLY ONCE and threads that profile onward.
+  // It previously re-read the user once per request and once more per denial. React cache() is a
+  // per-render memo and is not a dependable dedupe inside a Route Handler, so those were real
+  // extra reads. The guard is unchanged - status, role and denial reasons all still derive from a
+  // server-resolved profile - so this pins only that one resolution happens and no lookup returns.
+  //
+  // Counted, not merely detected: a presence test would pass on a handler that resolved twice.
+  const proxyHandler =
+    /export async function GET\([\s\S]*$/.exec(proxySource)?.[0] ?? "";
+  // Counted across the WHOLE live route, not the GET tail. `proxyHandler` starts at the GET
+  // declaration, so a helper declared ABOVE it and called from it sat outside the region - a
+  // second resolution there went uncounted while this still reported exactly one per operation.
+  // Counting the module makes the result independent of declaration order and keeps it exact.
+  // LIVE calls only. `withoutComments` strips `/** … */` doc blocks alone, so a `//` comment naming
+  // the call still counted: removing the executable resolution and leaving such a comment behind
+  // kept this at exactly 1. `withoutAnyComment` removes both forms before counting.
+  const proxyResolutionCalls = (
+    withoutAnyComment(proxySource).match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
+  assert(
+    proxyHandler.length > 0 && proxyResolutionCalls === 1,
+    "case 92 the signature proxy resolves the authenticated request exactly once per operation"
+  );
+  assert(
+    !/getSessionUser\s*\(/.test(proxySource) &&
+      !/getSession\s*\(/.test(proxySource) &&
+      !/getUserById/.test(proxySource),
+    "case 92 the signature proxy performs no second session or user lookup"
+  );
+  // The denial helper must be handed the profile, never resolve one itself: a lookup there cost an
+  // extra read on every denial and could disagree with the row the checks used.
+  const emitDenialSource =
+    /async function emitDenial\([\s\S]*?\n\}/.exec(proxySource)?.[0] ?? "";
+  assert(
+    emitDenialSource.length > 0 &&
+      /profile\?:/.test(emitDenialSource) &&
+      !/resolveAuthenticatedRequest|getSessionUser|getSession\s*\(|getUserById/.test(emitDenialSource),
+    "case 92 emitDenial receives the resolved profile and performs no authentication lookup"
+  );
+  // The declaration above proves the parameter EXISTS; it does not prove any caller passes it. The
+  // property that matters is at the call sites: every denial raised after the caller is resolved
+  // hands over that same profile, and only the pre-resolution `unauthenticated` denial may omit it
+  // - there is no profile to pass at that point.
+  // Anchored on `await` so this reads the CALL sites only: the declaration's own parameter list
+  // would otherwise match and pass neither branch below.
+  // Comment-free, like the resolution count above. These are POSITIVE assertions - they require a
+  // construct to be present - so a comment naming a denial call or a role check satisfies them just
+  // as well as the code would, which is the failure mode they exist to prevent.
+  const liveProxySource = withoutAnyComment(proxySource);
+  const emitDenialCalls = liveProxySource.match(/await emitDenial\((?:[^()]|\([^()]*\))*\)/g) ?? [];
+  assert(
+    emitDenialCalls.length === 4 &&
+      emitDenialCalls.every(
+        (call) => call.endsWith(", session, profile)") || call === 'await emitDenial("unauthenticated")'
+      ),
+    "case 92 every post-resolution denial is handed the resolved profile, and only the pre-resolution unauthenticated denial omits it"
+  );
+  assert(
+    /profile\.status\s*!==\s*"Active"/.test(liveProxySource) &&
+      /profile\.role\s*!==\s*"Admin"/.test(liveProxySource) &&
+      /profile\.role\s*!==\s*"User"/.test(liveProxySource),
+    "case 92 the signature proxy retains its Active-status and Admin/User role checks"
+  );
   assert(
     /identifierAddress:\s*"private, no-store"/.test(proxySource),
     "case 92 an identifier-addressed signature response is never cached"
@@ -725,7 +837,7 @@ async function main(): Promise<void> {
   );
 
   process.stdout.write(
-    "\nWorkspace signatory boundary verification passed: all 73 assertions verified.\n"
+    "\nWorkspace signatory boundary verification passed: all 80 assertions verified.\n"
   );
 }
 

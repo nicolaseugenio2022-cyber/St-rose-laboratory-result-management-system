@@ -45,3 +45,6 @@ supabase/.branches/
 
 # Local build/scratch artifacts
 tmp/
+
+# Playwright MCP session artifacts (page snapshots, console logs)
+.playwright-mcp/

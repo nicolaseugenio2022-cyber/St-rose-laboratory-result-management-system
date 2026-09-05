@@ -51,9 +51,14 @@ export type AuthenticatedRequest = {
  * `getSession` directly read it twice more - three to five reads of one row per navigation, all
  * serialized ahead of the route's own data.
  *
- * React `cache()` is REQUEST-SCOPED: the memo lives for one render/action invocation and is
- * discarded with it. Nothing is cached across requests, so every request still re-validates
- * against the database and a deactivation or token bump takes effect on the very next request.
+ * React `cache()` memoizes WITHIN A SERVER COMPONENT RENDER, and only there. Route Handlers and
+ * Server Actions must not depend on that memoization: those callers call
+ * `resolveAuthenticatedRequest()` ONCE per operation and reuse the returned `session` and `user`,
+ * rather than calling `getSession()` and then `getSessionUser()` and assuming the two collapse into
+ * a single read. An earlier revision assumed exactly that and read the user row twice per guard.
+ *
+ * Nothing is cached across requests. Every new request re-validates the cookie and re-reads the
+ * current user row, so a deactivation or a token bump takes effect on the very next request.
  *
  * Callers that mutate authentication state (login, first-login password and recovery, logout,
  * account administration) resolve the caller once BEFORE mutating and then redirect or return, so
@@ -82,12 +87,14 @@ const resolveAuthenticatedRequestForToken = cache(
 /**
  * Resolves the current request's authenticated user, memoized ON THE COOKIE VALUE.
  *
- * Keying on the token rather than on the request alone is what keeps the memo honest across a
- * Server Action and the render that follows it in the same request. `deleteSession` and
- * `createSession` change what `cookies()` returns immediately, so after a logout the key becomes
- * `undefined` and this resolves to null, and after a re-issued session it resolves against the new
- * token - never the pre-mutation value. Callers within one render all read the same cookie, so the
- * common path still resolves once.
+ * Keying on the token rather than on the request alone is what keeps the memo honest wherever it
+ * applies. `deleteSession` and `createSession` change what `cookies()` returns immediately, so
+ * after a logout the key becomes `undefined` and this resolves to null, and after a re-issued
+ * session it resolves against the new token - never the pre-mutation value.
+ *
+ * Within one Server Component render, callers all read the same cookie and the common path resolves
+ * once. A Route Handler or Server Action must not rely on that: call this once per operation and
+ * pass the resolved `session` and `user` down.
  */
 export async function resolveAuthenticatedRequest(): Promise<AuthenticatedRequest | null> {
   const cookieStore = await cookies();

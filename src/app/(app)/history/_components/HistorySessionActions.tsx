@@ -3,7 +3,7 @@
 import React from "react";
 import { Edit3, Eye, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import type { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
+import type { PatientReportSessionListEntry } from "@/features/server-boundary/session-transport";
 
 /**
  * Shared History row/card action surface.
@@ -16,10 +16,15 @@ import type { PatientReportSessionAggregate } from "@/domain/models/patient-repo
  * boolean, so a caller cannot substitute its own eligibility. The import graph is deliberately
  * free of server actions and `server-only` so the shipped component can be rendered directly by
  * checkpoint verification.
+ *
+ * SHADCN-07C2: the row's session is the narrow list entry, not the full aggregate. Nothing here
+ * ever needed more - status decides which controls exist, and the accession and patient name only
+ * name the row for assistive technology. `onPreview` now hands that identity upward and History
+ * loads the complete session itself; this component still never fetches anything.
  */
 
 export type HistorySessionEntry = {
-  session: PatientReportSessionAggregate;
+  session: PatientReportSessionListEntry;
   canReopen: boolean;
 };
 
@@ -29,8 +34,8 @@ export interface HistorySessionActionsProps {
   entry: HistorySessionEntry;
   variant: HistorySessionActionsVariant;
   isDeleting: boolean;
-  onPreview: (session: PatientReportSessionAggregate) => void;
-  onReopen: (session: PatientReportSessionAggregate) => void;
+  onPreview: (session: PatientReportSessionListEntry) => void;
+  onReopen: (session: PatientReportSessionListEntry) => void;
   onDeleteDraft: (entry: HistorySessionEntry) => void;
 }
 

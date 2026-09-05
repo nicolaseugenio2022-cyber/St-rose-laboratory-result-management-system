@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parseRecentSessionsInput } from "../src/features/server-boundary/action-inputs";
+import { safeApiErrorMessage } from "../src/lib/api/safe-error-response";
+import { LastActiveAdminError } from "../src/services/userService";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`M6C verification failed: ${message}`);
@@ -25,6 +27,51 @@ function liveCodeIndexOf(source: string, occurrence: string): number {
     index = source.indexOf(occurrence, index + occurrence.length);
   }
   return -1;
+}
+
+/**
+ * Comments removed, for the predicates that must read a whole BLOCK rather than one occurrence.
+ *
+ * `liveCodeIndexOf` above answers "is this token live?" for a single position, which is enough for
+ * an ordering check. It cannot keep a commented-out `try`/`catch` from being extracted as a region
+ * and then matched against, so a block-shaped assertion strips first and matches after. String
+ * contents are preserved, since the predicates match literals such as `status: 403`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
 }
 
 function normalizedSha256(content: string): string {
@@ -359,14 +406,21 @@ function verifyBehaviouralFreeze(): void {
   // authenticated-user validation now runs ONCE per request and is reused within that request,
   // instead of the same user row being read two to five times per navigation. The validation
   // itself is unchanged - signature and expiry, user existence, Active status, tokenVersion - and
-  // React cache() is request-scoped, so nothing is cached across requests. Both files therefore
-  // remain frozen at exact content; only the reference point moves from the 6B commit to the
-  // approved P4 revision, using the same exact-equality strength as the pins below.
+  // nothing is cached across requests. Both files therefore remain frozen at exact content; only
+  // the reference point moves from the 6B commit to the approved revision, using the same
+  // exact-equality strength as the pins below.
+  //
+  // SHADCN-07C1 re-mints the session.ts pin for a COMMENT-ONLY revision. The surrounding JSDoc
+  // previously described React cache() as request-scoped; it memoizes within a Server Component
+  // render, and Route Handlers and Server Actions must resolve the caller once per operation
+  // rather than rely on that memo. Stripping comments from both revisions yields byte-identical
+  // executable code, so the pin is re-minted and never relaxed - still normalized exact-content
+  // equality over the whole file.
   const APPROVED_SESSION_SHA256 =
-    "43b46d05863a8cb15ba1f9367f4747cbf32915391a87bd4af60f79c3d4debf59";
+    "2da25439952a3b4638538edf0c1ec12568d0dd27d4b97291257e3b7e1c3a2ba1";
   assert(
     normalizedSha256(read("src/lib/session.ts")) === APPROVED_SESSION_SHA256,
-    "session.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
+    "session.ts must remain byte-for-byte at its approved SHADCN-07C1 revision apart from line endings"
   );
 
   const APPROVED_AUTH_GUARDS_SHA256 =
@@ -376,8 +430,12 @@ function verifyBehaviouralFreeze(): void {
     "auth-guards.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
   );
 
+  // SHADCN-07B3 approved real-boundary correction: AuthenticationSucceeded now means credentials
+  // were verified AND createSession() completed, so the emit moved into loginAction after the
+  // session write. The pin is re-minted, never relaxed - still exact-content equality on the whole
+  // file, with only line endings normalized.
   const APPROVED_AUTH_ACTIONS_SHA256 =
-    "a2020c3858e81fe53081c7ef54e85a58e42d7de0fa933690ea5e5b4e37b41c55";
+    "01985a5b8111200caf166facf30d5e057819f7948562d0b4aa553b7ff1bbf1e1";
   // Persistent repository pins normalize line endings for portability; transient local candidate hashes may use raw bytes because they do not outlive the verification session.
   assert(
     normalizedSha256(read("src/features/auth/authActions.ts")) ===
@@ -607,6 +665,141 @@ function verifyPurgeAuthorization(): void {
       adminGuardIndex >= 0 &&
       purgeServiceIndex > adminGuardIndex,
     "the purge route must require Admin authorization before executing the purge service"
+  );
+
+  // SHADCN-07B1: a refusal is not a malfunction. The guard threw inside the same try that wrapped
+  // execution, so a non-Admin caller received HTTP 500. The refusal must be answered as 403, and
+  // that answer must be reached before the purge service can run - order matters as much as status.
+  // The 403 must belong to the guard's OWN try/catch, not merely appear somewhere ahead of the
+  // purge service: an unrelated ForbiddenError branch sited earlier satisfied every independent
+  // probe while a refusal raised by assertAdminAccess still escaped as HTTP 500. Take the block
+  // that encloses the guard call and require the refusal answer inside that block.
+  // Extracted from LIVE code. The previous form matched over the raw source, so a commented-out
+  // `assertAdminAccess`, `ForbiddenError` branch or `status: 403` could form the block, and the
+  // separate live-branch probe only proved such a branch existed somewhere ahead of the purge
+  // service - not that it belonged to the catch enclosing the live guard call.
+  const liveSource = stripComments(source);
+  const guardBlock =
+    /try\s*\{[^{}]*assertAdminAccess\([\s\S]*?\}\s*catch[\s\S]*?\n\s{2}\}/.exec(liveSource)?.[0] ?? "";
+  const forbiddenBranchIndex = liveCodeIndexOf(source, "error instanceof ForbiddenError");
+  assert(
+    guardBlock.length > 0 &&
+      /error instanceof ForbiddenError[\s\S]{0,300}?status:\s*403/.test(guardBlock) &&
+      forbiddenBranchIndex >= 0 &&
+      purgeServiceIndex > forbiddenBranchIndex,
+    "the purge route must answer an authorization refusal with HTTP 403 before the purge service runs"
+  );
+
+  // REACHABILITY, not just presence. Everything above is satisfied by a branch that can never run:
+  // `if (false) { if (error instanceof ForbiddenError) ... 403 ... } return 500;` keeps the tokens
+  // inside the guard block and ahead of the purge service. The refusal must therefore sit at the
+  // catch body's OWN nesting level - depth 0 - so no dead wrapper can enclose it.
+  const catchBodyOpen = guardBlock.indexOf("{", guardBlock.indexOf("catch"));
+  const branchInBlock = guardBlock.indexOf("error instanceof ForbiddenError");
+  let depth = 0;
+  for (let i = catchBodyOpen + 1; i >= 1 && i < branchInBlock; i += 1) {
+    if (guardBlock[i] === "{") depth += 1;
+    else if (guardBlock[i] === "}") depth -= 1;
+  }
+  assert(
+    catchBodyOpen >= 0 && branchInBlock > catchBodyOpen && depth === 0,
+    "the purge route's authorization refusal must be reachable - sited directly in the guard's catch, never nested inside another branch"
+  );
+
+  // The 403 must be the answer THIS branch gives. A proximity match only required a 403 token
+  // within 300 characters of the branch keyword, so it could belong to a different statement
+  // entirely - `if (error instanceof ForbiddenError) { console.error(...) }` followed by an
+  // unrelated 403 return satisfied every check while a refusal actually returned HTTP 500.
+  // Brace-match the branch's own consequent and require the status inside it.
+  const branchBodyOpen = guardBlock.indexOf("{", branchInBlock);
+  let branchDepth = 0;
+  let branchBodyEnd = -1;
+  for (let i = branchBodyOpen; i >= 0 && i < guardBlock.length; i += 1) {
+    if (guardBlock[i] === "{") branchDepth += 1;
+    else if (guardBlock[i] === "}" && --branchDepth === 0) {
+      branchBodyEnd = i;
+      break;
+    }
+  }
+  const branchBody = branchBodyEnd > branchBodyOpen ? guardBlock.slice(branchBodyOpen, branchBodyEnd) : "";
+  assert(
+    branchBody.length > 0 && /status:\s*403/.test(branchBody),
+    "the purge route's ForbiddenError branch must itself answer 403, not merely sit near one"
+  );
+}
+
+/**
+ * SHADCN-07B1: an unrecognised failure must never carry its own message to a browser.
+ *
+ * Behavioural rather than textual, because the property under test is what the mapper RETURNS,
+ * not how it is written. The collection route previously used `catch (error: any)` with
+ * `error?.message`, so a PostgREST rejection - whose message is composed by Postgres and can name
+ * a relation, a constraint or a connection target - was returned verbatim with HTTP 400.
+ *
+ * Both directions are asserted together so the assertion cannot be satisfied by a mapper that
+ * simply returns the fallback for everything: an allowlisted domain error must still keep its own
+ * operator-facing sentence.
+ */
+function verifySafeApiErrorRedaction(): void {
+  const FALLBACK = "Failed to create user";
+  const leaky = new Error(
+    "postgres://svc:hunter2@db.internal:5432 - relation user_profiles permission denied"
+  );
+
+  const redacted = safeApiErrorMessage(leaky, FALLBACK);
+  const recognised = safeApiErrorMessage(new LastActiveAdminError(), FALLBACK);
+
+  assert(
+    redacted === FALLBACK &&
+      !redacted.includes("hunter2") &&
+      !redacted.includes("postgres://") &&
+      !redacted.includes("user_profiles") &&
+      recognised === new LastActiveAdminError().message,
+    "an unrecognised error must map to the generic API fallback and never carry its own message, while an allowlisted domain error keeps its own"
+  );
+}
+
+/**
+ * SHADCN-07B1: the sanitized diagnostic shape must emit only closed-set values.
+ *
+ * Shape-checking alone was not enough. An earlier revision accepted any identifier-shaped `name`
+ * and any short alphanumeric `code`, and `sk_live_ABC123`, `SECRET_TOKEN_123` and `PASSWORD123`
+ * are all identifier-shaped - so a thrown value carrying a key in either field would have been
+ * written to the server log verbatim. Both fields are now closed sets, and this proves it by
+ * calling the sanitizer rather than by reading its source.
+ *
+ * `safe-error.ts` reaches the Supabase server module, which builds its client at import time and
+ * refuses to load without credentials. A security gate must not depend on a configured
+ * environment, so the module is required lazily behind inert placeholders. `describeErrorShape`
+ * only calls a pure predicate, so nothing here opens a connection, and no real secret is read.
+ */
+function verifySanitizedErrorShapeIsClosed(): void {
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://verifier.invalid";
+  process.env.SUPABASE_SECRET_KEY ||= "verifier-placeholder-not-a-credential";
+  const { describeErrorShape } =
+    require("../src/lib/safe-error") as typeof import("../src/lib/safe-error");
+
+  const errorNamedLikeAKey = new Error("boom");
+  errorNamedLikeAKey.name = "sk_live_ABC123";
+
+  class SECRET_TOKEN_123 {}
+  const objectNamedLikeASecret = new SECRET_TOKEN_123();
+
+  assert(
+    describeErrorShape(errorNamedLikeAKey).errorName === "Error" &&
+      describeErrorShape(objectNamedLikeASecret).errorName === "object" &&
+      describeErrorShape({ code: "PASSWORD123" }).postgrestCode === null &&
+      // "PASSWORD123" is 11 characters, so on its own it proves only that an over-long value is
+      // refused - a sanitizer that accepted ANY five-character string would still pass. These two
+      // are exactly five characters and fail the SQLSTATE character class instead, which is what
+      // pins /^[0-9A-Z]{5}$/ rather than a bare length check. "ABCDE" is deliberately NOT asserted
+      // here: SQLSTATE is allowlisted by FORMAT, and a format-valid unknown code is emitted by
+      // design, as `safe-error.ts` states.
+      describeErrorShape({ code: "abcde" }).postgrestCode === null &&
+      describeErrorShape({ code: "42p01" }).postgrestCode === null &&
+      describeErrorShape({ code: "42P01" }).postgrestCode === "42P01" &&
+      describeErrorShape({ code: "PGRST116" }).postgrestCode === "PGRST116",
+    "the sanitized error shape must emit only allowlisted error names and recognised SQLSTATE/PostgREST codes"
   );
 }
 
@@ -908,6 +1101,8 @@ verifyBehaviouralFreeze();
 verifyUserServiceInvariants();
 verifyAdminInvariantApi();
 verifyPurgeAuthorization();
+verifySafeApiErrorRedaction();
+verifySanitizedErrorShapeIsClosed();
 verifyCredentialVisibilityControls();
 verifyCorrectedInitialAccountLifecycle();
 verifyOwnershipInputs();

@@ -3,11 +3,46 @@ import { AdminDashboard } from "./compositions/AdminDashboard";
 import { LaboratoryUserDashboard } from "./compositions/LaboratoryUserDashboard";
 import { DeveloperDashboard } from "./compositions/DeveloperDashboard";
 import { getRecentWork } from "../_lib/recent-work";
+import { describeErrorShape } from "@/lib/safe-error";
 import { userService } from "@/services/user-service-instance";
 import { IUserProfile } from "@/domain/models/interfaces";
 
 export interface DashboardViewProps {
   currentUserProfile: IUserProfile | null;
+}
+
+/**
+ * Classify an operational recent-work read failure, and degrade ONLY for a proven transient one.
+ *
+ * The two outcomes are deliberately not symmetric:
+ *
+ *   - **Transient transport fault** (the bounded read envelope: attempt timeout, connect/socket
+ *     failure) resolves to `null`, which the compositions render as an explicit temporary-
+ *     unavailability message. `null` is used rather than an empty `RecentWork` because "you have
+ *     no unfinished work" and "we could not find out" are different statements, and only one of
+ *     them is true here. Substituting an empty list would tell a laboratory operator the first.
+ *
+ *   - **Anything else** - a coded PostgREST/SQL error, an authorization refusal, a programming
+ *     fault - is re-raised unchanged and reaches the existing segment error boundary. A permanent
+ *     failure must stay loud; this must never become a catch-all that hides a real defect.
+ *
+ * The classification is taken from the sanitized shape that is logged, so the branch and the
+ * recorded evidence can never disagree about which case fired. Shape only - never the message,
+ * the payload, or any session or patient field.
+ *
+ * Declared above the component and free of the operational read's own call text, so the ordering
+ * this file is verified on - the Developer branch preceding any reachable operational read - is
+ * unaffected.
+ */
+function handleRecentWorkFailure(error: unknown): null {
+  const shape = describeErrorShape(error);
+  console.error("Dashboard recent-work load failed.", {
+    route: "/dashboard",
+    stage: "recentWork",
+    ...shape,
+  });
+  if (!shape.transientRead) throw error;
+  return null;
 }
 
 /**
@@ -43,7 +78,7 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
     // Fetched only for the role that renders it, rather than for everyone.
     const [users, recentWork] = await Promise.all([
       userService.getUsersVisibleTo(role),
-      getRecentWork(),
+      getRecentWork().catch(handleRecentWorkFailure),
     ]);
     return (
       <AdminDashboard
@@ -56,7 +91,7 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
     );
   }
 
-  const recentWork = await getRecentWork();
+  const recentWork = await getRecentWork().catch(handleRecentWorkFailure);
   return (
     <LaboratoryUserDashboard recentWork={recentWork} />
   );

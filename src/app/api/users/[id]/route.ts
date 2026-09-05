@@ -9,6 +9,7 @@ import {
 import { userService } from "@/services/user-service-instance";
 import { auditService } from "@/services/audit-service-instance";
 import { authorizeOrdinaryAccountWrite } from "@/features/server-boundary/ordinary-account-guard";
+import { safeApiErrorMessage } from "@/lib/api/safe-error-response";
 import { toAdminAccountEntry } from "@/features/users/account-directory-entry";
 import { updateUserPayloadSchema } from "@/lib/validations/userValidation";
 import type { User } from "@/types/user";
@@ -52,7 +53,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     user = await userService.updateUser(id, parsed.data, currentUserProfile?.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to update user";
+    // Only the message narrows. The status expression below is unchanged and stays pinned:
+    // recognised invariant conflicts remain 409, everything else remains 400. `instanceof Error`
+    // already blocked a PostgREST plain object, but it still passed the message of ANY internal
+    // Error - including one raised inside a repository - straight to the browser.
+    const message = safeApiErrorMessage(error, "Failed to update user");
     if (error instanceof UserNotFoundError) return userNotFoundResponse(id);
     return NextResponse.json(
       { error: message },
@@ -95,7 +100,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   try {
     await userService.deleteUser(id, currentUserProfile.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete user";
+    const message = safeApiErrorMessage(error, "Failed to delete user");
     if (error instanceof UserNotFoundError) return userNotFoundResponse(id);
     return NextResponse.json(
       { error: message },

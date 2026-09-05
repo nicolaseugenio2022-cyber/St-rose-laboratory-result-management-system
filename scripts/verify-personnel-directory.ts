@@ -282,8 +282,14 @@ assert(
   `listActivePersonnelAction must retain its exact body (expected ${EXPECTED_LIST_ACTIVE_PERSONNEL_HASH}, got ${listActivePersonnelHash})`
 );
 
+// SHADCN-07C1-R2 approved real-boundary remint: requireOperationalCaller now derives session and
+// profile from ONE resolveAuthenticatedRequest() instead of a getSession()/getSessionUser() pair,
+// because React cache() is not a dependable dedupe inside a Server Action. The diff was reviewed
+// line by line before reminting: only the resolution mechanism moved. Every role check, denial
+// reason, audit category/event/actor/target field, thrown error type and returned value is
+// untouched, and the structural assertions below continue to prove that independently of the hash.
 const EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH =
-  "76edad60505111ba64c51f6de79a9c9656920f9310c070af27192de9f40cb2bc";
+  "d0e146f6225daa08e9c26f83505a62fb1fd0be86a746c414b4c7370016e22d26";
 const requireOperationalCallerFunction = extractDeclaredFunction(
   serverActionsSource,
   "async function requireOperationalCaller"
@@ -294,6 +300,34 @@ assert(
   ),
   "requireOperationalCaller gates callers to exactly Admin or User"
 );
+
+// SHADCN-07B2-R2 structural proof, alongside the re-minted hash above. The guard's four DELIBERATE
+// refusals now raise the closed OperationalAccessDeniedError instead of a plain Error, so a caller
+// can distinguish a refusal from a failed denial-audit write or a Supabase outage WITHOUT catching
+// everything. Every condition, audit event, actor/target field and reasonCode is byte-identical -
+// only the thrown type changed - so the exact-body pin is re-minted, never relaxed. These
+// assertions additionally stop a future edit reintroducing a plain throw the hash alone would
+// simply re-pin away.
+const deliberateRefusalThrows =
+  requireOperationalCallerFunction.match(/throw new [A-Za-z]+/g) ?? [];
+assert(
+  deliberateRefusalThrows.length === 4 &&
+    deliberateRefusalThrows.every(
+      (thrown) => thrown === "throw new OperationalAccessDeniedError"
+    ),
+  "every deliberate requireOperationalCaller refusal throws the closed OperationalAccessDeniedError"
+);
+for (const detailExpression of [
+  'details: { reasonCode: "unauthenticated" },',
+  'details: { reasonCode: "first_login_incomplete" },',
+  'details: { reasonCode: profile ? "account_inactive" : "unauthenticated" },',
+  'details: { reasonCode: "role_not_authorized" },',
+]) {
+  assert(
+    requireOperationalCallerFunction.includes(detailExpression),
+    `requireOperationalCaller still records the denial reason ${detailExpression}`
+  );
+}
 const requireOperationalCallerHash = sha256(requireOperationalCallerFunction.replace(/\r\n/g, "\n"));
 assert(
   requireOperationalCallerHash === EXPECTED_REQUIRE_OPERATIONAL_CALLER_HASH,
@@ -453,4 +487,70 @@ assert(
 );
 
 
-process.stdout.write("\nPersonnel directory verification passed: all 29 assertions verified.\n");
+// SHADCN-07C1-R2: both personnel guards resolve the authenticated request EXACTLY ONCE.
+//
+// React cache() gives reuse within a Server Component render; it is not a dependable dedupe inside
+// a Server Action, so the earlier getSession()/getSessionUser() pair could genuinely read the user
+// row twice per guard call. The resolution is COUNTED rather than merely detected - a presence test
+// would pass just as happily on a guard that resolved twice, which is the defect being corrected.
+// The role rules are re-asserted alongside it so a future edit cannot trade authorization for a
+// saved query.
+// Comment-stripped before any predicate below runs. These are raw-text `test()` calls, so a
+// comment mentioning resolveAuthenticatedRequest(), a role rule or a denial event would satisfy
+// them while the executable guard no longer did - the assertions would pass on prose.
+const personnelGuardSourceForResolution = stripComments(getSource("src/lib/personnel-guard.ts"));
+// Real RegExp values, not strings reconstructed at runtime. The previous form wrapped each rule in
+// literal slashes and stripped them with slice(1, -1) before new RegExp() - fragile, and it left the
+// dot in `profile.role` as a wildcard that would have matched `profileXrole`. These are escaped
+// literals in genuine regex literals, so the rule they pin is the rule they read.
+// Terminated at the closing `) {`, so each rule pins the WHOLE condition rather than a prefix of
+// it. Unanchored, `requirePersonnelAdmin`'s rule was a substring of
+// `profile.role !== "Admin" && profile.role !== "Developer"`, so widening that guard to admit
+// another role would have satisfied the assertion that exists to forbid exactly that.
+const guardContracts: Array<[string, RegExp]> = [
+  [
+    "requirePersonnelReader",
+    /profile\.role\s*!==\s*"Admin"\s*&&\s*profile\.role\s*!==\s*"Developer"\s*\)\s*\{/,
+  ],
+  [
+    "requirePersonnelAdmin",
+    /profile\.role\s*!==\s*"Admin"\s*\)\s*\{/,
+  ],
+];
+for (const [guardName, roleRule] of guardContracts) {
+  const declaration = `export async function ${guardName}(`;
+  const start = personnelGuardSourceForResolution.indexOf(declaration);
+  assert(start >= 0, `${guardName} is declared in personnel-guard.ts`);
+  // Bounded by the guard's OWN body, brace-matched. Ending the slice at the next
+  // `\nexport async function` left the LAST exported guard unbounded - that search returns -1
+  // there, so the slice ran to end of file and the positive role, status and denial-event
+  // predicates below could be satisfied by code belonging to something else.
+  const guardSource = extractDeclaredFunction(personnelGuardSourceForResolution, declaration);
+  assert(guardSource.length > 0, `${guardName} body region is non-empty`);
+
+  const resolutionCalls = (
+    guardSource.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+  ).length;
+  assert(
+    resolutionCalls === 1,
+    `${guardName} resolves the authenticated request exactly once per invocation`
+  );
+  assert(
+    roleRule.test(guardSource),
+    `${guardName} retains its role rule unchanged`
+  );
+  assert(
+    /profile\.status !== "Active"/.test(guardSource) &&
+      /session\.mustChangePassword \|\| session\.mustSetRecovery/.test(guardSource) &&
+      /eventType: "PersonnelDirectoryAccessDenied"/.test(guardSource),
+    `${guardName} retains its Active-status, first-login and denial-event behaviour`
+  );
+}
+assert(
+  !/getSessionUser\s*\(/.test(personnelGuardSourceForResolution) &&
+    !/getSession\s*\(/.test(personnelGuardSourceForResolution) &&
+    !/getUserById/.test(personnelGuardSourceForResolution),
+  "the personnel guards perform no second session or user lookup"
+);
+
+process.stdout.write("\nPersonnel directory verification passed: every assertion above succeeded.\n");

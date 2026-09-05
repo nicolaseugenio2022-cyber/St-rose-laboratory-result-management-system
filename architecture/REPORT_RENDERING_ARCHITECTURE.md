@@ -9,16 +9,15 @@ This document defines the official **Report Rendering Architecture Specification
 
 It specifies the end-to-end rendering pipeline, rendering inputs, shared rendering engine, rendering invariants, renderer families, physical A4 page layout rules, typography/style preservation mechanisms, signature positioning, and output target formatting across **Screen Preview**, **Browser Print**, and **PDF Output**.
 
-## 1.1 Authority Hierarchy Alignment
+## 1.1 Authority Alignment
 
-This document operates strictly within the project authority hierarchy:
+Authority in this project is **separated by concern**; there is no universal precedence ladder
+(`AGENTS.md` §1.2). This document is authoritative for its own concern only. For which document
+governs which concern, and for the minimum-reading task router, see `architecture/README.md`.
 
-1. **PROJECT.md**: Authoritative source for project vision, milestone roadmaps, technology stack, and system-wide business rules.
-2. **LABORATORY_TEMPLATE_SPECIFICATION.md**: Authoritative specification for official laboratory report templates, parameter definitions, reference rules, signatories, and renderer behavior.
-3. **Architecture/DOMAIN_MODEL.md (FROZEN)**: Authoritative business domain specification defining entities, aggregate roots, value objects, domain services, lifecycles, and business invariants.
-4. **Architecture/DATABASE_DESIGN.md (FROZEN)**: Authoritative relational database architecture and schema specification.
-5. **Architecture/REPORT_REGISTRY_ARCHITECTURE.md (FROZEN)**: Authoritative Report Registry metadata specification.
-6. **Current Source Code**: Contextual reference only. Code never overrides architecture specifications.
+Where two authorities disagree, stop and report the exact conflict rather than choosing a winner
+(`AGENTS.md` §1.4). Where documentation and the running system disagree, that is a reportable
+defect requiring investigation and is resolved in neither direction by default (`AGENTS.md` §1.3).
 
 ---
 
@@ -110,7 +109,7 @@ graph TD
     Invariants --> Inv5["5. Visual Identity: Same Colors, Borders & Table Cell Shading"]
     Invariants --> Inv6["6. Boundary Identity: Same 210mm x 297mm Dimensions & 15mm Margins"]
     Invariants --> Inv7["7. Placement Identity: Same Signature, Remarks & Parameter Ordering"]
-    Invariants --> Inv8["8. Source Fidelity: Same Visual Layout Fidelity as Official Word Template"]
+    Invariants --> Inv8["8. Source Fidelity: Visual Layout Fidelity to the Approved Repository-Native Specification"]
 ```
 
 ## 3.1 Detail of Invariant Specifications
@@ -122,7 +121,7 @@ graph TD
 5. **Visual Identity**: Identical template color palettes, table gridlines, double-lines, and header cell shading across all output channels.
 6. **Boundary Identity**: Identical physical page constraints (`210mm x 297mm` portrait A4 with `15mm` margins).
 7. **Placement Identity**: Identical positioning for logo headers, demographics blocks, parameter ordering, remarks footers, and signatory lines.
-8. **Source Fidelity**: Identical visual layout fidelity as the official Microsoft Word templates.
+8. **Source Fidelity**: Identical visual layout fidelity to the approved repository-native specification — the maintained `specifications/<TEMPLATE_CODE>.md`, the page geometry in §8, and `PDF_VALIDATION_CHECKLIST.md`. The original Word templates are historical source material and are not present in the repository.
 
 ---
 
@@ -225,7 +224,7 @@ Every report template is rendered by its assigned **Renderer Family** layout eng
 
 ## 8.2 Typography & Style Rules
 
-- **Font Hierarchy**: Strict font size scaling matching official Word templates (14pt-16pt Headers, 10pt-11pt Results, 9pt-10pt Demographics/Table Headers, 8.5pt Credentials).
+- **Font Hierarchy**: Strict font size scaling as specified here — 14pt-16pt Headers, 10pt-11pt Results, 9pt-10pt Demographics/Table Headers, 8.5pt Credentials. This scale is the authority; it is not re-derived from the historical Word templates.
 - **Table Gridlines & Borders**: Solid `1px` or double-line borders matching template specifications.
 - **Color Preservation**: Template-specific color palettes from static metadata apply to headers and shading. **Application UI branding never overrides report colors.**
 
@@ -235,8 +234,12 @@ Every report template is rendered by its assigned **Renderer Family** layout eng
 
 ## 9.1 Signatory Layout Architectures
 
-- **Standard 2-Signatory Block (16 Templates)**: Medical Technologist (Left), Pathologist (Right).
-- **HIV 3-Signatory Block (`HIV_RESULT`)**: Medical Technologist 1 (Left - Performed By), Medical Technologist 2 (Center - Verified By), Pathologist (Right - Approved By).
+- **Standard 2-Signatory Block (16 Templates)**: Pathologist (Left), Medical Technologist (Right).
+  Corrected under SHADCN-06D against the accepted report appearance and the runtime composer
+  (`composeStandardSignatories` places Pathologist at slot index 0 and Medical Technologist at 1).
+- **HIV 3-Signatory Block (`HIV_RESULT`)**: Medical Technologist (Left - Performed By), Pathologist
+  (Center), Medical Technologist (Right - Verified By). This certificate layout intentionally differs
+  from the standard block and is fixed by `specifications/HIV_RESULT.md` and the certificate composer.
 
 ## 9.2 Pathologist PNG Signature Image Rendering
 

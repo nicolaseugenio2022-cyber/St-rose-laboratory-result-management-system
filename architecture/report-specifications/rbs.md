@@ -1,5 +1,11 @@
 # Random Blood Sugar (RBS) Specification
 
+> **Preserved historical record.** This document is part of the client-note and implementation-source
+> archive under `architecture/report-specifications/`. It is **not** the maintained specification:
+> the maintained detailed specification is `architecture/specifications/<TEMPLATE_CODE>.md`, and
+> `architecture/report-specifications/Summary.md` remains authoritative for the client requirements it
+> explicitly records. See `architecture/README.md`.
+
 ## Original Client Notes (Tagalog / Taglish)
 > Kahit isama na lang to sa chem, rare naman kasi to.
 > Random blood sugar yan

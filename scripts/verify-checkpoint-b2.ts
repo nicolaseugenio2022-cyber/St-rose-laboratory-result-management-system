@@ -197,7 +197,7 @@ for (const code of B2_CODES) {
 }
 
 // Physician defaults reconfirmed
-assert(chem8.requestedByPolicy.defaultPhysician === null, `CHEM_8 default physician = null`);
+assert(chem8.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `CHEM_8 default physician = "Dr. Ralph Roland Asperas"`);
 assert(hdlLdl.requestedByPolicy.defaultPhysician === "Dr. Heinz Roland Asperas", `HDL_LDL default physician = "Dr. Heinz Roland Asperas"`);
 assert(chem10.requestedByPolicy.defaultPhysician === "Dr. Heinz Roland Asperas", `CHEM_10 default physician = "Dr. Heinz Roland Asperas"`);
 assert(ReportDefinitionRegistry.getDefinition("RBS")!.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `RBS default physician = "Dr. Ralph Roland Asperas"`);

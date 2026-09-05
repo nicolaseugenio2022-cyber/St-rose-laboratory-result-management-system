@@ -101,7 +101,19 @@ async function run(): Promise<void> {
   for (const name of sinks) {
     const original = console[name];
     console[name] = ((...args: unknown[]) => {
-      logged.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+      // An Error is serialized by hand. JSON.stringify(new Error("...")) returns "{}" because
+      // `message` and `stack` are non-enumerable, so `console.error(error)` contributed NOTHING to
+      // the transcript and the no-key-in-logs assertion below passed even when the error text
+      // carried a key value. Masked, not failing.
+      logged.push(
+        args
+          .map((a) => {
+            if (typeof a === "string") return a;
+            if (a instanceof Error) return [a.name, a.message, a.stack ?? ""].join(" ");
+            return String(JSON.stringify(a));
+          })
+          .join(" ")
+      );
       original(...args);
     }) as typeof console.log;
   }

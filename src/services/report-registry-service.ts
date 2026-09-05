@@ -5,7 +5,7 @@ import {
   HydratedTemplateSpec 
 } from "./interfaces";
 import { IReportTemplate } from "../domain/models/interfaces";
-import { IReportRegistryRepository } from "../repositories/interfaces";
+import { IReportRegistryRepository, isDegradedRegistryResult } from "../repositories/interfaces";
 import { SupabaseReportRegistryRepository } from "../repositories/supabase-report-registry-repository";
 
 /**
@@ -153,9 +153,18 @@ export class ReportRegistryService implements IReportRegistryService {
     const generation = this.cacheGeneration;
     const load = this.loadCompleteRegistry()
       .then((specs) => {
+        // A DEGRADED result is returned but never committed. The repository falls back to seed
+        // definitions when the bulk read fails, and that fallback stays - this caller still gets a
+        // usable registry. What must not happen is caching it: `hydratedRegistry` is the
+        // short-circuit every later call consults, so a committed fallback would serve seed
+        // parameters and reference ranges for the life of the process, long after the database
+        // recovered, with nothing marking the data as unauthoritative. Leaving both caches empty is
+        // what makes the next warmCache() retry Supabase; the in-flight handle is still released
+        // below, so this attempt is not replayed either.
+        //
         // A clearCache() during the load bumped the generation; committing here would reinstate
         // exactly the data the caller asked to discard.
-        if (this.cacheGeneration === generation) {
+        if (!isDegradedRegistryResult(specs) && this.cacheGeneration === generation) {
           for (const spec of specs) {
             this.cache.set(spec.template.templateCode, spec);
           }

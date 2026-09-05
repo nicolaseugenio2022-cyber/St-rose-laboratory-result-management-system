@@ -13,6 +13,10 @@
 import type { HydratedTemplateSpec } from "../src/services/interfaces";
 import type { IReportTemplate } from "../src/domain/models/interfaces";
 import type { IReportRegistryRepository } from "../src/repositories/interfaces";
+import {
+  isDegradedRegistryResult,
+  markDegradedRegistryResult,
+} from "../src/repositories/interfaces";
 
 /**
  * The service module reaches the Supabase server module, which builds its client at import time
@@ -161,6 +165,159 @@ class FallbackOnlyRepository implements IReportRegistryRepository {
     this.requirementLoads += 1;
     return null;
   }
+}
+
+/**
+ * SHADCN-07CR — a seed fallback is served but never committed.
+ *
+ * The repository returns seed definitions when its bulk read fails, and that fallback stays: the
+ * caller asking during an outage still gets a usable registry. What must not happen is caching it.
+ * `hydratedRegistry` is the short-circuit every later call consults, so a committed fallback would
+ * serve seed parameters and reference ranges for the life of the process - long after the database
+ * recovered, and with nothing marking the data as unauthoritative.
+ *
+ * Behavioural, like the rest of this file: every assertion counts calls a fake repository actually
+ * received, or reads what the service actually returned.
+ */
+class DegradingRegistryRepository implements IReportRegistryRepository {
+  bulkLoads = 0;
+  perCodeLoads = 0;
+  /** While true, the bulk read "fails" and answers with a marked seed result. */
+  degrade = true;
+  private release: (() => void) | null = null;
+  private pending: Promise<void> | null = null;
+
+  /** Hold the next bulk load open so concurrent callers overlap deterministically. */
+  gate(): () => void {
+    let opened = false;
+    const pending = new Promise<void>((resolve) => {
+      this.release = () => {
+        if (!opened) {
+          opened = true;
+          resolve();
+        }
+      };
+    });
+    this.pending = pending;
+    return () => this.release?.();
+  }
+
+  async getAllHydratedTemplates(): Promise<HydratedTemplateSpec[]> {
+    this.bulkLoads += 1;
+    if (this.pending) {
+      const waiting = this.pending;
+      this.pending = null;
+      await waiting;
+    }
+    if (this.degrade) {
+      return markDegradedRegistryResult(TEMPLATE_CODES.map(spec));
+    }
+    return TEMPLATE_CODES.map(spec);
+  }
+
+  async getTemplateByCode(templateCode: string): Promise<IReportTemplate | null> {
+    this.perCodeLoads += 1;
+    return { templateCode } as IReportTemplate;
+  }
+
+  async getParametersByTemplateCode(): Promise<never[]> {
+    this.perCodeLoads += 1;
+    return [];
+  }
+
+  async getSignatoryRequirementByTemplateCode(): Promise<null> {
+    this.perCodeLoads += 1;
+    return null;
+  }
+
+  async getAllActiveTemplates(): Promise<IReportTemplate[]> {
+    this.perCodeLoads += 1;
+    return TEMPLATE_CODES.map((templateCode) => ({ templateCode }) as IReportTemplate);
+  }
+}
+
+async function runDegraded(): Promise<void> {
+  // ── D1. A degraded result is RETURNED to its caller, but not cached ───────
+  const degrading = new DegradingRegistryRepository();
+  const degradedService = new ReportRegistryService(degrading);
+
+  const served = await degradedService.warmCache();
+  assert(
+    served.map((s) => s.template.templateCode).join(",") === TEMPLATE_CODES.join(","),
+    "D1 a degraded bulk result is still returned in full to the caller that asked for it"
+  );
+  assert(
+    isDegradedRegistryResult(served),
+    "D1 the served result carries the degraded marker, so the service could tell it apart"
+  );
+
+  // ── D2. The NEXT call queries the repository again ────────────────────────
+  const loadsAfterDegraded: number = degrading.bulkLoads;
+  await degradedService.warmCache();
+  const loadsAfterRetry: number = degrading.bulkLoads;
+  assert(
+    loadsAfterDegraded === 1 && loadsAfterRetry === 2,
+    "D2 a degraded result is not committed, so the next warmCache retries the repository"
+  );
+
+  // The per-template cache must be empty too: a direct lookup may not be served from a fallback.
+  const perCodeBefore: number = degrading.perCodeLoads;
+  await degradedService.getTemplateByCode(TEMPLATE_CODES[0]);
+  assert(
+    degrading.perCodeLoads > perCodeBefore,
+    "D2 a degraded result populates no per-template entry either, so a direct lookup still reads through"
+  );
+
+  // ── D3. A later SUCCESSFUL load is cached normally ────────────────────────
+  degrading.degrade = false;
+  const recovered = await degradedService.warmCache();
+  assert(
+    !isDegradedRegistryResult(recovered) && recovered.length === TEMPLATE_CODES.length,
+    "D3 the recovered load is a database result, not a fallback"
+  );
+  const loadsAfterRecovery: number = degrading.bulkLoads;
+  await degradedService.warmCache();
+  assert(
+    degrading.bulkLoads === loadsAfterRecovery,
+    "D3 the recovered registry IS committed, so the next warmCache performs no further load"
+  );
+  const perCodeAfterRecovery: number = degrading.perCodeLoads;
+  const servedFromCache = await degradedService.getTemplateByCode(TEMPLATE_CODES[0]);
+  assert(
+    servedFromCache?.template.templateCode === TEMPLATE_CODES[0] &&
+      degrading.perCodeLoads === perCodeAfterRecovery,
+    "D3 the committed registry serves getTemplateByCode without another load"
+  );
+
+  // ── D4. Concurrent callers still share ONE in-flight load while degraded ──
+  // The degraded path must not reintroduce a stampede: not committing is not the same as not
+  // sharing, and the in-flight handle is what keeps N cold callers to one query.
+  const concurrent = new DegradingRegistryRepository();
+  const concurrentService = new ReportRegistryService(concurrent);
+  const open = concurrent.gate();
+  const waiters = [
+    concurrentService.warmCache(),
+    concurrentService.warmCache(),
+    concurrentService.warmCache(),
+  ];
+  open();
+  const results = await Promise.all(waiters);
+  const concurrentLoads: number = concurrent.bulkLoads;
+  assert(
+    concurrentLoads === 1,
+    "D4 three concurrent cold callers share one in-flight load even when the result is degraded"
+  );
+  assert(
+    results.every((result) => result.length === TEMPLATE_CODES.length),
+    "D4 every concurrent caller receives the degraded registry rather than an empty one"
+  );
+  // And the shared handle is released, so the next call is a fresh attempt rather than a replay.
+  await concurrentService.warmCache();
+  const concurrentLoadsAfterRetry: number = concurrent.bulkLoads;
+  assert(
+    concurrentLoadsAfterRetry === 2,
+    "D4 the in-flight handle is released normally, so the next call retries instead of replaying"
+  );
 }
 
 async function runFallback(): Promise<void> {
@@ -355,6 +512,7 @@ async function run(): Promise<void> {
   );
 
   await runFallback();
+  await runDegraded();
 
   console.log("\nRegistry cache verification passed: bulk loads are performed once per hydration.");
 }

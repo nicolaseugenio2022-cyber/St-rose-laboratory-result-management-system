@@ -142,6 +142,20 @@ function effectiveHeaders(input: RequestInfo | URL, init?: RequestInit): Headers
   return null;
 }
 
+/**
+ * The caller's cancellation signal, wherever it was supplied.
+ *
+ * Same asymmetry as the headers: a `Request` carries its own signal, and reading only `init` meant
+ * a caller that passed one that way had it silently replaced by the attempt timeout - so the
+ * cancellation was never honoured, and the retry guard below could not see that the caller had
+ * aborted and would retry a request the caller had already given up on.
+ */
+function effectiveSignal(input: RequestInfo | URL, init?: RequestInit): AbortSignal | null {
+  if (init?.signal) return init.signal;
+  if (typeof Request !== "undefined" && input instanceof Request) return input.signal;
+  return null;
+}
+
 function stripSelfIssuedBearer(
   input: RequestInfo | URL,
   init?: RequestInit
@@ -217,13 +231,14 @@ export async function resilientFetch(
     if (remaining <= 0) break;
 
     const attemptSignal = AbortSignal.timeout(Math.min(READ_ATTEMPT_TIMEOUT_MS, remaining));
-    const signal = request?.signal ? AbortSignal.any([request.signal, attemptSignal]) : attemptSignal;
+    const callerSignal = effectiveSignal(input, request);
+    const signal = callerSignal ? AbortSignal.any([callerSignal, attemptSignal]) : attemptSignal;
 
     try {
       return await fetch(input, { ...request, signal, redirect: "error" });
     } catch (error) {
       // Caller cancellation always wins and is never retried.
-      if (request?.signal?.aborted) throw error;
+      if (callerSignal?.aborted) throw error;
       lastError = error;
       const retryable = isAttemptTimeout(error) || isTransientTransportError(error);
       if (attempt === 2 || !retryable) throw error;

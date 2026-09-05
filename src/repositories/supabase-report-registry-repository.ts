@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IReportRegistryRepository } from "./interfaces";
+import { IReportRegistryRepository, markDegradedRegistryResult } from "./interfaces";
 import { 
   IReportTemplate, 
   ITemplateParameter, 
@@ -215,17 +215,22 @@ export class SupabaseReportRegistryRepository implements IReportRegistryReposito
         },
       }));
     } catch {
-      // Fallback to seed data
-      return INITIAL_REPORT_TEMPLATES.filter((t) => t.isActive).map((template) => ({
-        template,
-        parameters: INITIAL_TEMPLATE_PARAMETERS.filter((p) => p.templateCode === template.templateCode),
-        signatoryRequirement: INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS.find((s) => s.templateCode === template.templateCode) || {
-          id: `default-${template.templateCode}`,
-          templateCode: template.templateCode,
-          requiredPathologistsCount: 1,
-          requiredMedtechsCount: 1,
-        },
-      }));
+      // Fallback to seed data - MARKED, so the service can tell it apart from a database
+      // load. The fallback itself is unchanged: this caller still receives a usable registry.
+      // Marking it only stops it being committed as the complete, authoritative one, which
+      // would otherwise keep serving seed parameters and reference ranges after recovery.
+      return markDegradedRegistryResult(
+        INITIAL_REPORT_TEMPLATES.filter((t) => t.isActive).map((template) => ({
+          template,
+          parameters: INITIAL_TEMPLATE_PARAMETERS.filter((p) => p.templateCode === template.templateCode),
+          signatoryRequirement: INITIAL_TEMPLATE_SIGNATORY_REQUIREMENTS.find((s) => s.templateCode === template.templateCode) || {
+            id: `default-${template.templateCode}`,
+            templateCode: template.templateCode,
+            requiredPathologistsCount: 1,
+            requiredMedtechsCount: 1,
+          },
+        }))
+      );
     }
   }
 }

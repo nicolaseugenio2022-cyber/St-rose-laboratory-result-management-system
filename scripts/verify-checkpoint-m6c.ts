@@ -689,6 +689,22 @@ function verifyPurgeAuthorization(): void {
       purgeServiceIndex > forbiddenBranchIndex,
     "the purge route must answer an authorization refusal with HTTP 403 before the purge service runs"
   );
+
+  // REACHABILITY, not just presence. Everything above is satisfied by a branch that can never run:
+  // `if (false) { if (error instanceof ForbiddenError) ... 403 ... } return 500;` keeps the tokens
+  // inside the guard block and ahead of the purge service. The refusal must therefore sit at the
+  // catch body's OWN nesting level - depth 0 - so no dead wrapper can enclose it.
+  const catchBodyOpen = guardBlock.indexOf("{", guardBlock.indexOf("catch"));
+  const branchInBlock = guardBlock.indexOf("error instanceof ForbiddenError");
+  let depth = 0;
+  for (let i = catchBodyOpen + 1; i >= 1 && i < branchInBlock; i += 1) {
+    if (guardBlock[i] === "{") depth += 1;
+    else if (guardBlock[i] === "}") depth -= 1;
+  }
+  assert(
+    catchBodyOpen >= 0 && branchInBlock > catchBodyOpen && depth === 0,
+    "the purge route's authorization refusal must be reachable - sited directly in the guard's catch, never nested inside another branch"
+  );
 }
 
 /**

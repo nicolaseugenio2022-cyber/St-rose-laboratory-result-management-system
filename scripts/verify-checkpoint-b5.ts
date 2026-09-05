@@ -639,6 +639,7 @@ const domainAggregateSource = readNormalizedSource("src/domain/models/patient-re
 const repositorySource = readNormalizedSource("src/repositories/supabase-session-repository.ts");
 const repositoryInterfacesSource = readNormalizedSource("src/repositories/interfaces/index.ts");
 const serverActionsSource = readNormalizedSource("src/features/server-boundary/server-actions.ts");
+const sessionTransportSource = readNormalizedSource("src/features/server-boundary/session-transport.ts");
 const mapToAggregateDeclaration = "  private mapToAggregate(";
 const mapToAggregateStart = liveCodeIndexOf(repositorySource, mapToAggregateDeclaration);
 const mapToAggregateOpeningBrace = mapToAggregateStart >= 0
@@ -1591,6 +1592,346 @@ assert(
     liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "supabaseServer") < 0,
   "getRecentSessionsWithOwnership derives ownership from that same fetch and issues no query of its own"
 );
+
+// ── SHADCN-07C2: the list boundary is payload-minimized ──────────────────────────────────────
+//
+// The recent-session read used to select the whole session tree - `*` plus `laboratory_reports(*)`
+// with `laboratory_results(*)` and `report_signatories(*)` embedded - and hand every row of it to
+// the browser as a full `PatientReportSessionTransport`, for fifty sessions at a time, so a
+// Dashboard tile and a History row could draw a name and three template-code chips.
+//
+// Nothing above catches that: the retention scope, the ownership derivation and the response-entry
+// key set were all already correct, and stayed correct while the rows themselves were enormous.
+// These assertions pin the thing those could not see - WHAT each row carries - at all three points
+// it is decided: the SQL projection, the mapper that builds the entry, and the type the entry
+// crosses the boundary as. All three are positive checks against the approved narrow shape.
+const listProjectionDeclaration = "  private static readonly SESSION_LIST_PROJECTION = `";
+const listProjectionStart = liveCodeIndexOf(repositorySource, listProjectionDeclaration);
+const listProjectionBodyStart = listProjectionStart >= 0
+  ? listProjectionStart + listProjectionDeclaration.length
+  : -1;
+const listProjectionSource = listProjectionBodyStart >= 0
+  ? repositorySource.slice(
+      listProjectionBodyStart,
+      repositorySource.indexOf("`;", listProjectionBodyStart)
+    )
+  : "";
+assert(
+  listProjectionSource.length > 0,
+  "the repository declares a named recent-session list projection"
+);
+const prohibitedListProjectionColumns = [
+  "*",
+  "laboratory_results",
+  "report_signatories",
+  "completed_snapshot",
+] as const;
+assert(
+  prohibitedListProjectionColumns.every((column) => !listProjectionSource.includes(column)),
+  "the recent-session list projection selects no wildcard, no results, no signatories and no completed snapshot"
+);
+// SHADCN-07C2-R1: exact column TOKENS, never substrings. `listProjectionSource.includes("id")` was
+// satisfied by `created_by_user_id`, so deleting `id` from the projection would have gone unnoticed,
+// and every other short name had the same hole. The select string is parsed into what it actually
+// is - the session's own comma-separated columns, the embedded resource, and that resource's
+// columns - so each name is present or absent on its own. Comparing the SET, not just membership,
+// makes an added column fail too, which is the direction that matters: the projection is what
+// decides how much of a session leaves the database.
+const parseProjectionColumns = (projection: string) => {
+  const embedStart = projection.indexOf("(");
+  const embedEnd = projection.lastIndexOf(")");
+  if (embedStart < 0 || embedEnd <= embedStart) return null;
+  const columnTokens = (segment: string) =>
+    segment
+      .split(",")
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+  // Everything before the embed's `(` is the session's own list, terminated by the embedded
+  // resource name; everything between the parentheses is that resource's own column list.
+  const sessionTokens = columnTokens(projection.slice(0, embedStart));
+  const embeddedResource = sessionTokens.pop();
+  if (embeddedResource === undefined) return null;
+  return {
+    sessionColumns: sessionTokens,
+    embeddedResource,
+    embeddedColumns: columnTokens(projection.slice(embedStart + 1, embedEnd)),
+  };
+};
+const parsedListProjection = parseProjectionColumns(listProjectionSource);
+const expectedListProjectionSessionColumns = [
+  "id",
+  "accession_number",
+  "status",
+  "demographics",
+  "created_by_user_id",
+  "created_at",
+  "completed_at",
+  "expires_at",
+] as const;
+const expectedListProjectionEmbeddedColumns = ["id", "template_code"] as const;
+assert(
+  parsedListProjection !== null &&
+    parsedListProjection.embeddedResource === "laboratory_reports" &&
+    parsedListProjection.sessionColumns.length ===
+      expectedListProjectionSessionColumns.length &&
+    expectedListProjectionSessionColumns.every((column) =>
+      parsedListProjection.sessionColumns.includes(column)
+    ) &&
+    parsedListProjection.embeddedColumns.length ===
+      expectedListProjectionEmbeddedColumns.length &&
+    expectedListProjectionEmbeddedColumns.every((column) =>
+      parsedListProjection.embeddedColumns.includes(column)
+    ),
+  "the recent-session list projection selects exactly the session and report columns the list entry is built from"
+);
+assert(
+  liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "SESSION_LIST_PROJECTION") >= 0 &&
+    liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "SESSION_AGGREGATE_PROJECTION") < 0 &&
+    liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "this.mapToListEntry(") >= 0 &&
+    liveCodeIndexOf(getRecentSessionsWithOwnershipSource, "this.mapToAggregate(") < 0,
+  "getRecentSessionsWithOwnership fetches the narrow list projection and builds no aggregate"
+);
+
+const mapToListEntryDeclaration = "  private mapToListEntry(";
+const mapToListEntryStart = liveCodeIndexOf(repositorySource, mapToListEntryDeclaration);
+const mapToListEntrySource = extractBracedSource(
+  repositorySource,
+  mapToListEntryStart >= 0
+    ? repositorySource.indexOf("{", mapToListEntryStart + mapToListEntryDeclaration.length)
+    : -1
+);
+assert(
+  mapToListEntrySource.length > 0,
+  "mapToListEntry source region is non-empty"
+);
+const listEntryReturnIndex = liveCodeIndexOf(mapToListEntrySource, "return {");
+const listEntryObjectSource = extractBracedSource(
+  mapToListEntrySource,
+  listEntryReturnIndex >= 0 ? mapToListEntrySource.indexOf("{", listEntryReturnIndex) : -1
+);
+assert(
+  listEntryObjectSource.length > 0,
+  "mapToListEntry list entry construction region is non-empty"
+);
+const allowedListEntryKeys = [
+  "id",
+  "accessionNumber",
+  "status",
+  "demographics",
+  "reports",
+  "createdAt",
+  "completedAt",
+  "expiresAt",
+] as const;
+const listEntryKeys = topLevelIdentifierPropertyKeys(listEntryObjectSource);
+assert(
+  listEntryKeys !== null &&
+    listEntryKeys.length === allowedListEntryKeys.length &&
+    allowedListEntryKeys.every((key) => listEntryKeys.includes(key)),
+  "mapToListEntry builds the list entry from exactly the approved fields"
+);
+// The owner column is read to DERIVE ownedByCaller and must not survive into the entry itself.
+assert(
+  prohibitedOwnershipAliases.every(
+    (alias) =>
+      liveCodeIdentifierIndexOf(mapToListEntrySource, alias) < 0 &&
+      liveCodeIdentifierIndexOf(listEntryObjectSource, alias) < 0
+  ),
+  "mapToListEntry never reads or assigns an ownership identifier"
+);
+const prohibitedListEntryFields = [
+  "completedSnapshot",
+  "completed_snapshot",
+  "results",
+  "signatories",
+  "signatureImageUrl",
+  "signatureAddress",
+  "remarks",
+  "reagentKitInfo",
+  "encodingData",
+  "referenceRuleSnapshot",
+  "evaluationOutcome",
+] as const;
+assert(
+  prohibitedListEntryFields.every((field) => !listEntryObjectSource.includes(field)),
+  "the constructed list entry carries no snapshot, result, signatory, remark, kit or encoding data"
+);
+
+// SHADCN-07C2-R1: the NESTED shapes, pinned exactly.
+//
+// The key set above counts `demographics` and `reports` as one key each and says nothing about
+// what is inside either, and both are objects this mapper assembles by hand out of something
+// wider: the whole `demographics` JSONB column, and a `laboratory_reports` row. So `address`,
+// `patientStatus`, `referrerName` or `companyName` could be copied out one level down, or a
+// report could start carrying `results`, with every assertion above still green. These two pin
+// each nested literal to its exact approved key set, so an added field fails whatever it is
+// called.
+const listEntryNestedObjectSource = (propertyName: string) => {
+  const parsedListEntry = ts.createSourceFile(
+    "list-entry.ts",
+    `const listEntry = ${listEntryObjectSource};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const listEntryDeclaration = parsedListEntry.statements[0];
+  if (!listEntryDeclaration || !ts.isVariableStatement(listEntryDeclaration)) return "";
+  const listEntryInitializer = listEntryDeclaration.declarationList.declarations[0]?.initializer;
+  if (!listEntryInitializer || !ts.isObjectLiteralExpression(listEntryInitializer)) return "";
+  const property = listEntryInitializer.properties.find(
+    (candidate): candidate is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(candidate) &&
+      ts.isIdentifier(candidate.name) &&
+      candidate.name.text === propertyName
+  );
+  if (!property) return "";
+  const value = unwrapParenthesizedExpression(property.initializer);
+  // `demographics` is written as a direct object literal; `reports` as the object literal returned
+  // from the row map callback. Anything else - a spread, a helper call, a variable - is not a shape
+  // this can read, so it returns empty and the assertion below fails closed rather than passing on
+  // an unexamined value.
+  if (ts.isObjectLiteralExpression(value)) return value.getText(parsedListEntry);
+  if (isMapCallExpression(value)) {
+    const mappedObjects = objectLiteralsReturnedFromMapCall(value);
+    return mappedObjects.length === 1 ? mappedObjects[0].getText(parsedListEntry) : "";
+  }
+  return "";
+};
+const listEntryDemographicsSource = listEntryNestedObjectSource("demographics");
+assert(
+  listEntryDemographicsSource.length > 0,
+  "mapToListEntry list entry demographics construction region is non-empty"
+);
+const allowedListEntryDemographicsKeys = [
+  "fullName",
+  "age",
+  "ageUnit",
+  "sex",
+  "requestingPhysician",
+  "examinationDate",
+] as const;
+const listEntryDemographicsKeys = topLevelIdentifierPropertyKeys(listEntryDemographicsSource);
+assert(
+  listEntryDemographicsKeys !== null &&
+    listEntryDemographicsKeys.length === allowedListEntryDemographicsKeys.length &&
+    allowedListEntryDemographicsKeys.every((key) => listEntryDemographicsKeys.includes(key)),
+  "mapToListEntry copies exactly the approved demographics fields and drops the rest of the column"
+);
+const listEntryReportSource = listEntryNestedObjectSource("reports");
+assert(
+  listEntryReportSource.length > 0,
+  "mapToListEntry list entry report construction region is non-empty"
+);
+const allowedListEntryReportKeys = ["id", "templateCode"] as const;
+const listEntryReportKeys = topLevelIdentifierPropertyKeys(listEntryReportSource);
+assert(
+  listEntryReportKeys !== null &&
+    listEntryReportKeys.length === allowedListEntryReportKeys.length &&
+    allowedListEntryReportKeys.every((key) => listEntryReportKeys.includes(key)),
+  "mapToListEntry builds each list entry report from exactly the approved fields"
+);
+
+const listEntryTypeDeclaration = "export type PatientReportSessionListEntry = Pick<";
+const listEntryTypeStart = liveCodeIndexOf(sessionTransportSource, listEntryTypeDeclaration);
+const listEntryTypeEnd = listEntryTypeStart >= 0
+  ? sessionTransportSource.indexOf("\n};", listEntryTypeStart)
+  : -1;
+const listEntryTypeSource = listEntryTypeEnd >= 0
+  ? sessionTransportSource.slice(listEntryTypeStart, listEntryTypeEnd + 3)
+  : "";
+assert(
+  listEntryTypeSource.length > 0,
+  "the list entry transport type declaration region is non-empty"
+);
+assert(
+  prohibitedListEntryFields.every((field) => !listEntryTypeSource.includes(field)) &&
+    prohibitedOwnershipAliases.every(
+      (alias) => liveCodeIdentifierIndexOf(listEntryTypeSource, alias) < 0
+    ),
+  "the list entry transport type cannot express a report body, a signature reference or an ownership identifier"
+);
+// SHADCN-07C2-R1: the region above stops at the entry type's own closing brace, so it never reads
+// the two types it delegates its nested shapes to. Widening either of those is how the DTO would
+// regain the ability to express what the mapper is pinned not to build, so they are scanned for the
+// same prohibited fields plus the demographics the list deliberately drops.
+const listDtoSubtypeDeclarations = [
+  "export type SessionListDemographics = Pick<",
+  "export type SessionListReport = Pick<",
+] as const;
+const listDtoSubtypeSources = listDtoSubtypeDeclarations.map((declaration) => {
+  const start = liveCodeIndexOf(sessionTransportSource, declaration);
+  if (start < 0) return "";
+  const end = sessionTransportSource.indexOf(">;", start + declaration.length);
+  return end >= 0 ? sessionTransportSource.slice(start, end + 2) : "";
+});
+assert(
+  listDtoSubtypeSources.every((source) => source.length > 0),
+  "the list entry demographics and report type declaration regions are non-empty"
+);
+const prohibitedListDemographicsFields = [
+  "address",
+  "patientStatus",
+  "referrerName",
+  "companyName",
+] as const;
+const listDtoSubtypeSource = listDtoSubtypeSources.join("\n");
+assert(
+  [...prohibitedListEntryFields, ...prohibitedListDemographicsFields].every(
+    (field) => liveCodeIdentifierIndexOf(listDtoSubtypeSource, field) < 0
+  ) &&
+    prohibitedOwnershipAliases.every(
+      (alias) => liveCodeIdentifierIndexOf(listDtoSubtypeSource, alias) < 0
+    ),
+  "the list entry demographics and report types cannot express an address, a patient status, a referrer, a company, a report body or an ownership identifier"
+);
+assert(
+  liveCodeIndexOf(sessionHistoryEntryTypeSource, "PatientReportSessionListEntry") >= 0 &&
+    liveCodeIndexOf(sessionHistoryEntryTypeSource, "PatientReportSessionTransport") < 0,
+  "SessionHistoryEntryTransport carries the narrow list entry, never the full session transport"
+);
+assert(
+  liveCodeIndexOf(listRecentSessionsActionSource, "toSessionTransport(") < 0,
+  "listRecentSessionsAction no longer projects a full session transport per row"
+);
+
+// The on-demand half. Preview loads one session by id, and it must be the LIST's visibility that
+// decides whether it may - the completed-session scope plus the retention window, both in the
+// database query - not a widened read and not the stricter reopen-ownership question.
+const findVisibleSessionDeclaration = "  async findVisibleSessionForCaller(";
+const findVisibleSessionStart = liveCodeIndexOf(repositorySource, findVisibleSessionDeclaration);
+const findVisibleSessionSource = extractBracedSource(
+  repositorySource,
+  findVisibleSessionStart >= 0
+    ? repositorySource.indexOf("{", findVisibleSessionStart + findVisibleSessionDeclaration.length)
+    : -1
+);
+assert(
+  findVisibleSessionSource.length > 0,
+  "findVisibleSessionForCaller source region is non-empty"
+);
+const visibleScopeIndex = liveCodeIndexOf(findVisibleSessionSource, "this.applyDraftOwnershipScope(");
+const visibleIdPredicateIndex = liveCodeIndexOf(findVisibleSessionSource, '.eq("id", id)');
+const visibleRetentionPredicateIndex = liveCodeIndexOf(
+  findVisibleSessionSource,
+  '.or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`)'
+);
+const visibleMaybeSingleIndex = liveCodeIndexOf(findVisibleSessionSource, ".maybeSingle()");
+assert(
+  liveCodeIndexOf(
+    findVisibleSessionSource,
+    "const retentionTimestamp = new Date().toISOString();"
+  ) >= 0 &&
+    visibleScopeIndex >= 0 &&
+    visibleIdPredicateIndex > visibleScopeIndex &&
+    visibleRetentionPredicateIndex > visibleIdPredicateIndex &&
+    visibleMaybeSingleIndex > visibleRetentionPredicateIndex &&
+    liveCodeIndexOf(findVisibleSessionSource, ".filter(") < 0,
+  "findVisibleSessionForCaller applies the list's own draft-ownership scope and retention window in the database query"
+);
+assert(
+  liveCodeIndexOf(findVisibleSessionSource, "created_by_user_id") < 0,
+  "findVisibleSessionForCaller does not narrow preview to the caller's own sessions"
+);
 assert(saveDraftSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(saveDraftSessionConflictUpdateSource), "save_draft_session keeps accession_number out of its session conflict update");
 assert(completionSessionConflictUpdateSource.length > 0 && !/\baccession_number\b/i.test(completionSessionConflictUpdateSource), "complete_patient_report_session keeps accession_number out of its session conflict update");
 assert(!saveDraftSource.includes("accession_number") && !saveDraftSource.includes("session.accessionNumber") && !completeSessionSource.includes("accession_number") && !completeSessionSource.includes("session.accessionNumber"), "repository write payloads never submit or reference a client accession number");
@@ -2058,6 +2399,18 @@ const operationalResultActions: {
     expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "DRAFT_NOT_DELETABLE"],
     classifiedTypes: ["DraftNotDeletableError"],
     stages: ["deleteDraftSession"],
+  },
+  // SHADCN-07C2. The on-demand Preview load is an operational action like any other, so it is held
+  // to the same convention: authorize first through the converting wrapper, refuse by returned
+  // code, and never surface a caught value. Its two outcomes are the access refusal and the one
+  // deliberately indistinguishable SESSION_UNAVAILABLE - absent, another user's Draft, and past
+  // retention must all read the same from the browser.
+  {
+    action: "getVisibleSessionDetailAction",
+    route: "/history",
+    expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "SESSION_UNAVAILABLE"],
+    classifiedTypes: [],
+    stages: ["findVisibleSession"],
   },
 ];
 for (const { action, route, expectedCodes, classifiedTypes, stages } of operationalResultActions) {

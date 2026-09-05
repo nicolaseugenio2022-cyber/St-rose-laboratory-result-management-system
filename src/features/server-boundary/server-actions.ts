@@ -34,6 +34,7 @@ import {
 } from "@/features/server-boundary/action-inputs";
 import {
   fromSessionTransport,
+  PatientReportSessionListEntry,
   PatientReportSessionTransport,
   toSessionTransport,
 } from "@/features/server-boundary/session-transport";
@@ -45,8 +46,16 @@ type OperationalCaller = {
   username: string;
 };
 
+/**
+ * One row of the Dashboard / History session list.
+ *
+ * SHADCN-07C2 narrowed `session` from the complete `PatientReportSessionTransport` to the list
+ * DTO. The entry shape itself is unchanged - a session and the server's own reopen decision - and
+ * `canReopen` is still the only ownership fact that crosses, still derived server-side from
+ * `created_by_user_id`, which the DTO cannot express.
+ */
 export type SessionHistoryEntryTransport = {
-  session: PatientReportSessionTransport;
+  session: PatientReportSessionListEntry;
   canReopen: boolean;
 };
 
@@ -148,8 +157,11 @@ export async function listRecentSessionsAction(
   const { limit, search } = parseRecentSessionsInput(input);
   const repository = new SupabasePatientReportSessionRepository(caller);
   const sessions = await repository.getRecentSessionsWithOwnership(limit, search);
+  // No `toSessionTransport` here any more. The repository already returns the narrow list entry, so
+  // there is no full aggregate to project down from - the heavy relations were never fetched. A
+  // conversion at this point would only be able to re-widen what the query deliberately left out.
   return sessions.map((entry) => ({
-    session: toSessionTransport(entry.session),
+    session: entry.session,
     canReopen: entry.ownedByCaller,
   }));
 }
@@ -419,4 +431,44 @@ export async function getRegistryTemplateAction(
   await requireOperationalCaller();
   const { templateCode } = parseRegistryTemplateInput(input);
   return reportRegistryService.getTemplateByCode(templateCode);
+}
+
+/**
+ * Load ONE complete session, on demand, for History Preview (SHADCN-07C2).
+ *
+ * The list no longer ships report bodies, so Preview fetches the session it is about to render -
+ * one session, when an operator asks for it, instead of fifty on every page load. What comes back
+ * is the existing `PatientReportSessionTransport`, unchanged, so Preview, Print, PDF and the frozen
+ * completed snapshot all still receive exactly the complete data they received before; only the
+ * moment of the fetch moved.
+ *
+ * Visibility is the LIST's, not the Workspace's. `findVisibleSessionForCaller` applies the same two
+ * predicates the recent-session query applies - Completed-or-own-Draft, then the retention window -
+ * so this action can return a session if and only if that session could have been listed. It is
+ * deliberately not gated on `canReopen`: a Completed session the caller does not own is visible in
+ * History and previewable there today, while remaining un-replaceable, and those are two different
+ * decisions made by two different repository methods.
+ *
+ * A session that is absent, another user's Draft, or past retention all arrive here as the same
+ * `null` and leave as the same sentence, so the refusal is not an existence oracle.
+ */
+export async function getVisibleSessionDetailAction(
+  input: unknown
+): Promise<OperationalActionResult<PatientReportSessionTransport>> {
+  const authorization = await authorizeOperationalCaller("/history");
+  if (!authorization.ok) return operationalFailure("OPERATIONAL_ACCESS_DENIED");
+  const caller = authorization.caller;
+  const { sessionId } = parseSessionLoadInput(input);
+  const repository = new SupabasePatientReportSessionRepository(caller);
+  let session: IPatientReportSession | null;
+  try {
+    session = await repository.findVisibleSessionForCaller(sessionId);
+  } catch (error: unknown) {
+    reportUnexpectedActionFailure("/history", "findVisibleSession", error);
+  }
+  if (!session) {
+    return operationalFailure("SESSION_UNAVAILABLE");
+  }
+
+  return operationalSuccess(toSessionTransport(session));
 }

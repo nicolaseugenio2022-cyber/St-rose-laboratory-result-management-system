@@ -15,9 +15,11 @@ import {
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import {
   deleteDraftSessionAction as deleteDraftSession,
+  getVisibleSessionDetailAction,
   listRecentSessionsAction,
 } from "@/features/server-boundary/server-actions";
 import { fromSessionTransport } from "@/features/server-boundary/session-transport";
+import type { PatientReportSessionListEntry } from "@/features/server-boundary/session-transport";
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -55,8 +57,20 @@ const SharedRenderingEngine = dynamic(
 );
 
 type SessionHistoryEntry = {
-  session: PatientReportSessionAggregate;
+  session: PatientReportSessionListEntry;
   canReopen: boolean;
+};
+
+/**
+ * A Preview the operator has asked for, before its session has arrived (SHADCN-07C2).
+ *
+ * The list row no longer carries a report body, so opening Preview starts a load. The accession is
+ * kept alongside the id purely so the modal can title itself from the row that was clicked rather
+ * than waiting for the response to name it.
+ */
+type PreviewRequest = {
+  sessionId: string;
+  accessionNumber: string | null;
 };
 
 type SortKey = "accession" | "patient" | "date" | "retention";
@@ -93,7 +107,8 @@ const CARD_SORT_OPTIONS = [
 
 // A session may carry any number of reports, so an uncapped chip list lets one row
 // widen the whole table. Three covers the common routine panel; the rest collapse
-// into a +N indicator. Display only - sess.reports stays complete for Preview.
+// into a +N indicator. Display only - the row carries every report's code, and
+// Preview loads the complete session separately when it is opened.
 const MAX_VISIBLE_TEST_CHIPS = 3;
 
 function matchesSearchTerm(value: unknown, normalizedQuery: string) {
@@ -125,7 +140,7 @@ function localCalendarDayNumber(value: Date) {
   );
 }
 
-function getRetentionDetails(session: PatientReportSessionAggregate) {
+function getRetentionDetails(session: PatientReportSessionListEntry) {
   if (session.status === "Draft" || !session.expiresAt) return null;
 
   const millisecondsPerDay = 24 * 60 * 60 * 1000;
@@ -175,7 +190,7 @@ function RetentionChip({ retention }: { retention: NonNullable<ReturnType<typeof
 }
 
 /** Capped template-code chips with the +N overflow indicator, shared by both renderings. */
-function TestCodeChips({ reports }: { reports: PatientReportSessionAggregate["reports"] }) {
+function TestCodeChips({ reports }: { reports: PatientReportSessionListEntry["reports"] }) {
   const hiddenTestCount = reports.length - MAX_VISIBLE_TEST_CHIPS;
 
   return (
@@ -264,10 +279,15 @@ function HistoryTableSkeleton() {
 }
 
 /** The one place a transport entry becomes view state. Used by the server-rendered seed and by
- *  every client refetch alike, so ownership-derived reopen rights always map the same way. */
+ *  every client refetch alike, so ownership-derived reopen rights always map the same way.
+ *
+ *  SHADCN-07C2: no aggregate is rebuilt here any more. The entry arrives as the narrow list DTO
+ *  and is taken as it is - rehydrating fifty sessions into `PatientReportSessionAggregate`
+ *  instances was only ever possible because the server had shipped every result and signatory row
+ *  to make it possible. */
 function toHistoryEntry(entry: SessionHistoryEntryTransport): SessionHistoryEntry {
   return {
-    session: fromSessionTransport(entry.session),
+    session: entry.session,
     canReopen: entry.canReopen,
   };
 }
@@ -297,7 +317,12 @@ export function SessionHistoryView({
       : undefined;
   const [debouncedAccessionSearch, setDebouncedAccessionSearch] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Draft" | "Completed">("ALL");
+  // Preview is now a request plus its outcome, not a row the list already held. `previewSession`
+  // is still the complete session the renderer needs - it just arrives from its own authorized
+  // load instead of riding along with every other row.
+  const [previewRequest, setPreviewRequest] = useState<PreviewRequest | null>(null);
   const [previewSession, setPreviewSession] = useState<PatientReportSessionAggregate | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(initialEntries === undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -355,6 +380,48 @@ export function SessionHistoryView({
       superseded = true;
     };
   }, [debouncedAccessionSearch, reloadToken]);
+
+  // Load the requested session's complete record, discarding a response the operator has already
+  // closed or superseded by opening a different row. Authorization, draft ownership and the
+  // retention window are all the server's decision - this only shows the sentence it returned.
+  const previewSessionId = previewRequest?.sessionId;
+  useEffect(() => {
+    if (!previewSessionId) return;
+
+    let superseded = false;
+    setPreviewSession(null);
+    setPreviewError(null);
+
+    getVisibleSessionDetailAction({ sessionId: previewSessionId })
+      .then((result) => {
+        if (superseded) return;
+        if (!result.success) {
+          setPreviewError(result.error);
+          return;
+        }
+        setPreviewSession(fromSessionTransport(result.data));
+      })
+      .catch(() => {
+        if (superseded) return;
+        // Unexpected rejection only, and never the thrown text: Next.js has already replaced a
+        // Server Action's own wording with a redaction string before it crosses the wire.
+        setPreviewError("This session could not be opened for preview.");
+      });
+
+    return () => {
+      superseded = true;
+    };
+  }, [previewSessionId]);
+
+  const handleClosePreview = () => {
+    setPreviewRequest(null);
+    setPreviewSession(null);
+    setPreviewError(null);
+  };
+
+  const handlePreview = (session: PatientReportSessionListEntry) => {
+    setPreviewRequest({ sessionId: session.id, accessionNumber: session.accessionNumber });
+  };
 
   const hasActiveSearch = trimmedSearchQuery.length > 0;
   const hasActiveAccessionSearch = accessionSearch !== undefined;
@@ -677,7 +744,7 @@ export function SessionHistoryView({
                         entry={{ session: sess, canReopen }}
                         variant="table"
                         isDeleting={isDeletingId === sess.id}
-                        onPreview={setPreviewSession}
+                        onPreview={handlePreview}
                         onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
                         onDeleteDraft={setPendingDeleteEntry}
                       />
@@ -730,7 +797,7 @@ export function SessionHistoryView({
                     entry={{ session: sess, canReopen }}
                     variant="card"
                     isDeleting={isDeletingId === sess.id}
-                    onPreview={setPreviewSession}
+                    onPreview={handlePreview}
                     onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
                     onDeleteDraft={setPendingDeleteEntry}
                   />
@@ -741,11 +808,13 @@ export function SessionHistoryView({
         </>
       )}
 
-      {/* Report Preview Modal */}
+      {/* Report Preview Modal. The modal opens on the REQUEST, so the operator gets the same
+          immediate response to the click as before; what follows is the load. The title comes
+          from the row that was clicked, so it never blanks while the session is in flight. */}
       <Modal
-        isOpen={previewSession !== null}
-        onClose={() => setPreviewSession(null)}
-        title={`Session Preview — ${previewSession?.accessionNumber ?? ""}`}
+        isOpen={previewRequest !== null}
+        onClose={handleClosePreview}
+        title={`Session Preview — ${previewRequest?.accessionNumber ?? ""}`}
         closeLabel="Close session preview"
         // `sm:max-w-5xl` as well as the base: Modal caps itself at `sm:max-w-lg`, and a bare
         // `max-w-5xl` is a different variant, so it never displaced that cap and the preview
@@ -753,9 +822,22 @@ export function SessionHistoryView({
         // its own viewport-inset width below `sm`, so the phone width is unchanged.
         className="max-h-[90vh] max-w-5xl overflow-hidden sm:max-w-5xl"
       >
-        {previewSession && (
+        {previewRequest && (
           <div className="max-h-[calc(90vh-8rem)] overflow-y-auto pr-1">
-            <SharedRenderingEngine session={previewSession} targetOutput="ScreenPreview" />
+            {previewError ? (
+              // An honest failure, in the surface History already uses for one. The sentence is
+              // the server's own refusal wording, or the fixed client sentence for an
+              // unexpected rejection - never a caught value's text.
+              <Alert variant="destructive">{previewError}</Alert>
+            ) : previewSession ? (
+              <SharedRenderingEngine session={previewSession} targetOutput="ScreenPreview" />
+            ) : (
+              // Deliberately the same skeleton the rendering chunk's own loading state uses, so
+              // fetching the session and loading the renderer read as one wait rather than two.
+              <SkeletonRegion isLoading label="Loading session preview">
+                <Skeleton className="mx-auto h-[70vh] min-h-96 w-full max-w-[210mm]" />
+              </SkeletonRegion>
+            )}
           </div>
         )}
       </Modal>

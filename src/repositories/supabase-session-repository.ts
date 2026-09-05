@@ -7,6 +7,8 @@ import { LaboratoryReportDomain } from "../domain/models/laboratory-report-domai
 import { serverAutoSuggestionLearningService } from "../services/auto-suggestion-service-server";
 import { supabaseServer } from "../lib/supabase/server";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
+import type { PatientDemographics } from "@/domain/types";
+import type { PatientReportSessionListEntry } from "@/features/server-boundary/session-transport";
 
 /**
  * Why a draft deletion was refused, as a CLOSED set (SHADCN-07B2).
@@ -73,6 +75,59 @@ type SessionRetentionRow = {
 };
 
 export class SupabasePatientReportSessionRepository implements IPatientReportSessionRepository {
+  /**
+   * The complete session tree. Every consumer that has to RENDER a report - Preview, Print, PDF,
+   * the Workspace, a completed snapshot - needs it, and none of them reads more than one session
+   * at a time.
+   */
+  private static readonly SESSION_AGGREGATE_PROJECTION = `
+          *,
+          laboratory_reports (
+            *,
+            laboratory_results (*),
+            report_signatories (*)
+          )
+        `;
+
+  /**
+   * The list projection (SHADCN-07C2). Named columns only - never `*`.
+   *
+   * A Dashboard or History row draws a patient, an accession, a lifecycle badge, a retention chip
+   * and up to three template-code chips. Nothing on that row is derived from a result value, a
+   * signatory, or a frozen snapshot, so none of those is retrieved: `laboratory_results` and
+   * `report_signatories` are not embedded at all, and `completed_snapshot` is not selected.
+   *
+   * What changes is the WEIGHT of a row, never which rows come back. The predicates, the ordering
+   * and the limit are still the aggregate read's own, so this returns exactly the sessions it
+   * always returned - the parent row count is unchanged. What it stops carrying is everything
+   * hanging off each one: the two child tables are no longer joined, so their rows are not
+   * retrieved at all, and on the session row itself `completed_snapshot` and every other column
+   * the previous `*` swept up are simply never selected.
+   *
+   * `created_by_user_id` IS selected, and deliberately: `getRecentSessionsWithOwnership` derives
+   * `ownedByCaller` from it, in this process, and it is dropped before the entry is built. It never
+   * reaches `mapToListEntry`'s output and therefore never crosses the server boundary.
+   *
+   * `demographics` is one JSONB column and is selected whole - PostgREST cannot return part of it
+   * without re-typing every value as text. `mapToListEntry` projects the six fields a list row
+   * renders and discards the rest, so the wider column is read by the server and is never
+   * transported.
+   */
+  private static readonly SESSION_LIST_PROJECTION = `
+          id,
+          accession_number,
+          status,
+          demographics,
+          created_by_user_id,
+          created_at,
+          completed_at,
+          expires_at,
+          laboratory_reports (
+            id,
+            template_code
+          )
+        `;
+
   constructor(private readonly caller?: SessionRepositoryCaller) {}
 
   private requireCaller(): SessionRepositoryCaller {
@@ -97,23 +152,23 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
    * Ownership used to cost a second round trip, because `mapToAggregate` deliberately drops the
    * owner column and the aggregate must not carry it. Reading it here - before mapping - removes
    * that trip without widening the domain model or the query.
+   *
+   * SHADCN-07C2: the PROJECTION is now the caller's, because the two callers need different
+   * amounts of the session and the list caller needs very little of it. What is emphatically NOT
+   * the caller's is the visibility scope - the draft-ownership `or`, the retention `or`, the
+   * ordering and the limit all still live here, once, so a narrower projection cannot become a
+   * wider query. A caller supplies which COLUMNS it may read; it never supplies which ROWS.
    */
   private async fetchRecentSessionRows(
     limit: number,
-    search?: string
+    search: string | undefined,
+    projection: string
   ): Promise<Record<string, unknown>[]> {
     const retentionTimestamp = new Date().toISOString();
     const query = this.applyDraftOwnershipScope(
       supabaseServer
         .from("patient_report_sessions")
-        .select(`
-          *,
-          laboratory_reports (
-            *,
-            laboratory_results (*),
-            report_signatories (*)
-          )
-        `)
+        .select(projection)
         .order("created_at", { ascending: false })
         .limit(limit)
     ).or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`);
@@ -123,7 +178,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
 
     if (error) throw error;
     if (!data) throw new Error("Supabase session history query returned no data.");
-    return data as Record<string, unknown>[];
+    // Through `unknown` because the projection is now the caller's: supabase-js can only infer a
+    // row type from a literal select string, and a parameter is not one. The declared return type
+    // is unchanged and is what it always effectively was - an untyped row the two mappers read
+    // named columns off. Nothing about the query's scope or the mapped output depends on this.
+    return data as unknown as Record<string, unknown>[];
   }
 
   private async assertExistingSessionOwnership(id: string): Promise<void> {
@@ -206,6 +265,37 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     return recent.filter((s) => s.status === "Completed");
   }
 
+  /**
+   * One complete session, under EXACTLY the visibility the recent-session list applies
+   * (SHADCN-07C2).
+   *
+   * This is the on-demand half of list minimization: History rows no longer carry a report body, so
+   * Preview asks for one session by id when the operator opens it. The predicates below are the
+   * same two the list query uses, in the same order - `applyDraftOwnershipScope` (a Completed
+   * session, or the caller's OWN Draft) and then the retention window - so a session is previewable
+   * if and only if it was listable. Nothing is widened: another user's Draft stays invisible with
+   * no Admin override, and a Completed session past its retention window stays gone.
+   *
+   * It is deliberately NOT `findReopenableSessionForCaller`. That method answers a different and
+   * stricter question - may THIS caller replace this session - by additionally requiring creator
+   * ownership. Previewing a visible Completed session the caller does not own is existing,
+   * intended behaviour, and folding the two together would silently withdraw it.
+   */
+  async findVisibleSessionForCaller(id: string): Promise<IPatientReportSession | null> {
+    const retentionTimestamp = new Date().toISOString();
+    const { data, error } = await this.applyDraftOwnershipScope(
+      supabaseServer
+        .from("patient_report_sessions")
+        .select(SupabasePatientReportSessionRepository.SESSION_AGGREGATE_PROJECTION)
+        .eq("id", id)
+    )
+      .or(`status.eq.Draft,expires_at.is.null,expires_at.gte.${retentionTimestamp}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? this.mapToAggregate(data as Record<string, unknown>) : null;
+  }
+
   async findReopenableSessionForCaller(id: string): Promise<IPatientReportSession | null> {
     const caller = this.requireCaller();
     const retentionTimestamp = new Date().toISOString();
@@ -231,10 +321,14 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   async getRecentSessionsWithOwnership(
     limit = 50,
     search?: string
-  ): Promise<{ session: PatientReportSessionAggregate; ownedByCaller: boolean }[]> {
+  ): Promise<{ session: PatientReportSessionListEntry; ownedByCaller: boolean }[]> {
     const caller = this.requireCaller();
-    const rows = await this.fetchRecentSessionRows(limit, search);
-    const sessions = rows.map((row) => this.mapToAggregate(row));
+    const rows = await this.fetchRecentSessionRows(
+      limit,
+      search,
+      SupabasePatientReportSessionRepository.SESSION_LIST_PROJECTION
+    );
+    const sessions = rows.map((row) => this.mapToListEntry(row));
     const ownerBySessionId = new Map<string, string>(
       rows.map((row) => [String(row.id), String(row.created_by_user_id)])
     );
@@ -245,7 +339,11 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
   }
 
   async getRecentSessions(limit = 50, search?: string): Promise<PatientReportSessionAggregate[]> {
-    const rows = await this.fetchRecentSessionRows(limit, search);
+    const rows = await this.fetchRecentSessionRows(
+      limit,
+      search,
+      SupabasePatientReportSessionRepository.SESSION_AGGREGATE_PROJECTION
+    );
     return rows.map((row) => this.mapToAggregate(row));
   }
 
@@ -470,6 +568,45 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
           : new LaboratoryReportDomain(report)
       ),
     });
+  }
+
+  /**
+   * Build one LIST ENTRY from a narrow row (SHADCN-07C2).
+   *
+   * Field by field, never a spread, for the same reason `toClientSignatory` is written that way: a
+   * spread would carry `created_by_user_id` straight into the entry, and would carry whatever
+   * column the list projection is widened by next. Written like this, adding a column to the
+   * projection cannot by itself add a field to the transport.
+   *
+   * `demographics` is narrowed here too. The column arrives whole because PostgREST cannot slice
+   * JSONB without re-typing it, so the six fields a list row renders are copied out and the rest -
+   * address, patient status, referrer, company - is dropped in this process. No list consumer
+   * reads them and none of them reaches the browser.
+   */
+  private mapToListEntry(raw: Record<string, unknown>): PatientReportSessionListEntry {
+    const rawReports = (raw.laboratory_reports as Record<string, unknown>[]) || [];
+    const demographics = raw.demographics as PatientDemographics;
+
+    return {
+      id: String(raw.id || ""),
+      accessionNumber: raw.accession_number == null ? null : String(raw.accession_number),
+      status: raw.status as PatientReportSessionListEntry["status"],
+      demographics: {
+        fullName: demographics.fullName,
+        age: demographics.age,
+        ageUnit: demographics.ageUnit,
+        sex: demographics.sex,
+        requestingPhysician: demographics.requestingPhysician,
+        examinationDate: demographics.examinationDate,
+      },
+      reports: rawReports.map((report) => ({
+        id: String(report.id || ""),
+        templateCode: String(report.template_code || ""),
+      })),
+      createdAt: String(raw.created_at || ""),
+      completedAt: (raw.completed_at as string) || null,
+      expiresAt: (raw.expires_at as string) || null,
+    };
   }
 
   private mapToAggregate(raw: Record<string, unknown>): PatientReportSessionAggregate {

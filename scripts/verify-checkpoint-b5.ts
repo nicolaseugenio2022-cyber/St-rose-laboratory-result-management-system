@@ -988,18 +988,22 @@ const sessionHistoryEntryTypeStart = liveCodeIndexOf(
   serverActionsSource,
   sessionHistoryEntryTypeDeclaration
 );
+// Live code, and computed ONCE: the brace position was resolved twice from raw source, so a
+// commented `{` between the declaration and the real body would both mislocate the region and let
+// the two resolutions disagree.
+const sessionHistoryEntryTypeBraceIndex = sessionHistoryEntryTypeStart >= 0
+  ? liveCodeIndexOf(serverActionsSource, "{", sessionHistoryEntryTypeStart)
+  : -1;
 const sessionHistoryEntryTypeBraceSource = extractBracedSource(
   serverActionsSource,
-  sessionHistoryEntryTypeStart >= 0
-    ? serverActionsSource.indexOf("{", sessionHistoryEntryTypeStart)
-    : -1
+  sessionHistoryEntryTypeBraceIndex
 );
 const sessionHistoryEntryTypeSource = sessionHistoryEntryTypeStart >= 0 &&
+  sessionHistoryEntryTypeBraceIndex >= 0 &&
   sessionHistoryEntryTypeBraceSource.length > 0
   ? serverActionsSource.slice(
       sessionHistoryEntryTypeStart,
-      serverActionsSource.indexOf("{", sessionHistoryEntryTypeStart) +
-        sessionHistoryEntryTypeBraceSource.length
+      sessionHistoryEntryTypeBraceIndex + sessionHistoryEntryTypeBraceSource.length
     )
   : "";
 assert(
@@ -1124,7 +1128,8 @@ assert(
 const replaceSessionActionDeclaration = "export async function replaceSessionAction(";
 const replaceSessionActionStart = liveCodeIndexOf(serverActionsSource, replaceSessionActionDeclaration);
 const replaceSessionActionEnd = replaceSessionActionStart >= 0
-  ? serverActionsSource.indexOf(
+  ? liveCodeIndexOf(
+      serverActionsSource,
       "\nexport async function",
       replaceSessionActionStart + replaceSessionActionDeclaration.length
     )
@@ -1833,8 +1838,12 @@ assert(
 
 const listEntryTypeDeclaration = "export type PatientReportSessionListEntry = Pick<";
 const listEntryTypeStart = liveCodeIndexOf(sessionTransportSource, listEntryTypeDeclaration);
+// The CLOSING boundary comes from live code too. The opening one already did, but a commented
+// `\n};` inside the declaration ended the region early - and every assertion over it is negative
+// (the prohibited-field checks below), so a short region satisfies them without ever reaching the
+// fields they name, while the non-empty guard above still passes. Masked, not failing.
 const listEntryTypeEnd = listEntryTypeStart >= 0
-  ? sessionTransportSource.indexOf("\n};", listEntryTypeStart)
+  ? liveCodeIndexOf(sessionTransportSource, "\n};", listEntryTypeStart)
   : -1;
 const listEntryTypeSource = listEntryTypeEnd >= 0
   ? sessionTransportSource.slice(listEntryTypeStart, listEntryTypeEnd + 3)
@@ -1861,7 +1870,9 @@ const listDtoSubtypeDeclarations = [
 const listDtoSubtypeSources = listDtoSubtypeDeclarations.map((declaration) => {
   const start = liveCodeIndexOf(sessionTransportSource, declaration);
   if (start < 0) return "";
-  const end = sessionTransportSource.indexOf(">;", start + declaration.length);
+  // Live code for this boundary as well, for the same reason: the ownership-alias assertions over
+  // these two regions are negative, so truncation quietly satisfies them.
+  const end = liveCodeIndexOf(sessionTransportSource, ">;", start + declaration.length);
   return end >= 0 ? sessionTransportSource.slice(start, end + 2) : "";
 });
 assert(
@@ -2198,7 +2209,8 @@ assert(
 const completeSessionActionDeclaration = "export async function completeSessionAction(";
 const completeSessionActionStart = liveCodeIndexOf(serverActionsSource, completeSessionActionDeclaration);
 const completeSessionActionEnd = completeSessionActionStart >= 0
-  ? serverActionsSource.indexOf(
+  ? liveCodeIndexOf(
+      serverActionsSource,
       "\nexport async function",
       completeSessionActionStart + completeSessionActionDeclaration.length
     )
@@ -2667,9 +2679,10 @@ assert(
 // assertions do that.
 const authorizeWrapperSource = extractBracedSource(
   serverActionsSource,
-  serverActionsSource.indexOf(
+  liveCodeIndexOf(
+    serverActionsSource,
     "{",
-    serverActionsSource.indexOf("async function authorizeOperationalCaller(")
+    liveCodeIndexOf(serverActionsSource, "async function authorizeOperationalCaller(")
   )
 );
 assert(
@@ -2717,9 +2730,10 @@ assert(
 );
 const operationalGuardSource = extractBracedSource(
   serverActionsSource,
-  serverActionsSource.indexOf(
+  liveCodeIndexOf(
+    serverActionsSource,
     "{",
-    serverActionsSource.indexOf("async function requireOperationalCaller(")
+    liveCodeIndexOf(serverActionsSource, "async function requireOperationalCaller(")
   )
 );
 assert(

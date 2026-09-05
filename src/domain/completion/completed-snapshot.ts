@@ -27,7 +27,13 @@ export interface CompletedReportSnapshot {
   templateCode: string;
   templateTitle: string;
   rendererFamily: RendererFamily;
-  /** Present on snapshot v2+. Absent legacy v1 metadata is resolved by the current versioned static definition only. */
+  /**
+   * Present on snapshot v2+ only. A v1 snapshot froze none of these three fields, so its render
+   * presentation resolves at the BASELINE contract version (1) - never the definition's current
+   * one, which would re-present an already-issued report under presentation rules introduced after
+   * it was issued. Printed-title and static-content metadata still come from the current
+   * definition, exactly as the established legacy compatibility policy has always resolved them.
+   */
   renderContractVersion?: number;
   printedTitle?: string | null;
   staticContentVersion?: string;

@@ -478,10 +478,30 @@ async function main(): Promise<void> {
   // uses snapshotVersion 2 fixtures, which carry an explicit per-report renderContractVersion, so
   // nothing reached this branch: it returned the definition's CURRENT version and handed an
   // already-issued report the two-column layout and uppercase values it was never issued with.
+  // The v2-only per-report fields are STRIPPED, not merely overridden: a real v1 snapshot never
+  // carried them. Spreading a v2 fixture and lowering `snapshotVersion` alone leaves
+  // `renderContractVersion` on the report, so the fixture would keep passing even if the v1
+  // branch read it - proving nothing about the path it exists to cover. Same destructuring-rest
+  // strip `verify-checkpoint-b5.ts` uses to build its legacy v1 snapshot.
+  const v1SourceSnapshot = frozenFecSnapshot(1);
   const v1Snapshot: CompletedSessionSnapshot = {
-    ...frozenFecSnapshot(1),
+    ...v1SourceSnapshot,
     snapshotVersion: 1,
+    reports: v1SourceSnapshot.reports.map(
+      ({
+        renderContractVersion: _renderContractVersion,
+        printedTitle: _printedTitle,
+        staticContentVersion: _staticContentVersion,
+        ...report
+      }) => report
+    ) as CompletedSessionSnapshot["reports"],
   };
+  assert(
+    v1Snapshot.reports[0].renderContractVersion === undefined &&
+      v1Snapshot.reports[0].printedTitle === undefined &&
+      v1Snapshot.reports[0].staticContentVersion === undefined,
+    "the v1 fixture carries no frozen render metadata, so it exercises the v1 branch it is written for"
+  );
   const v1FecPage = composeAll(resolveCompletedSessionRenderModel(v1Snapshot)).get("FECALYSIS")!;
   assert(
     v1FecPage.primitives.some((primitive) => primitive.id === "result-header-3"),

@@ -30,6 +30,8 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://verifier.invalid";
 process.env.SUPABASE_SECRET_KEY ||= "verifier-placeholder-not-a-credential";
 const { ReportRegistryService } =
   require("../src/services/report-registry-service") as typeof import("../src/services/report-registry-service");
+const { supabaseServer } =
+  require("../src/lib/supabase/server") as typeof import("../src/lib/supabase/server");
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Registry cache verification failed: ${message}`);
@@ -233,6 +235,121 @@ class DegradingRegistryRepository implements IReportRegistryRepository {
   async getAllActiveTemplates(): Promise<IReportTemplate[]> {
     this.perCodeLoads += 1;
     return TEMPLATE_CODES.map((templateCode) => ({ templateCode }) as IReportTemplate);
+  }
+}
+
+/**
+ * SHADCN-07CR — a PARTIAL bulk read is degraded too, proven against the real repository.
+ *
+ * The cases above drive fake repositories, which cannot catch this: the defect lives in
+ * `SupabaseReportRegistryRepository` itself. `template_parameters` and
+ * `template_signatory_requirements` were consumed through `|| []`, so an errored query produced a
+ * full set of templates carrying NO parameters - unmarked, and therefore committed by warmCache as
+ * the authoritative registry. Reports would then render with no result rows until the process
+ * restarted.
+ *
+ * The Supabase client is stubbed at `from()`, mimicking the PostgREST builder: every chained call
+ * returns the same object, and awaiting it yields the `{ data, error }` this table was configured
+ * to answer with. No network, no credentials, no real client behaviour relied upon.
+ */
+type StubbedTable = { data: unknown[] | null; error: unknown };
+
+function stubSupabaseTables(tables: Record<string, StubbedTable>): () => void {
+  const client = supabaseServer as unknown as { from: (table: string) => unknown };
+  const originalFrom = client.from;
+  client.from = (table: string) => {
+    const answer = tables[table] ?? { data: [], error: null };
+    const builder: Record<string, unknown> = {};
+    for (const method of ["select", "eq", "order", "limit", "in"]) {
+      builder[method] = () => builder;
+    }
+    builder.then = (resolve: (value: StubbedTable) => unknown) => Promise.resolve(answer).then(resolve);
+    return builder;
+  };
+  return () => {
+    client.from = originalFrom;
+  };
+}
+
+const HEALTHY_TEMPLATE_ROW = {
+  id: "t1",
+  template_code: "CHEM_8",
+  template_title: "Chemistry 8",
+  examination_family: "Clinical Chemistry",
+  renderer_family: "Tabular",
+  is_active: true,
+};
+
+async function runPartialBulkFailure(): Promise<void> {
+  const { SupabaseReportRegistryRepository } =
+    require("../src/repositories/supabase-report-registry-repository") as typeof import("../src/repositories/supabase-report-registry-repository");
+
+  // ── P1. A failed template_parameters read is degraded, not a healthy empty registry ──
+  let restore = stubSupabaseTables({
+    report_templates: { data: [HEALTHY_TEMPLATE_ROW], error: null },
+    template_parameters: { data: null, error: { message: "parameters unavailable" } },
+    template_signatory_requirements: { data: [], error: null },
+  });
+  let specs: HydratedTemplateSpec[];
+  try {
+    specs = await new SupabaseReportRegistryRepository().getAllHydratedTemplates();
+  } finally {
+    restore();
+  }
+  assert(
+    isDegradedRegistryResult(specs),
+    "P1 a failed template_parameters read yields a DEGRADED result, not a template set with no parameters"
+  );
+
+  // ── P2. A failed signatory-requirements read is degraded too ──────────────
+  restore = stubSupabaseTables({
+    report_templates: { data: [HEALTHY_TEMPLATE_ROW], error: null },
+    template_parameters: { data: [], error: null },
+    template_signatory_requirements: { data: null, error: { message: "requirements unavailable" } },
+  });
+  try {
+    specs = await new SupabaseReportRegistryRepository().getAllHydratedTemplates();
+  } finally {
+    restore();
+  }
+  assert(
+    isDegradedRegistryResult(specs),
+    "P2 a failed template_signatory_requirements read yields a DEGRADED result, not silent default requirements"
+  );
+
+  // ── P3. Control: all three healthy reads are NOT degraded ─────────────────
+  // Without this the two assertions above would pass on a repository that marked everything.
+  restore = stubSupabaseTables({
+    report_templates: { data: [HEALTHY_TEMPLATE_ROW], error: null },
+    template_parameters: { data: [], error: null },
+    template_signatory_requirements: { data: [], error: null },
+  });
+  try {
+    specs = await new SupabaseReportRegistryRepository().getAllHydratedTemplates();
+  } finally {
+    restore();
+  }
+  assert(
+    !isDegradedRegistryResult(specs) && specs.length === 1,
+    "P3 a fully healthy bulk read is NOT marked degraded, so the marker distinguishes rather than blankets"
+  );
+
+  // ── P4. A degraded partial read is not committed by the service either ────
+  restore = stubSupabaseTables({
+    report_templates: { data: [HEALTHY_TEMPLATE_ROW], error: null },
+    template_parameters: { data: null, error: { message: "parameters unavailable" } },
+    template_signatory_requirements: { data: [], error: null },
+  });
+  try {
+    const service = new ReportRegistryService(new SupabaseReportRegistryRepository());
+    await service.warmCache();
+    const secondPass = await service.warmCache();
+    assert(
+      isDegradedRegistryResult(secondPass),
+      "P4 a partial-failure registry is never committed, so the next warmCache reads through again"
+    );
+  } finally {
+    restore();
   }
 }
 
@@ -513,6 +630,7 @@ async function run(): Promise<void> {
 
   await runFallback();
   await runDegraded();
+  await runPartialBulkFailure();
 
   console.log("\nRegistry cache verification passed: bulk loads are performed once per hydration.");
 }

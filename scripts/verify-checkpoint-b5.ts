@@ -2492,9 +2492,16 @@ for (const { action, route, expectedCodes, classifiedTypes, stages } of operatio
   // Unexpected failures stay unexpected: sanitized diagnostic, then rethrow, at every stage that
   // can produce one.
   for (const stage of stages) {
+    // Both operands used to be independent probes over one shared region: the first never
+    // mentioned `stage`, so it was invariant across this loop, and two matches at unrelated
+    // positions satisfied an assertion that claims one call. Bind the stage to the callee that
+    // reports it, the way the coupled wrapper assertion below already does - the route literal is
+    // the only thing that may sit between them.
+    const stageIndex = liveCodeIndexOf(actionSource, `"${stage}", error)`);
+    const callPrefix =
+      stageIndex < 0 ? "" : actionSource.slice(Math.max(0, stageIndex - 80), stageIndex);
     assert(
-      liveCodeIndexOf(actionSource, `reportUnexpectedActionFailure("`) >= 0 &&
-        liveCodeIndexOf(actionSource, `"${stage}", error)`) >= 0,
+      stageIndex >= 0 && /reportUnexpectedActionFailure\(\s*"[^"]*",\s*$/.test(callPrefix),
       `${action} routes an unexpected ${stage} failure through the sanitized diagnostic and rethrow`
     );
   }
@@ -2600,16 +2607,34 @@ assert(
     liveCodeIndexOf(operationalResultContractSource, "error: OPERATIONAL_ACTION_MESSAGE[code]") >= 0,
   "every failure message is derived from its own code through the total code-to-message map"
 );
-for (const lifecycleCode of [
+// Key PRESENCE proves nothing here: OPERATIONAL_ACTION_MESSAGE is typed
+// Record<OperationalActionErrorCode, string>, so the compiler already forces every key to exist.
+// The property these three codes exist for is that they resolve to DIFFERENT sentences - a failed
+// save must not be reported with a completion sentence - so the sentences themselves are compared.
+const lifecycleCodes = [
   "DRAFT_SAVE_LIFECYCLE_INVALID",
   "COMPLETION_LIFECYCLE_INVALID",
   "REPLACEMENT_LIFECYCLE_INVALID",
-]) {
+] as const;
+const lifecycleSentences = lifecycleCodes.map((lifecycleCode) => {
+  const keyIndex = liveCodeIndexOf(operationalResultContractSource, `${lifecycleCode}:`);
+  if (keyIndex < 0) return "";
+  return (
+    /^\s*("(?:[^"\\]|\\.)*")/.exec(
+      operationalResultContractSource.slice(keyIndex + `${lifecycleCode}:`.length)
+    )?.[1] ?? ""
+  );
+});
+for (const [index, lifecycleCode] of lifecycleCodes.entries()) {
   assert(
-    liveCodeIndexOf(operationalResultContractSource, `${lifecycleCode}:`) >= 0,
-    `${lifecycleCode} has its own distinct sentence`
+    lifecycleSentences[index].length > 0,
+    `${lifecycleCode} resolves to a sentence of its own in the code-to-message map`
   );
 }
+assert(
+  new Set(lifecycleSentences).size === lifecycleCodes.length,
+  "each lifecycle code carries a distinct sentence, so one lifecycle failure cannot be reported as another"
+);
 
 
 // SHADCN-07B2-R2: the authorization wrapper itself, inspected as a body rather than trusted.

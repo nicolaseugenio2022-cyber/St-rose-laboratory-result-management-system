@@ -114,7 +114,22 @@ export class ReportRegistryService implements IReportRegistryService {
     const specs = await Promise.all(
       templates.map(t => this.hydrateTemplate(t.templateCode))
     );
-    return specs.filter((s): s is HydratedTemplateSpec => s !== null);
+    // A null is a partial failure too, and it must not commit. `hydrateTemplate` resolves to null
+    // when a template listed by getAllActiveTemplates no longer answers its per-code read, so
+    // filtering nulls away silently produced a SHORTER registry that warmCache then cached as
+    // complete - and, because the collection is now marked hydrated, never retried. Rejecting here
+    // is what makes the comment above true for both failure shapes.
+    const hydrated: HydratedTemplateSpec[] = [];
+    for (let index = 0; index < specs.length; index += 1) {
+      const spec = specs[index];
+      if (!spec) {
+        throw new Error(
+          `Report registry hydration is incomplete: '${templates[index].templateCode}' is listed as active but did not hydrate.`
+        );
+      }
+      hydrated.push(spec);
+    }
+    return hydrated;
   }
 
   /**

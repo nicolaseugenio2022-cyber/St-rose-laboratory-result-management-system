@@ -764,8 +764,18 @@ for (const [callSite, resultName] of recoveryClearingCallSites) {
     const clearIndex = guidedWorkspaceSource.indexOf("clearWorkspaceRecovery();", callIndex);
     assert(clearIndex > callIndex, "GuidedWorkspace clears recovery after the persistence call it follows");
     const betweenCallAndClear = guidedWorkspaceSource.slice(callIndex + callSite.length, clearIndex);
+    // `includes("return;")` on the whole span matched a `return;` belonging to ANY branch between
+    // the call and the clear, so the two probes proved only co-occurrence. The early return has to
+    // be inside the failure branch itself, or the clear below is not actually success-only: take
+    // the guard's own body - it contains no nested block - and require the return there.
+    const guardOpen = `if (!${resultName}.success) {`;
+    const guardIndex = betweenCallAndClear.indexOf(guardOpen);
+    const guardBody =
+      guardIndex < 0
+        ? ""
+        : betweenCallAndClear.slice(guardIndex + guardOpen.length).split("}")[0];
     assert(
-      betweenCallAndClear.includes(`if (!${resultName}.success) {`) && betweenCallAndClear.includes("return;"),
+      guardIndex >= 0 && guardBody.includes("return;"),
       "GuidedWorkspace clears recovery only on the success branch of the persistence call it follows"
     );
   }

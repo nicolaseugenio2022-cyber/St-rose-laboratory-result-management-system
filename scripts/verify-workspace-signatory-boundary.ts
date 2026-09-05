@@ -656,6 +656,20 @@ async function main(): Promise<void> {
       !/resolveAuthenticatedRequest|getSessionUser|getSession\s*\(|getUserById/.test(emitDenialSource),
     "case 92 emitDenial receives the resolved profile and performs no authentication lookup"
   );
+  // The declaration above proves the parameter EXISTS; it does not prove any caller passes it. The
+  // property that matters is at the call sites: every denial raised after the caller is resolved
+  // hands over that same profile, and only the pre-resolution `unauthenticated` denial may omit it
+  // - there is no profile to pass at that point.
+  // Anchored on `await` so this reads the CALL sites only: the declaration's own parameter list
+  // would otherwise match and pass neither branch below.
+  const emitDenialCalls = proxySource.match(/await emitDenial\((?:[^()]|\([^()]*\))*\)/g) ?? [];
+  assert(
+    emitDenialCalls.length === 4 &&
+      emitDenialCalls.every(
+        (call) => call.endsWith(", session, profile)") || call === 'await emitDenial("unauthenticated")'
+      ),
+    "case 92 every post-resolution denial is handed the resolved profile, and only the pre-resolution unauthenticated denial omits it"
+  );
   assert(
     /profile\.status\s*!==\s*"Active"/.test(proxySource) &&
       /profile\.role\s*!==\s*"Admin"/.test(proxySource) &&
@@ -763,7 +777,7 @@ async function main(): Promise<void> {
   );
 
   process.stdout.write(
-    "\nWorkspace signatory boundary verification passed: all 73 assertions verified.\n"
+    "\nWorkspace signatory boundary verification passed: all 80 assertions verified.\n"
   );
 }
 

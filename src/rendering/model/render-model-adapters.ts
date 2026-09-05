@@ -367,7 +367,10 @@ function presentedResultValue(
   value: string,
   presentation: ResultPresentationSpec | null | undefined
 ): string {
-  return presentation?.casing === "Uppercase" ? value.toLocaleUpperCase() : value;
+  // The locale is fixed, never the runtime's. `toLocaleUpperCase()` with no argument follows the
+  // host locale, so a Turkish-locale client would render "Reddish Brown" as "REDDİSH BROWN" - a
+  // dotted capital I in a clinical result value. The report contract is English, so it is named.
+  return presentation?.casing === "Uppercase" ? value.toLocaleUpperCase("en-US") : value;
 }
 
 function completedReport(
@@ -508,7 +511,12 @@ function legacyCompletedReport(
     templateCode: report.templateCode,
     templateTitle: report.templateTitle,
     layoutFamily: resolveLayoutFamily(report.rendererFamily),
-    renderContractVersion: definition.renderContract?.renderContractVersion ?? STANDARD_RENDER_CONTRACT_VERSION,
+    // The baseline this function already resolved, NOT the definition's current version.
+    // Emitting the current one contradicted the comment above and split this report in two:
+    // presentation was withheld at v1 while the composition selected downstream - which keys off
+    // this field through live-preview-composer and definition-registry - was the newer one. A
+    // legacy report renders wholly at the baseline or not at all.
+    renderContractVersion: legacyContractVersion,
     printedTitle: definition.reportTitle ?? null,
     staticContentVersion: definition.renderContract?.staticContentVersion ?? STANDARD_STATIC_CONTENT_VERSION,
     staticContent: resolveStaticContent(definition, demographics, results),

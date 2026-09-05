@@ -585,7 +585,12 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
    */
   private mapToListEntry(raw: Record<string, unknown>): PatientReportSessionListEntry {
     const rawReports = (raw.laboratory_reports as Record<string, unknown>[]) || [];
-    const demographics = raw.demographics as PatientDemographics;
+    // `demographics` is JSONB NOT NULL, which still admits the JSON scalar `null`: the completion
+    // RPCs copy `payload -> 'session' -> 'demographics'` straight through, and SQL NOT NULL does
+    // not reject `'null'::jsonb`. Six field reads follow immediately - unlike mapToAggregate, which
+    // passes the value on untouched - so an unguarded cast would throw here and fail the entire
+    // list for one malformed row.
+    const demographics = (raw.demographics ?? {}) as PatientDemographics;
 
     return {
       id: String(raw.id || ""),

@@ -169,6 +169,13 @@ export interface IUserService {
   toggleUserStatus(id: string, currentUserId?: string): Promise<User>;
   deleteUser(id: string, currentUserId?: string): Promise<void>;
   authenticate(username: string, password: string, clientIp?: string | null): Promise<User>;
+  /**
+   * Declared alongside `authenticate` because it completes that contract: a caller issues the
+   * session first and then records the success, so the audit event can never claim a session that
+   * was not established. Omitting it from the interface left the required order discoverable only
+   * on the concrete class.
+   */
+  emitAuthenticatedSessionEstablished(user: User): Promise<void>;
   changeFirstLoginPassword(id: string, password: string): Promise<User>;
   setFirstLoginRecoveryAnswer(id: string, answer: string): Promise<User>;
   getRecoveryChallenge(username: string, clientIp: string): Promise<RecoveryChallengeResult>;

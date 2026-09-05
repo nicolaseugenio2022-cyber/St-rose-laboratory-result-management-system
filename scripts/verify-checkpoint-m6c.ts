@@ -625,10 +625,17 @@ function verifyPurgeAuthorization(): void {
   // SHADCN-07B1: a refusal is not a malfunction. The guard threw inside the same try that wrapped
   // execution, so a non-Admin caller received HTTP 500. The refusal must be answered as 403, and
   // that answer must be reached before the purge service can run - order matters as much as status.
+  // The 403 must belong to the guard's OWN try/catch, not merely appear somewhere ahead of the
+  // purge service: an unrelated ForbiddenError branch sited earlier satisfied every independent
+  // probe while a refusal raised by assertAdminAccess still escaped as HTTP 500. Take the block
+  // that encloses the guard call and require the refusal answer inside that block.
+  const guardBlock =
+    /try\s*\{[^{}]*assertAdminAccess\([\s\S]*?\}\s*catch[\s\S]*?\n\s{2}\}/.exec(source)?.[0] ?? "";
   const forbiddenBranchIndex = liveCodeIndexOf(source, "error instanceof ForbiddenError");
   assert(
-    forbiddenBranchIndex >= 0 &&
-      /error instanceof ForbiddenError[\s\S]{0,300}?status:\s*403/.test(source) &&
+    guardBlock.length > 0 &&
+      /error instanceof ForbiddenError[\s\S]{0,300}?status:\s*403/.test(guardBlock) &&
+      forbiddenBranchIndex >= 0 &&
       purgeServiceIndex > forbiddenBranchIndex,
     "the purge route must answer an authorization refusal with HTTP 403 before the purge service runs"
   );
@@ -695,6 +702,14 @@ function verifySanitizedErrorShapeIsClosed(): void {
     describeErrorShape(errorNamedLikeAKey).errorName === "Error" &&
       describeErrorShape(objectNamedLikeASecret).errorName === "object" &&
       describeErrorShape({ code: "PASSWORD123" }).postgrestCode === null &&
+      // "PASSWORD123" is 11 characters, so on its own it proves only that an over-long value is
+      // refused - a sanitizer that accepted ANY five-character string would still pass. These two
+      // are exactly five characters and fail the SQLSTATE character class instead, which is what
+      // pins /^[0-9A-Z]{5}$/ rather than a bare length check. "ABCDE" is deliberately NOT asserted
+      // here: SQLSTATE is allowlisted by FORMAT, and a format-valid unknown code is emitted by
+      // design, as `safe-error.ts` states.
+      describeErrorShape({ code: "abcde" }).postgrestCode === null &&
+      describeErrorShape({ code: "42p01" }).postgrestCode === null &&
       describeErrorShape({ code: "42P01" }).postgrestCode === "42P01" &&
       describeErrorShape({ code: "PGRST116" }).postgrestCode === "PGRST116",
     "the sanitized error shape must emit only allowlisted error names and recognised SQLSTATE/PostgREST codes"

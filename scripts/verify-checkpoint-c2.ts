@@ -6,7 +6,7 @@ import type { CompletedSessionSnapshot } from "../src/domain/completion/complete
 import type { ILaboratoryReport, IPatientReportSession } from "../src/domain/models/interfaces";
 import type { RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
-import { resolveCompletedSessionRenderModel, resolveDraftSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
+import { resolveCompletedSessionRenderModel, resolveDraftSessionRenderModel, resolveSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
 import { createNativeReportPdf, type NativePdfAssetResolver } from "../src/rendering/native/native-pdf-exporter";
 import { NATIVE_REPORT_THEME } from "../src/rendering/native/theme";
 import type { NativeComposedPage, NativePagePrimitive, NativeTextPrimitive } from "../src/rendering/native/types";
@@ -471,6 +471,33 @@ async function main(): Promise<void> {
   assert(
     legacyFecPage.contentBottomMm !== currentFecPage.contentBottomMm,
     "the two frozen contract versions must produce different Fecalysis geometry"
+  );
+
+  // 5b. The LEGACY path: a session completed before snapshots existed, so there is no frozen
+  // contract metadata to read at all. Everything above resolves through the snapshot branch, which
+  // is exactly how this path came to advertise the CURRENT contract version while resolving its
+  // values at the baseline - a report composed two-column but printed mixed-case, a state no
+  // version was ever issued in. It resolves wholly at the baseline or the split is back.
+  const legacyNoSnapshotSession: IPatientReportSession = {
+    ...sessionFor([completedFecReport]),
+    status: "Completed",
+    completedAt: "2026-01-01T00:00:00.000Z",
+  };
+  const legacyNoSnapshotPage = composeAll(resolveSessionRenderModel(legacyNoSnapshotSession)).get("FECALYSIS")!;
+  assert(
+    legacyNoSnapshotPage.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "a legacy completed FECALYSIS report carrying no frozen snapshot must keep its third result-column header"
+  );
+  assert(
+    textByIdPrefix(legacyNoSnapshotPage, "result-COLOR-value") === "Brown" &&
+      textByIdPrefix(legacyNoSnapshotPage, "result-CONSISTENCY-value") === "Soft",
+    "a legacy completed FECALYSIS report carrying no frozen snapshot must keep its mixed-case values"
+  );
+  assert(
+    legacyNoSnapshotPage.primitives.every(
+      (primitive) => primitive.kind !== "text" || !(primitive as NativeTextPrimitive).italic
+    ),
+    "a legacy completed FECALYSIS report carrying no frozen snapshot must contain no italic primitive"
   );
 
   // 6. Column declarations fail closed. A header/ratio length mismatch and a non-positive ratio are

@@ -112,6 +112,8 @@ class CountingRegistryRepository implements IReportRegistryRepository {
 class FallbackOnlyRepository implements IReportRegistryRepository {
   templateLoads = 0;
   listLoads = 0;
+  parameterLoads = 0;
+  requirementLoads = 0;
   failOnCode: string | null = null;
   private release: (() => void) | null = null;
   private pending: Promise<void> | null = null;
@@ -146,11 +148,17 @@ class FallbackOnlyRepository implements IReportRegistryRepository {
     return { templateCode } as IReportTemplate;
   }
 
+  // Counted, like CountingRegistryRepository counts them through perCodeLoads. Hydration calls all
+  // three per-template methods, so leaving these two silent made every fallback measurement below
+  // partial: a regression that served the template from cache but re-fetched the parameters or the
+  // signatory requirement on each call would have satisfied "zero additional repository loads".
   async getParametersByTemplateCode(): Promise<never[]> {
+    this.parameterLoads += 1;
     return [];
   }
 
   async getSignatoryRequirementByTemplateCode(): Promise<null> {
+    this.requirementLoads += 1;
     return null;
   }
 }
@@ -166,9 +174,14 @@ async function runFallback(): Promise<void> {
     "F1 the fallback hydrates every definition in getAllActiveTemplates order"
   );
   const templateLoadsAfterFirst: number = fallback.templateLoads;
+  const parameterLoadsAfterFirst: number = fallback.parameterLoads;
+  const requirementLoadsAfterFirst: number = fallback.requirementLoads;
   await fallbackService.warmCache();
   assert(
-    fallback.templateLoads === templateLoadsAfterFirst && fallback.listLoads === 1,
+    fallback.templateLoads === templateLoadsAfterFirst &&
+      fallback.parameterLoads === parameterLoadsAfterFirst &&
+      fallback.requirementLoads === requirementLoadsAfterFirst &&
+      fallback.listLoads === 1,
     "F1 a warm fallback warmCache performs zero additional repository loads"
   );
   const served = await fallbackService.getTemplateByCode(TEMPLATE_CODES[0]);

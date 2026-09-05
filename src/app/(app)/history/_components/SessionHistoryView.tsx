@@ -630,9 +630,9 @@ export function SessionHistoryView({
       {loading || serverSearchPending ? (
         <HistoryTableSkeleton />
       ) : loadError ? (
-        <Alert variant="destructive">
-          Session history could not be loaded: {loadError}
-        </Alert>
+        // `loadError` is already a complete sentence - the fixed fallback set above is the only
+        // wording it can hold - so prefixing it here read it back to the operator twice.
+        <Alert variant="destructive">{loadError}</Alert>
       ) : filteredEntries.length === 0 ? (
         hasActiveSearch ? (
           <EmptyState

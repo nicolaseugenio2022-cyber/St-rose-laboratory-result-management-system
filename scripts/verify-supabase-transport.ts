@@ -246,14 +246,86 @@ async function run(): Promise<void> {
       "a transient transport failure is still retried once, so read resilience is intact"
     );
 
-    const unauthorized = await capture(
+    // ── 5a. QA-01R-R2: PGRST303 on an idempotent read is the ONE retryable completed response ─
+    //
+    // This REPLACES the previous assertion that a PGRST303 401 is never retried. That assertion
+    // encoded the old contract, and it was correct until provider logs showed two concurrent
+    // findAttempts SELECTs - identical key, identical headers, twelve milliseconds apart -
+    // answered 401 and 200. Nothing this process controls could distinguish them, so the read
+    // threw and a login failed with no attempt row written. The exemption is bounded below, and
+    // every neighbouring no-retry guarantee is re-asserted rather than dropped.
+    const jwtRejected = await capture(
+      OPAQUE_KEY,
+      { method: "GET", headers: { apikey: OPAQUE_KEY } },
+      (attempt) =>
+        attempt === 1 ? new Response('{"code":"PGRST303"}', { status: 401 }) : ok()
+    );
+    assert(
+      jwtRejected.calls.length === 2 && jwtRejected.response?.status === 200,
+      "a GET answered PGRST303 is retried exactly once and the second success is what the caller receives"
+    );
+
+    // A second PGRST303 STOPS. One extra attempt, never a third, and the 401 is handed back.
+    const jwtRejectedTwice = await capture(
       OPAQUE_KEY,
       { method: "GET", headers: { apikey: OPAQUE_KEY } },
       () => new Response('{"code":"PGRST303"}', { status: 401 })
     );
     assert(
-      unauthorized.calls.length === 1 && unauthorized.response?.status === 401,
-      "a completed 401 is returned untouched and never retried; PGRST303 is not papered over by a retry"
+      jwtRejectedTwice.calls.length === 2 && jwtRejectedTwice.response?.status === 401,
+      "a second PGRST303 ends the read: exactly two attempts, and the completed 401 is returned"
+    );
+
+    // A WRITE answered PGRST303 is never replayed - the ambiguous-write contract is untouched.
+    const jwtRejectedWrite = await capture(
+      OPAQUE_KEY,
+      { method: "POST", headers: { apikey: OPAQUE_KEY } },
+      () => new Response('{"code":"PGRST303"}', { status: 401 })
+    );
+    assert(
+      jwtRejectedWrite.calls.length === 1 && jwtRejectedWrite.response?.status === 401,
+      "a POST answered PGRST303 is never retried; the exemption is reads only"
+    );
+
+    // Every OTHER completed response keeps the original contract, including a different 401.
+    for (const [status, body, label] of [
+      [401, '{"code":"PGRST301"}', "a 401 that is not PGRST303"],
+      [403, '{"code":"42501"}', "a 403 authorization denial"],
+      [500, '{"code":"XX000"}', "a 500 server error"],
+      [401, "not json at all", "a 401 whose body is not JSON"],
+    ] as [number, string, string][]) {
+      const completed = await capture(
+        OPAQUE_KEY,
+        { method: "GET", headers: { apikey: OPAQUE_KEY } },
+        () => new Response(body, { status })
+      );
+      assert(
+        completed.calls.length === 1 && completed.response?.status === status,
+        `${label} is returned untouched after exactly one attempt`
+      );
+      // UNTOUCHED includes the body. The classifier inspects every 401 to decide whether it is
+      // PGRST303, so reading the caller's stream rather than a clone would hand back a response
+      // whose body is already consumed - surfacing as an empty result set rather than an error.
+      assert(
+        (await completed.response!.text()) === body,
+        `${label} still carries its unconsumed body when it reaches the caller`
+      );
+    }
+
+    // The retried response must still be READABLE: the classifier inspects a clone, never the
+    // stream handed to the caller. A consumed body would surface as an empty result set rather
+    // than an error, which is the quietest possible way to break a rate-limit read.
+    const bodyIntact = await capture(
+      OPAQUE_KEY,
+      { method: "GET", headers: { apikey: OPAQUE_KEY } },
+      (attempt) =>
+        attempt === 1
+          ? new Response('{"code":"PGRST303"}', { status: 401 })
+          : new Response('[{"id":"row"}]', { status: 200 })
+    );
+    assert(
+      (await bodyIntact.response!.text()) === '[{"id":"row"}]',
+      "the response returned after a PGRST303 retry still has an unconsumed, readable body"
     );
 
     const writeFailure = await capture(OPAQUE_KEY, { method: "POST" }, () => {

@@ -196,6 +196,43 @@ function isAttemptTimeout(error: unknown): boolean {
   return error instanceof Error && error.name === "TimeoutError";
 }
 
+/**
+ * QA-01R-R2: the ONE completed response an idempotent read may retry.
+ *
+ * This narrowly supersedes the "a completed HTTP response is never retried" rule above, and only
+ * here. What was observed, from provider logs rather than inference: `LoginRateLimiter.assertAllowed`
+ * issues two `findAttempts` SELECTs concurrently through this same client, key and code path, and
+ * PostgREST answered one with 401/PGRST303 and the other with 200 twelve milliseconds apart. Across
+ * the captured window the identical key produced 25 GET 200, 10 POST 201 and 4 GET 401 on the same
+ * endpoint.
+ *
+ * Two requests that are byte-identical in credential and header cannot be told apart by anything
+ * this process controls, so the rejection is provider-side and transient - not a wiring fault, not
+ * a bad key, and not a real authorization decision. The user paid for it: the read threw before any
+ * attempt row was written, so the login failed with a generic message and NOTHING was recorded.
+ *
+ * The exemption is deliberately the narrowest that fixes that:
+ *   - GET/HEAD only, reached solely from the read path, so no write is ever replayed;
+ *   - PGRST303 only - any other 401, and every 403, 4xx and 5xx, is returned untouched, so a real
+ *     authorization decision is never retried into a second denial;
+ *   - one extra attempt, inside the SAME total read budget, never a third;
+ *   - caller cancellation still wins, since it is checked before this on the throwing path.
+ *
+ * The body is read from a CLONE, so the response handed back to the caller is untouched and its
+ * stream unconsumed. Nothing from it is logged: only the classifier is compared.
+ */
+async function isTransientJwtRejection(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+  try {
+    const body = (await response.clone().json()) as { code?: unknown };
+    return body?.code === "PGRST303";
+  } catch {
+    // A 401 whose body is absent, truncated or not JSON is not a proven PGRST303, so it is left
+    // alone rather than retried on a guess.
+    return false;
+  }
+}
+
 /** Exported for the offline P2 verification harness only; production use is via supabaseServer. */
 export async function resilientFetch(
   input: RequestInfo | URL,
@@ -235,7 +272,15 @@ export async function resilientFetch(
     const signal = callerSignal ? AbortSignal.any([callerSignal, attemptSignal]) : attemptSignal;
 
     try {
-      return await fetch(input, { ...request, signal, redirect: "error" });
+      const response = await fetch(input, { ...request, signal, redirect: "error" });
+      if (attempt === 1 && (await isTransientJwtRejection(response))) {
+        const remainingAfterAttempt = deadline - Date.now();
+        if (remainingAfterAttempt > READ_RETRY_DELAY_MS) {
+          await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAY_MS));
+          continue;
+        }
+      }
+      return response;
     } catch (error) {
       // Caller cancellation always wins and is never retried.
       if (callerSignal?.aborted) throw error;

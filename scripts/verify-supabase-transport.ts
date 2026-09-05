@@ -275,10 +275,19 @@ async function run(): Promise<void> {
       const { supabaseServer } = loadTransport(OPAQUE_KEY);
       const dispatched: Captured[] = [];
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = (async (_input: RequestInfo | URL, requestInit?: RequestInit) => {
+      globalThis.fetch = (async (input: RequestInfo | URL, requestInit?: RequestInit) => {
+        // EFFECTIVE headers, like the capture helper above. resilientFetch forwards the original
+        // input, so the headers can live on a Request when init carries none - and
+        // `new Headers(undefined)` is empty, which would let the Authorization assertion below
+        // pass without ever inspecting what was dispatched.
         dispatched.push({
-          headers: new Headers(requestInit?.headers as HeadersInit),
-          method: (requestInit?.method ?? "GET").toUpperCase(),
+          headers:
+            requestInit?.headers !== undefined
+              ? new Headers(requestInit.headers as HeadersInit)
+              : input instanceof Request
+                ? new Headers(input.headers)
+                : new Headers(),
+          method: (requestInit?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase(),
         });
         return new Response("[]", {
           status: 200,

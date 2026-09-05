@@ -682,11 +682,15 @@ async function main(): Promise<void> {
   // Counted, not merely detected: a presence test would pass on a handler that resolved twice.
   const proxyHandler =
     /export async function GET\([\s\S]*$/.exec(proxySource)?.[0] ?? "";
+  // Counted across the WHOLE live route, not the GET tail. `proxyHandler` starts at the GET
+  // declaration, so a helper declared ABOVE it and called from it sat outside the region - a
+  // second resolution there went uncounted while this still reported exactly one per operation.
+  // Counting the module makes the result independent of declaration order and keeps it exact.
   // LIVE calls only. `withoutComments` strips `/** … */` doc blocks alone, so a `//` comment naming
   // the call still counted: removing the executable resolution and leaving such a comment behind
   // kept this at exactly 1. `withoutAnyComment` removes both forms before counting.
   const proxyResolutionCalls = (
-    withoutAnyComment(proxyHandler).match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+    withoutAnyComment(proxySource).match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
   ).length;
   assert(
     proxyHandler.length > 0 && proxyResolutionCalls === 1,

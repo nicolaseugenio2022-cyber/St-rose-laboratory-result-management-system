@@ -473,6 +473,32 @@ async function main(): Promise<void> {
     "the two frozen contract versions must produce different Fecalysis geometry"
   );
 
+  // 5a-v1. A snapshotVersion 1 completed report froze NO render metadata, so it resolves at the
+  // baseline contract - the same rule as the legacy no-snapshot path below. Every assertion above
+  // uses snapshotVersion 2 fixtures, which carry an explicit per-report renderContractVersion, so
+  // nothing reached this branch: it returned the definition's CURRENT version and handed an
+  // already-issued report the two-column layout and uppercase values it was never issued with.
+  const v1Snapshot: CompletedSessionSnapshot = {
+    ...frozenFecSnapshot(1),
+    snapshotVersion: 1,
+  };
+  const v1FecPage = composeAll(resolveCompletedSessionRenderModel(v1Snapshot)).get("FECALYSIS")!;
+  assert(
+    v1FecPage.primitives.some((primitive) => primitive.id === "result-header-3"),
+    "a snapshotVersion 1 FECALYSIS report must keep its third result-column header"
+  );
+  assert(
+    textByIdPrefix(v1FecPage, "result-COLOR-value") === "Brown" &&
+      textByIdPrefix(v1FecPage, "result-CONSISTENCY-value") === "Soft",
+    "a snapshotVersion 1 FECALYSIS report must keep its mixed-case values"
+  );
+  assert(
+    v1FecPage.primitives.every(
+      (primitive) => primitive.kind !== "text" || !(primitive as NativeTextPrimitive).italic
+    ),
+    "a snapshotVersion 1 FECALYSIS report must contain no italic primitive"
+  );
+
   // 5b. The LEGACY path: a session completed before snapshots existed, so there is no frozen
   // contract metadata to read at all. Everything above resolves through the snapshot branch, which
   // is exactly how this path came to advertise the CURRENT contract version while resolving its

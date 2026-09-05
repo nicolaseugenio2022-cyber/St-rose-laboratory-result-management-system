@@ -317,7 +317,18 @@ function validatedSnapshotMetadata(
     printedTitle: definition.reportTitle ?? null,
     staticContentVersion: definition.renderContract?.staticContentVersion ?? STANDARD_STATIC_CONTENT_VERSION,
   };
-  if (snapshot.snapshotVersion === 1) return current;
+  // A v1 snapshot froze no render metadata, so it resolves at the BASELINE contract - never the
+  // definition's current one. Returning `current` was harmless while nothing was version-gated;
+  // once REPORT-QA-02B-R1 gated presentation and the two-column layout on the contract version, it
+  // silently re-rendered already-issued reports at the newer contract, giving a completed FECALYSIS
+  // report the two-column layout and uppercase/italic values it was never issued with.
+  //
+  // Only the contract version is taken from the baseline. `printedTitle` and `staticContentVersion`
+  // still come from the definition exactly as before, which is the same split `legacyCompletedReport`
+  // uses for the other path that carries no frozen metadata.
+  if (snapshot.snapshotVersion === 1) {
+    return { ...current, renderContractVersion: STANDARD_RENDER_CONTRACT_VERSION };
+  }
   if (report.renderContractVersion == null || report.printedTitle === undefined || !report.staticContentVersion) {
     throw new Error(`Completed snapshot v2 report '${report.templateCode}' is missing frozen render metadata.`);
   }

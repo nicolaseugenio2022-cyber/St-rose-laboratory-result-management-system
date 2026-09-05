@@ -253,11 +253,15 @@ class DegradingRegistryRepository implements IReportRegistryRepository {
  * to answer with. No network, no credentials, no real client behaviour relied upon.
  */
 type StubbedTable = { data: unknown[] | null; error: unknown };
+/** The restore function also reports how many table reads the stub served. */
+type TableStubHandle = (() => void) & { reads: () => number };
 
-function stubSupabaseTables(tables: Record<string, StubbedTable>): () => void {
+function stubSupabaseTables(tables: Record<string, StubbedTable>): TableStubHandle {
   const client = supabaseServer as unknown as { from: (table: string) => unknown };
   const originalFrom = client.from;
+  let reads = 0;
   client.from = (table: string) => {
+    reads += 1;
     const answer = tables[table] ?? { data: [], error: null };
     const builder: Record<string, unknown> = {};
     for (const method of ["select", "eq", "order", "limit", "in"]) {
@@ -266,9 +270,11 @@ function stubSupabaseTables(tables: Record<string, StubbedTable>): () => void {
     builder.then = (resolve: (value: StubbedTable) => unknown) => Promise.resolve(answer).then(resolve);
     return builder;
   };
-  return () => {
+  const restore = (() => {
     client.from = originalFrom;
-  };
+  }) as TableStubHandle;
+  restore.reads = () => reads;
+  return restore;
 }
 
 const HEALTHY_TEMPLATE_ROW = {
@@ -343,9 +349,16 @@ async function runPartialBulkFailure(): Promise<void> {
   try {
     const service = new ReportRegistryService(new SupabaseReportRegistryRepository());
     await service.warmCache();
+    // The READ COUNT is the assertion. Checking only that the marker survived proved nothing:
+    // with the service guard removed, the first call commits the degraded array, the second
+    // short-circuits on it and hands back that same marked array - so the marker check passes
+    // while the 'reads through again' half of the claim never happens. The stub owns the only
+    // observation point that can tell those apart.
+    const readsAfterFirst: number = restore.reads();
     const secondPass = await service.warmCache();
+    const readsAfterSecond: number = restore.reads();
     assert(
-      isDegradedRegistryResult(secondPass),
+      isDegradedRegistryResult(secondPass) && readsAfterSecond > readsAfterFirst,
       "P4 a partial-failure registry is never committed, so the next warmCache reads through again"
     );
   } finally {

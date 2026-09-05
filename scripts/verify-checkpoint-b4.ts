@@ -782,7 +782,17 @@ for (const [surfaceLabel, surfaceSource] of [
   ["GuidedWorkspace", guidedWorkspaceSource],
   ["SessionHistoryView", sessionHistorySource],
 ] as [string, string][]) {
-  for (const disclosureField of [".message", ".stack", ".digest", ".cause"]) {
+  // Member access is not the only spelling. Destructuring the message out, or coercing the value
+  // into a string, discloses exactly the same text while matching none of the four reads above.
+  for (const disclosureField of [
+    ".message",
+    ".stack",
+    ".digest",
+    ".cause",
+    "String(error)",
+    "${error}",
+    "{ message }",
+  ]) {
     assert(
       !surfaceSource.includes(disclosureField),
       `${surfaceLabel} never surfaces ${disclosureField} from a caught value to the operator`
@@ -823,8 +833,19 @@ for (const [callSite, resultName] of recoveryClearingCallSites) {
       guardIndex < 0
         ? ""
         : betweenCallAndClear.slice(guardIndex + guardOpen.length).split("}")[0];
+    // The guard must sit at the CALL's own nesting level. Taking the first occurrence anywhere in
+    // the span accepted a dead wrapper - `if (false) { if (!saved.success) { return; } }` resolves
+    // the index, yields a body containing `return;`, and still lets the clear below run. The
+    // verifier would report a success-only clear while a returned failure fell through and wiped
+    // the operator's only copy of unsaved work: precisely what this block exists to prevent.
+    // Same depth-0 requirement `verify-checkpoint-m6c.ts` applies to the purge refusal.
+    let guardDepth = 0;
+    for (let i = 0; i >= 0 && i < guardIndex; i += 1) {
+      if (betweenCallAndClear[i] === "{") guardDepth += 1;
+      else if (betweenCallAndClear[i] === "}") guardDepth -= 1;
+    }
     assert(
-      guardIndex >= 0 && guardBody.includes("return;"),
+      guardIndex >= 0 && guardDepth === 0 && guardBody.includes("return;"),
       "GuidedWorkspace clears recovery only on the success branch of the persistence call it follows"
     );
   }

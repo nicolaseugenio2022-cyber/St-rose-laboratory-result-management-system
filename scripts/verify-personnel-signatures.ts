@@ -233,11 +233,15 @@ assert(
   // per request instead of a getSession()/getSessionUser() pair, since React cache() is not a
   // dependable dedupe in a Route Handler. Only the spelling of the gate moved; the property pinned
   // below is unchanged and is the one that matters: no storage access is reachable before it.
-  const sessionCheckIndex = getHandler.indexOf("resolveAuthenticatedRequest()");
-  const roleCheckIndex = getHandler.indexOf('"Admin"') !== -1
-    ? getHandler.indexOf('"User"') !== -1
-      ? Math.min(getHandler.indexOf('"Admin"'), getHandler.indexOf('"User"'))
-      : getHandler.indexOf('"Admin"')
+  // Every index below is taken from ONE comment-free copy, so they share a coordinate space and
+  // a commented-out gate cannot set them. Mixing a stripped index with a raw one would compare
+  // positions in two different strings, which is worse than not stripping at all.
+  const liveGetHandler = stripComments(getHandler);
+  const sessionCheckIndex = liveGetHandler.indexOf("resolveAuthenticatedRequest()");
+  const roleCheckIndex = liveGetHandler.indexOf('"Admin"') !== -1
+    ? liveGetHandler.indexOf('"User"') !== -1
+      ? Math.min(liveGetHandler.indexOf('"Admin"'), liveGetHandler.indexOf('"User"'))
+      : liveGetHandler.indexOf('"Admin"')
     : -1;
   assert(
     sessionCheckIndex >= 0 && roleCheckIndex >= 0,
@@ -247,7 +251,7 @@ assert(
   // Every storage entry point, not just the first: a second mode that reached storage before the
   // gates would be exactly the regression this assertion exists to catch.
   const storageCallIndexes = [
-    ...getHandler.matchAll(/streamSignatureObject\(|\.from\(/g),
+    ...liveGetHandler.matchAll(/streamSignatureObject\(|\.from\(/g),
   ].map((match) => match.index ?? -1);
   assert(storageCallIndexes.length > 0, "proxy GET reaches storage somewhere");
   assert(

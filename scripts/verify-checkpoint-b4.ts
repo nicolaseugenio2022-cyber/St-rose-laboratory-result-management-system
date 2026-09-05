@@ -66,6 +66,50 @@ assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bano
 assert(/REVOKE EXECUTE ON FUNCTION allocate_accession_number\(\) FROM [^;]*\bauthenticated\b/i.test(accessionMigrationSource), "allocate_accession_number EXECUTE is revoked from authenticated");
 
 const guidedWorkspaceSource = readFileSync(join(process.cwd(), "src/app/(dashboard)/workspace/_components/GuidedWorkspace.tsx"), "utf8").replace(/\r\n/g, "\n");
+
+/**
+ * Remove every comment, for the ordering assertions that read this component positionally.
+ *
+ * Scanned character by character rather than pattern-replaced: a line-comment regex would take any
+ * code preceding the `//` on the same line. String contents are preserved, since the predicates
+ * below match literals such as `clearWorkspaceRecovery();`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
 assert(!guidedWorkspaceSource.includes("AccessionNumberGenerator.generate"), "GuidedWorkspace no longer generates accession numbers client-side");
 assert(!guidedWorkspaceSource.includes("p-01"), "GuidedWorkspace contains no hardcoded placeholder personnel id");
 assert(!/(?:const|let|var)\s+(?:\[\s*)?availablePersonnel(?:\s*,[^\]]*)?\]?\s*=\s*(?:useState<[^>]+>\s*\()?\s*\[\s*\{[\s\S]*/.test(guidedWorkspaceSource), "GuidedWorkspace contains no literal availablePersonnel array of personnel objects");
@@ -750,20 +794,25 @@ const recoveryClearingCallSites: [string, string][] = [
   ["saveDraftAction({ session: toSessionTransport(session) });", "saved"],
   ["completeSessionAction({ session: toSessionTransport(session) });", "completed"],
 ];
+// Comment-free, and every index in this block comes from that one copy so they share a coordinate
+// space. These are positive, ordering-sensitive assertions over a component whose failure branches
+// carry explanatory comments, so raw text would let a commented-out persistence call, clear, or
+// failure branch stand in for the executable one.
+const guidedWorkspaceLive = stripComments(guidedWorkspaceSource);
 for (const [callSite, resultName] of recoveryClearingCallSites) {
   const callIndices: number[] = [];
   for (
-    let found = guidedWorkspaceSource.indexOf(callSite);
+    let found = guidedWorkspaceLive.indexOf(callSite);
     found >= 0;
-    found = guidedWorkspaceSource.indexOf(callSite, found + callSite.length)
+    found = guidedWorkspaceLive.indexOf(callSite, found + callSite.length)
   ) {
     callIndices.push(found);
   }
   assert(callIndices.length > 0, `GuidedWorkspace still persists through ${callSite}`);
   for (const callIndex of callIndices) {
-    const clearIndex = guidedWorkspaceSource.indexOf("clearWorkspaceRecovery();", callIndex);
+    const clearIndex = guidedWorkspaceLive.indexOf("clearWorkspaceRecovery();", callIndex);
     assert(clearIndex > callIndex, "GuidedWorkspace clears recovery after the persistence call it follows");
-    const betweenCallAndClear = guidedWorkspaceSource.slice(callIndex + callSite.length, clearIndex);
+    const betweenCallAndClear = guidedWorkspaceLive.slice(callIndex + callSite.length, clearIndex);
     // `includes("return;")` on the whole span matched a `return;` belonging to ANY branch between
     // the call and the clear, so the two probes proved only co-occurrence. The early return has to
     // be inside the failure branch itself, or the clear below is not actually success-only: take

@@ -714,7 +714,11 @@ async function main(): Promise<void> {
   // - there is no profile to pass at that point.
   // Anchored on `await` so this reads the CALL sites only: the declaration's own parameter list
   // would otherwise match and pass neither branch below.
-  const emitDenialCalls = proxySource.match(/await emitDenial\((?:[^()]|\([^()]*\))*\)/g) ?? [];
+  // Comment-free, like the resolution count above. These are POSITIVE assertions - they require a
+  // construct to be present - so a comment naming a denial call or a role check satisfies them just
+  // as well as the code would, which is the failure mode they exist to prevent.
+  const liveProxySource = withoutAnyComment(proxySource);
+  const emitDenialCalls = liveProxySource.match(/await emitDenial\((?:[^()]|\([^()]*\))*\)/g) ?? [];
   assert(
     emitDenialCalls.length === 4 &&
       emitDenialCalls.every(
@@ -723,9 +727,9 @@ async function main(): Promise<void> {
     "case 92 every post-resolution denial is handed the resolved profile, and only the pre-resolution unauthenticated denial omits it"
   );
   assert(
-    /profile\.status\s*!==\s*"Active"/.test(proxySource) &&
-      /profile\.role\s*!==\s*"Admin"/.test(proxySource) &&
-      /profile\.role\s*!==\s*"User"/.test(proxySource),
+    /profile\.status\s*!==\s*"Active"/.test(liveProxySource) &&
+      /profile\.role\s*!==\s*"Admin"/.test(liveProxySource) &&
+      /profile\.role\s*!==\s*"User"/.test(liveProxySource),
     "case 92 the signature proxy retains its Active-status and Admin/User role checks"
   );
   assert(

@@ -496,10 +496,13 @@ async function main(): Promise<void> {
       }) => report
     ) as CompletedSessionSnapshot["reports"],
   };
+  // ABSENCE, not undefined-ness. `=== undefined` is equally true of a key that is present and
+  // set to undefined, so it could not tell a stripped report from one that still carries the
+  // field - and a presence-based resolver check would then take the v2 path on a v1 snapshot.
   assert(
-    v1Snapshot.reports[0].renderContractVersion === undefined &&
-      v1Snapshot.reports[0].printedTitle === undefined &&
-      v1Snapshot.reports[0].staticContentVersion === undefined,
+    !("renderContractVersion" in v1Snapshot.reports[0]) &&
+      !("printedTitle" in v1Snapshot.reports[0]) &&
+      !("staticContentVersion" in v1Snapshot.reports[0]),
     "the v1 fixture carries no frozen render metadata, so it exercises the v1 branch it is written for"
   );
   const v1FecPage = composeAll(resolveCompletedSessionRenderModel(v1Snapshot)).get("FECALYSIS")!;

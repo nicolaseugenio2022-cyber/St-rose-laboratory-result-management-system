@@ -361,14 +361,21 @@ function verifyBehaviouralFreeze(): void {
   // authenticated-user validation now runs ONCE per request and is reused within that request,
   // instead of the same user row being read two to five times per navigation. The validation
   // itself is unchanged - signature and expiry, user existence, Active status, tokenVersion - and
-  // React cache() is request-scoped, so nothing is cached across requests. Both files therefore
-  // remain frozen at exact content; only the reference point moves from the 6B commit to the
-  // approved P4 revision, using the same exact-equality strength as the pins below.
+  // nothing is cached across requests. Both files therefore remain frozen at exact content; only
+  // the reference point moves from the 6B commit to the approved revision, using the same
+  // exact-equality strength as the pins below.
+  //
+  // SHADCN-07C1 re-mints the session.ts pin for a COMMENT-ONLY revision. The surrounding JSDoc
+  // previously described React cache() as request-scoped; it memoizes within a Server Component
+  // render, and Route Handlers and Server Actions must resolve the caller once per operation
+  // rather than rely on that memo. Stripping comments from both revisions yields byte-identical
+  // executable code, so the pin is re-minted and never relaxed - still normalized exact-content
+  // equality over the whole file.
   const APPROVED_SESSION_SHA256 =
-    "43b46d05863a8cb15ba1f9367f4747cbf32915391a87bd4af60f79c3d4debf59";
+    "2da25439952a3b4638538edf0c1ec12568d0dd27d4b97291257e3b7e1c3a2ba1";
   assert(
     normalizedSha256(read("src/lib/session.ts")) === APPROVED_SESSION_SHA256,
-    "session.ts must remain byte-for-byte at its approved P4 revision apart from line endings"
+    "session.ts must remain byte-for-byte at its approved SHADCN-07C1 revision apart from line endings"
   );
 
   const APPROVED_AUTH_GUARDS_SHA256 =

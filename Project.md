@@ -68,10 +68,16 @@ through QA-09. That is the status as at that date and is retained as historical 
 current active direction. See **Client QA Stabilization Program** below.
 
 **The single current active direction is the SHADCN migration, documentation consolidation, and the
-upcoming backend, API, reliability and performance review (SHADCN-07A).** No other program is active. SHADCN-06B colocated
+backend, API, reliability and performance review (SHADCN-07).** No other program is active. SHADCN-06B colocated
 route UI under `src/app/**/_components/`; SHADCN-06D reconciled the architecture documentation to
 verified runtime and made `architecture/README.md` the single navigation entry point. The
 Whole-System UI/UX plan is delivered historical guidance rather than a live handoff.
+
+**SHADCN-07 is implemented and reviewed, and is NOT merged.** It sits on `review/shadcn-07` at
+`d36ef0f`, 27 commits ahead of `origin/main`, as PR #1. CodeRabbit returned `APPROVED`, all 54
+review threads are resolved and the required checks pass; merging is the user's action. See
+**SHADCN-07 — Backend, API, Reliability and Performance Review** below for what shipped, the
+defects the review surfaced, the decisions taken during it, and the five deferred items.
 
 ---
 
@@ -1472,6 +1478,107 @@ the slice is not assumed to be low-risk. Its investigation must determine:
 - whether completed-snapshot/output authority requires an explicit ruling;
 - whether logo and signature changes can remain one coherent implementation slice.
 
+## SHADCN-07 — Backend, API, Reliability and Performance Review (2026-09-05)
+
+**State: implemented and reviewed on `review/shadcn-07`; NOT merged.** PR #1 targets `main` at
+head `d36ef0f`, 27 commits ahead of `origin/main` and 0 behind. `origin/main` remains `8347a5c`.
+CodeRabbit returned an `APPROVED` review, all 54 review threads are resolved, and the four required
+checks pass. Merging is the user's action and has not been performed.
+
+### What shipped
+
+**Error disclosure hardening (SHADCN-07B1/B2/B3).** `src/lib/safe-error.ts` sanitizes server-side
+diagnostics against a CLOSED set — an allowlist of error names plus two exact classifier formats —
+so an unrecognised value is replaced rather than repaired or passed through. `src/lib/api/safe-error-response.ts`
+allowlists by `instanceof` the domain error classes whose message may cross to a browser; route
+handlers previously returned `error.message` for any caught value, including PostgREST plain-object
+rejections composed by Postgres. `src/features/server-boundary/operational-action-result.ts` applies
+the same discipline to Server Action results.
+
+**Supabase credential transport (QA-01R-R1).** supabase-js 2.112.2 places the opaque server key in
+`Authorization: Bearer …` on REST requests; the header is now dropped when its value is exactly the
+bearer form of this deployment's own opaque key, so `apikey` remains the sole credential, a genuine
+user JWT is never removed and a legacy JWT-format key is untouched. Headers are read from `init` or
+from the input `Request`, since either may carry them. `NEXT_PUBLIC_SUPABASE_URL` must be `https:`,
+and redirects are refused on both dispatch paths — `apikey` is a custom header, so unlike
+`Authorization` nothing strips it on a cross-origin hop.
+
+**Registry cache and single session resolution (SHADCN-07C1).** `warmCache()` populated the per-code
+map but never recorded that the collection had loaded, so the bulk query re-ran on every call.
+Guards now resolve the caller once per invocation rather than calling `getSession()` and then
+`getSessionUser()`: React `cache()` memoizes within a Server Component render only and is not a
+dependable dedupe in a Route Handler or Server Action. A seed fallback from a failed bulk read is
+served to the caller that asked but never committed, so an outage cannot pin the process on seed
+definitions.
+
+**Session list payload minimization.** History and dashboard lists project only the fields they
+render, rather than shipping full session aggregates, snapshots, results, signatories and signature
+paths to the client.
+
+**Report presentation contract (REPORT-QA-02B-R1).** `ResultPresentationSpec` adds `Uppercase`
+casing and `Italic` emphasis with a REQUIRED `sinceRenderContractVersion`, alongside
+`supersededRenderContractVersions` and two-column `resultHeaders`/`columnRatios`. Presentation only:
+entry, validation, evaluation and storage are unchanged.
+
+**Verification and CI.** Two new verifiers — `verify-registry-cache.ts` and
+`verify-supabase-transport.ts`, both behavioural rather than textual — and their classification in
+`.github/workflows/ci.yml`, whose coverage assertion fails closed on an unclassified verifier.
+`.coderabbit.yaml` configures the review gate.
+
+### Defects the review surfaced that the deterministic suite did not
+
+Recorded because each passed `tsc`, lint, all 28 verifiers and `next build` before it was found:
+
+- **Completed reports rendered at the wrong contract version, twice.** `legacyCompletedReport` and
+  the `snapshotVersion === 1` branch of `validatedSnapshotMetadata` both emitted the definition's
+  CURRENT version. Harmless until presentation and layout became version-gated, after which an
+  already-issued FECALYSIS report re-rendered with a two-column layout and uppercase/italic values
+  it was never issued with. Both now resolve at the baseline contract.
+- **A two-column contract could swallow a clinical unit.** The unit was deduplicated against the
+  reference display, which a two-column contract does not print. Latent — FECALYSIS declares no
+  units — but wrong for any later two-column definition.
+- **`.map` passed the array index as a contract version.** `getAllStandardNativeCompositionDefinitions`
+  mapped a factory point-free after that factory gained a second parameter, so composition selection
+  depended on registry order.
+- **A partial bulk registry read returned an unmarked, complete-looking registry.** Only the template
+  query was checked; an errored parameters read yielded templates with zero parameters.
+
+### Decisions taken by the user during the review
+
+- Legacy and v1 completed reports, which froze no render metadata, resolve wholly at baseline
+  contract version 1.
+- `NEXT_PUBLIC_SUPABASE_URL` must be `https:`; startup fails otherwise.
+- Redirects are refused for credentialed Supabase requests, accepting a loud failure over a silent
+  cleartext credential.
+- A degraded seed registry is served to the current caller but never cached.
+
+### Deferred, with no implementation claimed
+
+1. **`IPatientReportSessionRepository` interface completeness.** `findVisibleSessionForCaller` and
+   `getRecentSessionsWithOwnership` exist on the concrete class and not on the interface. Adding them
+   fails the Milestone 6B pin in `verify-checkpoint-m6c.ts:321` — verified, then reverted. Needs its
+   own slice, independent review, and an explicit decision on whether the interface or the pin is
+   what should change.
+2. **The `account_inactive` audit classification.** `resolveAuthenticatedRequestForToken` has always
+   returned null for inactive accounts, so callers cannot distinguish inactive from absent and the
+   `account_inactive` reason code is unreachable. Pre-existing. Closing it requires a resolution
+   reason on `src/lib/session.ts`, which is SHA-256 pinned, and changes load-bearing audit semantics.
+3. **`SessionPreviewDenied` telemetry.** A denial audit for the preview refusal was proposed. No
+   disclosure is demonstrated — `SESSION_UNAVAILABLE` is already indistinguishable between absent and
+   not-visible — and introducing an event type is an audit-contract decision for its own slice.
+4. **AST-based verifier inspection.** Proposed for the textual authorization verifiers, then agreed
+   as not required once comment-stripping closed the specific bypass.
+5. **`verify-checkpoint-b4.ts` clear-search bounding.** For a call site occurring more than once, the
+   search for `clearWorkspaceRecovery();` is unbounded and could span two occurrences, letting one
+   call be certified by a later occurrence's guard. Not a live defect: both `saveDraftAction` call
+   sites are individually guarded today. Future-regression gap only.
+
+### Known gaps
+
+- The Supabase MCP was read-only throughout. No migration, DDL, schema change or data write is in
+  this branch, and none was applied.
+- Manual acceptance of the report presentation changes is the user's, and is not claimed here.
+
 ## Carried Items From This Period
 
 - **The app-wide duplicate page heading is undecided.** `/users`, `/personnel`, `/history`, `/audit`, `SessionHistoryView` and `DeveloperDashboardSection` all render an in-page `<h2>` beneath the global route header fed by `src/config/navigation.ts`, producing the title twice with two different subtitles. Because the pattern is app-wide, fixing it on any subset creates new inconsistency; it needs one decision and one slice.
@@ -1479,5 +1586,5 @@ the slice is not assumed to be low-risk. Its investigation must determine:
 - **`Badge` exposes duplicate `indigo` and `purple` variants** with byte-identical styles, and `whitespace-nowrap` is currently applied locally at the personnel role badge rather than in the shared primitive.
 - **`busyPersonnelId` and `isLoading` are declared but never passed** by either directory view, so those busy states are inert.
 - **The `a16965d` commit subject is malformed**, as described above.
-- **The audit-guard duplicate read (m6d:183) remains parked.** Option 2a is recorded as the preferred future approach only; it is not standing implementation authorization.
-- **`/api/users` still returns a wider `User[]` shape than the directory projection needs**, and the signatures proxy still performs a duplicate profile read.
+- **The audit-guard duplicate read (m6d:183) is CLOSED** by SHADCN-07C1: `audit-actions.ts` resolves the caller once through `resolveAuthenticatedRequest()` instead of the `getSession()` + `getUserById()` pair. Verified against `origin/main`, which still carries the pair.
+- **The signatures-proxy duplicate profile read is CLOSED** by SHADCN-07C1: the route resolves once and passes the resolved profile into `emitDenial`, where `origin/main` still calls `getUserById` twice. **The `/api/users` response shape is not re-examined here** - `origin/main` already returned the `toAccountDirectory` projection rather than a bare `User[]`, so the original note was already stale when written; whether that projection is still wider than the directory needs is unassessed.

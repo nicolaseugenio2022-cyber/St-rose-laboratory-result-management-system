@@ -568,6 +568,26 @@ async function main(): Promise<void> {
     "a two-column result keeps its unit on the value, since no reference column is printed to carry it"
   );
 
+  // 5d. The specialized live-preview resolver drops the contract version, and that is only safe
+  // while specialized compositions are version-independent.
+  //
+  // `getNativeLivePreviewCompositionDefinition` passes `report.renderContractVersion` to every
+  // resolver, but `getSpecializedNativeCompositionDefinition` accepts a template code alone, so
+  // for MicroscopyTwoColumn and Certificate the argument is silently discarded. Nothing renders
+  // differently today because no `specializedComposition` declares a version gate - so this pins
+  // exactly that precondition rather than the dropped argument. If it ever fails, thread the
+  // version through the specialized resolver BEFORE declaring the gate, or completed specialized
+  // reports will re-render at the current definition.
+  for (const definition of ReportDefinitionRegistry.getAllDefinitions()) {
+    const specialized = definition.renderContract?.specializedComposition as
+      | (Record<string, unknown> & { sinceRenderContractVersion?: number })
+      | undefined;
+    assert(
+      !specialized || specialized.sinceRenderContractVersion === undefined,
+      `${definition.templateCode} declares a versioned specialized composition, but the live-preview resolver discards the contract version - thread it through getSpecializedNativeCompositionDefinition first`
+    );
+  }
+
   // 6. Column declarations fail closed. A header/ratio length mismatch and a non-positive ratio are
   // both declaration errors and must be rejected at resolution rather than composed.
   for (const [broken, reason] of [

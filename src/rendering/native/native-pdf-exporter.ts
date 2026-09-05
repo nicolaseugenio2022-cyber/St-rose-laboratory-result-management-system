@@ -52,7 +52,14 @@ function encodeStandardPdfFontText(value: string): string {
  * will not synthesise an oblique, so weight and italic have to be resolved into one of those four
  * exact names before the font is selected. Any other string silently falls back.
  */
-function pdfFontStyle(primitive: { fontWeight?: NativeFontWeight; italic?: boolean }): string {
+/**
+ * Narrowed to the four styles jsPDF actually has registered for Helvetica. `string` let any future
+ * edit return a name the font does not carry, which jsPDF resolves silently rather than refusing -
+ * so the text would render in the wrong face with nothing to show for it.
+ */
+function pdfFontStyle(
+  primitive: { fontWeight?: NativeFontWeight; italic?: boolean }
+): "normal" | "bold" | "italic" | "bolditalic" {
   const bold = primitive.fontWeight === "bold";
   if (bold) return primitive.italic ? "bolditalic" : "bold";
   return primitive.italic ? "italic" : "normal";

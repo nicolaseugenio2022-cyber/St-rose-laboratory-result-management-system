@@ -6,7 +6,7 @@ import type { CompletedSessionSnapshot } from "../src/domain/completion/complete
 import type { ILaboratoryReport, IPatientReportSession } from "../src/domain/models/interfaces";
 import type { RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
-import { resolveCompletedSessionRenderModel, resolveDraftSessionRenderModel, resolveSessionRenderModel, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
+import { resolveCompletedSessionRenderModel, resolveDraftSessionRenderModel, resolveSessionRenderModel, type RenderDefinitionSource, type ResolvedReportRenderModel, type ResolvedSessionRenderModel } from "../src/rendering/model";
 import { createNativeReportPdf, type NativePdfAssetResolver } from "../src/rendering/native/native-pdf-exporter";
 import { NATIVE_REPORT_THEME } from "../src/rendering/native/theme";
 import type { NativeComposedPage, NativePagePrimitive, NativeTextPrimitive } from "../src/rendering/native/types";
@@ -498,6 +498,74 @@ async function main(): Promise<void> {
       (primitive) => primitive.kind !== "text" || !(primitive as NativeTextPrimitive).italic
     ),
     "a legacy completed FECALYSIS report carrying no frozen snapshot must contain no italic primitive"
+  );
+
+
+  // 5c. A two-column contract must not swallow a UNIT.
+  //
+  // The unit is suppressed on the value when the reference display already shows it - correct while
+  // that column is printed. A two-column contract composes no reference cell at all, so consulting
+  // it there deduplicated against something the operator never sees and the unit vanished from a
+  // clinical result entirely.
+  //
+  // No shipped definition exhibits this: FECALYSIS is the only two-column contract and declares no
+  // units, which is exactly why the general unit assertion in section 1 stays green and cannot
+  // catch it. The fixture below is therefore synthetic ON PURPOSE - a two-column contract whose
+  // parameter carries a unit that appears ONLY in the reference - and it is the combination, not
+  // either half, that reproduces the defect.
+  const unitBearingDefinition: ClinicalReportDefinition = {
+    ...fecalysisDefinition,
+    templateCode: "C2_UNIT_PROBE",
+    parameters: [
+      {
+        ...fecalysisDefinition.parameters[0],
+        parameterCode: "UNIT_PROBE",
+        parameterName: "Unit Probe",
+        inputType: "NumericText",
+        options: null,
+        unit: "mg/L",
+        // The reference display is BUILT from the rule plus the unit, so this is the shape that
+        // actually produces a reference carrying the unit - the precondition for the defect.
+        referenceRule: { normalRange: "0.0-5.0" },
+        resultPresentation: null,
+      },
+    ],
+    renderContract: {
+      ...fecalysisDefinition.renderContract!,
+      standardComposition: {
+        resultHeaders: ["EXAMINATION", "RESULT"],
+        columnRatios: [40, 60],
+        sinceRenderContractVersion: 1,
+      },
+    },
+  } as ClinicalReportDefinition;
+
+  const unitProbeReport = reportFor(unitBearingDefinition);
+  const unitProbeSource: RenderDefinitionSource = {
+    getDefinition: (templateCode: string) =>
+      templateCode === unitBearingDefinition.templateCode ? unitBearingDefinition : null,
+  };
+  const unitProbeSession = resolveDraftSessionRenderModel(
+    sessionFor([unitProbeReport]),
+    unitProbeSource
+  );
+  const unitProbeComposition = createStandardNativeCompositionDefinition(unitBearingDefinition)!;
+  assert(
+    unitProbeComposition.resultHeaders.length === 2,
+    "the unit probe composes as a two-column contract, or it is not exercising the branch"
+  );
+  const unitProbePage = composeStandardNativeReportPage(
+    unitProbeComposition,
+    unitProbeSession,
+    unitProbeSession.reports[0]
+  );
+  assert(
+    !unitProbePage.primitives.some((primitive) => primitive.id.startsWith("result-UNIT_PROBE-reference")),
+    "the unit probe composes no reference cell, which is the precondition for the defect"
+  );
+  assert(
+    displayOwnsUnit(textByIdPrefix(unitProbePage, "result-UNIT_PROBE-value"), "mg/L"),
+    "a two-column result keeps its unit on the value, since no reference column is printed to carry it"
   );
 
   // 6. Column declarations fail closed. A header/ratio length mismatch and a non-positive ratio are

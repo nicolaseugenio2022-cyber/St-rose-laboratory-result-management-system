@@ -705,6 +705,27 @@ function verifyPurgeAuthorization(): void {
     catchBodyOpen >= 0 && branchInBlock > catchBodyOpen && depth === 0,
     "the purge route's authorization refusal must be reachable - sited directly in the guard's catch, never nested inside another branch"
   );
+
+  // The 403 must be the answer THIS branch gives. A proximity match only required a 403 token
+  // within 300 characters of the branch keyword, so it could belong to a different statement
+  // entirely - `if (error instanceof ForbiddenError) { console.error(...) }` followed by an
+  // unrelated 403 return satisfied every check while a refusal actually returned HTTP 500.
+  // Brace-match the branch's own consequent and require the status inside it.
+  const branchBodyOpen = guardBlock.indexOf("{", branchInBlock);
+  let branchDepth = 0;
+  let branchBodyEnd = -1;
+  for (let i = branchBodyOpen; i >= 0 && i < guardBlock.length; i += 1) {
+    if (guardBlock[i] === "{") branchDepth += 1;
+    else if (guardBlock[i] === "}" && --branchDepth === 0) {
+      branchBodyEnd = i;
+      break;
+    }
+  }
+  const branchBody = branchBodyEnd > branchBodyOpen ? guardBlock.slice(branchBodyOpen, branchBodyEnd) : "";
+  assert(
+    branchBody.length > 0 && /status:\s*403/.test(branchBody),
+    "the purge route's ForbiddenError branch must itself answer 403, not merely sit near one"
+  );
 }
 
 /**

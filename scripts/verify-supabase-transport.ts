@@ -175,6 +175,29 @@ async function run(): Promise<void> {
       "a legacy JWT-format key keeps its Bearer header; the correction narrows to opaque keys only"
     );
 
+    // ── 4a. Rebinding control: a foreign opaque bearer survives ──────────────
+    // Case 4 above is masked on its own: it only checks that the LEGACY_JWT_KEY bearer survives,
+    // and a STALE module still bound to OPAQUE_KEY would leave that header alone too - so it
+    // cannot prove `loadTransport` rebound anything. This is the POSITIVE control. Still under
+    // LEGACY_JWT_KEY, an OPAQUE_KEY bearer is a FOREIGN token: `stripSelfIssuedBearer` deletes
+    // Authorization only when it exactly equals the bearer form of the module's OWN currently
+    // bound key, so a correctly rebound legacy-key module must leave it untouched. Had the
+    // rebinding not happened the module would still be bound to OPAQUE_KEY, this header would be
+    // its own self-issued bearer, and it would be stripped - failing the assertion below.
+    const rebindControl = await capture(
+      LEGACY_JWT_KEY,
+      {
+        method: "GET",
+        headers: { apikey: LEGACY_JWT_KEY, Authorization: `Bearer ${OPAQUE_KEY}` },
+      },
+      ok
+    );
+    assert(
+      rebindControl.calls[0].headers.get("Authorization") === `Bearer ${OPAQUE_KEY}` &&
+        rebindControl.calls[0].headers.get("apikey") === LEGACY_JWT_KEY,
+      "REBINDING CONTROL: under the legacy JWT-format key an OPAQUE_KEY bearer is a foreign token and is preserved, proving loadTransport really rebound the module - a stale module still bound to the opaque key would have stripped it"
+    );
+
     // ── 4b. A Request-shaped dispatch is normalized too ──────────────────────
     // The headers can live on the input Request rather than on `init`; supabase-js is free to
     // call the injected fetch either way. Reading only `init` left this path carrying the

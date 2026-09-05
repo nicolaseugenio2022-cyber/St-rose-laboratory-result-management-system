@@ -483,13 +483,20 @@ async function runFallback(): Promise<void> {
   const partialService = new ReportRegistryService(partial);
   partial.failOnCode = TEMPLATE_CODES[2];
 
-  let partialRejected = false;
+  // Proving that SOMETHING threw is not proving the injected failure propagated: a stub mismatch,
+  // or any unrelated throw introduced later, keeps a bare boolean green while the behaviour named
+  // here is gone. Bind the assertion to the identity of the caught value instead.
+  let partialFailure: unknown;
   try {
     await partialService.warmCache();
-  } catch {
-    partialRejected = true;
+  } catch (error) {
+    partialFailure = error;
   }
-  assert(partialRejected, "F2 a fallback load that fails on one template rejects as a whole");
+  assert(
+    partialFailure instanceof Error &&
+      partialFailure.message.includes(`hydration failed for ${TEMPLATE_CODES[2]}`),
+    `F2 a fallback load that fails on one template rejects as a whole (got ${String(partialFailure)})`
+  );
 
   // The templates that DID succeed must not be cached. Reading one back has to reach the
   // repository again, which is the observable proof that nothing was committed early.
@@ -506,11 +513,19 @@ async function runFallback(): Promise<void> {
   const retryRepository = new FallbackOnlyRepository();
   const retryService = new ReportRegistryService(retryRepository);
   retryRepository.failOnCode = TEMPLATE_CODES[1];
+  // Same standard as F2: swallowing the caught value proves only that something threw, never that
+  // the injected hydration failure is what rejected this warmCache.
+  let retryFailure: unknown;
   try {
     await retryService.warmCache();
-  } catch {
-    /* expected */
+  } catch (error) {
+    retryFailure = error;
   }
+  assert(
+    retryFailure instanceof Error &&
+      retryFailure.message.includes(`hydration failed for ${TEMPLATE_CODES[1]}`),
+    `F3 the injected fallback failure is what rejects the first warmCache (got ${String(retryFailure)})`
+  );
   const listLoadsAfterFailure: number = retryRepository.listLoads;
   retryRepository.failOnCode = null;
   const retried = await retryService.warmCache();
@@ -605,13 +620,18 @@ async function run(): Promise<void> {
   const failing = new CountingRegistryRepository();
   const failingService = new ReportRegistryService(failing);
   failing.failNextBulkLoad = true;
-  let rejected = false;
+  // A boolean here would prove only that something threw, not that the injected bulk-load failure
+  // is what reached the caller; an unrelated throw would satisfy it just as well. Pin the value.
+  let bulkFailure: unknown;
   try {
     await failingService.warmCache();
-  } catch {
-    rejected = true;
+  } catch (error) {
+    bulkFailure = error;
   }
-  assert(rejected, "a failed bulk load rejects rather than resolving to a partial registry");
+  assert(
+    bulkFailure instanceof Error && bulkFailure.message.includes("registry bulk load unavailable"),
+    `a failed bulk load rejects rather than resolving to a partial registry (got ${String(bulkFailure)})`
+  );
   assert(failing.bulkLoads === 1, "the failed attempt made exactly one repository load");
 
   const retried = await failingService.warmCache();

@@ -521,14 +521,12 @@ for (const [guardName, roleRule] of guardContracts) {
   const declaration = `export async function ${guardName}(`;
   const start = personnelGuardSourceForResolution.indexOf(declaration);
   assert(start >= 0, `${guardName} is declared in personnel-guard.ts`);
-  const next = personnelGuardSourceForResolution.indexOf(
-    "\nexport async function",
-    start + declaration.length
-  );
-  const guardSource = personnelGuardSourceForResolution.slice(
-    start,
-    next >= 0 ? next : personnelGuardSourceForResolution.length
-  );
+  // Bounded by the guard's OWN body, brace-matched. Ending the slice at the next
+  // `\nexport async function` left the LAST exported guard unbounded - that search returns -1
+  // there, so the slice ran to end of file and the positive role, status and denial-event
+  // predicates below could be satisfied by code belonging to something else.
+  const guardSource = extractDeclaredFunction(personnelGuardSourceForResolution, declaration);
+  assert(guardSource.length > 0, `${guardName} body region is non-empty`);
 
   const resolutionCalls = (
     guardSource.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []

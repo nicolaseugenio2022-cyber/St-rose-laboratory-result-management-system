@@ -2677,14 +2677,22 @@ assert(
 // converted a failed denial-audit write, a Supabase outage and any programming fault into
 // OPERATIONAL_ACCESS_DENIED. Only reading the wrapper's own body can tell the two apart, so these
 // assertions do that.
-const authorizeWrapperSource = extractBracedSource(
+// The declaration index is pinned FIRST. A missing or renamed declaration yields -1, and
+// String.prototype.indexOf treats a negative fromIndex as 0 - so the brace search restarted at
+// the top of the file and extractBracedSource returned the first braced block in
+// server-actions.ts. The non-empty guard below then reported success for a region that is not
+// this wrapper, and the real failure surfaced against an unrelated assertion.
+const authorizeWrapperSourceDeclarationIndex = liveCodeIndexOf(
   serverActionsSource,
-  liveCodeIndexOf(
-    serverActionsSource,
-    "{",
-    liveCodeIndexOf(serverActionsSource, "async function authorizeOperationalCaller(")
-  )
+  "async function authorizeOperationalCaller("
 );
+const authorizeWrapperSource =
+  authorizeWrapperSourceDeclarationIndex < 0
+    ? ""
+    : extractBracedSource(
+        serverActionsSource,
+        liveCodeIndexOf(serverActionsSource, "{", authorizeWrapperSourceDeclarationIndex)
+      );
 assert(
   authorizeWrapperSource.length > 0,
   "authorizeOperationalCaller body region is non-empty"
@@ -2728,14 +2736,22 @@ assert(
   liveCodeIndexOf(authorizeWrapperSource, "resolveAuthenticatedRequest") < 0,
   "authorizeOperationalCaller performs no separate authentication preload"
 );
-const operationalGuardSource = extractBracedSource(
+// The declaration index is pinned FIRST. A missing or renamed declaration yields -1, and
+// String.prototype.indexOf treats a negative fromIndex as 0 - so the brace search restarted at
+// the top of the file and extractBracedSource returned the first braced block in
+// server-actions.ts. The non-empty guard below then reported success for a region that is not
+// this wrapper, and the real failure surfaced against an unrelated assertion.
+const operationalGuardSourceDeclarationIndex = liveCodeIndexOf(
   serverActionsSource,
-  liveCodeIndexOf(
-    serverActionsSource,
-    "{",
-    liveCodeIndexOf(serverActionsSource, "async function requireOperationalCaller(")
-  )
+  "async function requireOperationalCaller("
 );
+const operationalGuardSource =
+  operationalGuardSourceDeclarationIndex < 0
+    ? ""
+    : extractBracedSource(
+        serverActionsSource,
+        liveCodeIndexOf(serverActionsSource, "{", operationalGuardSourceDeclarationIndex)
+      );
 assert(
   operationalGuardSource.length > 0,
   "requireOperationalCaller body region is non-empty"

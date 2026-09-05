@@ -230,9 +230,28 @@ function displayOwnsUnit(display: string | null | undefined, unit: string | null
   return normalizedDisplayText(display).includes(normalizedDisplayText(unit));
 }
 
-function resolvedResultPresentation(result: ResolvedResultRenderModel): string {
+/**
+ * Suppressing the unit is a DEDUPLICATION, so it may only consider text the report actually prints.
+ *
+ * The reference display is one such place - a range reading "3.5-5.0 mmol/L" already carries the
+ * unit, so repeating it on the value is noise. But a two-column contract composes no reference cell
+ * at all, and consulting it there deduplicated against something the operator never sees: a value
+ * whose unit appeared only in the reference lost that unit entirely, in a clinical result.
+ *
+ * No current definition is affected - the only two-column contract today is FECALYSIS, whose
+ * parameters declare no unit - so this changes no report as it stands. It is the contract that was
+ * wrong: any later two-column definition with a unit would have dropped it silently.
+ */
+function resolvedResultPresentation(
+  result: ResolvedResultRenderModel,
+  hasReferenceColumn: boolean
+): string {
   const unit = result.unitDisplay?.trim();
-  if (!unit || displayOwnsUnit(result.formattedValue, unit) || displayOwnsUnit(result.referenceDisplay, unit)) {
+  if (
+    !unit ||
+    displayOwnsUnit(result.formattedValue, unit) ||
+    (hasReferenceColumn && displayOwnsUnit(result.referenceDisplay, unit))
+  ) {
     return result.formattedValue;
   }
   return result.formattedValue ? `${result.formattedValue} ${unit}` : unit;
@@ -257,7 +276,7 @@ function abnormalIndicator(result: ResolvedResultRenderModel): { text: "HIGH" | 
 function resultCellLines(result: ResolvedResultRenderModel, label: string, widths: number[]) {
   return {
     label: fixedLines(`result-${result.parameterCode}-label`, label, widths[0] - 3, TYPE.resultLabelPt),
-    value: fixedLines(`result-${result.parameterCode}-value`, resolvedResultPresentation(result), widths[1] - 2, TYPE.resultValuePt),
+    value: fixedLines(`result-${result.parameterCode}-value`, resolvedResultPresentation(result, widths.length > 2), widths[1] - 2, TYPE.resultValuePt),
     // A declared two-column grid has no reference track. The cell is not composed empty - it is not
     // composed at all, so no `result-*-reference` primitive exists to measure, paint or export.
     reference: widths.length > 2

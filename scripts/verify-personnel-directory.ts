@@ -495,7 +495,10 @@ assert(
 // would pass just as happily on a guard that resolved twice, which is the defect being corrected.
 // The role rules are re-asserted alongside it so a future edit cannot trade authorization for a
 // saved query.
-const personnelGuardSourceForResolution = getSource("src/lib/personnel-guard.ts");
+// Comment-stripped before any predicate below runs. These are raw-text `test()` calls, so a
+// comment mentioning resolveAuthenticatedRequest(), a role rule or a denial event would satisfy
+// them while the executable guard no longer did - the assertions would pass on prose.
+const personnelGuardSourceForResolution = stripComments(getSource("src/lib/personnel-guard.ts"));
 // Real RegExp values, not strings reconstructed at runtime. The previous form wrapped each rule in
 // literal slashes and stripped them with slice(1, -1) before new RegExp() - fragile, and it left the
 // dot in `profile.role` as a wildcard that would have matched `profileXrole`. These are escaped

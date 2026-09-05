@@ -167,8 +167,54 @@ function verifyServerOnlyAuditBoundary(): void {
   }
 }
 
+/**
+ * Comments removed before any authorization predicate reads the source.
+ *
+ * Every check in `verifyAuditActionAuthorization` is a raw-text `test()`, so a comment naming
+ * `resolveAuthenticatedRequest()`, a role rule or a status check would satisfy it while the
+ * executable guard no longer did - the assertion would pass on prose. Line comments go to the end
+ * of the line and block comments to their terminator; string contents are left alone, because the
+ * predicates below match string literals such as `role: profile.role`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
 function verifyAuditActionAuthorization(): void {
-  const actionSource = read("src/features/server-boundary/audit-actions.ts");
+  const actionSource = stripComments(read("src/features/server-boundary/audit-actions.ts"));
   const inputSource = read("src/features/server-boundary/audit-action-inputs.ts");
   const callerGuard = /async\s+function\s+requireAuditCaller\b[\s\S]*?(?=\nexport\s+async\s+function)/.exec(
     actionSource

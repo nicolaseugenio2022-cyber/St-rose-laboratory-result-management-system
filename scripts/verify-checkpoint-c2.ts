@@ -508,7 +508,7 @@ async function main(): Promise<void> {
     [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, -60] as [number, number] }, "negative ratio"],
     [{ resultHeaders: ["A", "B"] as [string, string], columnRatios: [40, Number.NaN] as [number, number] }, "non-finite ratio"],
   ] as const) {
-    let rejected = false;
+    let caught: unknown;
     try {
       createStandardNativeCompositionDefinition({
         ...fecalysisDefinition,
@@ -517,10 +517,19 @@ async function main(): Promise<void> {
           standardComposition: { ...broken, sinceRenderContractVersion: 1 },
         },
       });
-    } catch {
-      rejected = true;
+    } catch (error) {
+      caught = error;
     }
-    assert(rejected, `an invalid column declaration (${reason}) must be rejected at resolution`);
+    // The rejection is identified, not merely counted. A bare `catch` accepted ANY exception, so
+    // these four cases proved only that the resolver threw something - an unrelated future throw
+    // inside it would have kept them green with the column validation gone. `validatedColumns`
+    // names the template and the declaration in its message, so both are required here.
+    assert(
+      caught instanceof Error &&
+        caught.message.includes("Standard composition for 'FECALYSIS'") &&
+        /result header\(s\) but|invalid column ratio at index/.test(caught.message),
+      `an invalid column declaration (${reason}) must be rejected at resolution by the column validator (got ${String(caught)})`
+    );
   }
   const omitted = fecSession.reports[0].results.filter((result) => result.omission === "Omit");
   assert(omitted.length > 0 && omitted.every((result) => !fecPage.primitives.some((primitive) => primitive.id.startsWith(`result-${result.parameterCode}-`))), "omitted Fecalysis rows must reserve no primitives");

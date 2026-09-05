@@ -2550,16 +2550,28 @@ assert(
   recompletionCatchBody.length > 0,
   "replaceSessionAction recompletion classification has its own catch region"
 );
-assert(
-  liveCodeIndexOf(recompletionCatchBody, "error instanceof ValidationError") >= 0 &&
-    liveCodeIndexOf(recompletionCatchBody, 'operationalFailure("REPORT_VALIDATION_FAILED")') >= 0,
-  "replaceSessionAction maps recompletion ValidationError to the typed report-validation refusal"
-);
-assert(
-  liveCodeIndexOf(recompletionCatchBody, "error instanceof DomainInvariantError") >= 0 &&
-    liveCodeIndexOf(recompletionCatchBody, 'operationalFailure("REPLACEMENT_LIFECYCLE_INVALID")') >= 0,
-  "replaceSessionAction maps recompletion DomainInvariantError to the typed replacement refusal"
-);
+// Each class is bound to the code its OWN branch returns. As two independent probes over the same
+// catch body these passed on a swapped mapping - ValidationError returning the replacement refusal
+// and DomainInvariantError the validation one - while each message named a specific pairing. The
+// index-ordering form is the one already used for the denial guards above: the code must appear
+// after its own branch and before the next branch begins.
+for (const [errorClass, expectedCode, refusal] of [
+  ["ValidationError", "REPORT_VALIDATION_FAILED", "report-validation"],
+  ["DomainInvariantError", "REPLACEMENT_LIFECYCLE_INVALID", "replacement"],
+] as const) {
+  const branchIndex = liveCodeIndexOf(recompletionCatchBody, `error instanceof ${errorClass}`);
+  const codeIndex = liveCodeIndexOf(recompletionCatchBody, `operationalFailure("${expectedCode}")`);
+  const otherBranchIndex = liveCodeIndexOf(
+    recompletionCatchBody,
+    `error instanceof ${errorClass === "ValidationError" ? "DomainInvariantError" : "ValidationError"}`
+  );
+  assert(
+    branchIndex >= 0 &&
+      codeIndex > branchIndex &&
+      (otherBranchIndex < 0 || otherBranchIndex < branchIndex || codeIndex < otherBranchIndex),
+    `replaceSessionAction maps recompletion ${errorClass} to the typed ${refusal} refusal`
+  );
+}
 assert(
   recompletionIndex > replaceActionResolutionIndex && recompletionIndex < replaceActionCallIndex,
   "replaceSessionAction classifies recompletion after signatory resolution and before persistence"

@@ -29,6 +29,51 @@ function liveCodeIndexOf(source: string, occurrence: string): number {
   return -1;
 }
 
+/**
+ * Comments removed, for the predicates that must read a whole BLOCK rather than one occurrence.
+ *
+ * `liveCodeIndexOf` above answers "is this token live?" for a single position, which is enough for
+ * an ordering check. It cannot keep a commented-out `try`/`catch` from being extracted as a region
+ * and then matched against, so a block-shaped assertion strips first and matches after. String
+ * contents are preserved, since the predicates match literals such as `status: 403`.
+ */
+function stripComments(source: string): string {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
 function normalizedSha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -629,8 +674,13 @@ function verifyPurgeAuthorization(): void {
   // purge service: an unrelated ForbiddenError branch sited earlier satisfied every independent
   // probe while a refusal raised by assertAdminAccess still escaped as HTTP 500. Take the block
   // that encloses the guard call and require the refusal answer inside that block.
+  // Extracted from LIVE code. The previous form matched over the raw source, so a commented-out
+  // `assertAdminAccess`, `ForbiddenError` branch or `status: 403` could form the block, and the
+  // separate live-branch probe only proved such a branch existed somewhere ahead of the purge
+  // service - not that it belonged to the catch enclosing the live guard call.
+  const liveSource = stripComments(source);
   const guardBlock =
-    /try\s*\{[^{}]*assertAdminAccess\([\s\S]*?\}\s*catch[\s\S]*?\n\s{2}\}/.exec(source)?.[0] ?? "";
+    /try\s*\{[^{}]*assertAdminAccess\([\s\S]*?\}\s*catch[\s\S]*?\n\s{2}\}/.exec(liveSource)?.[0] ?? "";
   const forbiddenBranchIndex = liveCodeIndexOf(source, "error instanceof ForbiddenError");
   assert(
     guardBlock.length > 0 &&

@@ -660,7 +660,9 @@ assert(
 // would pass just as happily on a guard that resolved twice, which is the defect being corrected.
 // The role rules are re-asserted alongside it so a future edit cannot trade authorization for a
 // saved query.
-const personnelGuardSourceForResolution = getSource("src/lib/personnel-guard.ts");
+// Comment-stripped before any predicate below runs, for the same reason as the directory
+// verifier: these are raw-text `test()` calls, and a comment must not be able to satisfy one.
+const personnelGuardSourceForResolution = stripComments(getSource("src/lib/personnel-guard.ts"));
 // Real RegExp values, not strings reconstructed at runtime. The previous form wrapped each rule in
 // literal slashes and stripped them with slice(1, -1) before new RegExp() - fragile, and it left the
 // dot in `profile.role` as a wildcard that would have matched `profileXrole`. These are escaped

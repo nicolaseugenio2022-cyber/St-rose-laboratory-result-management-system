@@ -128,14 +128,35 @@ function isOpaqueApiKey(value: string): boolean {
   return value.startsWith("sb_secret_") || value.startsWith("sb_publishable_");
 }
 
-function stripSelfIssuedBearer(init?: RequestInit): RequestInit | undefined {
-  if (!init?.headers || !supabaseSecretKey || !isOpaqueApiKey(supabaseSecretKey)) return init;
+/**
+ * The headers this dispatch will ACTUALLY send.
+ *
+ * `init.headers` wins when present, because `fetch(input, init)` lets init override a Request's own
+ * headers. When it is absent the headers still exist - they are the input `Request`'s - and reading
+ * only `init` there was the gap: a caller that passes `new Request(url, { headers })` and no init
+ * kept its self-issued bearer, which is exactly the header this normalizer exists to remove.
+ */
+function effectiveHeaders(input: RequestInfo | URL, init?: RequestInit): Headers | null {
+  if (init?.headers) return new Headers(init.headers as HeadersInit);
+  if (typeof Request !== "undefined" && input instanceof Request) return new Headers(input.headers);
+  return null;
+}
+
+function stripSelfIssuedBearer(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): RequestInit | undefined {
+  if (!supabaseSecretKey || !isOpaqueApiKey(supabaseSecretKey)) return init;
+
+  const headers = effectiveHeaders(input, init);
+  if (!headers) return init;
 
   const selfIssued = `Bearer ${supabaseSecretKey}`;
-  const headers = new Headers(init.headers as HeadersInit);
   if (headers.get("Authorization") !== selfIssued) return init;
 
   headers.delete("Authorization");
+  // Returned as an init override even when the caller supplied none: init headers take precedence
+  // over the input Request's, so this is what actually removes it from the wire.
   return { ...init, headers };
 }
 
@@ -167,11 +188,25 @@ export async function resilientFetch(
   init?: RequestInit
 ): Promise<Response> {
   // Normalized once, before either dispatch path, so reads and writes are covered identically.
-  const request = stripSelfIssuedBearer(init);
+  // The input is passed too, because the headers may live on it rather than on `init`.
+  const request = stripSelfIssuedBearer(input, init);
+
+  // REDIRECTS ARE REFUSED, on both paths.
+  //
+  // The https: requirement above constrains only the URL this process dials. Fetch follows
+  // redirects by default, and `apikey` is a CUSTOM header - unlike `Authorization`, nothing in
+  // the Fetch standard strips it on a cross-origin hop - so an https -> http redirect would
+  // carry the server key to an unencrypted endpoint and defeat that check entirely.
+  //
+  // Failing closed is the deliberate trade. PostgREST does not redirect, and Storage streams
+  // authenticated objects rather than answering 3xx, so this should never fire; if it ever
+  // does, it surfaces as a loud request failure instead of a silent cleartext credential.
+
 
   if (!isReadRequest(input, request)) {
-    // Writes: original semantics, untouched. No added signal, no timeout, no retry.
-    return fetch(input, request);
+    // Writes: original semantics, untouched. No added signal, no timeout, no retry - except
+    // the redirect policy, which applies to every credentialed dispatch (see below).
+    return fetch(input, { ...request, redirect: "error" });
   }
 
   const deadline = Date.now() + READ_TOTAL_BUDGET_MS;
@@ -185,7 +220,7 @@ export async function resilientFetch(
     const signal = request?.signal ? AbortSignal.any([request.signal, attemptSignal]) : attemptSignal;
 
     try {
-      return await fetch(input, { ...request, signal });
+      return await fetch(input, { ...request, signal, redirect: "error" });
     } catch (error) {
       // Caller cancellation always wins and is never retried.
       if (request?.signal?.aborted) throw error;

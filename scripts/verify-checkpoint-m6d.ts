@@ -872,10 +872,31 @@ function verifyAuthenticationSuccessAuditWriter(): void {
   );
 
   // The non-credential diagnostic is the SHADCN-07B1 sanitized shape, and carries nothing else.
-  const loginLogCall = /console\.error\([\s\S]*?\);/.exec(loginActionSource)?.[0] ?? "";
+  //
+  // Bound to the catch body, and required to be the ONLY logger in it. Selecting the first
+  // console.error in the whole action let an earlier safe logger stand in for an unsafe one sited
+  // later, and neither probe rejected a bare `error` argument - so
+  // `console.error("login failed", describeErrorShape(error), error)` passed while writing the raw
+  // value this assertion exists to keep out of the log.
+  const catchBody = loginActionSource.slice(catchBodyStart, catchEndIndex + 1);
+  const catchLogCalls = catchBody.match(/console\.error\([\s\S]*?\);/g) ?? [];
+  assert(
+    catchLogCalls.length === 1,
+    "loginAction's catch must contain exactly one diagnostic logger, so no later logger can bypass the checks below"
+  );
+  const loginLogCall = catchLogCalls[0];
   assert(
     /describeErrorShape\(error\)/.test(loginLogCall) && !/error\.(name|message|stack)/.test(loginActionSource),
     "loginAction must diagnose a non-credential failure through describeErrorShape, never a raw error field"
+  );
+  // With the sanitized wrapper removed, no reference to the caught value may remain in the call.
+  // The callee is dropped first: `console.error` itself contains `error` after a word boundary.
+  const loginLogArguments = loginLogCall
+    .replace(/^console\.error\(/, "")
+    .replace(/describeErrorShape\(\s*error\s*\)/g, "");
+  assert(
+    !/\berror\b/.test(loginLogArguments),
+    "the loginAction failure log must pass the caught value only through describeErrorShape, never alongside it"
   );
   assert(
     !/username|password|passwordValue|formData|token|cookie|secret|hash|answer/i.test(loginLogCall),

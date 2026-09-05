@@ -27,7 +27,7 @@ function assert(condition: unknown, message: string): asserts condition {
   console.log(`✓ ${message}`);
 }
 
-type Captured = { headers: Headers; method: string };
+type Captured = { headers: Headers; method: string; redirect?: RequestRedirect };
 
 /** Load a fresh copy of the transport module bound to the supplied server key. */
 type TransportModule = {
@@ -50,7 +50,9 @@ function loadTransport(secretKey: string): TransportModule {
 async function capture(
   secretKey: string,
   init: RequestInit,
-  respond: (attempt: number) => Response | Promise<Response>
+  respond: (attempt: number) => Response | Promise<Response>,
+  /** Overrides the default URL input, so the Request-shaped dispatch can be exercised. */
+  inputOverride?: RequestInfo | URL
 ): Promise<{ calls: Captured[]; response: Response | null; threw: unknown }> {
   const { resilientFetch } = loadTransport(secretKey);
   const calls: Captured[] = [];
@@ -59,15 +61,28 @@ async function capture(
 
   globalThis.fetch = (async (input: RequestInfo | URL, requestInit?: RequestInit) => {
     attempt += 1;
+    // Captured from the EFFECTIVE dispatch, not from `init` alone: when the caller passes a
+    // Request and no init, the headers live on the Request, and reading only `requestInit`
+    // would make an absent-bearer assertion pass while the bearer was still on the wire.
+    const dispatched =
+      requestInit?.headers !== undefined
+        ? new Headers(requestInit.headers as HeadersInit)
+        : input instanceof Request
+          ? new Headers(input.headers)
+          : new Headers();
     calls.push({
-      headers: new Headers(requestInit?.headers as HeadersInit),
-      method: (requestInit?.method ?? "GET").toUpperCase(),
+      headers: dispatched,
+      redirect: requestInit?.redirect ?? (input instanceof Request ? input.redirect : undefined),
+      method: (requestInit?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase(),
     });
     return respond(attempt);
   }) as typeof globalThis.fetch;
 
   try {
-    const response = await resilientFetch("https://verifier.invalid/rest/v1/auth_attempts", init);
+    const response = await resilientFetch(
+      inputOverride ?? "https://verifier.invalid/rest/v1/auth_attempts",
+      init
+    );
     return { calls, response, threw: null };
   } catch (error) {
     return { calls, response: null, threw: error };
@@ -146,6 +161,40 @@ async function run(): Promise<void> {
       legacy.calls[0].headers.get("Authorization") === `Bearer ${LEGACY_JWT_KEY}` &&
         legacy.calls[0].headers.get("apikey") === LEGACY_JWT_KEY,
       "a legacy JWT-format key keeps its Bearer header; the correction narrows to opaque keys only"
+    );
+
+    // ── 4b. A Request-shaped dispatch is normalized too ──────────────────────
+    // The headers can live on the input Request rather than on `init`; supabase-js is free to
+    // call the injected fetch either way. Reading only `init` left this path carrying the
+    // self-issued bearer - the one header this correction exists to remove.
+    const viaRequest = await capture(
+      OPAQUE_KEY,
+      {},
+      ok,
+      new Request("https://verifier.invalid/rest/v1/auth_attempts", {
+        headers: { apikey: OPAQUE_KEY, Authorization: `Bearer ${OPAQUE_KEY}` },
+      })
+    );
+    assert(
+      viaRequest.calls[0].headers.get("Authorization") === null &&
+        viaRequest.calls[0].headers.get("apikey") === OPAQUE_KEY,
+      "a Request-shaped dispatch is normalized as well: the opaque key still travels only in apikey"
+    );
+
+    // ── 4c. Redirects are refused on every credentialed dispatch ─────────────
+    // `apikey` is a CUSTOM header, so nothing in the Fetch standard strips it on a cross-origin
+    // hop. Following an https -> http redirect would therefore carry the server key in clear
+    // text and defeat the https: requirement, which constrains only the URL this process dials.
+    const writeDispatch = await capture(
+      OPAQUE_KEY,
+      { method: "POST", headers: { apikey: OPAQUE_KEY } },
+      ok
+    );
+    assert(
+      viaRequest.calls[0].redirect === "error" &&
+        writeDispatch.calls[0].redirect === "error" &&
+        legacy.calls[0].redirect === "error",
+      "every credentialed dispatch refuses redirects - reads, writes and the Request-shaped path alike"
     );
 
     // ── 5. Read resilience and the no-retry-on-completed-response contract ────

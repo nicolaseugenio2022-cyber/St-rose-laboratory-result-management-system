@@ -79,12 +79,18 @@ export class ReportRegistryService implements IReportRegistryService {
       return this.cache.get(templateCode)!;
     }
 
-    // 2. Fetch from repository
+    // 2. Fetch from repository, remembering the generation this read belongs to.
+    const generation = this.cacheGeneration;
     const spec = await this.hydrateTemplate(templateCode);
     if (!spec) return null;
 
-    // 3. Cache hydrated spec
-    this.cache.set(templateCode, spec);
+    // 3. Cache hydrated spec - but only if it is still current. `warmCache` already guarded its
+    // collection commit this way; this per-code path did not, so a clearCache() that landed while
+    // this hydration was in flight was undone by the write below, reinstating a row the
+    // invalidation had discarded.
+    if (this.cacheGeneration === generation) {
+      this.cache.set(templateCode, spec);
+    }
     return spec;
   }
 

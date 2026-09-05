@@ -710,7 +710,10 @@ function verifyFailedAuthenticationAuditWriter(): void {
 }
 
 function verifyAuthenticationSuccessAuditWriter(): void {
-  const source = read("src/services/userService.ts");
+  // Comment-stripped before extraction, ordering and counting alike. Every predicate below reads
+  // raw text, so a commented-out authentication sequence could satisfy the emission count and the
+  // session-then-audit ordering while the executable login path no longer did.
+  const source = stripComments(read("src/services/userService.ts"));
   const helper = /private\s+async\s+emitAuthenticationSuccess\b[\s\S]*?(?=\n\s*private\s+async\s+emitAuthenticationFailure\b)/.exec(
     source
   )?.[0];
@@ -815,7 +818,7 @@ function verifyAuthenticationSuccessAuditWriter(): void {
   // loginAction ordering: credentials, then session, then the audit, then redirect - and the
   // redirect stays outside the catch so a failure cannot be reported as a completed login.
   const loginActionSource = /export\s+async\s+function\s+loginAction\b[\s\S]*?\n\}/.exec(
-    read("src/features/auth/authActions.ts")
+    stripComments(read("src/features/auth/authActions.ts"))
   )?.[0];
   assert(loginActionSource, "loginAction must remain present");
   const credentialIndex = loginActionSource.indexOf("userService.authenticate(");

@@ -2718,8 +2718,10 @@ assert(
   "requireOperationalCaller body region is non-empty"
 );
 // Counted, not merely detected: a presence test would pass on a guard that resolved twice.
+// LIVE calls only. A raw `match` counted a commented-out call as the one resolution, so removing
+// the executable call and leaving a comment mentioning it kept this at exactly 1.
 assert(
-  (operationalGuardSource.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []).length === 1,
+  liveCodeIndicesOf(operationalGuardSource, "resolveAuthenticatedRequest()").length === 1,
   "requireOperationalCaller resolves the authenticated request exactly once per invocation"
 );
 assert(

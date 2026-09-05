@@ -40,6 +40,55 @@ const getSource = (relativePath: string): string => readFileSync(join(root, rela
 /** Strip doc comments, so a file explaining why an identifier is banned does not fail on it. */
 const withoutComments = (source: string): string => source.replace(/\/\*\*[\s\S]*?\*\//g, "");
 
+/**
+ * Strip EVERY comment form, for the assertions that COUNT occurrences rather than ban them.
+ *
+ * `withoutComments` above is deliberately narrow: a ban assertion only needs the explanatory doc
+ * block removed. A count is different - a `//` comment naming the call is indistinguishable from
+ * the call itself to a raw `match`, so removing the executable line and leaving the comment keeps
+ * the count correct while the guard is gone.
+ *
+ * Scanned character by character rather than pattern-replaced: a line-comment regex would take the
+ * whole line including any code before the `//`, and would also fire on the `//` inside a URL
+ * literal - and this handler composes signature-proxy addresses.
+ */
+const withoutAnyComment = (source: string): string => {
+  let result = "";
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === stringChar) inString = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+};
+
 /* ------------------------------------------------------------------ sentinels */
 
 // Distinct on purpose. "The frozen value survived" and "the override was applied" are different
@@ -633,8 +682,11 @@ async function main(): Promise<void> {
   // Counted, not merely detected: a presence test would pass on a handler that resolved twice.
   const proxyHandler =
     /export async function GET\([\s\S]*$/.exec(proxySource)?.[0] ?? "";
+  // LIVE calls only. `withoutComments` strips `/** … */` doc blocks alone, so a `//` comment naming
+  // the call still counted: removing the executable resolution and leaving such a comment behind
+  // kept this at exactly 1. `withoutAnyComment` removes both forms before counting.
   const proxyResolutionCalls = (
-    proxyHandler.match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
+    withoutAnyComment(proxyHandler).match(/resolveAuthenticatedRequest\s*\(\s*\)/g) ?? []
   ).length;
   assert(
     proxyHandler.length > 0 && proxyResolutionCalls === 1,

@@ -90,6 +90,10 @@ export function getStandardNativeCompositionDefinition(
 
 export function getAllStandardNativeCompositionDefinitions(): StandardNativeCompositionDefinition[] {
   return ReportDefinitionRegistry.getAllDefinitions()
-    .map(createStandardNativeCompositionDefinition)
+    // Wrapped, NOT passed by reference. `map` supplies the element index as the second argument,
+    // which this function now reads as `renderContractVersion` - so a bare reference resolved every
+    // definition at its position in the registry, making composition selection depend on registry
+    // order. Harmless before this parameter existed; a defect the moment it did.
+    .map((definition) => createStandardNativeCompositionDefinition(definition))
     .filter((definition): definition is StandardNativeCompositionDefinition => definition !== null);
 }

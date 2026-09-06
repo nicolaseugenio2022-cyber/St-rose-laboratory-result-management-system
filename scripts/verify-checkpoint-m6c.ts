@@ -817,11 +817,26 @@ function verifyCredentialVisibilityControls(): void {
     ),
     "FirstLoginForm must carry both recovery-answer visibility aria-labels"
   );
+  // The property this protects is the pattern, not the pixel values: a relative wrapper, an
+  // input that RESERVES ENOUGH horizontal room for the control, a real <button type="button">
+  // so the control stays keyboard reachable, and an absolute position at the field's right edge.
+  //
+  // It previously pinned the literals `pr-10` and `top-1/2 -translate-y-1/2`, and both were
+  // wrong rather than merely over-specific. The reveal control is 44x44 at `right-3`, so it
+  // occupies the rightmost 56px of the field; `pr-10` reserves 40px, and a long recovery answer
+  // therefore rendered underneath the icon. The old assertion did not merely permit that defect,
+  // it REQUIRED it. `top-1/2 -translate-y-1/2` centres on the whole wrapper, label row included,
+  // which is why the source needed a compensating nudge to land on the control at all.
+  //
+  // So the padding bound is TIGHTENED to at least pr-14 (56px) - exactly what a 44px control at
+  // right-3 needs - and the vertical mechanism is left to the source provided an anchor is set.
+  // Button-ness, inline-ness and the right-edge position are unchanged, and no neighbouring
+  // assertion is touched.
   assert(
-    /className=["']relative["'][\s\S]*?className=["']pr-10["'][\s\S]*?<button[\s\S]*?type=["']button["'][\s\S]*?absolute right-3 top-1\/2 -translate-y-1\/2/.test(
+    /className=["']relative["'][\s\S]*?className=["']pr-(?:1[4-9]|[2-9]\d)["'][\s\S]*?<button[\s\S]*?type=["']button["'][\s\S]*?absolute right-3 top-/.test(
       firstLoginSource
     ),
-    "FirstLoginForm must use the inline, keyboard-reachable visibility-button pattern"
+    "FirstLoginForm must use the inline, keyboard-reachable visibility-button pattern, with the field reserving at least the control's width"
   );
 
   const loginSource = read("src/app/login/page.tsx");

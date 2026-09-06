@@ -134,18 +134,18 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
                 autoComplete="off"
                 disabled={isPending}
                 required
-                className="pr-10"
+                className="pr-14"
               />
-              {/* 44x44 at every width now that the field itself is 44 tall. Centred on the
-                  wrapper plus a fixed nudge for the field's own label row (13px label plus the
-                  6px gap), which lands it on the control. This field renders no inline
-                  validation message - rejections arrive in the Alert above - so the wrapper
-                  never grows underneath it and the centred anchor stays correct. Login and
-                  recovery, whose fields DO carry inline messages, anchor from the top
-                  instead. */}
+              {/* 44x44 at every width now that the field itself is 44 tall, and the field
+                  reserves pr-14 (56px) - the control's own width plus its right-3 offset - so a
+                  long recovery answer can never run underneath the icon.
+
+                  Offset from the TOP of the wrapper (13px label + the 6px label gap), which is
+                  the anchor login and recovery already use, rather than centred on the wrapper.
+                  All three reveal controls are now one implementation. */}
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 mt-[9px] inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+                className="absolute right-3 top-[19px] inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                 onClick={() => setShowAnswer(!showAnswer)}
                 aria-label={showAnswer ? "Hide recovery answer" : "Show recovery answer"}
                 aria-pressed={showAnswer}

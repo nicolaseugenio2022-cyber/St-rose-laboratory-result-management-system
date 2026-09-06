@@ -96,7 +96,15 @@ export function ParameterRow({
             control that is now keyboard reachable would be worse than the old exclusion.
 
             The 14px box is a comfortable mouse target and a poor touch one, so below sm a
-            transparent pseudo-element widens the tappable area to 34x26 around it. The
+            transparent pseudo-element widens the tappable area to 34x26 around it. It hangs
+            off a wrapping label rather than the checkbox. Two reasons, and both are load
+            bearing: an input is a replaced element, so Firefox generates no pseudo-element
+            for one and the same rule written on the input widens the target in Blink while
+            doing nothing there; and only a label forwards a press to the control it wraps,
+            so on a plain span the area would enlarge but stay inert. The implicit
+            association also leaves the accessible name alone - the input keeps its own
+            aria-label, which outranks an empty wrapping label - and a press over a disabled
+            checkbox still does nothing, because that is what a native label already does. The
             insets are asymmetric and measured, not decorative: the row leaves 12px of
             padding to its left, 8px of column gap to the label, 8px above the box, and only
             4px below it before the result input begins. Expanding past any of those would
@@ -106,15 +114,17 @@ export function ParameterRow({
             target is unreachable here without changing row geometry; 34x26 clears the 24px
             WCAG 2.5.8 minimum while the result inputs themselves are already 44px on touch.
             Presentation only: no tabIndex, no handler, and the checkbox keeps its 14px box. */}
-        <input
-          type="checkbox"
-          data-parameter-selector
-          checked={isSelected}
-          disabled={!parameter.isSelectable}
-          onChange={(event) => onToggleSelect(event.target.checked)}
-          className="relative mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-brand-border-strong accent-brand-primary pointer-events-auto before:absolute before:-left-3 before:-right-2 before:-top-2 before:-bottom-1 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed sm:mt-0 sm:before:content-none"
-          aria-label={`Select parameter ${parameter.parameterName}`}
-        />
+        <label className="relative mt-0.5 flex shrink-0 cursor-pointer before:absolute before:-left-3 before:-right-2 before:-top-2 before:-bottom-1 before:content-[''] has-[:disabled]:cursor-not-allowed sm:mt-0 sm:before:content-none">
+          <input
+            type="checkbox"
+            data-parameter-selector
+            checked={isSelected}
+            disabled={!parameter.isSelectable}
+            onChange={(event) => onToggleSelect(event.target.checked)}
+            className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-brand-border-strong accent-brand-primary pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed"
+            aria-label={`Select parameter ${parameter.parameterName}`}
+          />
+        </label>
         <div className={cn("min-w-0", !isSelected && "opacity-50")}>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="block text-[13px] font-medium leading-tight text-brand-text">{parameter.parameterName}</span>

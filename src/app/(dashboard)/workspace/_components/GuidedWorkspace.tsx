@@ -85,6 +85,7 @@ function useWorkspaceModalDrawer({
   triggerRef,
   onClose,
   retireQuery,
+  retireFocusRef,
 }: {
   isOpen: boolean;
   panelRef: React.RefObject<HTMLDivElement | null>;
@@ -92,6 +93,15 @@ function useWorkspaceModalDrawer({
   onClose: () => void;
   /** Omit for a drawer that is the only route to its content at every width. */
   retireQuery?: string;
+  /**
+   * Where focus goes when `retireQuery` is what closed the drawer.
+   *
+   * The trigger is the right destination for every close the operator asked for, but not for
+   * this one: the same breakpoint that retires the drawer also hides the trigger, so restoring
+   * to it would call focus() on a `display:none` element and drop the operator on
+   * document.body. This names the surface that replaced the drawer instead.
+   */
+  retireFocusRef?: React.RefObject<HTMLElement | null>;
 }): void {
   // onClose is an inline arrow at most call sites, so it changes identity every render. Holding
   // it in a ref keeps this effect from tearing down and rebuilding the trap on each render.
@@ -108,6 +118,8 @@ function useWorkspaceModalDrawer({
 
     let mediaQuery: MediaQueryList | null = null;
     let handleBreakpointChange: ((event: MediaQueryListEvent) => void) | null = null;
+    // Scoped to this open/close cycle rather than a ref, so it cannot leak into the next one.
+    let retiredByBreakpoint = false;
     if (retireQuery) {
       mediaQuery = window.matchMedia(retireQuery);
       if (mediaQuery.matches) {
@@ -115,7 +127,11 @@ function useWorkspaceModalDrawer({
         return;
       }
       handleBreakpointChange = (event: MediaQueryListEvent) => {
-        if (event.matches) onCloseRef.current();
+        if (!event.matches) return;
+        // Recorded before the close so the cleanup below can tell this apart from Escape, the
+        // backdrop, or a selection - the only close whose trigger is about to be hidden.
+        retiredByBreakpoint = true;
+        onCloseRef.current();
       };
       mediaQuery.addEventListener("change", handleBreakpointChange);
     }
@@ -167,10 +183,17 @@ function useWorkspaceModalDrawer({
       }
       document.body.style.overflow = previousBodyOverflow;
       // The inert attribute is already off the background by the time a passive effect cleanup
-      // runs, so the trigger is focusable again here.
-      returnTo?.focus();
+      // runs, so the destination is focusable again here.
+      //
+      // Which destination depends on WHY the drawer closed. Escape, the backdrop, the close
+      // control and a selection all return to the trigger the operator came from. A breakpoint
+      // retirement cannot: crossing that width hides the trigger in the same paint, so focusing
+      // it would silently land on nothing. That path goes to the surface that replaced the
+      // drawer, and only falls back to the trigger when no such surface was supplied.
+      const retireTarget = retiredByBreakpoint ? retireFocusRef?.current ?? null : null;
+      (retireTarget ?? returnTo)?.focus();
     };
-  }, [isOpen, panelRef, triggerRef, retireQuery]);
+  }, [isOpen, panelRef, triggerRef, retireQuery, retireFocusRef]);
 }
 
 /**
@@ -308,6 +331,9 @@ export function GuidedWorkspace({
   const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState<boolean>(false);
   const queueToggleRef = useRef<HTMLButtonElement>(null);
   const queueDrawerRef = useRef<HTMLDivElement>(null);
+  // The docked queue column, which is what the drawer becomes at QUEUE_DOCK_QUERY. It is the
+  // focus destination when the breakpoint - rather than the operator - closes the drawer.
+  const dockedQueueRef = useRef<HTMLDivElement>(null);
   const continueEditingRef = useRef<HTMLButtonElement>(null);
 
   /**
@@ -381,6 +407,7 @@ export function GuidedWorkspace({
     triggerRef: queueToggleRef,
     onClose: handleCloseQueueDrawer,
     retireQuery: QUEUE_DOCK_QUERY,
+    retireFocusRef: dockedQueueRef,
   });
 
   // Load all active hydrated template specs through the authenticated server boundary.
@@ -1466,7 +1493,16 @@ export function GuidedWorkspace({
                   still leaves the worksheet more than it needs; below that the same queue is
                   the drawer instead, reached from the trigger above. */}
               {selectedSpecs.length > 0 && (
-                <div className="hidden h-full w-60 shrink-0 min-[1152px]:block">
+                /* tabIndex={-1} makes this a programmatic landing target without entering the
+                   Tab order, the same way PageContainer's #main-content and the shell's
+                   #workspace-main already do. It receives focus only when the drawer retires at
+                   this breakpoint, and the ring is kept visible so a keyboard operator can see
+                   where they were moved to rather than guessing. */
+                <div
+                  ref={dockedQueueRef}
+                  tabIndex={-1}
+                  className="hidden h-full w-60 shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring min-[1152px]:block"
+                >
                   <SelectedReportsPanel
                     selectedSpecs={selectedSpecs}
                     activeTemplateCode={activeTemplateCode}

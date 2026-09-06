@@ -93,14 +93,26 @@ export function ParameterRow({
 
             The ring is stated in full because focus-visible:ring-brand-focus-ring alone set
             a colour with no width and therefore painted nothing - invisible focus on a
-            control that is now keyboard reachable would be worse than the old exclusion. */}
+            control that is now keyboard reachable would be worse than the old exclusion.
+
+            The 14px box is a comfortable mouse target and a poor touch one, so below sm a
+            transparent pseudo-element widens the tappable area to 34x26 around it. The
+            insets are asymmetric and measured, not decorative: the row leaves 12px of
+            padding to its left, 8px of column gap to the label, 8px above the box, and only
+            4px below it before the result input begins. Expanding past any of those would
+            put this target on top of a sibling and steal taps meant for the label or - with
+            just 4px of clearance - for the result input itself, so each edge stops exactly
+            at the empty space it is allowed to claim. That 4px is also why a full 44x44
+            target is unreachable here without changing row geometry; 34x26 clears the 24px
+            WCAG 2.5.8 minimum while the result inputs themselves are already 44px on touch.
+            Presentation only: no tabIndex, no handler, and the checkbox keeps its 14px box. */}
         <input
           type="checkbox"
           data-parameter-selector
           checked={isSelected}
           disabled={!parameter.isSelectable}
           onChange={(event) => onToggleSelect(event.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-brand-border-strong accent-brand-primary pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed sm:mt-0"
+          className="relative mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-brand-border-strong accent-brand-primary pointer-events-auto before:absolute before:-left-3 before:-right-2 before:-top-2 before:-bottom-1 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed sm:mt-0 sm:before:content-none"
           aria-label={`Select parameter ${parameter.parameterName}`}
         />
         <div className={cn("min-w-0", !isSelected && "opacity-50")}>

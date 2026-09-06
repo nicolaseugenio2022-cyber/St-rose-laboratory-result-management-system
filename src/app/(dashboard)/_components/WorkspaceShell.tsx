@@ -4,6 +4,7 @@ import React, { useCallback, useState } from "react";
 import { UserRole } from "@/domain/types";
 import { NavRail } from "./NavRail";
 import { WorkspaceNavigationGuardProvider } from "./workspace-navigation-guard";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 
 export interface WorkspaceShellProps {
   children: React.ReactNode;
@@ -44,6 +45,9 @@ export function WorkspaceShell({ children, currentUserRole }: WorkspaceShellProp
           className="flex min-w-0 flex-1 flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
         >
           {children}
+          {/* Support chat, fixed bottom-right; inert with the workspace while the mobile
+              drawer is open. */}
+          <ChatWidget />
         </div>
       </div>
     </WorkspaceNavigationGuardProvider>

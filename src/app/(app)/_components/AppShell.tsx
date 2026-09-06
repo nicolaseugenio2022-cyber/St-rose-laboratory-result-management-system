@@ -5,6 +5,7 @@ import { UserRole } from "@/domain/types";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { PageContainer } from "./PageContainer";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -49,6 +50,9 @@ export function AppShell({ children, currentUserRole, username }: AppShellProps)
           menuButtonRef={menuButtonRef}
         />
         <PageContainer>{children}</PageContainer>
+        {/* Correction: the support chat lives inside the content column so it goes inert
+            with the rest of the viewport while the mobile drawer is open. */}
+        <ChatWidget />
       </div>
     </div>
   );

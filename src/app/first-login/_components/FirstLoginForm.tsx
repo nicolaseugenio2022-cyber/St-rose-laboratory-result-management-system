@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Eye, EyeOff, Loader2, LogOut } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogOut } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { cn } from "@/lib/utils";
 import { AuthShell } from "../../_components/AuthShell";
+import { AuthSteps } from "../../_components/AuthSteps";
 import {
   changeFirstLoginPasswordAction,
   logoutAction,
@@ -23,72 +23,11 @@ export interface FirstLoginFormProps {
  * is only left once mustChangePassword clears, and /first-login/recovery only once mustSetRecovery
  * clears. This array is presentation for that existing order - it does not define, add, or reorder
  * anything, and each screen still renders exactly one of these steps.
- */
-const SETUP_STEPS = [
-  { key: "password", ordinal: "Step 1", label: "Password" },
-  { key: "recovery", ordinal: "Step 2", label: "Recovery answer" },
-] as const;
-
-/**
- * Two-step trail, drawn as a rail rather than a row of boxes.
  *
- * Each step owns one segment of a top rail. The rail is teal up to and including the current
- * step and muted beyond it, so progress reads as a fill; the current step is the only one with
- * a navy label, and the completed step carries a teal check.
- *
- * State is never carried by colour alone: every item states "Done", "Current step" or "Not started"
- * in words, and the completed step also carries a check mark. `aria-current="step"` marks the active
- * item, so assistive technology reads position in the sequence rather than inferring it from a tint.
+ * It is drawn by the shared `AuthSteps` rail, the same one recovery uses, so an operator meeting
+ * both flows meets one way of stating progress rather than two.
  */
-function SetupSteps({ step }: { step: FirstLoginFormProps["step"] }) {
-  const currentIndex = SETUP_STEPS.findIndex((entry) => entry.key === step);
-
-  return (
-    <nav aria-label="First sign-in setup">
-      <ol className="grid grid-cols-2 gap-3">
-        {SETUP_STEPS.map((entry, index) => {
-          const isDone = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          const status = isDone ? "Done" : isCurrent ? "Current step" : "Not started";
-
-          return (
-            <li
-              key={entry.key}
-              aria-current={isCurrent ? "step" : undefined}
-              className={cn(
-                "min-w-0 border-t-2 pt-2",
-                isDone || isCurrent ? "border-brand-primary" : "border-brand-border"
-              )}
-            >
-              <p
-                className={cn(
-                  "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
-                  isDone || isCurrent ? "text-brand-primary" : "text-brand-text-muted"
-                )}
-              >
-                {isDone && <Check aria-hidden="true" className="h-3 w-3 shrink-0" />}
-                {entry.ordinal}
-              </p>
-              <p
-                className={cn(
-                  "mt-0.5 text-[13px] font-semibold leading-tight",
-                  isCurrent
-                    ? "text-brand-navy"
-                    : isDone
-                      ? "text-brand-text"
-                      : "text-brand-text-muted"
-                )}
-              >
-                {entry.label}
-              </p>
-              <p className="mt-0.5 text-[11px] text-brand-text-muted">{status}</p>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
-  );
-}
+const SETUP_STEPS = ["Password", "Recovery answer"] as const;
 
 /**
  * First-login setup surface.
@@ -128,17 +67,23 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
           ? "A new password is required before you can access the system."
           : "Enter the private answer for the security question configured on your account."
       }
-      banner={<SetupSteps step={step} />}
+      steps={
+        <AuthSteps
+          label="First sign-in setup"
+          steps={SETUP_STEPS}
+          currentIndex={isPasswordStep ? 0 : 1}
+        />
+      }
       footer={
         // Outside the form, because it is not a submission. Disabled alongside the submit button
         // while a credential mutation is in flight, so a sign-out cannot race it. Drawn as the
-        // secondary text action every auth footer uses - teal, semibold, centred - but on the
-        // shared Button, so it keeps a control's disabled and focus behaviour.
+        // quiet action every auth footer uses, but on the shared Button, so it keeps a control's
+        // disabled and focus behaviour.
         <div className="flex justify-center">
           <Button
             type="button"
             variant="ghost"
-            className="min-h-11 text-brand-primary underline-offset-2 hover:bg-transparent hover:text-brand-primary-hover hover:underline active:bg-transparent sm:min-h-0"
+            className="min-h-11 rounded-md text-[13px] text-brand-primary underline-offset-2 hover:bg-transparent hover:text-brand-primary-hover hover:underline active:bg-transparent sm:min-h-9"
             disabled={isPending}
             onClick={logout}
           >
@@ -150,9 +95,7 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
     >
       <form action={submit} className="space-y-4">
         {/* The shared Alert carries role="alert", so a rejected submission is announced rather
-            than only drawn. The previous box tinted itself with alpha modifiers on var()-backed
-            brand colours, for which Tailwind emits no rule at all, so it rendered with no
-            background and no border. Solid danger tokens now. The message itself is unchanged. */}
+            than only drawn. The message itself is the server's own text, unchanged. */}
         {serverError && <Alert variant="destructive">{serverError}</Alert>}
 
         {isPasswordStep ? (
@@ -160,7 +103,8 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
           <Input
             id="password"
             name="password"
-            label="New Password"
+            label="New password"
+            fieldScale="comfortable"
             type="password"
             minLength={6}
             maxLength={100}
@@ -172,9 +116,9 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
           <>
             {/* The question is context for the field below it, so it sits on the structural
                 surface - recessed, flat, no second elevation inside the working surface. */}
-            <div className="rounded-md border border-brand-border bg-brand-structural px-3 py-2.5">
+            <div className="rounded-md border border-brand-border bg-brand-structural px-3.5 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
-                Security Question
+                Security question
               </p>
               <p className="mt-1 text-[13px] font-semibold leading-snug text-brand-text">
                 {securityQuestion}
@@ -184,19 +128,24 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
               <Input
                 id="answer"
                 name="answer"
-                label="Recovery Answer"
+                label="Recovery answer"
+                fieldScale="comfortable"
                 type={showAnswer ? "text" : "password"}
                 autoComplete="off"
                 disabled={isPending}
                 required
-                className="pr-10"
+                className="pr-14"
               />
-              {/* 44x44 on a phone, shrinking on larger pointers. The box is centred on the
-                  wrapper, and the wrapper now includes the field's own label row (11px label
-                  plus the 6px gap), so a fixed 11px nudge re-centres it on the control itself. */}
+              {/* 44x44 at every width now that the field itself is 44 tall, and the field
+                  reserves pr-14 (56px) - the control's own width plus its right-3 offset - so a
+                  long recovery answer can never run underneath the icon.
+
+                  Offset from the TOP of the wrapper (13px label + the 6px label gap), which is
+                  the anchor login and recovery already use, rather than centred on the wrapper.
+                  All three reveal controls are now one implementation. */}
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 mt-[11px] inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-9 sm:w-9 sm:min-h-0 sm:min-w-0"
+                className="absolute right-3 top-[19px] inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
                 onClick={() => setShowAnswer(!showAnswer)}
                 aria-label={showAnswer ? "Hide recovery answer" : "Show recovery answer"}
                 aria-pressed={showAnswer}
@@ -215,7 +164,7 @@ export function FirstLoginForm({ step, securityQuestion }: FirstLoginFormProps) 
         <Button
           type="submit"
           size="lg"
-          className="w-full"
+          className="w-full rounded-md"
           disabled={isPending}
           aria-busy={isPending || undefined}
         >

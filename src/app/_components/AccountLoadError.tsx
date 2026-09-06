@@ -17,10 +17,12 @@ import { AuthShell } from "./AuthShell";
  * DB-backed revalidation did not complete, so neither "signed out" nor "still active" is
  * provable here.
  *
- * It sits in AuthShell because it replaces a whole authenticated page: one working surface on
- * the brand canvas, with the identity panel beside it, rather than a lone card floating on a
- * bare ground. The message and the single retry action are unchanged - no new recovery route,
- * no contact details the application cannot honour.
+ * It sits in AuthShell because it replaces a whole authenticated page: the laboratory's own
+ * headed sheet on the brand canvas, rather than a lone card floating on a bare ground. The
+ * shell's standing admission notice is suppressed here - the reader is already signed in, so
+ * "For authorised laboratory personnel." would be addressed to the wrong person. The message
+ * and the single retry action are unchanged - no new recovery route, no contact details the
+ * application cannot honour.
  */
 export function AccountLoadError() {
   const router = useRouter();
@@ -32,7 +34,7 @@ export function AccountLoadError() {
   }, []);
 
   return (
-    <AuthShell title="Unable to load your account">
+    <AuthShell title="Unable to load your account" showAccessNotice={false}>
       {/* Focus moves here on mount, as before, so a keyboard or screen-reader user lands on the
           failure rather than at the top of a page whose content never arrived. The shared Alert
           carries role="alert", so the message is announced as well as drawn. */}
@@ -47,7 +49,7 @@ export function AccountLoadError() {
         <Button
           type="button"
           variant="primary"
-          className="w-full sm:w-auto"
+          className="w-full rounded-md sm:w-auto"
           disabled={isPending}
           aria-busy={isPending || undefined}
           onClick={() => startTransition(() => router.refresh())}

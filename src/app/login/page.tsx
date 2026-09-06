@@ -92,36 +92,45 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell
-      title="Sign in"
-      description="Enter your credentials to access the laboratory system."
-      banner={
-        serverError && (
-          // The shared Alert carries role="alert", so the failure is announced rather than only
-          // drawn. The previous markup styled this box with alpha modifiers on the danger colour.
-          // Those colours are backed by CSS custom properties, and Tailwind emits no rule at all
-          // for an alpha modifier on one - so the box rendered with no background and no border.
-          <Alert variant="destructive">
-            <p>{serverError}</p>
+    <AuthShell title="Sign in" description="Enter your credentials to access the laboratory system.">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        {/* The failure sits inside the form, directly above the fields it concerns - the same
+            position recovery and first-login use, which is what makes the three read as one
+            screen. The shared Alert carries role="alert", so it is announced rather than only
+            drawn, and every message is the server's own text, surfaced verbatim: an invalid
+            credential, a temporary "unable to sign in right now", and the generic lockout
+            notice all arrive here unaltered. */}
+        {serverError && (
+          <div className="space-y-1.5">
+            <Alert variant="destructive">
+              <p>{serverError}</p>
+            </Alert>
             {isLocked && retryAfterMs !== null && (
-              // Polite, not assertive: the countdown reannounces every second, and an assertive
-              // region would interrupt a screen reader continuously.
-              <p aria-live="polite" className="mt-1 font-semibold">
+              // Deliberately a SIBLING of the Alert rather than a child. Alert carries
+              // role="alert", which is an assertive live region, and a nested polite region does
+              // not override an assertive ancestor - the countdown was therefore re-announced
+              // assertively every second, interrupting a screen reader continuously. Out here it
+              // owns its own polite region and announces without interrupting, while the Alert is
+              // left holding only the static server message it is meant to announce once.
+              <p
+                aria-live="polite"
+                className="px-3 text-xs font-semibold tabular-nums text-brand-danger"
+              >
                 Try again in {formatRetryAfter(retryAfterMs)}.
               </p>
             )}
-          </Alert>
-        )
-      }
-    >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          </div>
+        )}
+
         {/* Input owns its own label and error wiring - htmlFor, aria-describedby and the error
-            id - so the message is associated with the field instead of merely sitting near it. */}
+            id - so the message is associated with the field instead of merely sitting near it.
+            The comfortable scale is the shared field at its 44px form size: on this screen the
+            field IS the task, so it is not the 36px worksheet control. */}
         <Input
           id="username"
           label="Username"
+          fieldScale="comfortable"
           type="text"
-          placeholder="Enter your username"
           autoComplete="username"
           disabled={isPending}
           error={errors.username?.message}
@@ -132,23 +141,27 @@ export default function LoginPage() {
           <Input
             id="password"
             label="Password"
+            fieldScale="comfortable"
             type={showPassword ? "text" : "password"}
-            placeholder="Enter your password"
             autoComplete="current-password"
             disabled={isPending}
             error={errors.password?.message}
-            className="pr-10"
+            className="pr-14"
             {...register("password")}
           />
-          {/* 44x44 on a phone, shrinking on larger pointers. The box is centred on the
-              wrapper, and the wrapper includes the field's own label row (11px label plus the
-              6px gap), so a fixed 11px nudge re-centres it on the control itself. */}
+          {/* 44x44 at every width now that the field itself is 44 tall, so the target is
+              comfortable with a mouse as well as a finger.
+
+              Offset from the TOP of the wrapper (13px label + the 6px label gap), not centred
+              on it. Centring measures the whole wrapper, which also holds the validation
+              message - so the moment "Password is required" appeared, the control slid down
+              over it. Anchoring to the top pins it to the field in every state. */}
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? "Hide password" : "Show password"}
             aria-pressed={showPassword}
-            className="absolute right-3 top-1/2 -translate-y-1/2 mt-[11px] inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring sm:h-9 sm:w-9 sm:min-h-0 sm:min-w-0"
+            className="absolute right-3 top-[19px] inline-flex h-11 w-11 items-center justify-center rounded-md text-brand-text-muted transition-colors hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
           >
             {showPassword ? (
               <EyeOff aria-hidden="true" className="h-4 w-4" />
@@ -158,15 +171,17 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-0.5">
           <label
             htmlFor="rememberMe"
-            className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-brand-text sm:min-h-0"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px] text-brand-text sm:min-h-0"
           >
+            {/* accent-brand-primary is what actually colours a native checkbox; the previous
+                text-brand-primary set a text colour the control never reads. */}
             <input
               type="checkbox"
               id="rememberMe"
-              className="h-4 w-4 rounded border-brand-border-strong text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+              className="h-4 w-4 rounded border-brand-border-strong accent-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-1"
               disabled={isPending}
               {...register("rememberMe")}
             />
@@ -175,7 +190,7 @@ export default function LoginPage() {
 
           <Link
             href="/forgot-password"
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 sm:min-h-0"
+            className="inline-flex min-h-11 items-center rounded-sm text-[13px] font-semibold text-brand-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 sm:min-h-0"
           >
             Forgot password?
           </Link>
@@ -183,7 +198,7 @@ export default function LoginPage() {
 
         {/* Disabled while pending, so a second press cannot start a second sign-in; also disabled
             while locked out, exactly as before. */}
-        <Button type="submit" size="lg" className="w-full" disabled={isPending || isLocked}>
+        <Button type="submit" size="lg" className="w-full rounded-md" disabled={isPending || isLocked}>
           {isPending ? (
             <>
               <Loader2

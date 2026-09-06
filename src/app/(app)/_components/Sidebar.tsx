@@ -119,24 +119,30 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
         />
       )}
 
-      {/* Sidebar Panel. Structural body under a navy brand block: navigation is chrome,
-          and the one navy block at the top-left is where the identity of the whole shell
-          lives - every other surface can then stay quiet. */}
+      {/* The navigation chassis.
+
+          The whole panel is navy, not just a brand block at the top. Navy is this system's
+          identity colour, and confining it to a 56px corner left the shell reading as an
+          undifferentiated field of near-white where chrome and clinical data carried the same
+          visual weight. As one dark column it becomes a chassis: navigation recedes, the canvas
+          reads as the work area, and white is left to mean "clinical data" and nothing else.
+          The teal accent is spent only on the active rail and focus. */}
       <aside
         ref={panelRef}
         id="app-navigation-sidebar"
         aria-label="Main Navigation"
         {...(isOpen ? { role: "dialog", "aria-modal": true } : {})}
         className={cn(
-          "fixed bottom-0 left-0 top-0 z-50 flex w-64 flex-col border-r border-brand-border-strong bg-brand-sidebar transition-transform duration-200 ease-in-out motion-reduce:transition-none lg:sticky lg:top-0 lg:bottom-auto lg:z-auto lg:h-[100dvh] lg:translate-x-0",
+          "fixed bottom-0 left-0 top-0 z-50 flex w-64 flex-col bg-brand-navy transition-transform duration-200 ease-in-out motion-reduce:transition-none lg:sticky lg:top-0 lg:bottom-auto lg:z-auto lg:h-[100dvh] lg:translate-x-0",
           // `invisible` while closed is what keeps the off-screen drawer out of the
           // Tab order: translate alone leaves every link focusable behind the page.
           // `lg:visible` hands the panel straight back to the desktop layout.
           isOpen ? "translate-x-0 shadow-overlay lg:shadow-none" : "invisible -translate-x-full lg:visible"
         )}
       >
-        {/* Brand block */}
-        <div className="flex h-14 shrink-0 items-center gap-2 bg-brand-navy pl-3 pr-2 text-brand-navy-foreground">
+        {/* Identity. Separated from the destinations by a hairline in the panel's own light
+            rather than a colour change, because the surface no longer changes here. */}
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 pl-3 pr-2 text-brand-navy-foreground">
           <Link
             href="/dashboard"
             className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
@@ -176,12 +182,13 @@ export function Sidebar({ isOpen, onClose, currentUserRole, returnFocusRef }: Si
           <NavigationMenu onNavigate={onClose} currentUserRole={currentUserRole} />
         </div>
 
-        {/* Sidebar Footer. Plain text on the surface, not a card: nothing here is actionable. */}
-        <div className="shrink-0 border-t border-brand-border px-4 py-2.5">
-          <p className="truncate text-[11px] font-semibold text-brand-text-muted">
+        {/* Footer. Plain text, not a card: nothing here is actionable. The system name is the
+            one place the product names itself inside the shell, so no page has to. */}
+        <div className="shrink-0 border-t border-white/10 px-4 py-3">
+          <p className="truncate text-[11px] font-semibold leading-tight text-brand-navy-muted">
             Result Management System
           </p>
-          <p className="truncate font-mono text-[10px] text-brand-text-muted">
+          <p className="truncate font-mono text-[10px] leading-tight text-brand-navy-muted/70">
             v{SYSTEM_CONSTANTS.APP.VERSION}
           </p>
         </div>

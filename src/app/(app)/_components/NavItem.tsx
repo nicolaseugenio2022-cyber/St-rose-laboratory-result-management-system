@@ -24,13 +24,26 @@ export interface NavItemProps {
 /**
  * One destination in the full sidebar.
  *
- * Stays a semantic Next.js `Link` rather than being pushed through the shared
- * Button: this is navigation, and routing, prefetch and middle-click all depend
- * on a real anchor.
+ * Stays a semantic Next.js `Link` rather than being pushed through the shared Button: this is
+ * navigation, and routing, prefetch and middle-click all depend on a real anchor.
  *
- * The active state is carried by three things at once - a teal rail on the
- * leading edge, a tinted fill, and a navy semibold label - so it survives being
- * read without colour. `aria-current="page"` states it programmatically.
+ * It sits on the navy chassis, so the whole state scale is expressed against navy rather than
+ * against the old structural tint. The active state is carried by FOUR independent signals, so
+ * it survives greyscale, a colour-vision difference, and a bad monitor:
+ *
+ *   1. a rail on the leading edge,
+ *   2. a lifted fill,
+ *   3. white semibold rather than muted medium type,
+ *   4. `aria-current="page"` for assistive technology.
+ *
+ * The rail is always present and only changes colour, so nothing shifts by a pixel when the
+ * active route moves.
+ *
+ * The rail is WHITE, not the brand teal it was on the old light sidebar. Measured against this
+ * navy, `brand-primary` came out at 2.18:1 - below the 3:1 WCAG minimum for a non-text UI
+ * indicator, and visibly so. White is 14.62:1. Teal stays the action colour in the light half
+ * of the shell and in focus rings, where it reads; spending it here would have been brand
+ * consistency bought with an indicator nobody can see.
  */
 export function NavItem({ item, onNavigate }: NavItemProps) {
   const pathname = usePathname();
@@ -42,13 +55,12 @@ export function NavItem({ item, onNavigate }: NavItemProps) {
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        // The rail is always present and only changes colour, so nothing shifts by a
-        // pixel when the active route moves. 44px in the mobile drawer, where this row is
-        // the primary touch target; 40px on the desktop sidebar.
-        "group flex min-h-11 items-center gap-2.5 border-l-[3px] py-2 pl-3.5 pr-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring lg:min-h-10",
+        // 44px in the mobile drawer, where this row is the primary touch target; 40px on the
+        // desktop sidebar, where the pointer is a mouse.
+        "group relative flex min-h-11 items-center gap-3 border-l-[3px] py-2 pl-3.5 pr-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70 lg:min-h-10",
         isActive
-          ? "border-l-brand-primary bg-brand-sidebar-active font-semibold text-brand-sidebar-active-text"
-          : "border-l-transparent font-medium text-brand-sidebar-text hover:bg-brand-structural-hover hover:text-brand-navy"
+          ? "border-l-white bg-white/10 font-semibold text-white"
+          : "border-l-transparent font-medium text-brand-navy-muted hover:bg-white/5 hover:text-white"
       )}
       aria-current={isActive ? "page" : undefined}
     >
@@ -56,7 +68,7 @@ export function NavItem({ item, onNavigate }: NavItemProps) {
         aria-hidden="true"
         className={cn(
           "h-4 w-4 shrink-0 transition-colors",
-          isActive ? "text-brand-primary" : "text-brand-text-muted group-hover:text-brand-navy"
+          isActive ? "text-white" : "text-brand-navy-muted group-hover:text-white"
         )}
       />
       <span className="truncate">{item.title}</span>

@@ -37,16 +37,19 @@ export default function DashboardLoading() {
     // SkeletonRegion keeps the live region on the announcement alone, so the arriving
     // dashboard is not read aloud as a live-region mutation.
     <SkeletonRegion isLoading label="Loading dashboard" className="space-y-4">
-      <div className="space-y-2">
-        <div className="border-b border-brand-border-strong pb-1.5">
-          <Skeleton className="h-3.5 w-40" />
-        </div>
-        <Skeleton className="h-14 w-full rounded-lg" />
-      </div>
+      {/* The action card stands alone now - the titled region that used to sit above it was
+          removed as a restatement of the card's own title - so the placeholder no longer
+          reserves a heading line that will never arrive. */}
+      <Skeleton className="h-[68px] w-full rounded-lg" />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr] xl:items-start">
         <PanelSkeleton rows={4} />
-        <PanelSkeleton rows={4} />
+        {/* Two stacked panels in the side column, matching the compositions that put figures
+            or diagnostics above a short destination list. */}
+        <div className="space-y-4">
+          <PanelSkeleton rows={2} />
+          <PanelSkeleton rows={3} />
+        </div>
       </div>
     </SkeletonRegion>
   );

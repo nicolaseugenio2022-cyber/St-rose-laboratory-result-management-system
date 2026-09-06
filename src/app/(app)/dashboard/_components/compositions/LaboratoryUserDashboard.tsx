@@ -37,30 +37,34 @@ const viewAllHistory = <SectionLink href="/history">View all history</SectionLin
  * unfinished work and nobody else's, and Resume appears only where the server
  * returned `canReopen`.
  *
- * There is no separate "Expiring soon" list. `expiringSoon` is a filtered view of
- * `recentCompleted`, so rendering both showed the operator the same session twice on one
- * screen; SessionRow already states the remaining days on the completed row itself, which is
- * the row they would act on anyway.
+ * Retention is surfaced as a COUNT, not as a second list. `expiringSoon` is a filtered view of
+ * `recentCompleted`, so rendering both as lists showed the operator the same session twice on
+ * one screen. A single line above the completed list states how much work is nearing the end of
+ * its window and sends them to History to act on it, while SessionRow continues to mark the
+ * remaining days on each affected row - the row they would act on anyway. The count is the whole
+ * `expiringSoon` set, not the five rows drawn below it, so it stays true when more are expiring
+ * than fit on the panel.
  */
 export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardProps) {
   const drafts = recentWork ? recentWork.myDrafts.slice(0, 5) : [];
   const completed = recentWork ? recentWork.recentCompleted.slice(0, 5) : [];
+  const expiringCount = recentWork ? recentWork.expiringSoon.length : 0;
 
   return (
     <div className="space-y-4">
-      {/* One start action, not two. Completed history stays reachable from the
-          contextual "View all history" link on each completed list, where the operator
-          is already looking at completed work - it does not compete with starting a
-          session, which is the only thing this screen exists to launch. */}
-      <DashboardSection title="Start laboratory work" variant="bare" icon={PlayCircle}>
-        <ActionCard
-          href="/workspace"
-          icon={PlayCircle}
-          emphasis="primary"
-          title="Start new patient session"
-          description="Open the guided workspace to register a visit and encode results."
-        />
-      </DashboardSection>
+      {/* One start action, not two, and no titled region above it: the card already carries
+          its own title, and a "Start laboratory work" heading over a card reading "Start new
+          patient session" said the same thing twice. Completed history stays reachable from
+          the contextual "View all history" link on the completed list, where the operator is
+          already looking at completed work - it does not compete with starting a session,
+          which is the only thing this screen exists to launch. */}
+      <ActionCard
+        href="/workspace"
+        icon={PlayCircle}
+        emphasis="primary"
+        title="Start new patient session"
+        description="Open the guided workspace to register a visit and encode results."
+      />
 
       {/* Asymmetric on wide screens: unfinished work leads, because it is the only list on
           this page the operator is expected to act on. `items-start` keeps each panel the
@@ -102,6 +106,20 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
           icon={FileEdit}
           action={viewAllHistory}
         >
+          {/* Retention notice, above the rows it concerns. A count and a route, not a second
+              copy of the list. It states the number in words rather than relying on the amber
+              tint, and it appears only when the server actually returned expiring work. */}
+          {expiringCount > 0 && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-brand-warning-border bg-brand-warning-bg px-3.5 py-2 text-[11px] font-medium text-brand-warning">
+              <span>
+                {expiringCount === 1
+                  ? "1 completed session expires within 7 days."
+                  : `${expiringCount} completed sessions expire within 7 days.`}
+              </span>
+              <SectionLink href="/history">Review in history</SectionLink>
+            </p>
+          )}
+
           {completed.length === 0 ? (
             <EmptyState
               icon={FileEdit}

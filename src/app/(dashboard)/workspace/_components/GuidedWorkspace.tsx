@@ -124,6 +124,18 @@ function useWorkspaceModalDrawer({
       mediaQuery = window.matchMedia(retireQuery);
       if (mediaQuery.matches) {
         onCloseRef.current();
+        // Retired before it ever opened at this width, so this effect registers no cleanup and
+        // the restoration below never runs. The breakpoint that put us here has already hidden
+        // the trigger, and a browser drops focus to the body when the element holding it becomes
+        // display:none - so if the trigger was the thing focused, focus is orphaned right now.
+        //
+        // Repair only that. An orphaned body focus is handed to the docked queue that replaced
+        // the drawer; anything else holding focus - the mode switch, a control the operator has
+        // since moved to - is left exactly where it is, because stealing focus on a resize would
+        // be worse than the problem being fixed.
+        if (!document.activeElement || document.activeElement === document.body) {
+          retireFocusRef?.current?.focus();
+        }
         return;
       }
       handleBreakpointChange = (event: MediaQueryListEvent) => {

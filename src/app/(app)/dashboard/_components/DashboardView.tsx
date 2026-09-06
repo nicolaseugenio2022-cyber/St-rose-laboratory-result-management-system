@@ -87,6 +87,9 @@ export default async function DashboardView({ currentUserProfile }: DashboardVie
         inactiveUsers={users.filter((u) => u.status !== "Active").length}
         adminUsers={users.filter((u) => u.role === "Admin").length}
         recentWork={recentWork}
+        // Passed rather than assumed inside the composition, so the destinations it lists are
+        // filtered against the same server-resolved role this branch already matched on.
+        role={role}
       />
     );
   }

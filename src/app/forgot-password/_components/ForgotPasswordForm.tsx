@@ -194,7 +194,7 @@ export function ForgotPasswordForm() {
                 autoComplete="off"
                 disabled={isPending}
                 required
-                className="pr-10"
+                className="pr-14"
               />
               <button
                 type="button"
@@ -228,7 +228,7 @@ export function ForgotPasswordForm() {
                 autoComplete="new-password"
                 disabled={isPending}
                 required
-                className="pr-10"
+                className="pr-14"
               />
               <button
                 type="button"
@@ -257,7 +257,7 @@ export function ForgotPasswordForm() {
                 autoComplete="new-password"
                 disabled={isPending}
                 required
-                className="pr-10"
+                className="pr-14"
               />
               <button
                 type="button"

@@ -101,16 +101,25 @@ export default function LoginPage() {
             credential, a temporary "unable to sign in right now", and the generic lockout
             notice all arrive here unaltered. */}
         {serverError && (
-          <Alert variant="destructive">
-            <p>{serverError}</p>
+          <div className="space-y-1.5">
+            <Alert variant="destructive">
+              <p>{serverError}</p>
+            </Alert>
             {isLocked && retryAfterMs !== null && (
-              // Polite, not assertive: the countdown reannounces every second, and an assertive
-              // region would interrupt a screen reader continuously.
-              <p aria-live="polite" className="mt-1 font-semibold tabular-nums">
+              // Deliberately a SIBLING of the Alert rather than a child. Alert carries
+              // role="alert", which is an assertive live region, and a nested polite region does
+              // not override an assertive ancestor - the countdown was therefore re-announced
+              // assertively every second, interrupting a screen reader continuously. Out here it
+              // owns its own polite region and announces without interrupting, while the Alert is
+              // left holding only the static server message it is meant to announce once.
+              <p
+                aria-live="polite"
+                className="px-3 text-xs font-semibold tabular-nums text-brand-danger"
+              >
                 Try again in {formatRetryAfter(retryAfterMs)}.
               </p>
             )}
-          </Alert>
+          </div>
         )}
 
         {/* Input owns its own label and error wiring - htmlFor, aria-describedby and the error
@@ -137,7 +146,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             disabled={isPending}
             error={errors.password?.message}
-            className="pr-10"
+            className="pr-14"
             {...register("password")}
           />
           {/* 44x44 at every width now that the field itself is 44 tall, so the target is

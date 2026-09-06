@@ -23,6 +23,15 @@ export interface ExaminationCatalogProps {
   catalogRegionId?: string;
   /** Lets the Workspace move focus onto this control after an expand. */
   collapseControlRef?: React.Ref<HTMLButtonElement>;
+  /**
+   * Heading level for the panel title, because the catalog is rendered in two document contexts.
+   *
+   * As the full-width primary task of a session with nothing selected it is the first section
+   * under the Workspace `<h1>`, so it is an `<h2>`. Inside the drawer it sits beside the report
+   * panel's own `<h2>`, so it stays an `<h3>`. Defaults to 3, which is what every existing caller
+   * already renders.
+   */
+  headingLevel?: 2 | 3;
 }
 
 /**
@@ -69,7 +78,9 @@ export function ExaminationCatalog({
   onCollapse,
   catalogRegionId,
   collapseControlRef,
+  headingLevel = 3,
 }: ExaminationCatalogProps) {
+  const Heading = (headingLevel === 2 ? "h2" : "h3") as "h2" | "h3";
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -146,9 +157,9 @@ export function ExaminationCatalog({
       <div className="shrink-0 border-b border-brand-border bg-brand-structural px-3 py-2.5">
         <div className="flex items-center gap-2.5">
           <PanelIcon icon={FlaskConical} />
-          <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
+          <Heading className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
             Examination catalog
-          </h3>
+          </Heading>
           {onCollapse && (
             <button
               type="button"
@@ -179,6 +190,10 @@ export function ExaminationCatalog({
           <Input
             id={searchInputId}
             ref={searchInputRef}
+            // A stable hook for the Workspace to move focus here when the catalog becomes the
+            // task - entering the zero-selected state, or opening the drawer. Querying for the
+            // first `input` instead would silently retarget the moment the header gains another.
+            data-catalog-search
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

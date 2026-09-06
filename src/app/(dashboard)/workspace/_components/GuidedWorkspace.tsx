@@ -15,7 +15,7 @@ import { PatientDemographicsForm } from "./PatientDemographicsForm";
 import { DynamicResultForm } from "./DynamicResultForm";
 import { EncodingReportFooter } from "./EncodingReportFooter";
 import { ExaminationCatalog } from "./ExaminationCatalog";
-import { SelectedReportsPanel } from "./SelectedReportsPanel";
+import { SelectedReportsPanel, WorkQueueTrigger, type ReportTabProgress } from "./SelectedReportsPanel";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -38,7 +38,7 @@ import {
 import { cn, formatDateISO } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, AlertCircle, FileText, FlaskConical, Eye, Edit3, Menu, X, ArrowLeft, LogOut, User, RefreshCw, History, PanelLeftOpen } from "lucide-react";
+import { Save, CheckCircle2, AlertCircle, FileText, FlaskConical, Eye, Edit3, X, ArrowLeft, LogOut, Plus, RefreshCw, History } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "../_lib/encoding/report-encoding";
@@ -61,6 +61,117 @@ const WORKSPACE_CONTAINER = "w-full max-w-[1680px] mx-auto";
 // focus escape the drawer. NavRail's selector is safe only because its drawer has no such nodes.
 const CATALOG_DRAWER_FOCUSABLE =
   'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
+
+/** The width at which the work queue can be docked as a column instead of opened as a drawer. */
+const QUEUE_DOCK_QUERY = "(min-width: 1152px)";
+
+/**
+ * The modal-drawer contract, in one place, for the two drawers this Workspace owns.
+ *
+ * Both need identical behaviour and the two of them would otherwise be fifty near-identical
+ * lines each - the shape in which a trap quietly drifts out of agreement with itself. It follows
+ * the established shell precedent exactly: initial focus inside the panel, Tab and Shift+Tab
+ * contained with recovery when focus has escaped, Escape dismisses, the page behind is
+ * scroll-locked from its *captured* previous value rather than an assumed one, and focus returns
+ * to the trigger on every close route.
+ *
+ * `retireQuery` names the width at which the drawer stops being a drawer. It is **read before it
+ * is subscribed to**: subscribing alone leaves an already-wide viewport holding the lock, the
+ * inert background and the trap forever, because no `change` event will ever fire.
+ */
+function useWorkspaceModalDrawer({
+  isOpen,
+  panelRef,
+  triggerRef,
+  onClose,
+  retireQuery,
+}: {
+  isOpen: boolean;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+  /** Omit for a drawer that is the only route to its content at every width. */
+  retireQuery?: string;
+}): void {
+  // onClose is an inline arrow at most call sites, so it changes identity every render. Holding
+  // it in a ref keeps this effect from tearing down and rebuilding the trap on each render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const panel = panelRef.current;
+    const returnTo = triggerRef.current;
+
+    let mediaQuery: MediaQueryList | null = null;
+    let handleBreakpointChange: ((event: MediaQueryListEvent) => void) | null = null;
+    if (retireQuery) {
+      mediaQuery = window.matchMedia(retireQuery);
+      if (mediaQuery.matches) {
+        onCloseRef.current();
+        return;
+      }
+      handleBreakpointChange = (event: MediaQueryListEvent) => {
+        if (event.matches) onCloseRef.current();
+      };
+      mediaQuery.addEventListener("change", handleBreakpointChange);
+    }
+
+    panel?.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE)[0]?.focus();
+
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE));
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        return;
+      }
+
+      // Recover focus that is somehow outside the panel - a programmatic focus() elsewhere, or a
+      // control removed mid-interaction - rather than letting Tab continue from wherever it
+      // landed in the obscured page.
+      if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (mediaQuery && handleBreakpointChange) {
+        mediaQuery.removeEventListener("change", handleBreakpointChange);
+      }
+      document.body.style.overflow = previousBodyOverflow;
+      // The inert attribute is already off the background by the time a passive effect cleanup
+      // runs, so the trigger is focusable again here.
+      returnTo?.focus();
+    };
+  }, [isOpen, panelRef, triggerRef, retireQuery]);
+}
 
 /**
  * True for a target where the browser already owns the arrow keys.
@@ -189,24 +300,34 @@ export function GuidedWorkspace({
   );
   const [reopenError, setReopenError] = useState<string | null>(null);
   const submissionInFlightRef = useRef(false);
-  const [isCatalogCollapsed, setIsCatalogCollapsed] = useState(false);
-  const catalogRailToggleRef = useRef<HTMLButtonElement>(null);
-  const catalogCollapseToggleRef = useRef<HTMLButtonElement>(null);
-  // Focus intent is recorded by the click itself, never inferred from render count. A mount-count
-  // guard cannot express this: Strict Mode replays effects, so the guard is already spent on the
-  // replay and the catalog steals focus on load. An intent that only a real activation can set is
-  // null on every mount and every replay, so neither can focus anything.
-  const catalogFocusIntentRef = useRef<"collapsed" | "expanded" | null>(null);
   const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(true);
   const hasAutoCollapsedDemographicsRef = useRef(false);
   const catalogToggleRef = useRef<HTMLButtonElement>(null);
   const catalogDrawerRef = useRef<HTMLDivElement>(null);
+  const fullCatalogRef = useRef<HTMLDivElement>(null);
+  const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState<boolean>(false);
+  const queueToggleRef = useRef<HTMLButtonElement>(null);
+  const queueDrawerRef = useRef<HTMLDivElement>(null);
   const continueEditingRef = useRef<HTMLButtonElement>(null);
 
-  // The catalog drawer only exists inside Encoding. Deriving its open state here rather
-  // than reading isMobileCatalogOpen directly keeps the dialog semantics, the focus trap
-  // and the shortcut suppression from ever disagreeing with what is actually on screen.
-  const isCatalogDrawerOpen = isMobileCatalogOpen && workspaceMode === "encoding";
+  /**
+   * The zero-selected state, derived and never stored.
+   *
+   * A session with nothing selected has one job - choose examinations - so the catalog is the
+   * whole task surface rather than a column beside an empty desk. Deriving it means it is reached
+   * identically whether the session is new, the last examination was removed from the queue,
+   * "Close Other" left nothing, or "Clear All" ran; a stored flag would have four places to be
+   * set and one to be forgotten.
+   */
+  const hasSelection = selectedTemplateCodes.length > 0;
+
+  // Both drawers exist only inside Encoding, and only once something is selected: with an empty
+  // session the catalog is already on screen in full and there is no queue to open. Deriving the
+  // open state here keeps the dialog semantics, the focus traps and the shortcut suppression from
+  // ever disagreeing with what is actually rendered.
+  const isCatalogDrawerOpen = isMobileCatalogOpen && workspaceMode === "encoding" && hasSelection;
+  const isQueueDrawerVisible = isQueueDrawerOpen && workspaceMode === "encoding" && hasSelection;
+  const isAnyWorkspaceDrawerOpen = isCatalogDrawerOpen || isQueueDrawerVisible;
 
   // Navigation handlers
   const handleBackToDashboard = useCallback(() => {
@@ -234,74 +355,33 @@ export function GuidedWorkspace({
     setIsMobileCatalogOpen(false);
   }, []);
 
-  // Dialog behaviour for the catalog drawer, following the NavRail drawer precedent:
-  // initial focus inside the panel, Tab/Shift+Tab contained, Escape dismisses, and focus
-  // returns to the toggle on close. The drawer keeps its own presentation, so it does not
-  // route through the shared centred Modal.
-  useEffect(() => {
-    if (!isCatalogDrawerOpen) return;
-
-    const catalogToggle = catalogToggleRef.current;
-    const drawer = catalogDrawerRef.current;
-    drawer?.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE)[0]?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        handleCloseCatalogDrawer();
-        return;
-      }
-
-      if (event.key !== "Tab" || !drawer) return;
-
-      const focusableElements = Array.from(
-        drawer.querySelectorAll<HTMLElement>(CATALOG_DRAWER_FOCUSABLE)
-      );
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (!firstElement || !lastElement) {
-        event.preventDefault();
-        return;
-      }
-
-      if (event.shiftKey && document.activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && document.activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      catalogToggle?.focus();
-    };
-  }, [handleCloseCatalogDrawer, isCatalogDrawerOpen]);
-
-  const handleCollapseCatalog = useCallback(() => {
-    catalogFocusIntentRef.current = "collapsed";
-    setIsCatalogCollapsed(true);
+  const handleCloseQueueDrawer = useCallback(() => {
+    setIsQueueDrawerOpen(false);
   }, []);
 
-  const handleExpandCatalog = useCallback(() => {
-    catalogFocusIntentRef.current = "expanded";
-    setIsCatalogCollapsed(false);
-  }, []);
+  /**
+   * The catalog drawer is the only route to the catalog once an examination is selected, at every
+   * width, so it retires at no breakpoint.
+   */
+  useWorkspaceModalDrawer({
+    isOpen: isCatalogDrawerOpen,
+    panelRef: catalogDrawerRef,
+    triggerRef: catalogToggleRef,
+    onClose: handleCloseCatalogDrawer,
+  });
 
-  // Collapsing hides the control that was just activated and expanding unmounts it, so without a
-  // handoff the keyboard operator is dropped onto document.body mid-task. Focus moves to whichever
-  // control is now on screen, and only ever after a real activation: the intent is consumed here,
-  // so a Strict Mode replay of this effect finds nothing to act on.
-  useEffect(() => {
-    const intent = catalogFocusIntentRef.current;
-    if (!intent) return;
-    catalogFocusIntentRef.current = null;
-    if (intent === "collapsed") catalogRailToggleRef.current?.focus();
-    else catalogCollapseToggleRef.current?.focus();
-  }, [isCatalogCollapsed]);
+  /**
+   * The queue drawer exists only below the width at which the queue can be docked as a column, so
+   * crossing that width retires it: leaving it armed would strand a desktop operator inside a
+   * modal over a queue that is already on screen beside them.
+   */
+  useWorkspaceModalDrawer({
+    isOpen: isQueueDrawerVisible,
+    panelRef: queueDrawerRef,
+    triggerRef: queueToggleRef,
+    onClose: handleCloseQueueDrawer,
+    retireQuery: QUEUE_DOCK_QUERY,
+  });
 
   // Load all active hydrated template specs through the authenticated server boundary.
   useEffect(() => {
@@ -795,7 +875,7 @@ export function GuidedWorkspace({
   // and a template whose report or definition is missing simply carries no annotation
   // rather than being dropped from the queue.
   const progressByTemplateCode = useMemo(() => {
-    const map: Record<string, { completedCount: number; selectedCount: number; isComplete: boolean }> = {};
+    const map: Record<string, ReportTabProgress> = {};
     for (const spec of selectedSpecs) {
       const code = spec.template.templateCode;
       const report = session.reports.find((item) => item.templateCode === code);
@@ -806,6 +886,10 @@ export function GuidedWorkspace({
         completedCount: progress.completedCount,
         selectedCount: progress.selectedCount,
         isComplete: progress.isComplete,
+        // Projected from the shared completion rule, never recomputed for the queue: one rule for
+        // what counts as encoded and what counts as blocking, so the queue's indicator and the
+        // report's own meter cannot disagree.
+        hasInvalidResult: progress.hasInvalidResult,
       };
     }
     return map;
@@ -817,7 +901,7 @@ export function GuidedWorkspace({
   // The catalog drawer is a modal surface too, so workspace shortcuts stay suppressed while
   // it is open. Kept separate from isWorkspaceDialogOpen, which additionally governs the
   // navigation interceptor: the drawer must not change how link navigation is guarded.
-  const areWorkspaceShortcutsSuppressed = isWorkspaceDialogOpen || isCatalogDrawerOpen;
+  const areWorkspaceShortcutsSuppressed = isWorkspaceDialogOpen || isAnyWorkspaceDrawerOpen;
 
   useEffect(() => {
     const interceptNavigation = (href: string) => {
@@ -947,17 +1031,44 @@ export function GuidedWorkspace({
   // The empty state's one action. On a desktop the catalog is already on screen: expand it if
   // it was collapsed (focus then lands on its collapse control, beside the search field), or
   // move focus into its search field. Below lg the catalog exists only in the drawer, so open it.
+  /**
+   * The one route to the catalog, from wherever the operator is.
+   *
+   * With nothing selected the catalog is already the whole screen, so there is nothing to open -
+   * the useful act is to put the caret in its search field. With something selected it is the
+   * drawer, at every width: the catalog stopped being a permanent column, so this is no longer a
+   * breakpoint-dependent decision.
+   */
   const handleBrowseCatalog = useCallback(() => {
-    if (window.matchMedia("(min-width: 1024px)").matches) {
-      if (isCatalogCollapsed) {
-        handleExpandCatalog();
-        return;
-      }
-      document.getElementById("workspace-desktop-catalog")?.querySelector<HTMLInputElement>("input")?.focus();
+    if (!hasSelection) {
+      fullCatalogRef.current?.querySelector<HTMLInputElement>("[data-catalog-search]")?.focus();
       return;
     }
     setIsMobileCatalogOpen(true);
-  }, [handleExpandCatalog, isCatalogCollapsed]);
+  }, [hasSelection]);
+
+  /**
+   * Removing the last examination returns the session to the catalog, so focus has to follow: the
+   * control that was just activated no longer exists, and a keyboard operator would otherwise be
+   * dropped onto document.body in front of a screen that has completely changed.
+   *
+   * Only a genuine transition moves focus. A fresh session mounts with nothing selected and must
+   * never steal the caret into the search field, and a Strict Mode replay finds the previous
+   * value already updated, so neither can fire this.
+   */
+  const hadSelectionRef = useRef(hasSelection);
+  useEffect(() => {
+    const hadSelection = hadSelectionRef.current;
+    hadSelectionRef.current = hasSelection;
+    if (!hadSelection || hasSelection) return;
+    // Clear the raw drawer state, not just the derived visibility. Both `isCatalogDrawerOpen`
+    // and `isQueueDrawerVisible` are gated on `hasSelection`, so emptying the session hides a
+    // drawer without closing it - the underlying flag stays true. Selecting the next examination
+    // would then satisfy the gate again and reopen a drawer the operator had already dismissed.
+    setIsMobileCatalogOpen(false);
+    setIsQueueDrawerOpen(false);
+    fullCatalogRef.current?.querySelector<HTMLInputElement>("[data-catalog-search]")?.focus();
+  }, [hasSelection]);
 
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different
@@ -1022,6 +1133,14 @@ export function GuidedWorkspace({
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-brand-canvas">
+      {/* Everything the drawers cover. Marked inert while either is open, so the desk behind the
+          scrim is unreachable by pointer, Tab and assistive-technology browse navigation - the
+          drawers themselves are siblings of this column, never descendants, which is what makes
+          that possible at all. */}
+      <div
+        inert={isAnyWorkspaceDrawerOpen || undefined}
+        className="flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+      >
       {/* Fixed Workspace command bar. One 56px line: navigation, then session identity, then
           the mode switch and the session actions. The patient leads because that is the context
           every decision in this screen is made against; accession, status and Replacement Mode
@@ -1046,21 +1165,28 @@ export function GuidedWorkspace({
               <span className="hidden md:inline">Back</span>
             </Button>
 
-            {/* Mobile Catalog Drawer Button. The shared ghost Button, squared to a 36px icon
-                target; every attribute the drawer's focus trap and disclosure state rely on
-                is unchanged. */}
-            <Button
-              ref={catalogToggleRef}
-              type="button"
-              variant="ghost"
-              onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
-              className="h-9 w-9 shrink-0 px-0 lg:hidden"
-              aria-label="Toggle Catalog"
-              aria-expanded={isCatalogDrawerOpen}
-              aria-controls="workspace-catalog-drawer"
-            >
-              <Menu aria-hidden="true" className="h-5 w-5" />
-            </Button>
+            {/* The one route to the catalog, at every width, and the only control that adds an
+                examination once the session has one. It is absent while nothing is selected,
+                because the catalog is the whole screen there and a control to open it as a
+                drawer would offer to do what has already happened. */}
+            {hasSelection && workspaceMode === "encoding" && (
+              <Button
+                ref={catalogToggleRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
+                // 44x44 on touch, where the label is hidden and the glyph is the whole target;
+                // the established 36px compact height from sm up, where the label returns.
+                className="h-11 min-w-11 shrink-0 whitespace-nowrap px-2 sm:h-9 sm:min-w-0 sm:px-2.5"
+                aria-expanded={isCatalogDrawerOpen}
+                aria-controls="workspace-catalog-drawer"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                <span className="hidden sm:inline">Add examinations</span>
+                <span className="sr-only sm:hidden">Add examinations</span>
+              </Button>
+            )}
 
             <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
@@ -1193,6 +1319,75 @@ export function GuidedWorkspace({
         </div>
       </header>
 
+      {/* ── Clinical ribbon ──────────────────────────────────────────────────────────────
+          One row, always. It carries context ABOUT the work - who the patient is and how far
+          the session has got - never the work itself, which is why it is structural rather
+          than a working surface.
+
+          It lives here, in the frame, rather than inside the scrolling column: as a sticky
+          strip inside the scroller it had to be two rows tall when demographics were collapsed
+          and one when they were expanded, and every scroll-padding value downstream had to be
+          conditional on which. Out here it is one height, unconditionally.
+
+          While the demographics editor is open the summary is not repeated - the fields are on
+          screen and are the authority - so the ribbon states the session progress only. */}
+      {workspaceMode === "encoding" && (
+        <div className="z-20 flex shrink-0 items-center gap-3 border-b border-brand-border bg-brand-structural px-4 py-1.5">
+          {isDemographicsExpanded ? (
+            <p className="min-w-0 flex-1 truncate text-xs text-brand-text-muted">
+              Editing patient details
+            </p>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <PatientDemographicsForm
+                isExpanded={false}
+                onToggleExpanded={setIsDemographicsExpanded}
+                demographics={session.demographics}
+                onChange={handleDemographicsChange}
+              />
+            </div>
+          )}
+
+          {sessionProgress.totalReports > 0 && (
+            <span
+              data-session-progress
+              className="hidden shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-brand-text-muted sm:inline-flex"
+              title="Reports in this session with every selected result encoded"
+            >
+              {/* The check turns teal once every report is complete and stays muted while any is
+                  pending. The words carry the state; the colour only reinforces it. */}
+              <CheckCircle2
+                aria-hidden="true"
+                className={
+                  sessionProgress.completedReports === sessionProgress.totalReports
+                    ? "h-3.5 w-3.5 text-brand-primary"
+                    : "h-3.5 w-3.5 text-brand-text-subtle"
+                }
+              />
+              {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* The compact queue trigger, below the width at which the queue can be a docked column.
+          It names the active report rather than reducing it to an icon or a bare count: two
+          reports in one session routinely share a progress figure, so a count alone could not
+          say which one is open. */}
+      {workspaceMode === "encoding" && hasSelection && (
+        <div className="shrink-0 min-[1152px]:hidden">
+          <WorkQueueTrigger
+            selectedSpecs={selectedSpecs}
+            activeTemplateCode={activeTemplateCode}
+            progressByTemplateCode={progressByTemplateCode}
+            isOpen={isQueueDrawerVisible}
+            onOpen={() => setIsQueueDrawerOpen(true)}
+            drawerId="workspace-queue-drawer"
+            triggerRef={queueToggleRef}
+          />
+        </div>
+      )}
+
       {/* Replacement Mode Notice */}
       {isReplacementMode && (
         <div className={`${WORKSPACE_CONTAINER} mt-3 shrink-0 px-3 sm:px-4 xl:px-6`}>
@@ -1240,264 +1435,129 @@ export function GuidedWorkspace({
         </div>
       )}
 
-      {/* Main Workspace Dual-Pane Independent Scroll Layout */}
+      {/* ── The desk ─────────────────────────────────────────────────────────────────────
+          Encoding is one of two compositions, and which one is showing is decided by whether
+          the session has anything selected at all. There is no third state and no stored flag:
+          with nothing selected the catalog IS the task and takes the whole surface; with
+          something selected the desk appears - work queue where it can be docked, the active
+          report everywhere else - and the catalog retires to a drawer. */}
       <main className={`flex-1 overflow-hidden p-3 sm:px-4 sm:py-3 xl:px-6 ${WORKSPACE_CONTAINER}`}>
         {workspaceMode === "encoding" ? (
-          <div className="h-full flex flex-col lg:flex-row gap-3 items-stretch overflow-hidden">
-            {/* Desktop Left Sidebar: 280px expanded, 48px rail collapsed. The catalog itself is
-                never unmounted - only hidden - so search text, expanded families, selections and
-                the active examination all survive a collapse/expand round trip. The state is
-                deliberately local and non-persistent, and the mobile drawer below never uses it. */}
-            <div
-              className={cn(
-                "hidden lg:flex shrink-0 h-full flex-col overflow-hidden transition-[width] duration-200 motion-reduce:transition-none",
-                isCatalogCollapsed ? "w-12" : "w-[280px]"
-              )}
-            >
-              {isCatalogCollapsed && (
-                /* The collapsed rail is the same panel the catalog is, narrowed: a white
-                   working surface whose structural header band holds the expand control, with
-                   the selection count and the vertical label in the body beneath it. */
-                <div className="flex h-full flex-col items-center overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
-                  <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-brand-border bg-brand-structural">
-                    <Button
-                      type="button"
-                      ref={catalogRailToggleRef}
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleExpandCatalog}
-                      aria-label="Expand examination catalog"
-                      aria-expanded={false}
-                      aria-controls="workspace-desktop-catalog"
-                      title="Expand examination catalog"
-                      className="h-8 w-8 shrink-0 px-0"
-                    >
-                      <PanelLeftOpen aria-hidden="true" className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-col items-center gap-2.5 py-2.5">
-                    {selectedTemplateCodes.length > 0 && (
-                      <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-tint px-1 text-xs font-semibold tabular-nums text-brand-primary">
-                        {selectedTemplateCodes.length}
-                      </span>
-                    )}
-                    <span aria-hidden="true" className="[writing-mode:vertical-rl] select-none text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
-                      Catalog
-                    </span>
-                  </div>
+          !hasSelection ? (
+            /* Zero-selected. Reached identically by a new session, by removing the last
+               examination from the queue, by "Close Other" leaving nothing, and by "Clear All" -
+               because it is derived from the selection rather than set by any of them. The
+               patient, the accession and the rest of the session are untouched underneath; only
+               the reports are gone. Capped rather than full-bleed: a 1680px-wide list of
+               seventeen examinations is harder to read than a 768px one, not easier. */
+            <div ref={fullCatalogRef} className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+              <ExaminationCatalog
+                allTemplates={allActiveTemplates}
+                selectedTemplateCodes={selectedTemplateCodes}
+                activeTemplateCode={activeTemplateCode}
+                onSelectTemplate={setActiveTemplateCode}
+                onToggleTemplateSelection={handleToggleTemplateSelection}
+                headingLevel={2}
+              />
+            </div>
+          ) : (
+            <div className="flex h-full min-h-0 gap-3 overflow-hidden">
+              {/* The work queue, docked. 240px, and only at a width where surrendering 240px
+                  still leaves the worksheet more than it needs; below that the same queue is
+                  the drawer instead, reached from the trigger above. */}
+              {selectedSpecs.length > 0 && (
+                <div className="hidden h-full w-60 shrink-0 min-[1152px]:block">
+                  <SelectedReportsPanel
+                    selectedSpecs={selectedSpecs}
+                    activeTemplateCode={activeTemplateCode}
+                    onSelectActiveTemplate={setActiveTemplateCode}
+                    onRemoveTemplate={handleRemoveTemplate}
+                    onCloseOtherTemplates={handleCloseOtherTemplates}
+                    onClearAllTemplates={() => setPendingConfirmation("clearAll")}
+                    isDirty={isDirty}
+                    progressByTemplateCode={progressByTemplateCode}
+                    variant="docked"
+                  />
                 </div>
               )}
-              <div id="workspace-desktop-catalog" className={cn("h-full min-h-0", isCatalogCollapsed && "hidden")}>
-                <ExaminationCatalog
-                  allTemplates={allActiveTemplates}
-                  selectedTemplateCodes={selectedTemplateCodes}
-                  activeTemplateCode={activeTemplateCode}
-                  onSelectTemplate={setActiveTemplateCode}
-                  onToggleTemplateSelection={handleToggleTemplateSelection}
-                  onCollapse={handleCollapseCatalog}
-                  catalogRegionId="workspace-desktop-catalog"
-                  collapseControlRef={catalogCollapseToggleRef}
-                />
+
+              {/* The active report. Everything else on this screen is context; this is the work,
+                  so it takes every pixel the queue does not.
+
+                  scroll-padding clears the report's own sticky chrome, so a control reached by
+                  keyboard is never parked underneath it (WCAG 2.2 Focus Not Obscured). It is a
+                  single unconditional value now: the two-row context strip that used to force a
+                  conditional one has moved out of this scroller and into the frame. */}
+              <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-3 scroll-pb-16">
+                {/* Demographics, expanded: a white working card at the top of the pane. While the
+                    operator is editing the patient, the fields ARE the work, so they scroll with
+                    it. Collapsed, the same component renders its summary in the ribbon above, so
+                    the data never leaves the screen. */}
+                {isDemographicsExpanded && (
+                  <PatientDemographicsForm
+                    isExpanded
+                    onToggleExpanded={setIsDemographicsExpanded}
+                    invalidFieldId={validationError ? validationFieldTarget : null}
+                    demographics={session.demographics}
+                    onChange={handleDemographicsChange}
+                  />
+                )}
+
+                {/* Dynamic Result Form Dispatcher */}
+                {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
+                  // One tabpanel per report, owning the results AND the footer. The queue's
+                  // aria-controls points here, so a screen-reader user moving by tabpanel reaches
+                  // signatories, remarks and kit information instead of stopping at the grid.
+                  <div
+                    id={`report-panel-${activeDefinition.templateCode}`}
+                    role="tabpanel"
+                    // Named directly rather than by reference. The queue's tab ids are now scoped
+                    // per variant, because the docked instance is hidden by CSS rather than
+                    // unmounted and both can be in the DOM at once - so there is no single tab id
+                    // that reliably names the *visible* one. An aria-labelledby pointing at the
+                    // wrong copy would name this panel from a display:none element; the report
+                    // title states it unambiguously at every width.
+                    aria-label={activeDefinition.templateTitle}
+                    data-encoding-report={activeDefinition.templateCode}
+                    className="flex min-w-0 flex-col"
+                  >
+                    <DynamicResultForm
+                      definition={activeDefinition}
+                      report={activeReport}
+                      patientSex={session.demographics.sex || null}
+                      onChangeReport={handleReportChange}
+                      onRequestManualToAuto={handleRequestManualToAuto}
+                    />
+                    {/* Docked as a sibling of the report card, not inside it: the card clips with
+                        overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}
+                    <EncodingReportFooter
+                      spec={activeSpec}
+                      definition={activeDefinition}
+                      report={activeReport}
+                      availablePersonnel={availablePersonnel}
+                      onChangeReport={handleReportChange}
+                    />
+                  </div>
+                ) : (
+                  /* Selected, but the active report has not resolved yet - a template still
+                     loading, or one removed from the registry. The queue beside this already
+                     lists what the session holds, so this states the one thing it cannot. */
+                  <EmptyState
+                    icon={FileText}
+                    title="No examination open"
+                    description="Choose an examination from the session queue to begin encoding patient results."
+                    headingLevel={2}
+                    action={
+                      <Button type="button" variant="primary" size="sm" onClick={handleBrowseCatalog}>
+                        <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />
+                        Add examinations
+                      </Button>
+                    }
+                  />
+                )}
               </div>
             </div>
-
-            {/* Mobile/Tablet Catalog Overlay Drawer */}
-            {isCatalogDrawerOpen && (
-              <>
-                {/* Navy scrim, the same one the shell drawer and the dialogs use. */}
-                <div
-                  className="fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] motion-safe:transition-opacity lg:hidden"
-                  onClick={handleCloseCatalogDrawer}
-                  aria-hidden="true"
-                />
-                {/* Drawer shell only. The catalog is the content and carries its own heading, so
-                    the shell prints no title of its own - two stacked titles for one panel read as
-                    a nested card. The close control stays the first focusable node, which is what
-                    the focus trap places initial focus on. */}
-                {/* Canvas ground with the overlay shadow (a floating surface), a 56px structural
-                    strip on top that lines up with the command bar it covers. */}
-                <div
-                  ref={catalogDrawerRef}
-                  id="workspace-catalog-drawer"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Examination Catalog"
-                  className="fixed inset-y-0 left-0 z-50 flex w-[min(22rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-border-strong bg-brand-canvas shadow-overlay lg:hidden"
-                >
-                  <div className="flex h-14 shrink-0 items-center justify-end border-b border-brand-border-strong bg-brand-structural px-1.5">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="lg"
-                      onClick={handleCloseCatalogDrawer}
-                      className="h-11 w-11 shrink-0 px-0"
-                      aria-label="Close Examination Catalog"
-                    >
-                      <X aria-hidden="true" className="h-5 w-5" />
-                    </Button>
-                  </div>
-                  <div className="min-h-0 flex-1 p-2">
-                  <ExaminationCatalog
-                    allTemplates={allActiveTemplates}
-                    selectedTemplateCodes={selectedTemplateCodes}
-                    activeTemplateCode={activeTemplateCode}
-                    onSelectTemplate={(code) => {
-                      setActiveTemplateCode(code);
-                      setIsMobileCatalogOpen(false);
-                    }}
-                    onToggleTemplateSelection={handleToggleTemplateSelection}
-                  />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Main Encoding Workspace Panel: Expanded horizontal area (~78-80% width) Independently Scrollable */}
-            {/* scroll-padding clears the sticky strip, so a control reached by keyboard is never
-                parked underneath it (WCAG 2.2 Focus Not Obscured). The strip is two rows tall
-                while the demographics summary lives in it, one row otherwise. */}
-            <div
-              className={cn(
-                "flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pb-16",
-                isDemographicsExpanded ? "scroll-pt-16" : "scroll-pt-24"
-              )}
-            >
-              {/* Patient demographics, expanded: a white working card above the context strip. It
-                  scrolls with the pane - while the operator is editing the patient, the fields ARE
-                  the work. Collapsed, the same component renders its summary inside the strip
-                  below, so the data never leaves the screen. */}
-              {isDemographicsExpanded && (
-                <PatientDemographicsForm
-                  isExpanded
-                  onToggleExpanded={setIsDemographicsExpanded}
-                  invalidFieldId={validationError ? validationFieldTarget : null}
-                  demographics={session.demographics}
-                  onChange={handleDemographicsChange}
-                />
-              )}
-
-              {/* Sticky context strip. Structural, and deliberately so: it carries context ABOUT
-                  the work - who the patient is, how far the session is, which report is open -
-                  never the work itself. Tinting it is what lets the active tab lift onto the white
-                  worksheet and read as selected without a heavier border. Solid and unblurred so
-                  scrolled result rows never show through.
-
-                  Row one is the collapsed demographics summary: patient, the sex and age that
-                  select the reference ranges, the date and the address stay in view while a
-                  twenty-row report scrolls beneath. It used to be a separate band above this strip
-                  that scrolled away with the form. Row two is the report tab strip. Each row
-                  renders only when it has content, so a fresh session shows no empty strip and no
-                  second empty state above the one in the pane. */}
-              {(!isDemographicsExpanded || selectedSpecs.length > 0) && (
-                <div className="sticky top-0 z-20 rounded-lg border border-brand-border bg-brand-structural shadow-low">
-                  {!isDemographicsExpanded && (
-                    <div className={cn("px-3 py-2", selectedSpecs.length > 0 && "border-b border-brand-border")}>
-                      <PatientDemographicsForm
-                        isExpanded={false}
-                        onToggleExpanded={setIsDemographicsExpanded}
-                        demographics={session.demographics}
-                        onChange={handleDemographicsChange}
-                      />
-                    </div>
-                  )}
-                  {selectedSpecs.length > 0 && (
-                    <div className="flex items-end gap-2.5 px-3 py-2">
-                      {/* Sex and age here only while the form above is expanded, where it can scroll
-                          out of view. Collapsed, the summary row already states both. */}
-                      {isDemographicsExpanded && session.demographics.sex && session.demographics.age > 0 && (
-                        <span
-                          className="hidden shrink-0 items-center gap-1.5 pb-1.5 font-mono text-xs font-semibold tabular-nums text-brand-text-muted sm:inline-flex"
-                          title="Patient sex and age determine the sex-specific reference ranges applied while encoding"
-                        >
-                          <User aria-hidden="true" className="h-3.5 w-3.5 text-brand-primary" />
-                          {session.demographics.sex}, {session.demographics.age} y/o
-                        </span>
-                      )}
-                      {sessionProgress.totalReports > 0 && (
-                        <span
-                          data-session-progress
-                          className="hidden shrink-0 items-center gap-1.5 pb-1.5 text-xs font-medium tabular-nums text-brand-text-muted sm:inline-flex"
-                          title="Reports in this session with every selected result encoded"
-                        >
-                          {/* Progress vocabulary: the check turns teal once every report is complete,
-                              and stays muted while any is pending. */}
-                          <CheckCircle2
-                            aria-hidden="true"
-                            className={
-                              sessionProgress.completedReports === sessionProgress.totalReports
-                                ? "h-3.5 w-3.5 text-brand-primary"
-                                : "h-3.5 w-3.5 text-brand-text-subtle"
-                            }
-                          />
-                          {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
-                        </span>
-                      )}
-                      {/* One restrained rule instead of a second row of pills: it separates the
-                          session context from the report tabs. */}
-                      <span aria-hidden="true" className="hidden h-6 w-px shrink-0 self-center bg-brand-border-strong sm:block" />
-                      <SelectedReportsPanel
-                        selectedSpecs={selectedSpecs}
-                        activeTemplateCode={activeTemplateCode}
-                        onSelectActiveTemplate={setActiveTemplateCode}
-                        onRemoveTemplate={handleRemoveTemplate}
-                        onCloseOtherTemplates={handleCloseOtherTemplates}
-                        onClearAllTemplates={() => setPendingConfirmation("clearAll")}
-                        isDirty={isDirty}
-                        progressByTemplateCode={progressByTemplateCode}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Dynamic Result Form Dispatcher */}
-              {activeSpec && activeDefinition && activeReport && selectedSpecs.length > 0 ? (
-                // One tabpanel per report, owning the results AND the footer. The strip's
-                // aria-controls points here, so a screen-reader user moving by tabpanel reaches
-                // signatories, remarks and kit information instead of stopping at the grid.
-                <div
-                  id={`report-panel-${activeDefinition.templateCode}`}
-                  role="tabpanel"
-                  aria-labelledby={`report-tab-${activeDefinition.templateCode}`}
-                  data-encoding-report={activeDefinition.templateCode}
-                  className="flex min-w-0 flex-col"
-                >
-                  <DynamicResultForm
-                    definition={activeDefinition}
-                    report={activeReport}
-                    patientSex={session.demographics.sex || null}
-                    onChangeReport={handleReportChange}
-                    onRequestManualToAuto={handleRequestManualToAuto}
-                  />
-                  {/* Docked as a sibling of the report card, not inside it: the card clips with
-                      overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}
-                  <EncodingReportFooter
-                    spec={activeSpec}
-                    definition={activeDefinition}
-                    report={activeReport}
-                    availablePersonnel={availablePersonnel}
-                    onChangeReport={handleReportChange}
-                  />
-                </div>
-              ) : (
-                /* The shared EmptyState as shipped: a quiet structural-tint region on the canvas,
-                   not another white card competing with the panels above it. Its one action is
-                   the only route to the catalog a phone or tablet operator can see from here. */
-                <EmptyState
-                  icon={FileText}
-                  title="No examination selected"
-                  description="Choose a laboratory examination from the catalog to begin encoding patient results."
-                  headingLevel={2}
-                  action={
-                    <Button type="button" variant="primary" size="sm" onClick={handleBrowseCatalog}>
-                      <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />
-                      Browse catalog
-                    </Button>
-                  }
-                />
-              )}
-            </div>
-          </div>
+          )
         ) : (
           /* Live Preview. The engine owns its own toolbar and its viewport is the single
              vertical scrolling region, so this wrapper adds no card frame, no second header
@@ -1511,6 +1571,106 @@ export function GuidedWorkspace({
           </div>
         )}
       </main>
+
+      </div>
+      {/* ── end of the inert content column; both drawers are siblings of it ───────────── */}
+
+      {/* Catalog drawer. The only route to the catalog once an examination is selected, so it is
+          available at every width rather than below a breakpoint. */}
+      {isCatalogDrawerOpen && (
+        <>
+          {/* Navy scrim, the same one the shell drawer and the dialogs use. */}
+          <div
+            className="fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] motion-safe:transition-opacity"
+            onClick={handleCloseCatalogDrawer}
+            aria-hidden="true"
+          />
+          {/* Drawer shell only. The catalog is the content and carries its own heading, so the
+              shell prints no title of its own - two stacked titles for one panel read as a nested
+              card. The close control stays the first focusable node, which is what the focus trap
+              places initial focus on. */}
+          <div
+            ref={catalogDrawerRef}
+            id="workspace-catalog-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Examination Catalog"
+            className="fixed inset-y-0 left-0 z-50 flex w-[min(24rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-border-strong bg-brand-canvas shadow-overlay"
+          >
+            <div className="flex h-14 shrink-0 items-center justify-end border-b border-brand-border-strong bg-brand-structural px-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                onClick={handleCloseCatalogDrawer}
+                className="h-11 w-11 shrink-0 px-0"
+                aria-label="Close Examination Catalog"
+              >
+                <X aria-hidden="true" className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 p-2">
+              <ExaminationCatalog
+                allTemplates={allActiveTemplates}
+                selectedTemplateCodes={selectedTemplateCodes}
+                activeTemplateCode={activeTemplateCode}
+                onSelectTemplate={(code) => {
+                  setActiveTemplateCode(code);
+                  setIsMobileCatalogOpen(false);
+                }}
+                onToggleTemplateSelection={handleToggleTemplateSelection}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Queue drawer. The same queue the wide layout docks, below the width at which docking it
+          would cost the worksheet more than the queue is worth. */}
+      {isQueueDrawerVisible && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-[rgb(13_43_64_/_0.55)] motion-safe:transition-opacity"
+            onClick={handleCloseQueueDrawer}
+            aria-hidden="true"
+          />
+          <div
+            ref={queueDrawerRef}
+            id="workspace-queue-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Session examinations"
+            className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-border-strong bg-brand-canvas shadow-overlay"
+          >
+            <div className="flex h-14 shrink-0 items-center justify-end border-b border-brand-border-strong bg-brand-structural px-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                onClick={handleCloseQueueDrawer}
+                className="h-11 w-11 shrink-0 px-0"
+                aria-label="Close session examinations"
+              >
+                <X aria-hidden="true" className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 p-2">
+              <SelectedReportsPanel
+                selectedSpecs={selectedSpecs}
+                activeTemplateCode={activeTemplateCode}
+                onSelectActiveTemplate={setActiveTemplateCode}
+                onRemoveTemplate={handleRemoveTemplate}
+                onCloseOtherTemplates={handleCloseOtherTemplates}
+                onClearAllTemplates={() => setPendingConfirmation("clearAll")}
+                isDirty={isDirty}
+                progressByTemplateCode={progressByTemplateCode}
+                variant="drawer"
+                onAfterSelect={handleCloseQueueDrawer}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       <ConfirmDialog
         isOpen={pendingConfirmation === "complete"}

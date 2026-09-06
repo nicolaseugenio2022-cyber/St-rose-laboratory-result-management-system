@@ -33,6 +33,20 @@ export interface ReportEncodingProgress {
   completionPercent: number;
   /** A report is complete only with at least one selected result and every one of them complete. */
   isComplete: boolean;
+  /**
+   * True when a **selected** result for this report evaluated to `Invalid`.
+   *
+   * Strictly `Invalid`, and nothing else. `High`, `Low` and `Abnormal` are ordinary clinical
+   * outcomes that an operator is expected to encode and complete; treating any of them as a
+   * defect would flag a correct abnormal result as a problem. `Invalid` is the only outcome that
+   * blocks completion, which is what makes it the one worth surfacing on the work queue.
+   *
+   * Derived here, from the same selected-result set the counter uses, so the queue's indicator
+   * and the report's meter can never disagree about which results are in scope. Deselected
+   * parameters are excluded by `selectedResultsOf`, matching the rule that a deselected parameter
+   * skips validation and evaluation entirely.
+   */
+  hasInvalidResult: boolean;
 }
 
 /**
@@ -97,6 +111,9 @@ export function getReportEncodingProgress(
     completedCount,
     completionPercent: selected.length ? Math.round(completedCount / selected.length * 100) : 0,
     isComplete: selected.length > 0 && completedCount === selected.length,
+    // Exact equality against the one outcome that blocks completion. Never a truthiness test and
+    // never a set membership check that could quietly grow to include High or Low.
+    hasInvalidResult: selected.some((result) => result.evaluationOutcome === "Invalid"),
   };
 }
 

@@ -740,6 +740,13 @@ export function GuidedWorkspace({
       const updatedReports = prevSession.reports.filter((r) => r.templateCode === keepTemplateCode);
       return new PatientReportSessionAggregate({ ...prevSession, reports: updatedReports });
     });
+    // Bulk removal is unsaved work for the same reason a single toggle is - and on a session
+    // that was already clean it was the more dangerous of the two. Save Draft stays disabled
+    // while `isDirty` is false, so the operator could not persist the removal even deliberately,
+    // and neither the recovery snapshot nor the beforeunload guard - both gated on this flag -
+    // would fire. The stored draft would keep reports the operator had removed.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, []);
 
   // Clear All Examinations
@@ -750,6 +757,10 @@ export function GuidedWorkspace({
     setSession((prevSession) => {
       return new PatientReportSessionAggregate({ ...prevSession, reports: [] });
     });
+    // Same contract as every other membership change: emptying the session is a change worth
+    // saving and worth warning about.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, []);
 
   // Update active report in session aggregate

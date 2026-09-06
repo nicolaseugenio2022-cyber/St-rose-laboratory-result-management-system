@@ -666,6 +666,10 @@ export function GuidedWorkspace({
    * an existing report - that stays the active-report effect's job, which preserves encoded data
    * through `existingReport` - and returning the previous session unchanged when nothing is
    * missing is what keeps this from looping on its own writes.
+   *
+   * A template that cannot be materialized at all is NOT dropped quietly. Reconciliation adds
+   * what it can, and the effect below states what it could not, so a selected examination is
+   * always backed by either a report or a visible error - never by silence.
    */
   useEffect(() => {
     if (selectedTemplateCodes.length === 0) return;
@@ -686,6 +690,55 @@ export function GuidedWorkspace({
       });
     });
   }, [selectedTemplateCodes, buildReportForTemplate]);
+
+  /**
+   * Selected examinations that cannot be materialized into a report.
+   *
+   * These are exactly the conditions under which `buildReportForTemplate` returns null: the code
+   * is not an active hydrated template, or it carries no approved encoding definition. Computed
+   * from the registry rather than from the build attempt, so it needs no session and can be read
+   * outside the `setSession` updater - a state setter must not be called from inside one.
+   *
+   * Normally empty: everything selectable comes from `allActiveTemplates`. A non-empty result
+   * means a registry/definition mismatch, which is a configuration defect rather than anything
+   * the operator did.
+   */
+  const unresolvedSelectedCodes = useMemo(
+    () =>
+      selectedTemplateCodes.filter(
+        (code) =>
+          !allActiveTemplates.some((candidate) => candidate.template.templateCode === code) ||
+          !ReportDefinitionRegistry.getDefinition(code)
+      ),
+    [selectedTemplateCodes, allActiveTemplates]
+  );
+
+  /**
+   * State the unresolved selection, using the sentence the active-template path already uses.
+   *
+   * Without this, a template whose definition is missing stayed selected, counted and queued
+   * while reconciliation silently skipped it - the operator saw an examination in the queue that
+   * would never reach the saved session. It is surfaced rather than removed, because deleting an
+   * examination the operator deliberately chose would be its own silent act; the message names
+   * the template and says what to do about it.
+   *
+   * The message is cleared only if it is still the one this effect set. Clearing unconditionally
+   * would discard an unrelated error - "Patient full name is required", say - that arrived while
+   * the unresolved template was still selected.
+   */
+  const unresolvedMessageRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (unresolvedSelectedCodes.length > 0) {
+      const message = `No approved encoding definition is registered for ${unresolvedSelectedCodes.join(", ")}. Remove it from this session to continue.`;
+      unresolvedMessageRef.current = message;
+      setValidationError(message);
+      return;
+    }
+    if (unresolvedMessageRef.current === null) return;
+    const ownMessage = unresolvedMessageRef.current;
+    unresolvedMessageRef.current = null;
+    setValidationError((current) => (current === ownMessage ? null : current));
+  }, [unresolvedSelectedCodes]);
 
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {

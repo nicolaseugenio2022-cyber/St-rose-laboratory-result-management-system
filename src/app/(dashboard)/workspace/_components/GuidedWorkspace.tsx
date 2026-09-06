@@ -572,6 +572,53 @@ export function GuidedWorkspace({
     };
   }, [reopenSessionId]);
 
+  /**
+   * Build the encoding report for one template against a session, preserving any existing one.
+   *
+   * Extracted so the active-report effect and the selected-set reconciliation below construct
+   * reports through exactly ONE code path. Two copies would drift on the first change to
+   * signatory defaults, legacy field carry-over or replacement handling - and the copy that
+   * drifted would be the one nobody was looking at.
+   *
+   * Returns null when the template is not in the active registry or has no approved encoding
+   * definition. Callers decide what that means: the active path surfaces it as a validation
+   * error, the reconciliation path leaves the report unmaterialized rather than inventing one.
+   */
+  const buildReportForTemplate = useCallback(
+    (prevSession: PatientReportSessionAggregate, templateCode: string) => {
+      const spec = allActiveTemplates.find(
+        (candidate) => candidate.template.templateCode === templateCode
+      );
+      if (!spec) return null;
+      const definition = ReportDefinitionRegistry.getDefinition(templateCode);
+      if (!definition) return null;
+
+      const existingReport = prevSession.reports.find((r) => r.templateCode === templateCode);
+      const defaultSignatories = suggestedSignatoryProvider.getSuggestedSignatories(
+        spec.template.templateCode,
+        spec.signatoryRequirement.requiredPathologistsCount,
+        spec.signatoryRequirement.requiredMedtechsCount,
+        availablePersonnel
+      );
+
+      return buildEncodingReport({
+        definition,
+        sessionId: prevSession.id,
+        reportId: existingReport?.id || crypto.randomUUID(),
+        rendererFamily: spec.template.rendererFamily,
+        signatories: defaultSignatories,
+        existingReport,
+        legacyRequestedBy: prevSession.demographics.requestingPhysician,
+        legacyAdditionalFields: {
+          companyName: prevSession.demographics.companyName,
+        },
+        evaluationContext: { sex: prevSession.demographics.sex || null },
+        unmatchedParameterSelection: !isReplacementMode,
+      });
+    },
+    [allActiveTemplates, availablePersonnel, isReplacementMode]
+  );
+
   // Resolve the hydrated spec loaded by the authenticated registry bootstrap.
   useEffect(() => {
     if (!activeTemplateCode) {
@@ -591,29 +638,9 @@ export function GuidedWorkspace({
         }
 
         setSession((prevSession) => {
+          const encodingReport = buildReportForTemplate(prevSession, activeTemplateCode);
+          if (!encodingReport) return prevSession;
           const existingReport = prevSession.reports.find((r) => r.templateCode === activeTemplateCode);
-
-          const defaultSignatories = suggestedSignatoryProvider.getSuggestedSignatories(
-            spec.template.templateCode,
-            spec.signatoryRequirement.requiredPathologistsCount,
-            spec.signatoryRequirement.requiredMedtechsCount,
-            availablePersonnel
-          );
-
-          const encodingReport = buildEncodingReport({
-            definition,
-            sessionId: prevSession.id,
-            reportId: existingReport?.id || crypto.randomUUID(),
-            rendererFamily: spec.template.rendererFamily,
-            signatories: defaultSignatories,
-            existingReport,
-            legacyRequestedBy: prevSession.demographics.requestingPhysician,
-            legacyAdditionalFields: {
-              companyName: prevSession.demographics.companyName,
-            },
-            evaluationContext: { sex: prevSession.demographics.sex || null },
-            unmatchedParameterSelection: !isReplacementMode,
-          });
 
           return new PatientReportSessionAggregate({
             ...prevSession,
@@ -623,7 +650,42 @@ export function GuidedWorkspace({
           });
         });
     }
-  }, [activeTemplateCode, allActiveTemplates, availablePersonnel, isReplacementMode]);
+  }, [activeTemplateCode, allActiveTemplates, buildReportForTemplate]);
+
+  /**
+   * Every selected examination must exist as a report in the session aggregate.
+   *
+   * Reports used to be materialized only for the ACTIVE template, so a code could sit in
+   * `selectedTemplateCodes` - counted, listed in the work queue, and serialized as part of the
+   * selection - with no report behind it. Saving then persisted fewer reports than the queue
+   * showed, silently. It was reachable before this phase through the catalog's "Add" control,
+   * which selects without activating; making batch selection the intended flow turns that edge
+   * into the main road, so it is closed here rather than left to be discovered on a real visit.
+   *
+   * Reconciliation only ADDS what is missing, in selection order. It never rebuilds or reorders
+   * an existing report - that stays the active-report effect's job, which preserves encoded data
+   * through `existingReport` - and returning the previous session unchanged when nothing is
+   * missing is what keeps this from looping on its own writes.
+   */
+  useEffect(() => {
+    if (selectedTemplateCodes.length === 0) return;
+    setSession((prevSession) => {
+      const missing = selectedTemplateCodes.filter(
+        (code) => !prevSession.reports.some((report) => report.templateCode === code)
+      );
+      if (missing.length === 0) return prevSession;
+
+      const created = missing
+        .map((code) => buildReportForTemplate(prevSession, code))
+        .filter((report): report is NonNullable<typeof report> => report !== null);
+      if (created.length === 0) return prevSession;
+
+      return new PatientReportSessionAggregate({
+        ...prevSession,
+        reports: [...prevSession.reports, ...created],
+      });
+    });
+  }, [selectedTemplateCodes, buildReportForTemplate]);
 
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {
@@ -653,6 +715,16 @@ export function GuidedWorkspace({
       }
       return prevSession;
     });
+
+    // Changing which examinations a visit contains IS unsaved work, and until now it was the one
+    // kind that went unrecorded: only encoding a result or editing demographics marked the
+    // session dirty. That was survivable while the first selection dropped the operator straight
+    // into the worksheet, where they immediately started typing. Now that they can spend a minute
+    // assembling eight examinations first, an accidental refresh in that window would discard all
+    // of it - silently, because the recovery snapshot is gated on `isDirty` and the beforeunload
+    // guard reads the same flag. Both are armed from here.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, [activeTemplateCode]);
 
   // Remove test from session (closes tab and activates nearest remaining)

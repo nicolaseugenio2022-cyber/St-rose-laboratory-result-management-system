@@ -160,18 +160,18 @@ export function NavRail({
           onCloseDrawer();
         }}
         className={cn(
-          "flex items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring",
+          "flex items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70",
           variant === "rail"
             ? "h-10 w-10 justify-center rounded-md border-l-[3px]"
             : "min-h-11 w-full gap-2.5 border-l-[3px] py-2.5 pl-3.5 pr-3 text-[13px]",
           isActive
-            ? "border-l-brand-primary bg-brand-sidebar-active font-semibold text-brand-sidebar-active-text"
-            : "border-l-transparent font-medium text-brand-sidebar-text hover:bg-brand-structural-hover hover:text-brand-navy"
+            ? "border-l-white bg-white/10 font-semibold text-white"
+            : "border-l-transparent font-medium text-brand-navy-muted hover:bg-white/5 hover:text-white"
         )}
       >
         <Icon
           aria-hidden="true"
-          className={cn("h-4 w-4 shrink-0", isActive ? "text-brand-primary" : "text-brand-text-muted")}
+          className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-brand-navy-muted")}
         />
         {variant === "drawer" && <span className="truncate">{item.title}</span>}
       </Link>
@@ -195,13 +195,13 @@ export function NavRail({
 
       <nav
         aria-label="Workspace Navigation"
-        className="no-print hidden h-full w-14 shrink-0 flex-col items-center border-r border-brand-border-strong bg-brand-sidebar print:hidden lg:flex"
+        className="no-print hidden h-full w-14 shrink-0 flex-col items-center bg-brand-navy print:hidden lg:flex"
       >
         {/* Brand block: the same navy block the full sidebar carries, compressed to the rail
             width, so the Workspace is recognisably the same application. Brand mark only, and
             deliberately not a link: a logo shortcut here would be a navigation path that
             bypasses the unsaved-work guard entirely. */}
-        <div className="flex h-14 w-full shrink-0 items-center justify-center bg-brand-navy">
+        <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-white/10">
           <Image
             src="/st-rose-logo-official.png"
             alt=""
@@ -229,9 +229,9 @@ export function NavRail({
             role="dialog"
             aria-modal="true"
             aria-label="Workspace Navigation"
-            className="no-print fixed bottom-0 left-0 top-0 z-50 flex w-[min(16rem,82vw)] max-w-full flex-col border-r border-brand-border-strong bg-brand-sidebar shadow-overlay print:hidden lg:hidden"
+            className="no-print fixed bottom-0 left-0 top-0 z-50 flex w-[min(16rem,82vw)] max-w-full flex-col bg-brand-navy shadow-overlay print:hidden lg:hidden"
           >
-            <div className="flex h-14 shrink-0 items-center gap-2.5 bg-brand-navy pl-3 pr-2">
+            <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-white/10 pl-3 pr-2">
               <Image
                 src="/st-rose-logo-official.png"
                 alt=""

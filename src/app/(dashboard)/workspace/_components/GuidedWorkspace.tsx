@@ -38,7 +38,7 @@ import {
 import { cn, formatDateISO } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, AlertCircle, FileText, FlaskConical, Eye, Edit3, X, ArrowLeft, LogOut, Plus, RefreshCw, History } from "lucide-react";
+import { Save, CheckCircle2, AlertCircle, Check, FileText, FlaskConical, Eye, Edit3, X, ArrowLeft, ArrowRight, LogOut, Plus, RefreshCw, History } from "lucide-react";
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "../_lib/encoding/report-encoding";
@@ -348,23 +348,33 @@ export function GuidedWorkspace({
   const dockedQueueRef = useRef<HTMLDivElement>(null);
   const continueEditingRef = useRef<HTMLButtonElement>(null);
 
-  /**
-   * The zero-selected state, derived and never stored.
-   *
-   * A session with nothing selected has one job - choose examinations - so the catalog is the
-   * whole task surface rather than a column beside an empty desk. Deriving it means it is reached
-   * identically whether the session is new, the last examination was removed from the queue,
-   * "Close Other" left nothing, or "Clear All" ran; a stored flag would have four places to be
-   * set and one to be forgotten.
-   */
+  /** Whether the session holds anything at all. Still derived, still never stored. */
   const hasSelection = selectedTemplateCodes.length > 0;
 
-  // Both drawers exist only inside Encoding, and only once something is selected: with an empty
-  // session the catalog is already on screen in full and there is no queue to open. Deriving the
-  // open state here keeps the dialog semantics, the focus traps and the shortcut suppression from
-  // ever disagreeing with what is actually rendered.
-  const isCatalogDrawerOpen = isMobileCatalogOpen && workspaceMode === "encoding" && hasSelection;
-  const isQueueDrawerVisible = isQueueDrawerOpen && workspaceMode === "encoding" && hasSelection;
+  /**
+   * Whether the operator has left the catalog for the clinical desk.
+   *
+   * This is deliberately NOT `hasSelection`. Deriving the desk from "something is selected" meant
+   * the first examination chosen ended selection: the catalog was replaced by the desk mid-task,
+   * and building a five-examination visit became five round trips through "Add examinations".
+   * Ordering a panel of tests is one continuous act, so the catalog stays until the operator says
+   * they are done with it.
+   *
+   * It is a stored flag because it records an operator decision, and no derivation can recover an
+   * intention from state. Its four exits are all still centralised: it is set only by the explicit
+   * continuation action and by the two paths that restore a session which already has reports, and
+   * it is cleared in exactly one place - the transition that empties the selection - so removing
+   * the last examination, "Close Other" leaving nothing and "Clear All" all return to the catalog
+   * through the same effect, exactly as before.
+   */
+  const [hasEnteredDesk, setHasEnteredDesk] = useState<boolean>(false);
+
+  // Both drawers, the queue trigger and the catalog launcher exist only inside Encoding, and only
+  // once the desk itself is showing: while the catalog is the whole task surface there is nothing
+  // to open a drawer over. Gated on `hasEnteredDesk` rather than `hasSelection` so that selecting
+  // during the initial build cannot arm desk chrome the operator has not reached yet.
+  const isCatalogDrawerOpen = isMobileCatalogOpen && workspaceMode === "encoding" && hasEnteredDesk;
+  const isQueueDrawerVisible = isQueueDrawerOpen && workspaceMode === "encoding" && hasEnteredDesk;
   const isAnyWorkspaceDrawerOpen = isCatalogDrawerOpen || isQueueDrawerVisible;
 
   // Navigation handlers
@@ -492,6 +502,9 @@ export function GuidedWorkspace({
     setSession(fromSessionTransport(recovered.session));
     setSelectedTemplateCodes(recovered.selectedTemplateCodes);
     setActiveTemplateCode(recovered.activeTemplateCode);
+    // A recovered session already holds examinations, so the operator finished choosing before
+    // the refresh; dropping them back into the catalog would ask them to choose again.
+    setHasEnteredDesk(recovered.selectedTemplateCodes.length > 0);
     setIsDirty(true);
     setSaveStatus("unsaved");
   }, [reopenSessionId]);
@@ -537,6 +550,8 @@ export function GuidedWorkspace({
         setSession(reopened);
         setSelectedTemplateCodes(templateCodes);
         setActiveTemplateCode(templateCodes[0] ?? null);
+        // A reopened session is existing work, not a new selection: go straight to the desk.
+        setHasEnteredDesk(templateCodes.length > 0);
         setIsReplacementMode(reopened.status === "Completed");
         setIsDirty(false);
         setSaveStatus("saved");
@@ -557,6 +572,53 @@ export function GuidedWorkspace({
     };
   }, [reopenSessionId]);
 
+  /**
+   * Build the encoding report for one template against a session, preserving any existing one.
+   *
+   * Extracted so the active-report effect and the selected-set reconciliation below construct
+   * reports through exactly ONE code path. Two copies would drift on the first change to
+   * signatory defaults, legacy field carry-over or replacement handling - and the copy that
+   * drifted would be the one nobody was looking at.
+   *
+   * Returns null when the template is not in the active registry or has no approved encoding
+   * definition. Callers decide what that means: the active path surfaces it as a validation
+   * error, the reconciliation path leaves the report unmaterialized rather than inventing one.
+   */
+  const buildReportForTemplate = useCallback(
+    (prevSession: PatientReportSessionAggregate, templateCode: string) => {
+      const spec = allActiveTemplates.find(
+        (candidate) => candidate.template.templateCode === templateCode
+      );
+      if (!spec) return null;
+      const definition = ReportDefinitionRegistry.getDefinition(templateCode);
+      if (!definition) return null;
+
+      const existingReport = prevSession.reports.find((r) => r.templateCode === templateCode);
+      const defaultSignatories = suggestedSignatoryProvider.getSuggestedSignatories(
+        spec.template.templateCode,
+        spec.signatoryRequirement.requiredPathologistsCount,
+        spec.signatoryRequirement.requiredMedtechsCount,
+        availablePersonnel
+      );
+
+      return buildEncodingReport({
+        definition,
+        sessionId: prevSession.id,
+        reportId: existingReport?.id || crypto.randomUUID(),
+        rendererFamily: spec.template.rendererFamily,
+        signatories: defaultSignatories,
+        existingReport,
+        legacyRequestedBy: prevSession.demographics.requestingPhysician,
+        legacyAdditionalFields: {
+          companyName: prevSession.demographics.companyName,
+        },
+        evaluationContext: { sex: prevSession.demographics.sex || null },
+        unmatchedParameterSelection: !isReplacementMode,
+      });
+    },
+    [allActiveTemplates, availablePersonnel, isReplacementMode]
+  );
+
   // Resolve the hydrated spec loaded by the authenticated registry bootstrap.
   useEffect(() => {
     if (!activeTemplateCode) {
@@ -576,29 +638,9 @@ export function GuidedWorkspace({
         }
 
         setSession((prevSession) => {
+          const encodingReport = buildReportForTemplate(prevSession, activeTemplateCode);
+          if (!encodingReport) return prevSession;
           const existingReport = prevSession.reports.find((r) => r.templateCode === activeTemplateCode);
-
-          const defaultSignatories = suggestedSignatoryProvider.getSuggestedSignatories(
-            spec.template.templateCode,
-            spec.signatoryRequirement.requiredPathologistsCount,
-            spec.signatoryRequirement.requiredMedtechsCount,
-            availablePersonnel
-          );
-
-          const encodingReport = buildEncodingReport({
-            definition,
-            sessionId: prevSession.id,
-            reportId: existingReport?.id || crypto.randomUUID(),
-            rendererFamily: spec.template.rendererFamily,
-            signatories: defaultSignatories,
-            existingReport,
-            legacyRequestedBy: prevSession.demographics.requestingPhysician,
-            legacyAdditionalFields: {
-              companyName: prevSession.demographics.companyName,
-            },
-            evaluationContext: { sex: prevSession.demographics.sex || null },
-            unmatchedParameterSelection: !isReplacementMode,
-          });
 
           return new PatientReportSessionAggregate({
             ...prevSession,
@@ -608,7 +650,95 @@ export function GuidedWorkspace({
           });
         });
     }
-  }, [activeTemplateCode, allActiveTemplates, availablePersonnel, isReplacementMode]);
+  }, [activeTemplateCode, allActiveTemplates, buildReportForTemplate]);
+
+  /**
+   * Every selected examination must exist as a report in the session aggregate.
+   *
+   * Reports used to be materialized only for the ACTIVE template, so a code could sit in
+   * `selectedTemplateCodes` - counted, listed in the work queue, and serialized as part of the
+   * selection - with no report behind it. Saving then persisted fewer reports than the queue
+   * showed, silently. It was reachable before this phase through the catalog's "Add" control,
+   * which selects without activating; making batch selection the intended flow turns that edge
+   * into the main road, so it is closed here rather than left to be discovered on a real visit.
+   *
+   * Reconciliation only ADDS what is missing, in selection order. It never rebuilds or reorders
+   * an existing report - that stays the active-report effect's job, which preserves encoded data
+   * through `existingReport` - and returning the previous session unchanged when nothing is
+   * missing is what keeps this from looping on its own writes.
+   *
+   * A template that cannot be materialized at all is NOT dropped quietly. Reconciliation adds
+   * what it can, and the effect below states what it could not, so a selected examination is
+   * always backed by either a report or a visible error - never by silence.
+   */
+  useEffect(() => {
+    if (selectedTemplateCodes.length === 0) return;
+    setSession((prevSession) => {
+      const missing = selectedTemplateCodes.filter(
+        (code) => !prevSession.reports.some((report) => report.templateCode === code)
+      );
+      if (missing.length === 0) return prevSession;
+
+      const created = missing
+        .map((code) => buildReportForTemplate(prevSession, code))
+        .filter((report): report is NonNullable<typeof report> => report !== null);
+      if (created.length === 0) return prevSession;
+
+      return new PatientReportSessionAggregate({
+        ...prevSession,
+        reports: [...prevSession.reports, ...created],
+      });
+    });
+  }, [selectedTemplateCodes, buildReportForTemplate]);
+
+  /**
+   * Selected examinations that cannot be materialized into a report.
+   *
+   * These are exactly the conditions under which `buildReportForTemplate` returns null: the code
+   * is not an active hydrated template, or it carries no approved encoding definition. Computed
+   * from the registry rather than from the build attempt, so it needs no session and can be read
+   * outside the `setSession` updater - a state setter must not be called from inside one.
+   *
+   * Normally empty: everything selectable comes from `allActiveTemplates`. A non-empty result
+   * means a registry/definition mismatch, which is a configuration defect rather than anything
+   * the operator did.
+   */
+  const unresolvedSelectedCodes = useMemo(
+    () =>
+      selectedTemplateCodes.filter(
+        (code) =>
+          !allActiveTemplates.some((candidate) => candidate.template.templateCode === code) ||
+          !ReportDefinitionRegistry.getDefinition(code)
+      ),
+    [selectedTemplateCodes, allActiveTemplates]
+  );
+
+  /**
+   * State the unresolved selection, using the sentence the active-template path already uses.
+   *
+   * Without this, a template whose definition is missing stayed selected, counted and queued
+   * while reconciliation silently skipped it - the operator saw an examination in the queue that
+   * would never reach the saved session. It is surfaced rather than removed, because deleting an
+   * examination the operator deliberately chose would be its own silent act; the message names
+   * the template and says what to do about it.
+   *
+   * The message is cleared only if it is still the one this effect set. Clearing unconditionally
+   * would discard an unrelated error - "Patient full name is required", say - that arrived while
+   * the unresolved template was still selected.
+   */
+  const unresolvedMessageRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (unresolvedSelectedCodes.length > 0) {
+      const message = `No approved encoding definition is registered for ${unresolvedSelectedCodes.join(", ")}. Remove it from this session to continue.`;
+      unresolvedMessageRef.current = message;
+      setValidationError(message);
+      return;
+    }
+    if (unresolvedMessageRef.current === null) return;
+    const ownMessage = unresolvedMessageRef.current;
+    unresolvedMessageRef.current = null;
+    setValidationError((current) => (current === ownMessage ? null : current));
+  }, [unresolvedSelectedCodes]);
 
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {
@@ -638,6 +768,16 @@ export function GuidedWorkspace({
       }
       return prevSession;
     });
+
+    // Changing which examinations a visit contains IS unsaved work, and until now it was the one
+    // kind that went unrecorded: only encoding a result or editing demographics marked the
+    // session dirty. That was survivable while the first selection dropped the operator straight
+    // into the worksheet, where they immediately started typing. Now that they can spend a minute
+    // assembling eight examinations first, an accidental refresh in that window would discard all
+    // of it - silently, because the recovery snapshot is gated on `isDirty` and the beforeunload
+    // guard reads the same flag. Both are armed from here.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, [activeTemplateCode]);
 
   // Remove test from session (closes tab and activates nearest remaining)
@@ -653,6 +793,13 @@ export function GuidedWorkspace({
       const updatedReports = prevSession.reports.filter((r) => r.templateCode === keepTemplateCode);
       return new PatientReportSessionAggregate({ ...prevSession, reports: updatedReports });
     });
+    // Bulk removal is unsaved work for the same reason a single toggle is - and on a session
+    // that was already clean it was the more dangerous of the two. Save Draft stays disabled
+    // while `isDirty` is false, so the operator could not persist the removal even deliberately,
+    // and neither the recovery snapshot nor the beforeunload guard - both gated on this flag -
+    // would fire. The stored draft would keep reports the operator had removed.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, []);
 
   // Clear All Examinations
@@ -663,6 +810,10 @@ export function GuidedWorkspace({
     setSession((prevSession) => {
       return new PatientReportSessionAggregate({ ...prevSession, reports: [] });
     });
+    // Same contract as every other membership change: emptying the session is a change worth
+    // saving and worth warning about.
+    setIsDirty(true);
+    setSaveStatus("unsaved");
   }, []);
 
   // Update active report in session aggregate
@@ -1079,12 +1230,12 @@ export function GuidedWorkspace({
    * breakpoint-dependent decision.
    */
   const handleBrowseCatalog = useCallback(() => {
-    if (!hasSelection) {
+    if (!hasEnteredDesk) {
       fullCatalogRef.current?.querySelector<HTMLInputElement>("[data-catalog-search]")?.focus();
       return;
     }
     setIsMobileCatalogOpen(true);
-  }, [hasSelection]);
+  }, [hasEnteredDesk]);
 
   /**
    * Removing the last examination returns the session to the catalog, so focus has to follow: the
@@ -1094,20 +1245,33 @@ export function GuidedWorkspace({
    * Only a genuine transition moves focus. A fresh session mounts with nothing selected and must
    * never steal the caret into the search field, and a Strict Mode replay finds the previous
    * value already updated, so neither can fire this.
+   *
+   * The focus move is additionally conditioned on actually LEAVING THE DESK. Now that the catalog
+   * stays on screen while the initial selection is built, an operator who adds one examination
+   * and changes their mind empties the selection without any screen change at all - and yanking
+   * the caret into the search field there would be an unexplained jump, not a rescue. The desk
+   * flag is still true on this render, because it is cleared below rather than before.
    */
   const hadSelectionRef = useRef(hasSelection);
   useEffect(() => {
     const hadSelection = hadSelectionRef.current;
     hadSelectionRef.current = hasSelection;
     if (!hadSelection || hasSelection) return;
+    const wasLeavingDesk = hasEnteredDesk;
+    // The single place the desk is left. Removing the last examination, "Close Other" leaving
+    // nothing and "Clear All" all arrive here, so returning to the catalog stays one transition
+    // rather than three call sites that could disagree.
+    setHasEnteredDesk(false);
     // Clear the raw drawer state, not just the derived visibility. Both `isCatalogDrawerOpen`
-    // and `isQueueDrawerVisible` are gated on `hasSelection`, so emptying the session hides a
-    // drawer without closing it - the underlying flag stays true. Selecting the next examination
-    // would then satisfy the gate again and reopen a drawer the operator had already dismissed.
+    // and `isQueueDrawerVisible` are gated on the desk being open, so emptying the session hides
+    // a drawer without closing it - the underlying flag stays true. Selecting the next
+    // examination would then satisfy the gate again and reopen a drawer already dismissed.
     setIsMobileCatalogOpen(false);
     setIsQueueDrawerOpen(false);
-    fullCatalogRef.current?.querySelector<HTMLInputElement>("[data-catalog-search]")?.focus();
-  }, [hasSelection]);
+    if (wasLeavingDesk) {
+      fullCatalogRef.current?.querySelector<HTMLInputElement>("[data-catalog-search]")?.focus();
+    }
+  }, [hasSelection, hasEnteredDesk]);
 
   // A reopen request must resolve before the workspace is usable. Rendering the blank
   // new-session workspace after a failed load would invite encoding into a different
@@ -1208,7 +1372,7 @@ export function GuidedWorkspace({
                 examination once the session has one. It is absent while nothing is selected,
                 because the catalog is the whole screen there and a control to open it as a
                 drawer would offer to do what has already happened. */}
-            {hasSelection && workspaceMode === "encoding" && (
+            {hasEnteredDesk && workspaceMode === "encoding" && (
               <Button
                 ref={catalogToggleRef}
                 type="button"
@@ -1413,7 +1577,7 @@ export function GuidedWorkspace({
           It names the active report rather than reducing it to an icon or a bare count: two
           reports in one session routinely share a progress figure, so a count alone could not
           say which one is open. */}
-      {workspaceMode === "encoding" && hasSelection && (
+      {workspaceMode === "encoding" && hasEnteredDesk && (
         <div className="shrink-0 min-[1152px]:hidden">
           <WorkQueueTrigger
             selectedSpecs={selectedSpecs}
@@ -1482,22 +1646,57 @@ export function GuidedWorkspace({
           report everywhere else - and the catalog retires to a drawer. */}
       <main className={`flex-1 overflow-hidden p-3 sm:px-4 sm:py-3 xl:px-6 ${WORKSPACE_CONTAINER}`}>
         {workspaceMode === "encoding" ? (
-          !hasSelection ? (
-            /* Zero-selected. Reached identically by a new session, by removing the last
-               examination from the queue, by "Close Other" leaving nothing, and by "Clear All" -
-               because it is derived from the selection rather than set by any of them. The
-               patient, the accession and the rest of the session are untouched underneath; only
-               the reports are gone. Capped rather than full-bleed: a 1680px-wide list of
-               seventeen examinations is harder to read than a 768px one, not easier. */
+          !hasEnteredDesk ? (
+            /* Selection. Reached by a new session, by removing the last examination from the
+               queue, by "Close Other" leaving nothing, and by "Clear All". The patient, the
+               accession and the rest of the session are untouched underneath; only the reports
+               are gone. Capped rather than full-bleed: a 1680px-wide list of seventeen
+               examinations is harder to read than a 768px one, not easier.
+
+               The catalog no longer disappears when the first examination is chosen. Ordering a
+               panel of tests is one continuous act, so it stays until the operator says they are
+               finished with it - which is what the bar below is for. */
             <div ref={fullCatalogRef} className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-              <ExaminationCatalog
-                allTemplates={allActiveTemplates}
-                selectedTemplateCodes={selectedTemplateCodes}
-                activeTemplateCode={activeTemplateCode}
-                onSelectTemplate={setActiveTemplateCode}
-                onToggleTemplateSelection={handleToggleTemplateSelection}
-                headingLevel={2}
-              />
+              <div className="min-h-0 flex-1">
+                <ExaminationCatalog
+                  allTemplates={allActiveTemplates}
+                  selectedTemplateCodes={selectedTemplateCodes}
+                  activeTemplateCode={activeTemplateCode}
+                  onSelectTemplate={setActiveTemplateCode}
+                  onToggleTemplateSelection={handleToggleTemplateSelection}
+                  headingLevel={2}
+                />
+              </div>
+
+              {/* The continuation bar. Outside the scrolling catalog and always on screen, so the
+                  way forward never depends on scrolling to the end of seventeen examinations.
+                  The count is stated in words beside the control rather than only inside it, so
+                  it is readable without operating anything. */}
+              <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-brand-border bg-brand-card px-3 py-2.5 shadow-low">
+                <p
+                  // Polite, so each addition is announced without interrupting a screen reader
+                  // mid-row. The sentence changes only when the count does.
+                  role="status"
+                  className="min-w-0 text-[13px] font-medium text-brand-text"
+                >
+                  {selectedTemplateCodes.length === 0
+                    ? "No examinations selected yet"
+                    : selectedTemplateCodes.length === 1
+                      ? "1 examination selected"
+                      : `${selectedTemplateCodes.length} examinations selected`}
+                </p>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  disabled={!hasSelection}
+                  onClick={() => setHasEnteredDesk(true)}
+                  className="shrink-0"
+                >
+                  Continue with examinations
+                  <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex h-full min-h-0 gap-3 overflow-hidden">
@@ -1645,16 +1844,28 @@ export function GuidedWorkspace({
             aria-label="Examination Catalog"
             className="fixed inset-y-0 left-0 z-50 flex w-[min(24rem,88vw)] max-w-full flex-col overflow-hidden border-r border-brand-border-strong bg-brand-canvas shadow-overlay"
           >
-            <div className="flex h-14 shrink-0 items-center justify-end border-b border-brand-border-strong bg-brand-structural px-1.5">
+            {/* Done leads and is a labelled control, not only a glyph: this drawer is now a
+                place the operator stays and adds several examinations, so the way out has to be
+                obvious and permanent. It sits in the fixed header rather than after the list, so
+                it is reachable without scrolling past seventeen examinations, and it stays the
+                first focusable node the trap lands on. The count travels with it, so the drawer
+                states what has been added without the operator closing it to find out. */}
+            <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-brand-border-strong bg-brand-structural px-2">
+              <p role="status" className="min-w-0 truncate pl-1 text-xs font-medium text-brand-text-muted">
+                {selectedTemplateCodes.length === 1
+                  ? "1 selected"
+                  : `${selectedTemplateCodes.length} selected`}
+              </p>
               <Button
                 type="button"
-                variant="ghost"
-                size="lg"
+                variant="primary"
+                size="sm"
                 onClick={handleCloseCatalogDrawer}
-                className="h-11 w-11 shrink-0 px-0"
-                aria-label="Close Examination Catalog"
+                className="h-11 shrink-0 px-3.5"
+                aria-label="Done adding examinations"
               >
-                <X aria-hidden="true" className="h-5 w-5" />
+                <Check aria-hidden="true" className="h-4 w-4" />
+                Done
               </Button>
             </div>
             <div className="min-h-0 flex-1 p-2">
@@ -1662,10 +1873,11 @@ export function GuidedWorkspace({
                 allTemplates={allActiveTemplates}
                 selectedTemplateCodes={selectedTemplateCodes}
                 activeTemplateCode={activeTemplateCode}
-                onSelectTemplate={(code) => {
-                  setActiveTemplateCode(code);
-                  setIsMobileCatalogOpen(false);
-                }}
+                // Activating a row no longer closes the drawer. Adding an examination used to
+                // dismiss the catalog, so a visit needing five tests cost five round trips
+                // through "Add examinations". The drawer now closes only through Done, Escape or
+                // the backdrop - an explicit dismissal, never a side effect of a selection.
+                onSelectTemplate={setActiveTemplateCode}
                 onToggleTemplateSelection={handleToggleTemplateSelection}
               />
             </div>

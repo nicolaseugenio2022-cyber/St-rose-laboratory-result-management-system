@@ -59,11 +59,25 @@
  *     the audit service through a helper would drop its outcome values with no signal;
  *   - the invariant 8 details-cell locator takes the first right-aligned cell without a uniqueness
  *     guard (exactly one exists today);
- *   - the render-loop checks are bound to the mapping callback, so a conditional or block-bodied
- *     return is caught, and the filter ban covers the whole `Recorded detail` section, so a
- *     `.filter(` before the map, inside the callback, or chained onto its result is caught too.
- *     A withholding written somewhere other than that section - in `DetailSection` or `DetailRow`
- *     themselves - would not be;
+ *   - the render-loop checks assert the allowed shape rather than enumerating prohibited
+ *     transforms, so an interposed call is caught whatever it is named, as is a conditional or
+ *     block-bodied callback and a dot-notation call chained onto the mapped rows. They are
+ *     NECESSARY conditions, not a sufficient one, and three withholding shapes still satisfy all
+ *     of them: a prefix WRAPPER around the map expression
+ *     (`firstFive(Object.entries(...).map(cb), 5)`), which is neither interposed nor chained; a
+ *     post-map computed member (`))[TRANSFORM](...)`) or index (`))[0]`), because the chain check
+ *     matches dot notation only; and any withholding written OUTSIDE this section at all - a
+ *     narrowed `setSelectedEvent`, a `DetailRow` that returns null for some rows, a `children`
+ *     expression that blanks unlabelled values, the ternary condition guarding the panel, or
+ *     `redactDetails` in `audit-read-service.ts` dropping keys instead of masking values. That
+ *     last group is the cost of scoping the assertions honestly to what they can actually see,
+ *     and it is the residual left by retiring the raw `JSON.stringify` payload;
+ *   - the label-fallback check is a 120-character proximity match, not a structural one, so
+ *     `... : ""} title={humanizeIdentifier(key)}` satisfies it while the visible label is blank,
+ *     and ordinary reformatting can push the two anchors past the window;
+ *   - the chain check reads everything after the first `</DetailRow>` to the end of the section,
+ *     which is mostly the empty-state branch, so a member call added there - an i18n lookup, a
+ *     `.toUpperCase()`, a second `DetailRow` - fails it without anything being withheld;
  *   - ONE locator still scans the whole file rather than a bounded region and takes the first
  *     match with no uniqueness guard: the invariant 7 Outcome cell. It occurs exactly once today,
  *     so the assertion inspects what it names - but nothing enforces that, and this is the same
@@ -916,40 +930,55 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
     "details panel Recorded detail section"
   );
 
-  // Bound to the mapping CALLBACK, not to the span in front of it.
+  // Stated positively, because the negative form does not converge.
   //
-  // Banning `.filter(` between `Object.entries` and `.map(` only ever caught the most obvious way
-  // to drop a key. A callback is free to return null for whichever keys it likes - and an early
-  // return inside it satisfies every assertion that only inspects what comes before `.map(`, while
-  // the panel silently withholds recorded audit fields. That is the exact outcome this guarantee
-  // exists to prevent, so "we banned one spelling of it" is not enough now that the raw payload no
-  // longer sits behind the curated view as a second surface.
+  // Successive revisions of this check banned `.filter(` in one more position each time - before
+  // the map, then inside the callback, then chained onto its result - and every version was
+  // bypassable by the next spelling: `.slice(`, `.reduce(`, `.splice(` all withhold keys just as
+  // effectively. Enumerating prohibited transforms is a list that never finishes, and a list that
+  // never finishes is a guarantee that is always one name behind.
   //
-  // Extracting through to `</DetailRow>` puts the whole callback under the assertions below, and
-  // requiring the arrow to return a DetailRow DIRECTLY - a parenthesised JSX body, not a block and
-  // not a conditional - removes the room a selective return needs.
+  // So the shape that IS allowed is asserted instead. INTERPOSING anything between the entries
+  // expression and `.map(` breaks the first assertion whatever it is called - `.filter(`,
+  // `.slice(`, `.reduce(`, `.splice(`, or a transform nobody has thought of yet - without the
+  // assertion knowing a single method name. A block-bodied or conditional callback breaks the
+  // second, and a dot-notation call chained onto the mapped rows breaks the third.
+  //
+  // What this does NOT establish, stated plainly so the next reader does not over-trust it: these
+  // are necessary conditions, not a sufficient one. A PREFIX WRAPPER is neither interposed nor
+  // chained - `firstFive(Object.entries(selectedEvent.details).map(cb), 5)` satisfies all of them
+  // and still withholds rows - and the third assertion sees dot-notation calls only, so a computed
+  // member (`))[TRANSFORM](...)`) or an index (`))[0]`) passes it too. See KNOWN LIMITATION 5.
+  const DIRECT_MAP = "Object.entries(selectedEvent.details).map(";
+  assert(
+    recordedDetailSection.includes(DIRECT_MAP),
+    `the recorded detail entries must map DIRECTLY from Object.entries(selectedEvent.details); any interposed transform (.filter(, .slice(, .reduce(, .splice( or any other) would withhold recorded keys from the operator (expected the literal: ${DIRECT_MAP})`
+  );
+
   const detailRowCallback = regionIn(
     recordedDetailSection,
-    "Object.entries(selectedEvent.details)",
+    DIRECT_MAP,
     "</DetailRow>",
     "recorded detail mapping callback"
   );
 
+  // A parenthesised JSX body, not a block and not a conditional: that is what leaves a selective
+  // `return null` nowhere to live.
   assert(
-    /\.map\(\s*\([^)]*\)\s*=>\s*\(\s*<DetailRow\b/.test(detailRowCallback),
-    "the recorded detail entries must map DIRECTLY to a DetailRow; a block body or a conditional return could withhold selected keys while satisfying every other assertion here"
+    /^\s*\([^)]*\)\s*=>\s*\(\s*<DetailRow\b/.test(detailRowCallback.slice(DIRECT_MAP.length)),
+    "the recorded detail callback must return a DetailRow directly; a block body or a conditional return could withhold selected keys while satisfying every other assertion here"
   );
-  // Banned across the WHOLE section, not just the callback.
-  //
-  // Scoping this one to the callback still left the row out: the callback region ends at
-  // `</DetailRow>`, so a `.filter(...)` chained onto the RESULT of the map sits just outside it and
-  // could drop rendered rows while every assertion here passed. Pre-map, inside the callback, and
-  // post-map are three spellings of the same withholding, so the ban covers the section that
-  // contains all three. The section renders nothing that legitimately filters.
+
+  // Nothing chained onto the mapped rows. The map's result is rendered as it is, so a post-map
+  // transform - by any name - cannot drop rows that the callback produced.
+  const afterMappedRows = recordedDetailSection.slice(
+    recordedDetailSection.indexOf("</DetailRow>") + "</DetailRow>".length
+  );
   assert(
-    !recordedDetailSection.includes(".filter("),
-    "the details panel must not filter recorded detail entries; every key the server sent must reach the operator"
+    !/\.\s*[A-Za-z_$][\w$]*\s*\(/.test(afterMappedRows),
+    "nothing may be called on the mapped recorded-detail rows; a post-map transform would drop rows the callback already produced"
   );
+
   // Scoped to the same callback, so the fallback that is checked is the one that actually labels
   // the rendered row - not a lookalike expression elsewhere in the section.
   assert(

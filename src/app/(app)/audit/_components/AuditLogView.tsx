@@ -572,6 +572,19 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   // A background request does not set `loading`, so the tick cannot use that to see one of its own
   // still in flight. Without this a slow sync would be joined by the next tick's.
   const backgroundSyncInFlight = useRef(false);
+  /**
+   * What the records region announces, and the only thing it announces.
+   *
+   * Held as its own string rather than derived from `page`, because deriving it is what made the
+   * region speak on its own: a background sync sets `page`, new audit rows arrive continuously, so
+   * the total changed and the polite region read the range out with nobody having asked for it.
+   * Gating on `loading` did not help - a background sync deliberately does not set that either.
+   *
+   * Only a user-initiated load writes here, so the region is silent unless the operator did
+   * something. The same range stays permanently visible in the pagination footer, which is plain
+   * text and not a live region, so nothing is lost from the page - only from the announcements.
+   */
+  const [announcement, setAnnouncement] = useState("");
 
   const cancelPendingLoad = useCallback(() => {
     if (pendingLoad.current !== null) {
@@ -624,6 +637,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         setLoading(true);
         setError(null);
         setShowingStaleRows(false);
+        setAnnouncement("Loading audit events");
       }
 
       if (criteriaChanged) {
@@ -677,6 +691,16 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           setSyncPaused(false);
           setError(null);
           setShowingStaleRows(false);
+          if (!isBackground) {
+            // Announced only because the operator asked for this load. Derived from the response
+            // rather than from render state so it describes the page that just arrived.
+            const first = nextPage.total === 0 ? 0 : nextOffset + 1;
+            const last =
+              nextPage.total === 0
+                ? 0
+                : Math.min(nextOffset + nextPage.events.length, nextPage.total);
+            setAnnouncement(`Showing ${first} to ${last} of ${nextPage.total} events`);
+          }
         }
       } catch {
         if (requestId === requestSequence.current) {
@@ -700,6 +724,10 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             // Rows survive only when they still answer the criteria on screen, and then they are
             // labelled rather than passed off as current.
             setShowingStaleRows(!options.criteriaChanged);
+            // Cleared, not replaced: the destructive Alert that renders for this failure is itself
+            // role="alert", so announcing the same failure here would say it twice - and leaving
+            // "Loading audit events" standing would state something that is no longer true.
+            setAnnouncement("");
           }
         }
       } finally {
@@ -1028,9 +1056,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           twice.
         */}
         <span role="status" aria-live="polite" className="sr-only">
-          {loading
-            ? "Loading audit events"
-            : `Showing ${firstVisible} to ${lastVisible} of ${page.total} events`}
+          {announcement}
         </span>
         {error && (
           <Alert variant="destructive">

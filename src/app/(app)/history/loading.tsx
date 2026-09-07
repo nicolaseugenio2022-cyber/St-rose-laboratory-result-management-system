@@ -1,10 +1,12 @@
 import React from "react";
 import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 
-// Mirrors SessionHistoryView: five fixed-proportion columns, so the skeleton has the resolved
+// Mirrors SessionHistoryView: four fixed-proportion columns, so the skeleton has the resolved
 // geometry of the table it stands in for and swapping in the rows causes no layout shift.
-const TABLE_COLUMN_COUNT = 5;
-const COLUMN_WIDTH_CLASS = ["w-[19%]", "w-[27%]", "w-[14%]", "w-[18%]", "w-[22%]"];
+// Duplicated rather than imported: this is a server component and that constant lives in a
+// client module. It must be changed with the view's own COLUMN_WIDTH_CLASS.
+const TABLE_COLUMN_COUNT = 4;
+const COLUMN_WIDTH_CLASS = ["w-[34%]", "w-[20%]", "w-[22%]", "w-[24%]"];
 
 export default function HistoryLoading() {
   return (
@@ -51,7 +53,12 @@ export default function HistoryLoading() {
                   {Array.from({ length: TABLE_COLUMN_COUNT }).map((__, columnIndex) => (
                     <td key={columnIndex} className="px-3 py-2 align-middle">
                       <Skeleton className="h-4 w-full" />
-                      {columnIndex === 1 && <Skeleton className="mt-1 hidden h-3 w-2/3 lg:block" />}
+                      {columnIndex === 0 && (
+                        <>
+                          <Skeleton className="mt-1 h-3 w-3/4" />
+                          <Skeleton className="mt-1 hidden h-3 w-2/3 lg:block" />
+                        </>
+                      )}
                     </td>
                   ))}
                 </tr>

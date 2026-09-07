@@ -12,43 +12,43 @@ import { Skeleton } from "@/components/ui/Skeleton";
  */
 export default function PersonnelLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading personnel directory" className="space-y-4">
-      {/* Summary panel: structural header band, then the metric strip */}
-      <section className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low">
-        <div className="flex flex-col gap-2 border-b border-brand-border bg-brand-structural px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <Skeleton className="h-3 w-80 max-w-full" />
-          <Skeleton className="h-11 w-32 shrink-0 sm:h-8" />
-        </div>
-        <div className="grid grid-cols-2 gap-px bg-brand-border sm:grid-cols-4">
+    <div aria-busy="true" aria-label="Loading personnel directory" className="space-y-4 pb-6">
+      {/* Summary strip: the four counts, number over label - the same strip the two account
+          directories open with. */}
+      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-7">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="flex flex-col gap-1 bg-brand-card px-3.5 py-3">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-6 w-10" />
+            <div key={index} className="space-y-1">
+              <Skeleton className="h-5 w-10" />
+              <Skeleton className="h-3 w-24" />
             </div>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* Filter toolbar: each control carries a visible label above it */}
-      <section className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="min-w-0 flex-1 space-y-1.5">
+      {/* Filter band: the header row and the Add action, then search, role and status, then the
+          result count. Each control carries a visible label above it. */}
+      <section className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-11 w-36 shrink-0 sm:h-8" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0 space-y-1.5 lg:col-span-2">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="h-11 w-full sm:h-9" />
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:flex lg:shrink-0">
-            <div className="space-y-1.5 lg:w-44">
-              <Skeleton className="h-3 w-12" />
-              <Skeleton className="h-11 w-full sm:h-9" />
-            </div>
-            <div className="space-y-1.5 lg:w-36">
-              <Skeleton className="h-3 w-14" />
-              <Skeleton className="h-11 w-full sm:h-9" />
-            </div>
+          <div className="space-y-1.5">
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-11 w-full sm:h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Skeleton className="h-3 w-14" />
+            <Skeleton className="h-11 w-full sm:h-9" />
           </div>
         </div>
-        <div className="mt-2.5 border-t border-brand-border pt-2">
-          <Skeleton className="h-3 w-24" />
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-3 w-40" />
         </div>
       </section>
 

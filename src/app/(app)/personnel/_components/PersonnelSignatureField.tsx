@@ -277,8 +277,8 @@ export function PersonnelSignatureField({
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-brand-border bg-brand-surface px-2 py-0.5 text-[11px] text-brand-text-muted">
                   <PenOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                  <span aria-hidden="true">No image</span>
-                  <span className="sr-only">No signature image</span>
+                  <span aria-hidden="true">None on file</span>
+                  <span className="sr-only">No signature on file</span>
                 </span>
               )}
             </div>
@@ -291,11 +291,16 @@ export function PersonnelSignatureField({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {/* Driven by the button beside it, so it is out of the Tab order - but a screen
+                reader's form-controls list still lands on it, where it previously announced
+                itself with no name at all. */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/png"
               className="hidden"
+              tabIndex={-1}
+              aria-label={`Choose a PNG signature image for ${personnelName}`}
               disabled={isBusy}
               onChange={handleFileInputChange}
             />
@@ -307,6 +312,7 @@ export function PersonnelSignatureField({
               disabled={isBusy}
               onClick={handleBrowseClick}
               className="min-h-11 sm:min-h-8"
+              aria-label={`${hasSignature ? "Replace" : "Upload"} the signature image for ${personnelName}`}
             >
               {!isUploading && <Upload aria-hidden="true" className="h-3.5 w-3.5" />}
               <span className="text-xs">
@@ -322,6 +328,7 @@ export function PersonnelSignatureField({
                 disabled={isBusy}
                 onClick={openRemovalConfirmation}
                 className="min-h-11 text-brand-danger hover:border-brand-danger-border hover:bg-brand-danger-bg sm:min-h-8"
+                aria-label={`Remove the signature image for ${personnelName}`}
               >
                 {!isRemoving && <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
                 <span className="text-xs">{isRemoving ? "Removing..." : "Remove"}</span>

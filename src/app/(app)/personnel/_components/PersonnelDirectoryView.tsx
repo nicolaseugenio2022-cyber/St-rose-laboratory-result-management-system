@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Filter, Plus, Search, ShieldCheck, X } from "lucide-react";
 import type { PersonnelDirectoryEntry } from "@/features/personnel/personnel-directory-entry";
 import {
   PersonnelFormValues,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SummaryBar } from "@/components/ui/SummaryBar";
 import { PersonnelTable, formatPersonnelName } from "./PersonnelTable";
 import { PersonnelFormModal } from "./PersonnelFormModal";
 
@@ -39,29 +40,6 @@ const STATUS_FILTER_OPTIONS = [
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-/**
- * One figure in the summary strip.
- *
- * The same tile the dashboards draw: a small uppercase label over a navy figure, on a white
- * cell that the strip's one-pixel gaps separate. Deliberately plain beyond that: no icon, no
- * shadow, and no emphasis colour. These are four neutral counts describing the shape of the
- * roster, and dressing one of them differently would assert a problem the directory has no
- * way to substantiate.
- *
- * A description list rather than stacked divs, so each number is announced with the thing it
- * counts.
- */
-function SummaryFigure({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 bg-brand-card px-3.5 py-3">
-      <dt className="min-w-0 break-words text-[10.5px] font-semibold uppercase leading-tight tracking-wide text-brand-text-muted">
-        {label}
-      </dt>
-      <dd className="text-xl font-bold leading-tight tabular-nums text-brand-navy">{value}</dd>
-    </div>
-  );
 }
 
 /**
@@ -170,6 +148,10 @@ export function PersonnelDirectoryView({
 
   const hasActiveFilters =
     searchQuery.trim() !== "" || roleFilter !== "ALL" || statusFilter !== "ALL";
+  const activeFilterCount =
+    (searchQuery.trim() !== "" ? 1 : 0) +
+    (roleFilter !== "ALL" ? 1 : 0) +
+    (statusFilter !== "ALL" ? 1 : 0);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery("");
@@ -243,44 +225,22 @@ export function PersonnelDirectoryView({
   const resultCount = filteredPersonnel.length;
 
   return (
-    <div className="space-y-4">
-      {/* ── Context line + neutral counts, one panel ──────────────────────────
-          No in-body page title: the app shell already renders "Personnel
-          Directory" as the page <h1>, and repeating it here gave the route two
-          competing headings for the same thing. What is left is the sentence
-          that says what the roster is for, in the panel's structural header
-          band, and the counts that describe it, as a metric strip below. */}
-      <section
-        aria-label="Directory summary"
-        className="overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-low"
-      >
-        <div className="flex flex-col gap-2 border-b border-brand-border bg-brand-structural px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <p className="min-w-0 text-xs leading-snug text-brand-text-muted">
-            {canManage
-              ? "PRC-licensed Pathologists and Medical Technologists who sign laboratory reports."
-              : "PRC-licensed Pathologists and Medical Technologists who sign laboratory reports. You have read-only access."}
-          </p>
-          {canManage && (
-            <Button
-              onClick={handleOpenCreate}
-              size="sm"
-              className="min-h-11 shrink-0 gap-1.5 self-start sm:min-h-8 sm:self-auto"
-            >
-              <Plus aria-hidden="true" className="h-4 w-4" />
-              <span>Add Personnel</span>
-            </Button>
-          )}
-        </div>
+    <div className="space-y-4 pb-6">
+      {/* No in-body page title: the app shell already renders "Personnel Directory" as the page
+          <h1>, and repeating it here gave the route two competing headings for the same thing.
 
-        {/* The strip's own background shows through the one-pixel gaps between the white
-            tiles, which is what draws the separators without a border on every cell. */}
-        <dl className="grid grid-cols-2 gap-px bg-brand-border sm:grid-cols-4">
-          <SummaryFigure label="Total" value={summary.total} />
-          <SummaryFigure label="Active" value={summary.active} />
-          <SummaryFigure label="Pathologists" value={summary.pathologists} />
-          <SummaryFigure label="Med. Technologists" value={summary.medtechs} />
-        </dl>
-      </section>
+          Read-only callers get the boundary stated once, plainly, where the Add control would
+          otherwise be - the absence of a control reads as a missing feature unless something
+          says it is deliberate. */}
+      {!canManage && (
+        <div className="flex items-start gap-2.5 rounded-md border border-brand-info-border bg-brand-info-bg px-3 py-2.5">
+          <ShieldCheck aria-hidden="true" className="mt-px h-4 w-4 shrink-0 text-brand-info" />
+          <p className="text-xs leading-relaxed text-brand-info">
+            <span className="font-semibold">Read-only directory access.</span> Personnel records
+            and signature images are maintained by Administrators.
+          </p>
+        </div>
+      )}
 
       {notice && (
         <Alert variant="destructive" onDismiss={() => setNotice(null)}>
@@ -294,17 +254,73 @@ export function PersonnelDirectoryView({
         </Alert>
       )}
 
+      {/* Four counts, all derived from the roster already in hand. The same strip the two account
+          directories open with, so the three administrative modules state their shape identically
+          rather than each inventing a panel.
+
+          Gated on `!isLoading`, which is the only one of the load facts that means "an answer
+          arrived". During the initial in-flight load, zero figures would mislead the reader into
+          thinking the directory is genuinely empty when it has not resolved yet. A successful
+          empty response still shows its zeros, because an answer did arrive. */}
+      {!isLoading && (
+        <SummaryBar
+          label="Personnel directory summary"
+          figures={[
+            { label: "Personnel", value: summary.total },
+            { label: "Active", value: summary.active, tone: "success" },
+            { label: "Pathologists", value: summary.pathologists },
+            { label: "Med. Technologists", value: summary.medtechs },
+          ]}
+          note="PRC-licensed personnel who sign laboratory reports."
+        />
+      )}
+
       {/* ── Search and filter toolbar ───────────────────────────────────────── */}
       <section
         aria-label="Search and filter personnel"
-        className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5"
+        className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5"
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Filter aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-text-subtle" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              Directory filters
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="text-[11px] text-brand-text-muted">{activeFilterCount} active</span>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearFilters}
+                className="min-h-11 sm:min-h-8"
+              >
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                onClick={handleOpenCreate}
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Add personnel
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* The label is written out here rather than passed to Input, because the search
               icon has to be positioned against the control alone - Input's own label would
               sit inside the same box and pull the icon off centre. The classes are the
               primitive's, so this label and the two Select labels stay identical. */}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 lg:col-span-2">
             <label
               htmlFor="personnel-search"
               className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted"
@@ -319,55 +335,36 @@ export function PersonnelDirectoryView({
               <Input
                 id="personnel-search"
                 type="search"
-                placeholder="Name, credentials, or PRC licence..."
+                placeholder="Name, credentials, or PRC licence"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-9"
               />
             </div>
           </div>
-          {/* Widths live on the wrappers: Select forwards className to the <select> itself,
-              so a width passed as a prop would fight its own w-full container. */}
-          <div className="grid grid-cols-2 gap-3 lg:flex lg:shrink-0">
-            <div className="lg:w-44">
-              <Select
-                label="Role"
-                options={ROLE_FILTER_OPTIONS}
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value)}
-              />
-            </div>
-            <div className="lg:w-36">
-              <Select
-                label="Status"
-                options={STATUS_FILTER_OPTIONS}
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              />
-            </div>
-          </div>
+          <Select
+            id="personnel-role-filter"
+            label="Role"
+            options={ROLE_FILTER_OPTIONS}
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+          />
+          <Select
+            id="personnel-status-filter"
+            label="Status"
+            options={STATUS_FILTER_OPTIONS}
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          />
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-brand-border pt-2">
-          {/* Announced politely: a count that changes as the user types is useful to hear, but
-              not urgent enough to interrupt them mid-keystroke. */}
-          <p aria-live="polite" className="text-[11px] text-brand-text-muted">
-            <span className="font-semibold tabular-nums text-brand-text">{resultCount}</span>
-            {resultCount === 1 ? " record" : " records"}
-            {hasActiveFilters && <span> of {summary.total}</span>}
-          </p>
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClearFilters}
-              className="min-h-11 gap-1 sm:min-h-8"
-            >
-              <X aria-hidden="true" className="h-3.5 w-3.5" />
-              <span className="text-xs">Clear filters</span>
-            </Button>
-          )}
-        </div>
+        {/* Announced politely: a count that changes as the user types is useful to hear, but
+            not urgent enough to interrupt them mid-keystroke. */}
+        <p aria-live="polite" className="text-[11px] text-brand-text-muted">
+          Showing <span className="font-semibold tabular-nums text-brand-text">{resultCount}</span>{" "}
+          of <span className="font-semibold tabular-nums text-brand-text">{summary.total}</span>{" "}
+          {summary.total === 1 ? "record" : "records"}
+        </p>
       </section>
 
       {isLoading ? (

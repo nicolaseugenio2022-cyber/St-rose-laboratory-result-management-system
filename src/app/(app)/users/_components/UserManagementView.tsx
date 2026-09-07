@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, RefreshCw, Search, X } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Filter, Plus, RefreshCw, Search, X } from "lucide-react";
 import { UserRole } from "@/types/user";
 import { resetUserPasswordAction } from "@/features/server-boundary/user-account-actions";
 import { createUserApi, deleteUserApi, fetchUsers, updateUserApi } from "@/lib/api/users";
@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { SummaryBar } from "@/components/ui/SummaryBar";
 import type {
   AccountDirectory,
   AdminAccountEntry,
@@ -35,6 +36,20 @@ const ROLE_FILTER_OPTIONS = [
   { label: "All roles", value: "ALL" },
   { label: ROLE_LABEL.Admin, value: "Admin" },
   { label: ROLE_LABEL.User, value: "User" },
+];
+
+/**
+ * Account lifecycle, in the same two words the row badge prints.
+ *
+ * The directory already carries `status` on every entry, so this narrows what is on screen and
+ * asks the server for nothing. Deactivated accounts are the ones an administrator most often
+ * needs to isolate - they are the accounts that can no longer sign in - and before this the only
+ * way to find them was to read every row.
+ */
+const STATUS_FILTER_OPTIONS = [
+  { label: "All statuses", value: "ALL" },
+  { label: "Active", value: "Active" },
+  { label: "Inactive", value: "Inactive" },
 ];
 
 const REFRESH_FAILED_MESSAGE =
@@ -83,9 +98,17 @@ export function UserManagementView({
   const [hasLoadedDirectory, setHasLoadedDirectory] = useState(initialDirectory !== undefined);
   const [loadFailed, setLoadFailed] = useState(false);
   const [isLoadingDirectory, setIsLoadingDirectory] = useState(initialDirectory === undefined);
-  const users: AdminAccountEntry[] = directory.access === "manage" ? directory.entries : [];
+  // Memoised, not derived inline. The read-only branch yields a fresh `[]` on every render, and
+  // this array is a dependency of the filtering memo below - so an inline derivation changed
+  // identity every render and defeated that memo entirely, which is exactly what
+  // react-hooks/exhaustive-deps reports. Keyed to `directory`, the one thing it actually depends on.
+  const users: AdminAccountEntry[] = useMemo(
+    () => (directory.access === "manage" ? directory.entries : []),
+    [directory]
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminAccountEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -271,24 +294,41 @@ export function UserManagementView({
     }
   };
 
-  // Filter users based on username search query and role filter
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "ALL" || user.role === roleFilter;
+  // Username search plus the two structured filters, all three over data already on screen.
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      if (roleFilter !== "ALL" && user.role !== roleFilter) return false;
+      if (statusFilter !== "ALL" && user.status !== statusFilter) return false;
+      if (!query) return true;
+      return user.username.toLowerCase().includes(query);
+    });
+  }, [users, searchQuery, roleFilter, statusFilter]);
 
-    return matchesSearch && matchesRole;
-  });
-
-  const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "ALL";
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || roleFilter !== "ALL" || statusFilter !== "ALL";
+  const activeFilterCount =
+    (searchQuery.trim() !== "" ? 1 : 0) +
+    (roleFilter !== "ALL" ? 1 : 0) +
+    (statusFilter !== "ALL" ? 1 : 0);
 
   const clearDirectoryFilters = () => {
     setSearchQuery("");
     setRoleFilter("ALL");
+    setStatusFilter("ALL");
   };
 
   const activeAdminCount = users.filter(
     (user) => user.role === "Admin" && user.status === "Active"
   ).length;
+
+  // The standing shape of the directory, counted from the rows already delivered. Nothing here
+  // is fetched, derived from a field the projection does not carry, or filtered - these describe
+  // the whole directory, which is what makes them worth stating above a filtered table.
+  const totalAccounts = users.length;
+  const activeAccounts = users.filter((user) => user.status === "Active").length;
+  const inactiveAccounts = totalAccounts - activeAccounts;
+  const administratorCount = users.filter((user) => user.role === "Admin").length;
 
   // A load failure with nothing behind it is a different state from a refresh failure over rows
   // that are still perfectly readable. The first replaces the directory; the second annotates it.
@@ -329,7 +369,7 @@ export function UserManagementView({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       {loadErrorMessage && (
         <Alert
           variant={directoryUnavailable ? "destructive" : "warning"}
@@ -363,12 +403,78 @@ export function UserManagementView({
         <Alert variant="destructive" onDismiss={() => setActionError(null)}>{actionError}</Alert>
       )}
 
+      {/* What the directory contains, before what is currently shown of it. Counted from the rows
+          already delivered - no field the Admin projection does not carry, and no second request.
+
+          Gated on `hasLoadedDirectory`, which is the only one of the three load facts that means
+          "an answer arrived". `!directoryUnavailable` did NOT achieve what this comment claims:
+          that flag turns true only once a load has FAILED, so during the very first in-flight
+          load - the window a transient server-side read failure opens - it was false and the
+          strip published four zeros as though the directory were genuinely empty. A successful
+          empty directory still shows its zeros, because an answer did arrive. */}
+      {hasLoadedDirectory && (
+        <SummaryBar
+          label="Staff account summary"
+          figures={[
+            { label: "Accounts", value: totalAccounts },
+            { label: "Active", value: activeAccounts, tone: "success" },
+            {
+              label: "Inactive",
+              value: inactiveAccounts,
+              tone: inactiveAccounts > 0 ? "warning" : "muted",
+            },
+            { label: "Administrators", value: administratorCount },
+          ]}
+          note={
+            administratorCount > 0 && activeAdminCount === 1
+              ? "One Administrator account is Active. It cannot be deactivated or deleted while it is the last one."
+              : undefined
+          }
+        />
+      )}
+
       {/* Structural: the directory controls sit behind the records rather than presenting as
           another content card. Add staff account lives here as the page's primary action -
           the shell already supplies the title this block used to repeat. */}
-      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+      <div className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Filter aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-text-subtle" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              Directory filters
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="text-[11px] text-brand-text-muted">{activeFilterCount} active</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {hasActiveFilters && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+                onClick={clearDirectoryFilters}
+              >
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenCreate}
+              className="min-h-11 sm:min-h-8"
+              disabled={isMutating}
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              Add staff account
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative min-w-0 lg:col-span-2">
             {/* A real label, not a placeholder: a placeholder disappears the moment the field
                 is used, taking the field's name with it. */}
             <Input
@@ -386,45 +492,27 @@ export function UserManagementView({
               className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
             />
           </div>
-          <div className="w-full shrink-0 lg:w-52">
-            <Select
-              id="user-directory-role"
-              label="Role"
-              options={ROLE_FILTER_OPTIONS}
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-            />
-          </div>
-          {/* Medium controls line up with the 36px fields beside them on a desktop; the 44px
-              minimum below sm keeps them a touch target. */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:ml-auto">
-            {hasActiveFilters && (
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 sm:min-h-9"
-                onClick={clearDirectoryFilters}
-              >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-                Clear
-              </Button>
-            )}
-            <Button
-              type="button"
-              onClick={handleOpenCreate}
-              className="min-h-11 sm:min-h-9"
-              disabled={isMutating}
-            >
-              <Plus aria-hidden="true" className="h-4 w-4" />
-              Add staff account
-            </Button>
-          </div>
+          <Select
+            id="user-directory-role"
+            label="Role"
+            options={ROLE_FILTER_OPTIONS}
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+          />
+          <Select
+            id="user-directory-status"
+            label="Status"
+            options={STATUS_FILTER_OPTIONS}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          />
         </div>
+
         {/* One live region, carrying whichever of the three facts is currently true. A pending
             status change is announced here and stated in words, which is also what explains the
             other rows' held toggles - the operator is never left with a dead control and no
             reason for it. */}
-        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
+        <p className="text-[11px] text-brand-text-muted" aria-live="polite">
           {directoryUnavailable ? (
             "Account totals are unavailable until the directory loads."
           ) : statusUpdatingUser ? (

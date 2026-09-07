@@ -1,14 +1,27 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AlertTriangle, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Filter,
+  MinusCircle,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Users,
+  X,
+} from "lucide-react";
 import type { DeveloperDirectoryEntry } from "@/features/users/account-directory-entry";
+import type { UserStatus } from "@/types/user";
+import { cn } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SummaryBar } from "@/components/ui/SummaryBar";
 import {
   Table,
   TableHeader,
@@ -56,6 +69,37 @@ const ROLE_FILTER_OPTIONS = [
   { label: ROLE_LABEL.Developer, value: "Developer" },
 ];
 
+/** Account lifecycle, in the two words the row badge prints. Narrows rows already on screen. */
+const STATUS_FILTER_OPTIONS = [
+  { label: "All statuses", value: "ALL" },
+  { label: "Active", value: "Active" },
+  { label: "Inactive", value: "Inactive" },
+];
+
+/**
+ * Status as a word plus a shape, matching the managed directory exactly.
+ *
+ * The two views of the same accounts must not describe a lifecycle state two different ways -
+ * a Developer reading this table and an Administrator reading the managed one are looking at
+ * the same records.
+ */
+function AccountStatus({ status }: { status: UserStatus }) {
+  const isActive = status === "Active";
+  const Icon = isActive ? CheckCircle2 : MinusCircle;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          isActive ? "text-brand-success" : "text-brand-text-subtle"
+        )}
+      />
+      <StatusBadge status={status} size="sm" />
+    </span>
+  );
+}
+
 export function ReadOnlyUserDirectory({
   entries,
   loadError,
@@ -66,25 +110,37 @@ export function ReadOnlyUserDirectory({
 }: ReadOnlyUserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return entries.filter((entry) => {
       if (roleFilter !== "ALL" && entry.role !== roleFilter) return false;
+      if (statusFilter !== "ALL" && entry.status !== statusFilter) return false;
       if (!query) return true;
       return entry.username.toLowerCase().includes(query);
     });
-  }, [entries, roleFilter, searchQuery]);
+  }, [entries, roleFilter, statusFilter, searchQuery]);
 
-  const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "ALL";
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || roleFilter !== "ALL" || statusFilter !== "ALL";
+  const activeFilterCount =
+    (searchQuery.trim() !== "" ? 1 : 0) +
+    (roleFilter !== "ALL" ? 1 : 0) +
+    (statusFilter !== "ALL" ? 1 : 0);
 
   const clearFilters = () => {
     setSearchQuery("");
     setRoleFilter("ALL");
+    setStatusFilter("ALL");
   };
 
+  // Counted from the three fields this projection carries and nothing else. There is no created
+  // date and no identifier here, so there is no figure derived from one.
+  const activeCount = entries.filter((entry) => entry.status === "Active").length;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       {loadError && (
         <Alert
           variant={directoryUnavailable ? "destructive" : "warning"}
@@ -127,10 +183,49 @@ export function ReadOnlyUserDirectory({
         </p>
       </div>
 
-      {/* One structural toolbar: search, role filter, Clear, and the result count. */}
-      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+      {!directoryUnavailable && (
+        <SummaryBar
+          label="Account directory summary"
+          figures={[
+            { label: "Accounts", value: entries.length },
+            { label: "Active", value: activeCount, tone: "success" },
+            {
+              label: "Inactive",
+              value: entries.length - activeCount,
+              tone: entries.length - activeCount > 0 ? "warning" : "muted",
+            },
+          ]}
+        />
+      )}
+
+      {/* One structural toolbar: search, the two filters, Clear, and the result count. */}
+      <div className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Filter aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-text-subtle" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              Directory filters
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="text-[11px] text-brand-text-muted">{activeFilterCount} active</span>
+            )}
+          </div>
+          {hasActiveFilters && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 sm:min-h-8"
+              onClick={clearFilters}
+            >
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+              Clear filters
+            </Button>
+          )}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative min-w-0 lg:col-span-2">
             <Input
               id="readonly-directory-search"
               label="Search accounts"
@@ -146,30 +241,23 @@ export function ReadOnlyUserDirectory({
               className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
             />
           </div>
-          <div className="w-full shrink-0 lg:w-52">
-            <Select
-              id="readonly-directory-role"
-              label="Role"
-              options={ROLE_FILTER_OPTIONS}
-              value={roleFilter}
-              onChange={(event) => setRoleFilter(event.target.value)}
-            />
-          </div>
-          {hasActiveFilters && (
-            <div className="flex shrink-0 items-center lg:ml-auto">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 sm:min-h-9"
-                onClick={clearFilters}
-              >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-                Clear
-              </Button>
-            </div>
-          )}
+          <Select
+            id="readonly-directory-role"
+            label="Role"
+            options={ROLE_FILTER_OPTIONS}
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+          />
+          <Select
+            id="readonly-directory-status"
+            label="Status"
+            options={STATUS_FILTER_OPTIONS}
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          />
         </div>
-        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
+
+        <p className="text-[11px] text-brand-text-muted" aria-live="polite">
           {directoryUnavailable ? (
             "Account totals are unavailable until the directory loads."
           ) : (
@@ -219,12 +307,12 @@ export function ReadOnlyUserDirectory({
           />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={Users}
+            icon={hasActiveFilters ? Search : Users}
             headingLevel={3}
             title={hasActiveFilters ? "No accounts match these filters" : "No accounts to display"}
             description={
               hasActiveFilters
-                ? "No account matches the current search or role selection."
+                ? "No account matches the current search, role or status selection."
                 : "The account directory returned no records."
             }
             action={
@@ -266,7 +354,7 @@ export function ReadOnlyUserDirectory({
                         <RoleBadge role={entry.role} />
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={entry.status} size="sm" />
+                        <AccountStatus status={entry.status} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -278,7 +366,7 @@ export function ReadOnlyUserDirectory({
                 carries and nothing more. There is no id, no lifecycle metadata and no action
                 here because `DeveloperDirectoryEntry` carries none - the read-only boundary is
                 the same at every width. */}
-            <ul className="space-y-2 lg:hidden">
+            <ul className="space-y-2 lg:hidden" aria-label="Account directory">
               {filtered.map((entry) => (
                 <li
                   key={entry.username}
@@ -291,9 +379,11 @@ export function ReadOnlyUserDirectory({
                     <p className="min-w-0 break-all font-mono text-[13px] font-semibold text-brand-text">
                       {entry.username}
                     </p>
-                    <StatusBadge status={entry.status} size="sm" className="shrink-0" />
+                    <span className="shrink-0">
+                      <AccountStatus status={entry.status} />
+                    </span>
                   </div>
-                  <dl className="flex items-center gap-2 px-3.5 pb-2.5">
+                  <dl className="flex items-center gap-2 border-t border-brand-border bg-brand-structural px-3.5 py-2">
                     <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
                       Role
                     </dt>

@@ -24,9 +24,23 @@ export interface UserFormProps {
   onSubmit: (data: CreateUserFormValues | UpdateUserFormValues) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
+  /**
+   * Raised whenever the form gains or loses unsaved edits.
+   *
+   * The dialog above owns dismissal - Escape, the backdrop and the close control all route
+   * through it - and it cannot see this form's fields. Without this signal a half-filled
+   * account form was discarded silently by a stray Escape, with nothing asked and nothing said.
+   */
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
-export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }: UserFormProps) {
+export function UserForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isLoading = false,
+  onDirtyChange,
+}: UserFormProps) {
   const isEditing = !!initialData;
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -38,7 +52,7 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
     reset,
     setError,
     watch,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateUserFormValues | UpdateUserFormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<
       CreateUserFormValues | UpdateUserFormValues
@@ -76,6 +90,13 @@ export function UserForm({ initialData, onSubmit, onCancel, isLoading = false }:
       });
     }
   }, [initialData, reset]);
+
+  // Reported rather than read: react-hook-form owns the comparison against the defaults, so a
+  // field typed into and then corrected back to its original value correctly stops counting as
+  // an unsaved edit, and closing it asks nothing.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const roleOptions = [
     { label: "Laboratory User", value: "User" },

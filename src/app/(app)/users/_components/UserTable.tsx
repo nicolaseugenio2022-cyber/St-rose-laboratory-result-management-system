@@ -2,10 +2,15 @@ import React from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  CheckCircle2,
   Edit2,
+  Info,
   KeyRound,
+  Loader2,
+  MinusCircle,
   Power,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   Users,
@@ -72,7 +77,7 @@ export interface UserTableProps {
   /** Whether the directory itself resolved. Only "ready" may report an empty directory. */
   loadState?: DirectoryLoadState;
   onRetryLoad?: () => void;
-  /** True when a search or role filter is narrowing the directory. */
+  /** True when a search, role or status filter is narrowing the directory. */
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
 }
@@ -87,6 +92,30 @@ function formatDate(isoString: string): string {
   } catch {
     return isoString;
   }
+}
+
+/**
+ * Status as a word plus a shape, never a colour on its own.
+ *
+ * The badge carries the term and the icon repeats it, so a reader who cannot separate the palette
+ * still reads the state. Same construction the Developer Accounts directory uses, so the two
+ * administrative screens state account lifecycle identically.
+ */
+function AccountStatus({ status }: { status: UserStatus }) {
+  const isActive = status === "Active";
+  const Icon = isActive ? CheckCircle2 : MinusCircle;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          isActive ? "text-brand-success" : "text-brand-text-subtle"
+        )}
+      />
+      <StatusBadge status={status} size="sm" />
+    </span>
+  );
 }
 
 /**
@@ -114,6 +143,19 @@ function DeveloperRowNotice({ isDeveloperCaller }: { isDeveloperCaller: boolean 
         </Link>
       )}
     </span>
+  );
+}
+
+/** Visible on both layouts, never a tooltip. Keyboard and touch operators read it too. */
+function RestrictionNote({ id, restriction }: { id: string; restriction: string }) {
+  return (
+    <p
+      id={id}
+      className="flex items-start gap-1.5 text-[11px] leading-snug text-brand-text-muted"
+    >
+      <Info aria-hidden="true" className="mt-px h-3 w-3 shrink-0 text-brand-text-subtle" />
+      <span>{restriction}</span>
+    </p>
   );
 }
 
@@ -148,10 +190,14 @@ function rowPolicy(
   // row is held while any one of them is in flight - this row included.
   const actionsDisabled = isLoading || isMutating || isRowBusy;
 
-  const blockedReason = isCurrentUser
-    ? "This is your own account."
+  // Stated as a full sentence naming both consequences, matching the Developer Accounts wording,
+  // so the same protection reads the same way whichever administrative directory shows it.
+  const restriction = isCurrentUser
+    ? isActive
+      ? "This is the account you are signed in with. It cannot be deactivated or deleted."
+      : "This is the account you are signed in with. It cannot be deleted."
     : isLastActiveAdmin
-      ? "This is the last Active Administrator."
+      ? "This is the last Active Administrator. It cannot be deactivated or deleted."
       : null;
 
   return {
@@ -160,7 +206,7 @@ function rowPolicy(
     isLastActiveAdmin,
     isRowBusy,
     isStatusUpdating,
-    blockedReason,
+    restriction,
     actionsDisabled,
     toggleDisabled:
       actionsDisabled ||
@@ -168,6 +214,143 @@ function rowPolicy(
       (isActive && (isCurrentUser || isLastActiveAdmin)),
     deleteDisabled: actionsDisabled || isCurrentUser || isLastActiveAdmin,
   };
+}
+
+type RowPolicy = ReturnType<typeof rowPolicy>;
+
+/**
+ * The four operations, ranked rather than lined up as four equal icons.
+ *
+ * Every control carries its own word at both widths. The desktop row previously reduced Edit and
+ * Reset password to bare pictograms with no visible name and no tooltip, which asked a sighted
+ * operator to recognise a pencil and a key while the phone layout - the same two operations -
+ * spelled them out. Naming them costs one line of row width and removes the guess.
+ *
+ * Rank: Edit is the routine operation and keeps a full outline control; the credential reset sits
+ * inside the bordered "Credentials" group, matching Developer Accounts; the lifecycle and
+ * destructive operations are quiet tinted text actions, so the row has one obvious action rather
+ * than four competing ones. Delete still routes through the confirmation dialog.
+ *
+ * `restrictionId` is the id of the sentence explaining why a control is unavailable. It is passed
+ * to `aria-describedby` on exactly the two controls the restriction governs, so a screen-reader
+ * operator who lands on a disabled Deactivate hears the reason instead of silence.
+ */
+function RowActions({
+  user,
+  policy,
+  layout,
+  restrictionId,
+  onEdit,
+  onResetPassword,
+  onToggleStatus,
+  onDelete,
+}: {
+  user: UserDirectoryEntry;
+  policy: RowPolicy;
+  layout: "row" | "record";
+  restrictionId?: string;
+  onEdit: (user: UserDirectoryEntry) => void;
+  onResetPassword: (user: UserDirectoryEntry) => void;
+  onToggleStatus: (user: UserDirectoryEntry) => void;
+  onDelete: (user: UserDirectoryEntry) => void;
+}) {
+  const name = user.username;
+  const isRecord = layout === "record";
+  // sm buttons are h-8. The record layout renders only below `lg`, so it keeps the 44px touch
+  // target unconditionally - an `sm:` reset would shrink it on tablets, where it is still the
+  // layout in use. The desktop row is `lg`-only and keeps the denser height.
+  const touch = isRecord ? "min-h-11" : "min-h-11 sm:min-h-8";
+  const toggleVerb = policy.isActive ? "Deactivate" : "Activate";
+
+  return (
+    <div className={isRecord ? "space-y-2" : "flex flex-col items-end gap-1.5"}>
+      <div
+        role="group"
+        aria-label={`Actions for ${name}`}
+        className={cn(
+          "flex flex-wrap items-center gap-1.5",
+          !isRecord && "justify-end"
+        )}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className={touch}
+          onClick={() => onEdit(user)}
+          disabled={policy.actionsDisabled}
+          aria-label={`Edit the account ${name}`}
+        >
+          <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+
+        {/* No bordered "Credentials" sub-group around this one control. Developer Accounts draws
+            that group because it genuinely holds two credential operations; here there is only
+            the password reset, and a labelled box around a single button is chrome that groups
+            nothing. The enclosing "Actions for ..." group already states the relationship. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={touch}
+          onClick={() => onResetPassword(user)}
+          disabled={policy.actionsDisabled}
+          aria-label={`Reset the password for ${name}`}
+        >
+          <KeyRound aria-hidden="true" className="h-3.5 w-3.5" />
+          Reset password
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            touch,
+            policy.isActive
+              ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
+              : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success"
+          )}
+          onClick={() => onToggleStatus(user)}
+          disabled={policy.toggleDisabled}
+          isLoading={policy.isStatusUpdating}
+          aria-label={`${toggleVerb} ${name}`}
+          aria-describedby={policy.restriction ? restrictionId : undefined}
+        >
+          {!policy.isStatusUpdating && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
+          {toggleVerb}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(touch, "text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger")}
+          onClick={() => onDelete(user)}
+          disabled={policy.deleteDisabled}
+          aria-label={`Delete ${name}`}
+          aria-describedby={policy.restriction ? restrictionId : undefined}
+        >
+          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+          Delete
+        </Button>
+      </div>
+
+      {/* Keyed to this record alone. Every other row is disabled while a mutation runs, but only
+          the record actually being written says so - the toolbar's live region carries the
+          announcement, so this indicator is presentational. */}
+      {policy.isStatusUpdating && (
+        <p
+          aria-hidden="true"
+          className="flex items-center gap-1.5 text-[11px] leading-snug text-brand-text-muted"
+        >
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand-text-subtle" />
+          <span>Updating account status...</span>
+        </p>
+      )}
+
+      {policy.restriction && restrictionId && (
+        <RestrictionNote id={restrictionId} restriction={policy.restriction} />
+      )}
+    </div>
+  );
 }
 
 export function UserTable({
@@ -241,11 +424,11 @@ export function UserTable({
     // system, an empty result is a fact about the filters - and only one of them is actionable.
     return (
       <EmptyState
-        icon={Users}
+        icon={hasActiveFilters ? Search : Users}
         title={hasActiveFilters ? "No accounts match these filters" : "No staff accounts yet"}
         description={
           hasActiveFilters
-            ? "No account matches the active username search or role filter."
+            ? "No account matches the active username search, role or status selection."
             : "Staff login accounts will be listed here once they are created."
         }
         headingLevel={3}
@@ -258,7 +441,7 @@ export function UserTable({
               className="min-h-11 sm:min-h-8"
               onClick={onClearFilters}
             >
-              Clear search and filter
+              Clear filters
             </Button>
           ) : undefined
         }
@@ -269,13 +452,15 @@ export function UserTable({
   return (
     <>
       {/* Desktop directory. The card list below is the narrow presentation - the table is not
-          squeezed onto a phone and does not rely on horizontal scrolling to stay usable.
+          squeezed onto a phone and does not rely on horizontal scrolling to stay usable. The
+          switch is at `lg`, the width the other two administrative directories use, so a four
+          action row is never compressed into a tablet column.
 
           No wrapper card here: `Table` already draws the rounded, bordered, card-surfaced
           container - it is the white panel, and it carries the working-surface shadow. Nesting
           it inside a second bordered div drew two concentric borders a pixel apart. */}
-      <div className="hidden md:block">
-        <Table striped wrapperClassName="shadow-low" className="min-w-[720px]">
+      <div className="hidden lg:block">
+        <Table striped wrapperClassName="shadow-low" className="min-w-[860px]">
           <TableHeader>
             <TableRow>
               <TableHead>Username</TableHead>
@@ -297,6 +482,7 @@ export function UserTable({
                 isMutating
               );
               const isDeveloperRow = user.role === "Developer";
+              const restrictionId = `user-row-${user.id}-restriction`;
 
               return (
                 <TableRow
@@ -318,7 +504,7 @@ export function UserTable({
                     <RoleBadge role={user.role} />
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={user.status} size="sm" />
+                    <AccountStatus status={user.status} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap font-mono tabular-nums text-brand-text-muted">
                     {formatDate(user.createdAt)}
@@ -327,66 +513,16 @@ export function UserTable({
                     {isDeveloperRow ? (
                       <DeveloperRowNotice isDeveloperCaller={isDeveloperCaller} />
                     ) : (
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 px-0"
-                            onClick={() => onEdit(user)}
-                            disabled={policy.actionsDisabled}
-                            aria-label={`Edit ${user.username}`}
-                          >
-                            <Edit2 aria-hidden="true" className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 px-0"
-                            onClick={() => onResetPassword(user)}
-                            disabled={policy.actionsDisabled}
-                            aria-label={`Reset password for ${user.username}`}
-                          >
-                            <KeyRound aria-hidden="true" className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onToggleStatus(user)}
-                            disabled={policy.toggleDisabled}
-                            isLoading={policy.isStatusUpdating}
-                            aria-label={`${policy.isActive ? "Deactivate" : "Activate"} ${user.username}`}
-                          >
-                            {!policy.isStatusUpdating && (
-                              <Power aria-hidden="true" className="h-3.5 w-3.5" />
-                            )}
-                            {policy.isActive ? "Deactivate" : "Activate"}
-                          </Button>
-                          {/* Quiet and danger-tinted rather than filled: the confirmation dialog
-                              is the guard, so the row does not need a red block on every line. */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger"
-                            onClick={() => onDelete(user)}
-                            disabled={policy.deleteDisabled}
-                            aria-label={`Delete ${user.username}`}
-                          >
-                            <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                            Delete
-                          </Button>
-                        </div>
-                        {/* Stated, not hidden in a title attribute. A disabled control with a
-                            tooltip explains itself to a mouse and to nobody else. */}
-                        {policy.isStatusUpdating && (
-                          <span className="text-[11px] font-semibold text-brand-text-muted">
-                            Updating account status...
-                          </span>
-                        )}
-                        {policy.blockedReason && (
-                          <span className="text-[11px] text-brand-text-muted">{policy.blockedReason}</span>
-                        )}
-                      </div>
+                      <RowActions
+                        user={user}
+                        policy={policy}
+                        layout="row"
+                        restrictionId={restrictionId}
+                        onEdit={onEdit}
+                        onResetPassword={onResetPassword}
+                        onToggleStatus={onToggleStatus}
+                        onDelete={onDelete}
+                      />
                     )}
                   </TableCell>
                 </TableRow>
@@ -402,7 +538,7 @@ export function UserTable({
 
           One white record per account: a compact header row, the meta line, and the actions in
           a structural footer band. */}
-      <ul className="space-y-2 md:hidden" aria-label="Staff account directory">
+      <ul className="space-y-2 lg:hidden" aria-label="Staff account directory">
         {users.map((user) => {
           const policy = rowPolicy(
             user,
@@ -414,6 +550,7 @@ export function UserTable({
             isMutating
           );
           const isDeveloperRow = user.role === "Developer";
+          const restrictionId = `user-card-${user.id}-restriction`;
 
           return (
             <li
@@ -431,7 +568,9 @@ export function UserTable({
                     <p className="mt-0.5 text-[11px] font-semibold text-brand-primary">Current account</p>
                   )}
                 </div>
-                <StatusBadge status={user.status} size="sm" className="shrink-0" />
+                <span className="shrink-0">
+                  <AccountStatus status={user.status} />
+                </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 pb-2.5 text-[11px] text-brand-text-muted">
@@ -441,69 +580,20 @@ export function UserTable({
                 </span>
               </div>
 
-              <div className="space-y-2 border-t border-brand-border bg-brand-structural px-3.5 py-2.5">
+              <div className="border-t border-brand-border bg-brand-structural px-3.5 py-2.5">
                 {isDeveloperRow ? (
                   <DeveloperRowNotice isDeveloperCaller={isDeveloperCaller} />
                 ) : (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11"
-                        onClick={() => onEdit(user)}
-                        disabled={policy.actionsDisabled}
-                        aria-label={`Edit ${user.username}`}
-                      >
-                        <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11"
-                        onClick={() => onResetPassword(user)}
-                        disabled={policy.actionsDisabled}
-                        aria-label={`Reset password for ${user.username}`}
-                      >
-                        <KeyRound aria-hidden="true" className="h-3.5 w-3.5" />
-                        Reset password
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11"
-                        onClick={() => onToggleStatus(user)}
-                        disabled={policy.toggleDisabled}
-                        isLoading={policy.isStatusUpdating}
-                        aria-label={`${policy.isActive ? "Deactivate" : "Activate"} ${user.username}`}
-                      >
-                        {!policy.isStatusUpdating && (
-                          <Power aria-hidden="true" className="h-3.5 w-3.5" />
-                        )}
-                        {policy.isActive ? "Deactivate" : "Activate"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-11 text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger"
-                        onClick={() => onDelete(user)}
-                        disabled={policy.deleteDisabled}
-                        aria-label={`Delete ${user.username}`}
-                      >
-                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        Delete
-                      </Button>
-                    </div>
-                    {policy.isStatusUpdating && (
-                      <p className="text-[11px] font-semibold text-brand-text-muted">
-                        Updating account status...
-                      </p>
-                    )}
-                    {policy.blockedReason && (
-                      <p className="text-[11px] text-brand-text-muted">{policy.blockedReason}</p>
-                    )}
-                  </>
+                  <RowActions
+                    user={user}
+                    policy={policy}
+                    layout="record"
+                    restrictionId={restrictionId}
+                    onEdit={onEdit}
+                    onResetPassword={onResetPassword}
+                    onToggleStatus={onToggleStatus}
+                    onDelete={onDelete}
+                  />
                 )}
               </div>
             </li>

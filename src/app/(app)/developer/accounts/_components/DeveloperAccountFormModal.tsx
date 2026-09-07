@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
@@ -47,6 +48,22 @@ interface DeveloperAccountFormModalProps {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+/**
+ * Raises this form's unsaved-edit state to the dialog above it.
+ *
+ * The dialog owns every dismissal route - Escape, the backdrop, the close control - and cannot
+ * see the fields inside whichever of the four forms is mounted. Without this signal a typed
+ * username or a part-entered credential was discarded silently by a stray key.
+ *
+ * react-hook-form owns the comparison against the defaults, so a value typed and then corrected
+ * back to what it was correctly stops counting as an unsaved edit.
+ */
+function useReportDirty(isDirty: boolean, onDirtyChange?: (isDirty: boolean) => void): void {
+  React.useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 }
 
 function FormActions({
@@ -94,10 +111,12 @@ function CreateDeveloperAccountForm({
   isLoading,
   onCancel,
   onSubmit,
+  onDirtyChange,
 }: {
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: CreateValues) => Promise<void>;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const {
@@ -105,7 +124,7 @@ function CreateDeveloperAccountForm({
     handleSubmit,
     watch,
     setError,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateValues>({
     resolver: zodResolver(createDeveloperAccountSchema),
     defaultValues: {
@@ -115,6 +134,7 @@ function CreateDeveloperAccountForm({
       customSecurityQuestion: "",
     },
   });
+  useReportDirty(isDirty, onDirtyChange);
   const selectedQuestion = watch("securityQuestion");
 
   const submit = async (values: CreateValues) => {
@@ -184,22 +204,25 @@ function UpdateUsernameForm({
   isLoading,
   onCancel,
   onSubmit,
+  onDirtyChange,
 }: {
   account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: UsernameValues) => Promise<void>;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const {
     register,
     handleSubmit,
     setError,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<UsernameValues>({
     resolver: zodResolver(updateDeveloperUsernameSchema),
     defaultValues: { id: account.id, username: account.username },
   });
+  useReportDirty(isDirty, onDirtyChange);
 
   const submit = async (values: UsernameValues) => {
     setServerError(null);
@@ -234,18 +257,20 @@ function UpdateSecurityQuestionForm({
   isLoading,
   onCancel,
   onSubmit,
+  onDirtyChange,
 }: {
   account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: SecurityQuestionValues) => Promise<void>;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const {
     register,
     handleSubmit,
     watch,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<SecurityQuestionValues>({
     resolver: zodResolver(updateDeveloperSecurityQuestionSchema),
     defaultValues: {
@@ -254,6 +279,7 @@ function UpdateSecurityQuestionForm({
       customSecurityQuestion: "",
     },
   });
+  useReportDirty(isDirty, onDirtyChange);
   const selectedQuestion = watch("securityQuestion");
 
   const submit = async (values: SecurityQuestionValues) => {
@@ -302,21 +328,24 @@ function ResetPasswordForm({
   isLoading,
   onCancel,
   onSubmit,
+  onDirtyChange,
 }: {
   account: DeveloperAccountEntry;
   isLoading: boolean;
   onCancel: () => void;
   onSubmit: (values: PasswordValues) => Promise<void>;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<PasswordValues>({
     resolver: zodResolver(resetDeveloperPasswordSchema),
     defaultValues: { id: account.id, password: "" },
   });
+  useReportDirty(isDirty, onDirtyChange);
 
   const submit = async (values: PasswordValues) => {
     setServerError(null);
@@ -357,6 +386,43 @@ export function DeveloperAccountFormModal({
   onUpdateSecurityQuestion,
   onResetPassword,
 }: DeveloperAccountFormModalProps) {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const [isDiscardOpen, setIsDiscardOpen] = React.useState(false);
+
+  // The mounted form is replaced whenever the mode or the account changes, and the view remounts
+  // this component by key, so its own dirty state resets on its own. This clears the copy held
+  // here, which would otherwise survive into the next dialog and make an untouched form ask
+  // before closing.
+  React.useEffect(() => {
+    if (!mode) {
+      setHasUnsavedChanges(false);
+      setIsDiscardOpen(false);
+    }
+  }, [mode]);
+
+  /**
+   * Every dismissal route arrives here: Escape, the backdrop, the close control and Cancel.
+   *
+   * With unsaved edits on the form it opens a confirmation instead of closing, so a typed
+   * username or a part-entered credential is never discarded by a stray key - and a credential
+   * is a value the operator cannot read back off the screen to retype. With nothing entered it
+   * closes at once; a dialog that interrogates a form nobody touched is only an extra keystroke.
+   */
+  const requestClose = () => {
+    if (isLoading) return;
+    if (hasUnsavedChanges) {
+      setIsDiscardOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  const discardAndClose = () => {
+    setIsDiscardOpen(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
   const modalCopy = {
     create: {
       title: "Create Developer Account",
@@ -382,43 +448,67 @@ export function DeveloperAccountFormModal({
   return (
     // Escape, the backdrop and the close control are the shared Modal's, and they keep working -
     // except while a credential write is in flight, where dismissal would leave the operator
-    // guessing whether the account changed. `onClose` already refuses in that window; saying so
-    // through `dismissible` also removes the close control instead of leaving a dead one.
-    <Modal
-      isOpen
-      onClose={onClose}
-      title={copy.title}
-      description={copy.description}
-      dismissible={!isLoading}
-    >
-      {mode === "create" ? (
-        <CreateDeveloperAccountForm
-          isLoading={isLoading}
-          onCancel={onClose}
-          onSubmit={onCreate}
-        />
-      ) : account && mode === "username" ? (
-        <UpdateUsernameForm
-          account={account}
-          isLoading={isLoading}
-          onCancel={onClose}
-          onSubmit={onUpdateUsername}
-        />
-      ) : account && mode === "security-question" ? (
-        <UpdateSecurityQuestionForm
-          account={account}
-          isLoading={isLoading}
-          onCancel={onClose}
-          onSubmit={onUpdateSecurityQuestion}
-        />
-      ) : account && mode === "password" ? (
-        <ResetPasswordForm
-          account={account}
-          isLoading={isLoading}
-          onCancel={onClose}
-          onSubmit={onResetPassword}
-        />
-      ) : null}
-    </Modal>
+    // guessing whether the account changed, and while the discard confirmation is up, where
+    // dismissing the dialog underneath would answer the question by destroying the input it is
+    // asking about. `dismissible` also removes the close control in those windows rather than
+    // leaving a dead one.
+    <>
+      <Modal
+        isOpen
+        onClose={requestClose}
+        title={copy.title}
+        description={copy.description}
+        dismissible={!isLoading && !isDiscardOpen}
+      >
+        {mode === "create" ? (
+          <CreateDeveloperAccountForm
+            isLoading={isLoading}
+            onCancel={requestClose}
+            onSubmit={onCreate}
+            onDirtyChange={setHasUnsavedChanges}
+          />
+        ) : account && mode === "username" ? (
+          <UpdateUsernameForm
+            account={account}
+            isLoading={isLoading}
+            onCancel={requestClose}
+            onSubmit={onUpdateUsername}
+            onDirtyChange={setHasUnsavedChanges}
+          />
+        ) : account && mode === "security-question" ? (
+          <UpdateSecurityQuestionForm
+            account={account}
+            isLoading={isLoading}
+            onCancel={requestClose}
+            onSubmit={onUpdateSecurityQuestion}
+            onDirtyChange={setHasUnsavedChanges}
+          />
+        ) : account && mode === "password" ? (
+          <ResetPasswordForm
+            account={account}
+            isLoading={isLoading}
+            onCancel={requestClose}
+            onSubmit={onResetPassword}
+            onDirtyChange={setHasUnsavedChanges}
+          />
+        ) : null}
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={isDiscardOpen}
+        onCancel={() => setIsDiscardOpen(false)}
+        onConfirm={discardAndClose}
+        title="Discard unsaved changes?"
+        description="This form has entries that have not been saved."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        variant="destructive"
+      >
+        <p>
+          Closing now discards what has been entered. Nothing has been written to the Developer
+          account directory, so no account is created or changed either way.
+        </p>
+      </ConfirmDialog>
+    </>
   );
 }

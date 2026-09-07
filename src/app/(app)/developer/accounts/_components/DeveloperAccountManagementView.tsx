@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, Search, X } from "lucide-react";
+import { Filter, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { SkeletonRegion } from "@/components/ui/Skeleton";
+import { SummaryBar } from "@/components/ui/SummaryBar";
 import {
   createDeveloperAccountAction,
   deleteDeveloperAccountAction,
@@ -35,6 +37,20 @@ interface DeveloperAccountManagementViewProps {
  */
 const CREATE_MUTATION_CLAIM = "developer-account:create";
 
+/**
+ * Account lifecycle, in the two words the row badge prints.
+ *
+ * The directory already carries `status` on every entry, so this narrows what is on screen and
+ * asks the server for nothing. A deactivated Developer account is the one an operator most often
+ * needs to isolate - it is the account that can no longer sign in - and before this the only way
+ * to find it was to read every row.
+ */
+const STATUS_FILTER_OPTIONS = [
+  { label: "All statuses", value: "ALL" },
+  { label: "Active", value: "Active" },
+  { label: "Inactive", value: "Inactive" },
+];
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -44,6 +60,7 @@ export function DeveloperAccountManagementView({
 }: DeveloperAccountManagementViewProps) {
   const [accounts, setAccounts] = useState<DeveloperAccountEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [modalMode, setModalMode] = useState<DeveloperAccountModalMode | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<DeveloperAccountEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -195,11 +212,15 @@ export function DeveloperAccountManagementView({
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const isFiltered = normalizedQuery !== "";
+  const isFiltered = normalizedQuery !== "" || statusFilter !== "ALL";
+  const activeFilterCount = (normalizedQuery !== "" ? 1 : 0) + (statusFilter !== "ALL" ? 1 : 0);
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((account) => account.username.toLowerCase().includes(normalizedQuery));
-  }, [accounts, normalizedQuery]);
+    return accounts.filter((account) => {
+      if (statusFilter !== "ALL" && account.status !== statusFilter) return false;
+      return account.username.toLowerCase().includes(normalizedQuery);
+    });
+  }, [accounts, normalizedQuery, statusFilter]);
 
   const activeDeveloperCount = accounts.filter((account) => account.status === "Active").length;
 
@@ -212,7 +233,10 @@ export function DeveloperAccountManagementView({
   const busyAccountName =
     accounts.find((account) => account.id === busyAccountId)?.username ?? null;
 
-  const clearSearch = () => setSearchQuery("");
+  const clearSearch = () => {
+    setSearchQuery("");
+    setStatusFilter("ALL");
+  };
 
   // Four states, kept apart on purpose: the first load, a read that failed, a directory with
   // nothing in it, and a search that matched nothing. Only the last two belong to the table.
@@ -229,23 +253,88 @@ export function DeveloperAccountManagementView({
         }`;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       {actionError && (
         <Alert variant="destructive" onDismiss={() => setActionError(null)}>
           {actionError}
         </Alert>
       )}
 
-      {/* One structural toolbar behind the records: search, result count, Clear, and the page's
-          primary action. The shell already renders the page title, so nothing here repeats it. */}
-      <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="relative min-w-0 flex-1 lg:max-w-sm">
+      {/* What the module holds, before what is currently shown of it. Counted from the rows the
+          safe projection already delivered - no field it does not carry, and no second request.
+          Suppressed while nothing has loaded, because zeros would state something about the
+          system that no answer established. */}
+      {!isInitialLoad && !isUnavailable && (
+        <SummaryBar
+          label="Developer account summary"
+          figures={[
+            { label: "Developer accounts", value: accounts.length },
+            { label: "Active", value: activeDeveloperCount, tone: "success" },
+            {
+              label: "Inactive",
+              value: accounts.length - activeDeveloperCount,
+              tone: accounts.length - activeDeveloperCount > 0 ? "warning" : "muted",
+            },
+          ]}
+          note={
+            activeDeveloperCount === 1
+              ? "One Developer account is Active. It cannot be deactivated or deleted while it is the last one."
+              : undefined
+          }
+        />
+      )}
+
+      {/* One structural toolbar behind the records: search, the status filter, Clear, and the
+          page's primary action. The shell already renders the page title, so nothing here
+          repeats it. */}
+      <div className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Filter aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-brand-text-subtle" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted">
+              Directory filters
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="text-[11px] text-brand-text-muted">{activeFilterCount} active</span>
+            )}
+          </div>
+          {/* Medium controls line up with the fields below them on a desktop; the 44px minimum
+              below sm keeps them a touch target. */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {isFiltered && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+                onClick={clearSearch}
+              >
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              className="min-h-11 sm:min-h-8"
+              onClick={() => openModal("create")}
+              // The page's primary write. It is locked by the same slot the rows are, so a
+              // create cannot be started on top of a toggle, a delete, or another submission.
+              disabled={isAnyMutationPending}
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              Add Developer account
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="relative min-w-0 sm:col-span-2">
             {/* A real label rather than a placeholder: a placeholder vanishes the moment the
                 field is used, taking the field's name with it. */}
             <Input
               id="developer-account-search"
-              label="Search"
+              label="Search accounts"
               type="search"
               placeholder="Username"
               value={searchQuery}
@@ -258,34 +347,16 @@ export function DeveloperAccountManagementView({
               className="pointer-events-none absolute bottom-3.5 left-3 h-4 w-4 text-brand-text-subtle sm:bottom-2.5"
             />
           </div>
-          {/* Medium controls line up with the 36px field beside them on a desktop; the 44px
-              minimum below sm keeps them a touch target. */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:ml-auto">
-            {isFiltered && (
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 sm:min-h-9"
-                onClick={clearSearch}
-              >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-                Clear
-              </Button>
-            )}
-            <Button
-              type="button"
-              className="min-h-11 sm:min-h-9"
-              onClick={() => openModal("create")}
-              // The page's primary write. It is locked by the same slot the rows are, so a
-              // create cannot be started on top of a toggle, a delete, or another submission.
-              disabled={isAnyMutationPending}
-            >
-              <Plus aria-hidden="true" className="h-4 w-4" />
-              Add Developer account
-            </Button>
-          </div>
+          <Select
+            id="developer-account-status"
+            label="Status"
+            options={STATUS_FILTER_OPTIONS}
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          />
         </div>
-        <p className="mt-2 text-[11px] text-brand-text-muted" aria-live="polite">
+
+        <p className="text-[11px] text-brand-text-muted" aria-live="polite">
           {countLine}
         </p>
       </div>

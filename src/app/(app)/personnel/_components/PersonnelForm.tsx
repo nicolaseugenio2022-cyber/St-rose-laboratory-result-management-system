@@ -43,6 +43,14 @@ export interface PersonnelFormProps {
    * otherwise tear the form down while the request is still outstanding.
    */
   onSignatureBusyChange?: (isBusy: boolean) => void;
+  /**
+   * Raised whenever the form gains or loses unsaved edits.
+   *
+   * The dialog above owns every dismissal route and cannot see these fields. Without this signal
+   * a part-filled personnel record - a name, a licence number - was discarded silently by a stray
+   * Escape or an accidental backdrop press.
+   */
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 function toFormValues(personnel?: PersonnelDirectoryEntry | null): PersonnelFormValues {
@@ -87,6 +95,7 @@ export function PersonnelForm({
   onNestedDialogChange,
   onSubmittingChange,
   onSignatureBusyChange,
+  onDirtyChange,
 }: PersonnelFormProps) {
   const isEditing = !!initialData;
   const [serverError, setServerError] = useState<string | null>(null);
@@ -109,7 +118,7 @@ export function PersonnelForm({
     watch,
     setError,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<PersonnelFormValues>({
     resolver: zodResolver(personnelFormSchema),
     defaultValues: toFormValues(initialData),
@@ -150,6 +159,17 @@ export function PersonnelForm({
     onSignatureBusyChange?.(isSignatureBusy);
     return () => onSignatureBusyChange?.(false);
   }, [isSignatureBusy, onSignatureBusyChange]);
+
+  // Same channel, fourth fact: whether anything has been typed. react-hook-form owns the
+  // comparison against the record's own values, so a field edited and then put back correctly
+  // stops counting as an unsaved change - and cancelling the role-change confirmation, which
+  // restores the select with `shouldDirty: true`, does not register as one either, because that
+  // flag asks for the comparison to be re-run rather than marking the field edited. See
+  // `handleCancelRoleChange` for why `false` there would leave the field stale-dirty.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
 
   // Only Pathologists may ever carry a signature image; Medical Technologists
   // are textual only, so the signature area is never rendered for them.
@@ -213,7 +233,15 @@ export function PersonnelForm({
     setPendingRoleChange(null);
     // Cancelling must leave the record exactly as it was found: the role select goes back to
     // Pathologist, the signature area returns with it, and nothing was sent.
-    setValue("role", initialData?.role ?? "Pathologist", { shouldDirty: false });
+    //
+    // `shouldDirty: true` rather than false, which reads backwards until you see what each one
+    // does. It does not mark the field edited - it asks react-hook-form to RE-EVALUATE the form
+    // against its defaults, and the value being restored is the default, so the field drops out
+    // of the dirty set. `false` skips that recomputation entirely, leaving the field marked dirty
+    // from the change that has just been undone; the dialog above then believed there were
+    // unsaved edits and asked to discard them on close, over a form that matched the record
+    // exactly.
+    setValue("role", initialData?.role ?? "Pathologist", { shouldDirty: true });
   };
 
   const personnelName = initialData ? formatPersonnelName(initialData) : "";
@@ -291,7 +319,7 @@ export function PersonnelForm({
       <FieldGroup title="Directory status">
         <div className="sm:col-span-3">
           <Select
-            label="Directory Status"
+            label="Status"
             options={[...PERSONNEL_STATUS_OPTIONS]}
             helperText="Inactive personnel are excluded from new report signatory selection."
             error={errors.status?.message}

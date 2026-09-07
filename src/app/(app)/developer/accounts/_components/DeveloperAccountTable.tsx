@@ -132,9 +132,12 @@ function AccountStatus({ status }: { status: DeveloperAccountEntry["status"] }) 
 }
 
 /** Visible on both layouts, never a tooltip. Keyboard and touch operators read it too. */
-function RestrictionNote({ restriction }: { restriction: string }) {
+function RestrictionNote({ id, restriction }: { id: string; restriction: string }) {
   return (
-    <p className="flex items-start gap-1.5 text-[11px] leading-snug text-brand-text-muted">
+    <p
+      id={id}
+      className="flex items-start gap-1.5 text-[11px] leading-snug text-brand-text-muted"
+    >
       <Info aria-hidden="true" className="mt-px h-3 w-3 shrink-0 text-brand-text-subtle" />
       <span>{restriction}</span>
     </p>
@@ -158,6 +161,7 @@ function RowActions({
   account,
   policy,
   layout,
+  restrictionId,
   onEditUsername,
   onUpdateSecurityQuestion,
   onResetPassword,
@@ -167,6 +171,13 @@ function RowActions({
   account: DeveloperAccountEntry;
   policy: RowPolicy;
   layout: "row" | "record";
+  /**
+   * Id of the sentence explaining why a control is unavailable, passed to `aria-describedby` on
+   * exactly the two controls the restriction governs. Without it a screen-reader operator who
+   * lands on a disabled Deactivate hears silence where the reason is sitting in plain text
+   * directly underneath.
+   */
+  restrictionId?: string;
   onEditUsername: (account: DeveloperAccountEntry) => void;
   onUpdateSecurityQuestion: (account: DeveloperAccountEntry) => void;
   onResetPassword: (account: DeveloperAccountEntry) => void;
@@ -248,6 +259,7 @@ function RowActions({
           onClick={() => onToggleStatus(account)}
           disabled={policy.toggleDisabled}
           aria-label={`${toggleVerb} ${name}`}
+          aria-describedby={policy.restriction ? restrictionId : undefined}
         >
           <Power aria-hidden="true" className="h-3.5 w-3.5" />
           {toggleVerb}
@@ -260,6 +272,7 @@ function RowActions({
           onClick={() => onDelete(account)}
           disabled={policy.deleteDisabled}
           aria-label={`Delete ${name}`}
+          aria-describedby={policy.restriction ? restrictionId : undefined}
         >
           <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
           Delete
@@ -279,7 +292,9 @@ function RowActions({
         </p>
       )}
 
-      {policy.restriction && <RestrictionNote restriction={policy.restriction} />}
+      {policy.restriction && restrictionId && (
+        <RestrictionNote id={restrictionId} restriction={policy.restriction} />
+      )}
     </div>
   );
 }
@@ -305,8 +320,8 @@ export function DeveloperAccountTable({
       <EmptyState
         icon={Search}
         headingLevel={3}
-        title="No Developer accounts match this search"
-        description="No Developer account username contains the text currently in the search box."
+        title="No Developer accounts match these filters"
+        description="No Developer account matches the active username search and status selection."
         action={
           onClearFilters ? (
             <Button
@@ -315,7 +330,7 @@ export function DeveloperAccountTable({
               className="min-h-11 sm:min-h-8"
               onClick={onClearFilters}
             >
-              Clear search
+              Clear filters
             </Button>
           ) : undefined
         }
@@ -383,6 +398,7 @@ export function DeveloperAccountTable({
                       account={account}
                       policy={policy}
                       layout="row"
+                      restrictionId={`developer-row-${account.id}-restriction`}
                       onEditUsername={onEditUsername}
                       onUpdateSecurityQuestion={onUpdateSecurityQuestion}
                       onResetPassword={onResetPassword}
@@ -448,6 +464,7 @@ export function DeveloperAccountTable({
                   account={account}
                   policy={policy}
                   layout="record"
+                  restrictionId={`developer-card-${account.id}-restriction`}
                   onEditUsername={onEditUsername}
                   onUpdateSecurityQuestion={onUpdateSecurityQuestion}
                   onResetPassword={onResetPassword}

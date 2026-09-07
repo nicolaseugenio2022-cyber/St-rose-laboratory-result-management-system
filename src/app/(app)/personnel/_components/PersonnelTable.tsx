@@ -55,7 +55,7 @@ export function signatureState(person: PersonnelDirectoryEntry): SignatureState 
     return {
       label: "Not required",
       Icon: MinusCircle,
-      srLabel: "Signature image not required for this role",
+      srLabel: "Signature not required for this role",
     };
   }
   return person.hasSignature
@@ -65,9 +65,9 @@ export function signatureState(person: PersonnelDirectoryEntry): SignatureState 
         srLabel: "Signature on file",
       }
     : {
-        label: "No image",
+        label: "None on file",
         Icon: PenOff,
-        srLabel: "No signature image",
+        srLabel: "No signature on file",
       };
 }
 
@@ -97,8 +97,14 @@ function RoleBadge({ person }: { person: PersonnelDirectoryEntry }) {
 /**
  * The two row actions, shared by the desktop row and the narrow-width record.
  *
- * One component rather than two copies: the labels below are the accessible names for icon-only
- * controls, and a second copy is where those silently drift out of sync with the visible action.
+ * One component rather than two copies: a second copy is where a visible label and its accessible
+ * name silently drift apart.
+ *
+ * Both controls carry their own word at both widths. The desktop row previously reduced Edit to a
+ * bare pencil whose name existed only for a screen reader, so a sighted operator had to recognise
+ * the pictogram while the phone layout - the same action - spelled it out. The tinting matches the
+ * two account directories: quiet ghost controls, warning for the withdrawing action and success
+ * for the restoring one, so the same operation reads the same way across all three modules.
  */
 function RowActions({
   person,
@@ -119,29 +125,31 @@ function RowActions({
 }) {
   const name = formatPersonnelName(person);
   const activateVerb = person.isActive ? "Deactivate" : "Activate";
+  const isRecord = layout === "record";
   // The record layout is rendered only below lg, where the pointer is a finger: its controls
   // keep a 44px target rather than the 32px a size="sm" Button gives a mouse.
-  const recordTarget = layout === "record" ? "min-h-11 flex-1" : "";
+  const touch = isRecord ? "min-h-11 flex-1" : "min-h-11 sm:min-h-8";
   return (
     <div
+      role="group"
+      aria-label={`Actions for ${name}`}
       className={
-        layout === "row" ? "flex items-center justify-end gap-1.5" : "flex items-center gap-2"
+        isRecord ? "flex items-center gap-2" : "flex items-center justify-end gap-1.5"
       }
     >
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => onEdit(person)}
         disabled={isDisabled}
-        className={recordTarget || undefined}
+        className={touch}
+        aria-label={`Edit ${name}`}
       >
         <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
-        <span className={layout === "record" ? "ml-1.5 text-xs" : "sr-only"}>
-          {layout === "record" ? "Edit" : `Edit ${name}`}
-        </span>
+        Edit
       </Button>
       <Button
-        variant={person.isActive ? "outline" : "secondary"}
+        variant="ghost"
         size="sm"
         onClick={() => onToggleStatus(person)}
         disabled={isDisabled}
@@ -149,15 +157,13 @@ function RowActions({
         aria-label={`${activateVerb} ${name}`}
         className={[
           person.isActive
-            ? "text-brand-warning hover:border-brand-warning-border hover:bg-brand-warning-bg"
-            : "bg-brand-success text-white hover:opacity-90",
-          recordTarget,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+            ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
+            : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success",
+          touch,
+        ].join(" ")}
       >
         {!isBusy && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
-        <span className="ml-1.5 text-xs">{activateVerb}</span>
+        {activateVerb}
       </Button>
     </div>
   );

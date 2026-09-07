@@ -85,11 +85,8 @@ export function SharedRenderingEngine({
         const fileName = `LabReport_${accessionClean}_${patientNameClean}.pdf`;
         if (!cancelled) pdf.save(fileName);
       } catch (err: unknown) {
-        // Nothing from the caught value reaches the operator, and nothing but its class reaches
-        // the console either. The composer throws messages carrying asset sources, template codes
-        // and layout identifiers; the error name is enough to tell a layout fault from a data one
-        // when triaging, and carries no path, identifier or patient value with it.
-        console.error("PDF Export Error:", err instanceof Error ? err.name : "UnknownError");
+        // Developer diagnostics only. Nothing from the caught value reaches the operator.
+        console.error("PDF Export Error:", err);
         if (!cancelled) setExportError("The PDF could not be generated. Try exporting again.");
       } finally {
         if (!cancelled) {

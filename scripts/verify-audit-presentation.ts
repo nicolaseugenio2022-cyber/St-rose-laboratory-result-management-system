@@ -59,9 +59,11 @@
  *     the audit service through a helper would drop its outcome values with no signal;
  *   - the invariant 8 details-cell locator takes the first right-aligned cell without a uniqueness
  *     guard (exactly one exists today);
- *   - the render-loop checks are now bound to the mapping callback itself, so a `.filter(` inside
- *     it and a conditional or block-bodied return are both caught. A `.filter(` applied to the
- *     RESULT of the map, after `</DetailRow>`, still would not be;
+ *   - the render-loop checks are bound to the mapping callback, so a conditional or block-bodied
+ *     return is caught, and the filter ban covers the whole `Recorded detail` section, so a
+ *     `.filter(` before the map, inside the callback, or chained onto its result is caught too.
+ *     A withholding written somewhere other than that section - in `DetailSection` or `DetailRow`
+ *     themselves - would not be;
  *   - ONE locator still scans the whole file rather than a bounded region and takes the first
  *     match with no uniqueness guard: the invariant 7 Outcome cell. It occurs exactly once today,
  *     so the assertion inspects what it names - but nothing enforces that, and this is the same
@@ -937,8 +939,15 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
     /\.map\(\s*\([^)]*\)\s*=>\s*\(\s*<DetailRow\b/.test(detailRowCallback),
     "the recorded detail entries must map DIRECTLY to a DetailRow; a block body or a conditional return could withhold selected keys while satisfying every other assertion here"
   );
+  // Banned across the WHOLE section, not just the callback.
+  //
+  // Scoping this one to the callback still left the row out: the callback region ends at
+  // `</DetailRow>`, so a `.filter(...)` chained onto the RESULT of the map sits just outside it and
+  // could drop rendered rows while every assertion here passed. Pre-map, inside the callback, and
+  // post-map are three spellings of the same withholding, so the ban covers the section that
+  // contains all three. The section renders nothing that legitimately filters.
   assert(
-    !detailRowCallback.includes(".filter("),
+    !recordedDetailSection.includes(".filter("),
     "the details panel must not filter recorded detail entries; every key the server sent must reach the operator"
   );
   // Scoped to the same callback, so the fallback that is checked is the one that actually labels

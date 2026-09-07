@@ -405,9 +405,14 @@ export function UserManagementView({
 
       {/* What the directory contains, before what is currently shown of it. Counted from the rows
           already delivered - no field the Admin projection does not carry, and no second request.
-          Suppressed while nothing has loaded, because four zeros would state something about the
-          system that no answer established. */}
-      {!directoryUnavailable && (
+
+          Gated on `hasLoadedDirectory`, which is the only one of the three load facts that means
+          "an answer arrived". `!directoryUnavailable` did NOT achieve what this comment claims:
+          that flag turns true only once a load has FAILED, so during the very first in-flight
+          load - the window a transient server-side read failure opens - it was false and the
+          strip published four zeros as though the directory were genuinely empty. A successful
+          empty directory still shows its zeros, because an answer did arrive. */}
+      {hasLoadedDirectory && (
         <SummaryBar
           label="Staff account summary"
           figures={[

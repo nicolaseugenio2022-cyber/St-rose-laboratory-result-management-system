@@ -183,7 +183,12 @@ export function ReadOnlyUserDirectory({
         </p>
       </div>
 
-      {!directoryUnavailable && (
+      {/* Same rule as the managed directory: publish counts only once an answer has arrived.
+          `isLoading` here is the caller's "first load still in flight" fact, so this suppresses
+          the window in which a transient server-side read failure would otherwise have shown
+          zeros as though the directory were empty. A successful empty directory still shows its
+          zeros. */}
+      {!directoryUnavailable && !isLoading && (
         <SummaryBar
           label="Account directory summary"
           figures={[

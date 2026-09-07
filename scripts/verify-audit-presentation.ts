@@ -61,12 +61,13 @@
  *     guard (exactly one exists today);
  *   - the render-loop filter ban inspects only the span between `Object.entries` and `.map(`, so a
  *     filter applied after the map, or an early return inside it, would not be caught;
- *   - four locators scan the whole file rather than a bounded region and take the first match with
- *     no uniqueness guard: the invariant 7 Outcome cell, and the three panel constructs behind the
- *     unrecognised-key guarantee (`Object.entries(selectedEvent.details)`, the `hasOwnProperty`
- *     fallback, and the raw `JSON.stringify` payload). Each construct occurs exactly once today, so
- *     each assertion inspects what it names - but nothing enforces that, and this is the same shape
- *     the removed invariant 10 failed on twice;
+ *   - three locators scan the whole file rather than a bounded region and take the first match with
+ *     no uniqueness guard: the invariant 7 Outcome cell, and the two panel constructs behind the
+ *     unrecognised-key guarantee (`Object.entries(selectedEvent.details)` and the `hasOwnProperty`
+ *     fallback). Each construct occurs exactly once today, so each assertion inspects what it
+ *     names - but nothing enforces that, and this is the same shape the removed invariant 10
+ *     failed on twice. A third construct, the raw `JSON.stringify` payload, was retired with the
+ *     disclosure it protected;
  *   - the invariant 13 verb lookup is scoped to the `activeFilters` block but not to the individual
  *     filter entry: its 320-character window also reaches the next entry's `verb`. The lazy match
  *     takes the correct one today, and every neighbouring verb fails the exact-match family, so a
@@ -883,6 +884,18 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
   // humanized. Without this, a maintainer could filter the render loop to known labels - passing
   // every other assertion here - and the panel would silently withhold audit fields it received.
   // In an audit viewer, silently withholding a recorded field is the worst available outcome.
+  //
+  // These three assertions now carry that guarantee ALONE. A fourth once required the panel to
+  // keep the raw `JSON.stringify` payload as a secondary view, on the reasoning that it was the
+  // operator's last resort when the curated view was wrong or incomplete. That disclosure was
+  // removed from the panel on QA'd product direction, so the assertion was removed with it rather
+  // than left to be satisfied by a construct the interface no longer renders - a check kept alive
+  // by dead code certifies nothing and teaches the next reader to distrust the file.
+  //
+  // What that costs is real and is recorded here rather than glossed: the curated view no longer
+  // has a raw fallback sitting behind it, so if the loop below were ever narrowed, there is no
+  // second surface where the missing field would still show up. That makes the pass-through
+  // assertions more load-bearing than they were, not less - do not weaken them.
   const loop = /Object\.entries\(selectedEvent\.details\)([\s\S]{0,120}?)\.map\(/.exec(source);
   assert(loop, "the details panel must iterate the recorded detail entries");
   assert(
@@ -892,12 +905,6 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
   assert(
     /hasOwnProperty\.call\(DETAIL_LABELS,\s*key\)[\s\S]{0,120}?humanizeIdentifier\(key\)/.test(source),
     "an unlabelled detail key must fall back to a humanized label rather than being dropped"
-  );
-
-  // The raw payload is the operator's last resort when a curated view is wrong or incomplete.
-  assert(
-    /JSON\.stringify\(selectedEvent\.details/.test(source),
-    "the details panel must retain the raw recorded payload as a secondary view"
   );
 }
 

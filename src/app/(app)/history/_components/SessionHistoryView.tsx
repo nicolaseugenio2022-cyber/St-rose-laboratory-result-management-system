@@ -76,19 +76,33 @@ type PreviewRequest = {
 type SortKey = "accession" | "patient" | "date" | "retention";
 type SortDirection = "ascending" | "descending";
 
-const TABLE_COLUMN_COUNT = 5;
+const TABLE_COLUMN_COUNT = 4;
 
 // The table uses `table-fixed`, so these proportions - not the widest cell content - decide column
 // widths. That is what keeps the row inside its container: under the default auto layout a
 // nowrap actions cell expands to its intrinsic width and pushes the table into horizontal scroll.
-// Percentages are index-aligned with the header row and sum to 100. Status, retention and
-// examination date share one lifecycle column, which is what lets five columns fit the shell.
+// Percentages are index-aligned with the header row and sum to 100.
+//
+// Budgeted against the TIGHTEST shell width, which occurs at `lg`: the sidebar becomes static and
+// claims 256px in one step, leaving roughly 710px of table. Two columns previously could not fit
+// their own contents there, and because the frame is `overflow-hidden` and `table-fixed w-full`
+// never exceeds 100%, the scroll container never engages - so an overlong cell was silently
+// clipped by the Badge's own `overflow-hidden` rather than scrolled to:
+//
+//   - retention at 18% gave 107px of content against "Expires in NN days" plus its urgency icon,
+//     which measures ~129px. The chip is `whitespace-nowrap` and cannot shrink, so the retention
+//     wording - the one fact with a deadline attached - was the thing being cut off.
+//   - tests at 14% gave 78px against the longest real template code, BLOOD_TYPING, at ~82px.
+//
+// Folding the accession into the patient cell is what pays for both. It is a single token that is
+// never sorted from a header (the Sort by select is canonical), so a column of its own bought
+// nothing that a dedicated line inside the identity block does not - and it now has room to sit
+// on ONE line at every width instead of `break-all` splitting an accession number in two.
 const COLUMN_WIDTH_CLASS = [
-  "w-[19%]", // accession - monospace identifier, needs a stable minimum
-  "w-[27%]", // patient   - highest scan priority, carries secondary metadata beneath
-  "w-[14%]", // tests     - bounded by the three-chip + N cap
-  "w-[18%]", // status    - badge, retention and examination date on one wrapping line
-  "w-[22%]", // actions   - three controls, labelled at xl and icon-only below it
+  "w-[34%]", // patient   - name, then accession and examination date, then identity metadata
+  "w-[20%]", // tests     - 118px of content: clears the longest template code with room to wrap
+  "w-[22%]", // lifecycle - 132px of content: clears the longest retention wording plus its icon
+  "w-[24%]", // actions   - three controls, labelled at xl and icon-only below it
 ];
 
 // Below md the table becomes a card list, which has no column headers to sort from. This select
@@ -181,11 +195,49 @@ function RetentionChip({ retention }: { retention: NonNullable<ReturnType<typeof
     <Badge
       variant={retention.variant}
       size="md"
-      className={cn("px-1.5", retention.quiet && "bg-transparent ring-transparent")}
+      // `whitespace-normal` overrides the Rhea badge's own `whitespace-nowrap`. The chip is sized
+      // to fit its longest wording at the tightest shell width, so this never fires in practice -
+      // but the badge is also `overflow-hidden`, so if it ever did come up short the failure mode
+      // without this is a SILENTLY CLIPPED retention deadline, with no ellipsis to hint at it.
+      // Wrapping is the safe failure for a fact with a date attached.
+      className={cn("whitespace-normal px-1.5", retention.quiet && "bg-transparent ring-transparent")}
     >
       {RetentionIcon && <RetentionIcon aria-hidden="true" />}
       {retention.label}
     </Badge>
+  );
+}
+
+/**
+ * The lifecycle cell's retention line, for both renderings.
+ *
+ * Lifecycle status and retention are separate facts about a session, and retention is only a fact
+ * about a COMPLETED one - a draft is not retained, it is unfinished. `getRetentionDetails` already
+ * returns null for a draft, but returning null is not by itself enough: the caller still has to
+ * decide what to render in its place, and rendering the "Not yet retained" line there stated
+ * retention information about a session the rule does not apply to.
+ *
+ * Gating on the status here means that line is reachable only by a completed session that has no
+ * expiry recorded yet, and a draft states its lifecycle alone. Both renderings call this, so the
+ * table and the card cannot drift apart on it - which they already had: the table showed the
+ * placeholder and the card showed nothing.
+ */
+function SessionRetentionLine({
+  session,
+  retention,
+}: {
+  session: PatientReportSessionListEntry;
+  retention: ReturnType<typeof getRetentionDetails>;
+}) {
+  if (session.status !== "Completed") return null;
+
+  return retention ? (
+    <RetentionChip retention={retention} />
+  ) : (
+    // `block` rather than the default inline: the card renders this inside a `space-y` stack,
+    // where a vertical margin on an inline box is simply dropped and the line would sit tight
+    // against the chips above it.
+    <span className="block text-[11px] text-brand-text-muted">Not yet retained</span>
   );
 }
 
@@ -197,8 +249,11 @@ function TestCodeChips({ reports }: { reports: PatientReportSessionListEntry["re
     <div className="flex flex-wrap gap-1">
       {reports.slice(0, MAX_VISIBLE_TEST_CHIPS).map((r) => (
         // The shared Badge's neutral/sm variant is exactly this chip's established tint and
-        // metrics, so the code chips stop being a retyped copy of it.
-        <Badge key={r.id} variant="neutral" size="sm">
+        // metrics, so the code chips stop being a retyped copy of it. `whitespace-normal` for the
+        // same reason the retention chip carries it: the badge is `overflow-hidden`, so a code
+        // wider than the column is clipped rather than scrolled to, and a half-shown template
+        // code misnames the test that was run.
+        <Badge key={r.id} variant="neutral" size="sm" className="whitespace-normal break-words">
           {r.templateCode}
         </Badge>
       ))}
@@ -241,8 +296,14 @@ function HistoryTableSkeleton() {
                 {Array.from({ length: TABLE_COLUMN_COUNT }).map((__, columnIndex) => (
                   <td key={columnIndex} className="px-3 py-2 align-middle">
                     <Skeleton className="h-4 w-full" />
-                    {/* The patient cell carries a second metadata line from lg up. */}
-                    {columnIndex === 1 && <Skeleton className="mt-1 hidden h-3 w-2/3 lg:block" />}
+                    {/* Column 0 is the patient identity block: the name, then the accession and
+                        examination date line, then a third metadata line from lg up. */}
+                    {columnIndex === 0 && (
+                      <>
+                        <Skeleton className="mt-1 h-3 w-3/4" />
+                        <Skeleton className="mt-1 hidden h-3 w-2/3 lg:block" />
+                      </>
+                    )}
                   </td>
                 ))}
               </tr>
@@ -650,7 +711,7 @@ export function SessionHistoryView({
                 Clear search
               </Button>
             }
-            headingLevel={3}
+            headingLevel={2}
           />
         ) : statusFilter !== "ALL" ? (
           <EmptyState
@@ -662,14 +723,14 @@ export function SessionHistoryView({
                 Show all
               </Button>
             }
-            headingLevel={3}
+            headingLevel={2}
           />
         ) : (
           <EmptyState
             icon={History}
             title="No session history yet"
             description="Patient report sessions will appear here after they are created."
-            headingLevel={3}
+            headingLevel={2}
           />
         )
       ) : (
@@ -680,13 +741,15 @@ export function SessionHistoryView({
             <caption className="sr-only">Patient report session history</caption>
             <TableHeader>
               {/* Plain headers. The Sort by select is canonical and carries every key, so the
-                  headers simply label. The lifecycle header is named for what it holds. */}
+                  headers simply label. Written in sentence case: TableHead already applies
+                  `uppercase`, so typing the caps as well left the real casing unavailable to a
+                  screen reader and to anyone copying the column name out. The rendering is
+                  identical. */}
               <tr>
-                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[0]}`}>ACCESSION NO</TableHead>
-                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[1]}`}>PATIENT</TableHead>
-                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[2]}`}>TESTS</TableHead>
-                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[3]}`}>STATUS / RETENTION</TableHead>
-                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[4]}`}>ACTIONS</TableHead>
+                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[0]}`}>Patient</TableHead>
+                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[1]}`}>Tests</TableHead>
+                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[2]}`}>Lifecycle</TableHead>
+                <TableHead className={`whitespace-normal ${COLUMN_WIDTH_CLASS[3]}`}>Actions</TableHead>
               </tr>
             </TableHeader>
             <TableBody>
@@ -695,12 +758,29 @@ export function SessionHistoryView({
 
                 return (
                   <TableRow key={sess.id}>
-                    <TableCell className="break-all font-mono font-semibold tabular-nums text-brand-navy xl:whitespace-nowrap xl:break-normal">
-                      {sess.accessionNumber}
-                    </TableCell>
                     <TableCell>
-                      <div className="break-words font-semibold uppercase text-brand-text">
+                      {/* The identity block, in scan order: who, then which record, then who
+                          ordered it. `truncate` with a title rather than `break-words` - a
+                          wrapped name changes the row height and breaks the horizontal scan
+                          line that makes a long table readable. */}
+                      <div
+                        className="truncate font-semibold uppercase text-brand-text"
+                        title={sess.demographics.fullName || "Unnamed Patient"}
+                      >
                         {sess.demographics.fullName || "Unnamed Patient"}
+                      </div>
+                      {/* The record's two hard identifiers, on one line and visible at EVERY
+                          width. The accession keeps its navy monospace treatment, so it still
+                          reads as the identifier it is and still forms a vertical scan line -
+                          it simply no longer needs a column to do it, and it no longer breaks
+                          across two lines below xl. */}
+                      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px]">
+                        <span className="whitespace-nowrap font-mono font-semibold tabular-nums text-brand-navy">
+                          {sess.accessionNumber}
+                        </span>
+                        <span className="whitespace-nowrap font-mono tabular-nums text-brand-text-muted">
+                          {sess.demographics.examinationDate || "—"}
+                        </span>
                       </div>
                       {/* Secondary identity metadata: lowest scan priority, so it is the first thing
                           dropped as width tightens. Both values remain available in Preview. */}
@@ -725,18 +805,13 @@ export function SessionHistoryView({
                       <TestCodeChips reports={sess.reports} />
                     </TableCell>
                     <TableCell>
-                      {/* Status, retention and examination date on one wrapping line. Every value
-                          is unchanged - the retention wording is the same string. */}
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {/* Lifecycle first, retention beneath it. Stacking states them as the two
+                          separate facts they are rather than running them together on one line,
+                          and a draft renders the badge alone. Every value is unchanged - the
+                          retention wording is the same string. */}
+                      <div className="flex flex-col items-start gap-1">
                         <StatusBadge status={sess.status} size="sm" />
-                        {retention ? (
-                          <RetentionChip retention={retention} />
-                        ) : (
-                          <span className="text-[11px] text-brand-text-muted">Not yet retained</span>
-                        )}
-                        <span className="font-mono text-[11px] tabular-nums text-brand-text-muted">
-                          {sess.demographics.examinationDate || "—"}
-                        </span>
+                        <SessionRetentionLine session={sess} retention={retention} />
                       </div>
                     </TableCell>
                     <TableCell>
@@ -782,7 +857,9 @@ export function SessionHistoryView({
                   <div className="space-y-1.5 border-t border-brand-border-subtle px-3.5 py-2">
                     <TestCodeChips reports={sess.reports} />
 
-                    {retention && <RetentionChip retention={retention} />}
+                    {/* The same rule the table applies, through the same component: a completed
+                        session states its retention, a draft states none. */}
+                    <SessionRetentionLine session={sess} retention={retention} />
 
                     <p className="text-[11px] text-brand-text-muted">
                       <span className="whitespace-nowrap tabular-nums">

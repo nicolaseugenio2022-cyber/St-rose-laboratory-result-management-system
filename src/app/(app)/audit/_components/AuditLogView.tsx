@@ -81,6 +81,19 @@ const CATEGORY_OPTIONS: ReadonlyArray<{
  */
 const FILTER_DEBOUNCE_MS = 300;
 
+/**
+ * How often the view re-reads the current page on its own, in milliseconds.
+ *
+ * The audit log is append-only and read by someone watching events arrive, so the list should be
+ * current without being asked. 30s is slow enough that an operator reading a page is not fighting
+ * the screen, and fast enough that "is it live?" never becomes a question - which is the doubt a
+ * manual Refresh button creates rather than answers.
+ *
+ * A sync re-reads the CURRENT criteria and offset and never resets either, so it cannot move the
+ * operator's place in the list. See the tick's guards for the four situations it stands down in.
+ */
+const AUTO_SYNC_INTERVAL_MS = 30_000;
+
 /** The filter state that means "nothing is being filtered". Used by Clear all and by the
  *  active-filter derivation, so the two can never disagree about what "empty" means. */
 const EMPTY_FILTERS: AuditFilters = {
@@ -547,6 +560,11 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   const [showingStaleRows, setShowingStaleRows] = useState(false);
   const requestSequence = useRef(0);
   const pendingLoad = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When the list last successfully came back. Starts null and is set by the first completed
+  // read rather than at render time: the initial page is server-rendered, and stamping a clock
+  // value during that render is exactly the kind of server/client difference React reports as a
+  // hydration mismatch.
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   const cancelPendingLoad = useCallback(() => {
     if (pendingLoad.current !== null) {
@@ -597,7 +615,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     async (
       nextFilters: AuditFilters,
       nextOffset: number,
-      options: { criteriaChanged?: boolean } = {}
+      options: { criteriaChanged?: boolean; background?: boolean } = {}
     ) => {
       // Choke point: any load that actually starts invalidates whatever was still scheduled.
       // Without this, an immediate control clicked during the debounce window would be followed
@@ -613,7 +631,19 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         if (requestId === requestSequence.current) {
           setPage(nextPage);
           setOffset(nextOffset);
-          setSelectedEvent(null);
+          // A background sync must never close a record the operator is reading.
+          //
+          // The tick's `hasOpenDetail` stand-down is not sufficient on its own: it prevents a sync
+          // from STARTING while a dialog is open, but a sync already in flight when the dialog is
+          // opened still resolves here, and clearing the selection at that point closes the record
+          // out from under them - the precise failure the stand-down exists to prevent, reached
+          // through the one path it cannot see.
+          //
+          // A user-initiated load still clears the selection exactly as before: there the operator
+          // asked for different rows, so a detail panel belonging to the previous result set is
+          // stale and should go.
+          if (!options.background) setSelectedEvent(null);
+          setLastSyncedAt(new Date());
         }
       } catch {
         if (requestId === requestSequence.current) {
@@ -630,6 +660,60 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     },
     [limit, cancelPendingLoad, beginRequest]
   );
+
+  // The server already rendered a page, so the list is current as of mount. Stamped here rather
+  // than in the initial state so the value is only ever produced on the client.
+  useEffect(() => {
+    setLastSyncedAt(new Date());
+  }, []);
+
+  /**
+   * Inputs the auto-sync tick reads, held in a ref rather than closed over.
+   *
+   * The interval is created once and keeps a steady cadence. If it depended on `filters` and
+   * `offset` directly, every keystroke and every page step would tear down the timer and start a
+   * fresh 30s, so an operator who kept working would never actually reach a sync - the feature
+   * would appear to work and silently never fire.
+   */
+  const syncInputs = useRef({
+    filters,
+    offset,
+    loading,
+    hasOpenDetail: selectedEvent !== null,
+  });
+  useEffect(() => {
+    syncInputs.current = { filters, offset, loading, hasOpenDetail: selectedEvent !== null };
+  });
+
+  // Auto-sync. Replaces the manual Refresh control: the list keeps itself current instead of
+  // asking to be told to.
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const { filters: currentFilters, offset: currentOffset, loading: isLoading, hasOpenDetail } =
+        syncInputs.current;
+
+      // Four stand-downs, each one a case where syncing would take something away from the
+      // operator rather than give them something:
+      //  - the tab is not visible: nobody is reading, so this would be a request for no one;
+      //  - a detail dialog is open: no point spending a request whose result cannot be shown
+      //    while a record is being read. This guard alone does NOT keep the dialog open - it
+      //    cannot see a sync that is already in flight - which is why `loadPage` additionally
+      //    refuses to clear the selection for a background load;
+      //  - a request is already in flight: the sequence guard would retire one of them anyway;
+      //  - a debounced filter change is still pending: that newer criteria must land first, and
+      //    `loadPage` would otherwise cancel it and apply the older ones.
+      if (document.visibilityState !== "visible") return;
+      if (isLoading || hasOpenDetail || pendingLoad.current !== null) return;
+
+      // No `criteriaChanged`, so the rows on screen are kept and updated in place rather than
+      // cleared - a background refresh must never blank the table the operator is reading.
+      // `background` additionally keeps an open detail record from being closed by a sync that
+      // was already in flight when it was opened.
+      void loadPage(currentFilters, currentOffset, { background: true });
+    }, AUTO_SYNC_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadPage]);
 
   const changeFilter = <K extends keyof AuditFilters,>(key: K, value: AuditFilters[K]) => {
     const nextFilters = { ...filters, [key]: value };
@@ -738,20 +822,29 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                 Clear all filters
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void loadPage(filters, offset)}
-              disabled={loading}
-              className="min-h-11 sm:min-h-8"
-            >
+            {/* What the Refresh button used to occupy, doing the job Refresh only implied: the
+                list keeps itself current, so this states that rather than asking for a click.
+                Not a live region - the single status inside the records region already announces
+                each load, and narrating a background sync every 30s would be noise. */}
+            <p className="flex items-center gap-1.5 text-[11px] text-brand-text-muted">
               <RefreshCw
                 aria-hidden="true"
-                className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin" : ""}`}
+                className={`h-3.5 w-3.5 shrink-0 ${loading ? "motion-safe:animate-spin" : ""}`}
               />
-              Refresh
-            </Button>
+              {loading ? (
+                "Syncing"
+              ) : lastSyncedAt ? (
+                <>
+                  <span>Auto-syncing</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="whitespace-nowrap tabular-nums">
+                    updated {AUDIT_TIME_FORMAT.format(lastSyncedAt)}
+                  </span>
+                </>
+              ) : (
+                "Auto-syncing"
+              )}
+            </p>
           </div>
         </div>
 
@@ -845,6 +938,23 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
 
       {/* Audit Logs Table */}
       <div className="space-y-3" aria-busy={loading}>
+        {/*
+          The records region's ONE announcing element, in the shape SkeletonRegion established:
+          an sr-only status inside the aria-busy container.
+
+          There were two live regions here before - this state and the pagination count below -
+          and a load changes both at once, so every filter keystroke, page step and refresh
+          queued two announcements for one event. The reader heard the range read out over the
+          loading state, or the reverse, depending on which repainted first. One region states
+          whichever is true now: the load while it is running, the resulting range once it is
+          not. The visible chip and the visible count are left as plain text, so nothing is said
+          twice.
+        */}
+        <span role="status" aria-live="polite" className="sr-only">
+          {loading
+            ? "Loading audit events"
+            : `Showing ${firstVisible} to ${lastVisible} of ${page.total} events`}
+        </span>
         {error && (
           <Alert variant="destructive">
             <p>{error}</p>
@@ -881,7 +991,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           // here would blame the filters for a transport failure and hide the retry.
           <EmptyState
             icon={AlertCircle}
-            headingLevel={3}
+            headingLevel={2}
             className="rounded-none border-0"
             title="Audit events could not be loaded"
             description="The request did not complete, so no events are shown. This is a load failure, not an empty result."
@@ -915,7 +1025,7 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   ? "No recorded event matches the active filter selection. Event type is matched exactly, so a readable label such as \u201cRecovery lookup attempted\u201d finds nothing - the raw identifier RecoveryLookupAttempted is required."
                   : "No recorded event matches the active filter selection. Remove a filter above to widen the search."
             }
-            headingLevel={3}
+            headingLevel={2}
             action={
               active.length > 0 ? (
                 <Button
@@ -971,11 +1081,22 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                           <div className="font-semibold text-brand-text">
                             {humanizeIdentifier(event.eventType)}
                           </div>
-                          <div
-                            className="mt-0.5 truncate font-mono text-[10px] text-brand-text-muted"
-                            title={event.eventType}
-                          >
-                            {event.eventType}
+                          {/* Category joins the raw identifier on the second line rather than
+                              taking a column of its own: the allocation is complete at six
+                              columns and a seventh would have to be taken from Outcome, which is
+                              sized so a recorded value never truncates. Category was previously
+                              visible only on the narrow card list and in the details panel, so a
+                              reader working at a desk - where audit review actually happens - had
+                              to open a dialog per row to learn which category a row belonged to.
+                              It costs no extra row height: the line already existed. */}
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                            {getCategoryBadge(event.category)}
+                            <span
+                              className="min-w-0 truncate font-mono text-[10px] text-brand-text-muted"
+                              title={event.eventType}
+                            >
+                              {event.eventType}
+                            </span>
                           </div>
                         </td>
                         <td className="px-2.5 py-2 align-middle">
@@ -1046,14 +1167,18 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                         {occurred.date} · {occurred.time}
                       </p>
 
+                      {/* Both values truncate, and on a phone there is no hover to recover them
+                          from - so the full value is carried on the element itself. The desktop
+                          table already does this on every truncating cell; the card was the one
+                          place a clipped username or accession had no route back. */}
                       <div className="min-w-0 space-y-0.5 text-[11px] text-brand-text-muted">
-                        <p className="truncate">
+                        <p className="truncate" title={event.performedByUsername ?? undefined}>
                           <span className="font-semibold">By</span>{" "}
                           <span className="text-brand-text">
                             {event.performedByUsername ?? "Not recorded"}
                           </span>
                         </p>
-                        <p className="truncate">
+                        <p className="truncate" title={event.targetReference ?? undefined}>
                           <span className="font-semibold">Target</span>{" "}
                           <span className="font-mono text-brand-text">
                             {event.targetReference ?? "Not recorded"}
@@ -1080,7 +1205,15 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
             </ul>
 
             {loading && (
-              <div className="absolute inset-0 flex items-center justify-center" aria-live="polite">
+              // Visual only: the sr-only status at the top of the records region is what
+              // announces this state, and announcing it here as well said it twice.
+              <div
+                className="pointer-events-none absolute inset-0 flex items-start justify-center pt-6"
+                aria-hidden="true"
+              >
+                {/* Pinned near the top of the rows rather than centred on them: on a full page
+                    of events the centre of the region is off screen, so the one element telling
+                    the reader why the table went quiet was the one element they could not see. */}
                 <span className="rounded-md border border-brand-border bg-brand-surface px-3 py-1.5 text-[11px] font-semibold text-brand-text-muted shadow-low">
                   Loading audit logs...
                 </span>
@@ -1090,7 +1223,9 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         )}
 
         <div className="flex flex-col gap-2 border-t border-brand-border bg-brand-structural px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-brand-text-muted" aria-live="polite">
+          {/* Not a live region: the single status at the top of this region already reports
+              this range, and marking it live too announced the same fact a second time. */}
+          <p className="text-[11px] text-brand-text-muted">
             Showing{" "}
             <span className="font-semibold tabular-nums text-brand-text">
               {firstVisible}–{lastVisible}
@@ -1134,10 +1269,13 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
         className="max-w-2xl"
       >
         {selectedEvent && (
-          <div
-            tabIndex={0}
-            className="max-h-[65vh] space-y-4 overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
-          >
+          // One scroll container, not two. Modal's own body is already `min-h-0 flex-1
+          // overflow-y-auto`, so the `max-h-[65vh] overflow-y-auto` that used to be here nested a
+          // second scroller inside it: two scrollbars on desktop, nested touch-scrolling on a
+          // phone, and a cap that disagreed with the shell's - the shell measures in `dvh`, which
+          // tracks the mobile URL bar as it collapses, while `65vh` does not. Dropping it also
+          // removes a tab stop that landed before the dialog's first real control.
+          <div className="space-y-4">
             <DetailSection title="Event">
               <DetailRow label="Event">
                 <span className="font-semibold">{humanizeIdentifier(selectedEvent.eventType)}</span>
@@ -1195,20 +1333,11 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               )}
             </DetailSection>
 
-            <details className="border-t border-brand-border pt-3">
-              <summary
-                tabIndex={0}
-                className="cursor-pointer rounded text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
-              >
-                Raw detail payload
-              </summary>
-              <pre
-                tabIndex={0}
-                className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-brand-border bg-brand-structural p-3 font-mono text-[11px] leading-relaxed text-brand-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
-              >
-                {JSON.stringify(selectedEvent.details ?? null, null, 2)}
-              </pre>
-            </details>
+            {/* The raw JSON payload disclosure was removed here on QA'd product direction.
+                The "Recorded detail" section above is now the single presentation of what the
+                event carries, and it remains a complete one: it iterates every entry the server
+                sent, unfiltered, and falls back to a humanized label for any key DETAIL_LABELS
+                does not name - so no recorded field is withheld by dropping this. */}
           </div>
         )}
       </Modal>

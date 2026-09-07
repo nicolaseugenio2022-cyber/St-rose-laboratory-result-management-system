@@ -61,13 +61,14 @@
  *     guard (exactly one exists today);
  *   - the render-loop filter ban inspects only the span between `Object.entries` and `.map(`, so a
  *     filter applied after the map, or an early return inside it, would not be caught;
- *   - three locators scan the whole file rather than a bounded region and take the first match with
- *     no uniqueness guard: the invariant 7 Outcome cell, and the two panel constructs behind the
- *     unrecognised-key guarantee (`Object.entries(selectedEvent.details)` and the `hasOwnProperty`
- *     fallback). Each construct occurs exactly once today, so each assertion inspects what it
- *     names - but nothing enforces that, and this is the same shape the removed invariant 10
- *     failed on twice. A third construct, the raw `JSON.stringify` payload, was retired with the
- *     disclosure it protected;
+ *   - ONE locator still scans the whole file rather than a bounded region and takes the first
+ *     match with no uniqueness guard: the invariant 7 Outcome cell. It occurs exactly once today,
+ *     so the assertion inspects what it names - but nothing enforces that, and this is the same
+ *     shape the removed invariant 10 failed on twice. The two panel constructs behind the
+ *     unrecognised-key guarantee no longer have this weakness: they are extracted through `region`
+ *     from the unique `Recorded detail` section, so a decoy elsewhere in the module cannot satisfy
+ *     them while the real panel withholds fields. A third construct, the raw `JSON.stringify`
+ *     payload, was retired with the disclosure it protected;
  *   - the invariant 13 verb lookup is scoped to the `activeFilters` block but not to the individual
  *     filter entry: its 320-character window also reaches the next entry's `verb`. The lazy match
  *     takes the correct one today, and every neighbouring verb fails the exact-match family, so a
@@ -896,14 +897,34 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
   // has a raw fallback sitting behind it, so if the loop below were ever narrowed, there is no
   // second surface where the missing field would still show up. That makes the pass-through
   // assertions more load-bearing than they were, not less - do not weaken them.
-  const loop = /Object\.entries\(selectedEvent\.details\)([\s\S]{0,120}?)\.map\(/.exec(source);
+  //
+  // Which is why they are now SCOPED. They previously scanned the whole file and took the first
+  // match, so they asserted about "some `Object.entries(selectedEvent.details).map(` somewhere in
+  // this module" rather than about the panel the guarantee is about. A decoy occurrence earlier in
+  // the file - a helper, a memo, a second unrelated panel - would have satisfied both while the
+  // real Recorded detail section filtered entries and withheld audit fields. That is not
+  // hypothetical for this file: the header records invariant 10 failing on exactly this shape
+  // twice, and `region` exists because `<tbody` once matched the loading skeleton instead of the
+  // table. `region` refuses a duplicated marker, so this either inspects the right markup or
+  // fails loudly; it can no longer pass by inspecting the wrong one.
+  const recordedDetailSection = region(
+    '<DetailSection title="Recorded detail">',
+    "</DetailSection>",
+    "details panel Recorded detail section"
+  );
+
+  const loop = /Object\.entries\(selectedEvent\.details\)([\s\S]{0,120}?)\.map\(/.exec(
+    recordedDetailSection
+  );
   assert(loop, "the details panel must iterate the recorded detail entries");
   assert(
     !loop[1].includes(".filter("),
     "the details panel must not filter recorded detail entries; every key the server sent must reach the operator"
   );
   assert(
-    /hasOwnProperty\.call\(DETAIL_LABELS,\s*key\)[\s\S]{0,120}?humanizeIdentifier\(key\)/.test(source),
+    /hasOwnProperty\.call\(DETAIL_LABELS,\s*key\)[\s\S]{0,120}?humanizeIdentifier\(key\)/.test(
+      recordedDetailSection
+    ),
     "an unlabelled detail key must fall back to a humanized label rather than being dropped"
   );
 }

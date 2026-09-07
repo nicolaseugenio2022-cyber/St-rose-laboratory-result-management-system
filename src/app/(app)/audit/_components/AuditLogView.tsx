@@ -565,6 +565,13 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
   // value during that render is exactly the kind of server/client difference React reports as a
   // hydration mismatch.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  // True once a background sync has failed. Automatic syncing then stops until a user-initiated
+  // load succeeds, so a persistent fault cannot turn a left-open tab into an indefinite source of
+  // requests - and, on the refusal paths, of audit rows.
+  const [syncPaused, setSyncPaused] = useState(false);
+  // A background request does not set `loading`, so the tick cannot use that to see one of its own
+  // still in flight. Without this a slow sync would be joined by the next tick's.
+  const backgroundSyncInFlight = useRef(false);
 
   const cancelPendingLoad = useCallback(() => {
     if (pendingLoad.current !== null) {
@@ -597,19 +604,37 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
    * at the instant a debounced free-text criterion becomes visible. That is what lets the request
    * stay debounced while the invalidation does not.
    */
-  const beginRequest = useCallback((nextOffset: number, criteriaChanged: boolean) => {
-    const requestId = ++requestSequence.current;
-    setLoading(true);
-    setError(null);
+  /**
+   * `silent` is what keeps a background sync from wearing the foreground's clothes.
+   *
+   * `loading` drives the visible chip, `aria-busy`, the disabled states AND the records region's
+   * one announcing status. Letting a 30s timer set it meant that status flipped
+   * "Showing X to Y of N events" -> "Loading audit events" -> back on every tick, so a screen
+   * nobody was touching announced itself twice a minute, forever. That is the exact noise the
+   * header status was written NOT to make, and it is worse than the Refresh button it replaced,
+   * which only ever spoke when it was clicked.
+   *
+   * A silent request still bumps the sequence, so its publication guard and every ordering
+   * property are unchanged - it just does not repaint the page as busy.
+   */
+  const beginRequest = useCallback(
+    (nextOffset: number, criteriaChanged: boolean, silent = false) => {
+      const requestId = ++requestSequence.current;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setShowingStaleRows(false);
+      }
 
-    if (criteriaChanged) {
-      setPage({ events: [], total: 0 });
-      setOffset(nextOffset);
-    }
-    setShowingStaleRows(false);
+      if (criteriaChanged) {
+        setPage({ events: [], total: 0 });
+        setOffset(nextOffset);
+      }
 
-    return requestId;
-  }, []);
+      return requestId;
+    },
+    []
+  );
 
   const loadPage = useCallback(
     async (
@@ -621,7 +646,9 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
       // Without this, an immediate control clicked during the debounce window would be followed
       // 300ms later by the stale snapshot - older criteria applying after newer input.
       cancelPendingLoad();
-      const requestId = beginRequest(nextOffset, options.criteriaChanged === true);
+      const isBackground = options.background === true;
+      if (isBackground) backgroundSyncInFlight.current = true;
+      const requestId = beginRequest(nextOffset, options.criteriaChanged === true, isBackground);
 
       try {
         const nextPage = await readAuditPageAction(
@@ -642,18 +669,42 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
           // A user-initiated load still clears the selection exactly as before: there the operator
           // asked for different rows, so a detail panel belonging to the previous result set is
           // stale and should go.
-          if (!options.background) setSelectedEvent(null);
+          if (!isBackground) setSelectedEvent(null);
           setLastSyncedAt(new Date());
+          // A read that came back supersedes any earlier failure, however it was started, so a
+          // recovered sync clears the paused state and the stale-rows label rather than leaving
+          // the page describing a problem that has passed.
+          setSyncPaused(false);
+          setError(null);
+          setShowingStaleRows(false);
         }
       } catch {
         if (requestId === requestSequence.current) {
-          setError("Unable to load audit logs. Please try again.");
-          // Rows survive only when they still answer the criteria on screen, and then they are
-          // labelled rather than passed off as current.
-          setShowingStaleRows(!options.criteriaChanged);
+          if (isBackground) {
+            // Stand down instead of retrying every 30s forever.
+            //
+            // A failing request is not free and is not silent on the server: readAuditPageAction
+            // re-authorizes on every call and WRITES an AuditAccessDenied row when it refuses. An
+            // account deactivated or token-rotated behind an open tab would therefore have this
+            // timer appending two refusal rows a minute, indefinitely, to an append-only log that
+            // cannot be pruned - a UI timer manufacturing what an audit reader is trained to read
+            // as an intrusion signature.
+            //
+            // One failed attempt, then stop. No error banner either: nobody asked for this
+            // request, so it must not interrupt with one. The status line says the sync is
+            // paused, and any user-initiated load resumes it on success - or surfaces the real
+            // error, with its Retry, in the surface built for it.
+            setSyncPaused(true);
+          } else {
+            setError("Unable to load audit logs. Please try again.");
+            // Rows survive only when they still answer the criteria on screen, and then they are
+            // labelled rather than passed off as current.
+            setShowingStaleRows(!options.criteriaChanged);
+          }
         }
       } finally {
-        if (requestId === requestSequence.current) {
+        if (isBackground) backgroundSyncInFlight.current = false;
+        if (requestId === requestSequence.current && !isBackground) {
           setLoading(false);
         }
       }
@@ -680,30 +731,49 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     offset,
     loading,
     hasOpenDetail: selectedEvent !== null,
+    syncPaused,
   });
   useEffect(() => {
-    syncInputs.current = { filters, offset, loading, hasOpenDetail: selectedEvent !== null };
+    syncInputs.current = {
+      filters,
+      offset,
+      loading,
+      hasOpenDetail: selectedEvent !== null,
+      syncPaused,
+    };
   });
 
   // Auto-sync. Replaces the manual Refresh control: the list keeps itself current instead of
   // asking to be told to.
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      const { filters: currentFilters, offset: currentOffset, loading: isLoading, hasOpenDetail } =
-        syncInputs.current;
+      const {
+        filters: currentFilters,
+        offset: currentOffset,
+        loading: isLoading,
+        hasOpenDetail,
+        syncPaused: isPaused,
+      } = syncInputs.current;
 
-      // Four stand-downs, each one a case where syncing would take something away from the
+      // Six stand-downs, each one a case where syncing would take something away from the
       // operator rather than give them something:
       //  - the tab is not visible: nobody is reading, so this would be a request for no one;
+      //  - a previous background sync failed: one attempt, then stop, until a user-initiated load
+      //    succeeds. This is what bounds the feature - without it a fault behind an open tab
+      //    retries forever, and on the refusal paths each retry writes an audit row;
       //  - a detail dialog is open: no point spending a request whose result cannot be shown
       //    while a record is being read. This guard alone does NOT keep the dialog open - it
       //    cannot see a sync that is already in flight - which is why `loadPage` additionally
       //    refuses to clear the selection for a background load;
-      //  - a request is already in flight: the sequence guard would retire one of them anyway;
+      //  - a foreground request is in flight: the sequence guard would retire one of them anyway;
+      //  - one of OUR OWN syncs is in flight: a background request deliberately does not set
+      //    `loading`, so it is invisible to the check above and needs its own;
       //  - a debounced filter change is still pending: that newer criteria must land first, and
       //    `loadPage` would otherwise cancel it and apply the older ones.
       if (document.visibilityState !== "visible") return;
-      if (isLoading || hasOpenDetail || pendingLoad.current !== null) return;
+      if (isPaused) return;
+      if (isLoading || hasOpenDetail) return;
+      if (backgroundSyncInFlight.current || pendingLoad.current !== null) return;
 
       // No `criteriaChanged`, so the rows on screen are kept and updated in place rather than
       // cleared - a background refresh must never blank the table the operator is reading.
@@ -833,16 +903,22 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
               />
               {loading ? (
                 "Syncing"
-              ) : lastSyncedAt ? (
-                <>
-                  <span>Auto-syncing</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="whitespace-nowrap tabular-nums">
-                    updated {AUDIT_TIME_FORMAT.format(lastSyncedAt)}
-                  </span>
-                </>
               ) : (
-                "Auto-syncing"
+                <>
+                  {/* Says which of the two states it is actually in. A paused sync that still
+                      claimed to be "Auto-syncing" would be the one genuinely misleading thing
+                      this line could do - the rows would quietly age while the page insisted
+                      they were current. Any filter change, page step or Retry resumes it. */}
+                  <span>{syncPaused ? "Auto-sync paused" : "Auto-syncing"}</span>
+                  {lastSyncedAt && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="whitespace-nowrap tabular-nums">
+                        updated {AUDIT_TIME_FORMAT.format(lastSyncedAt)}
+                      </span>
+                    </>
+                  )}
+                </>
               )}
             </p>
           </div>

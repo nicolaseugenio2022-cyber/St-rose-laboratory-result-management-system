@@ -79,6 +79,11 @@ function rowPolicy(
   const isActive = account.status === "Active";
   const isCurrentUser = account.id === currentUserId;
   const isLastActiveDeveloper = isActive && activeDeveloperCount === 1;
+  // True only when an account protection blocks DEACTIVATION specifically. Distinct from
+  // `toggleDisabled`, which also covers the transient single-flight hold that carries no
+  // protection sentence. An inactive current user stays reactivatable, so the restriction
+  // (delete-only) does not describe its Reactivate action.
+  const toggleRestricted = isActive && (isCurrentUser || isLastActiveDeveloper);
   const isBusy = busyAccountId === account.id;
 
   // Writes are single-flight across the whole screen, modal submissions included: while one
@@ -105,6 +110,7 @@ function rowPolicy(
     isLastActiveDeveloper,
     isBusy,
     actionsDisabled,
+    toggleRestricted,
     toggleDisabled,
     deleteDisabled,
     restriction,
@@ -173,9 +179,10 @@ function RowActions({
   layout: "row" | "record";
   /**
    * Id of the sentence explaining why a control is unavailable, passed to `aria-describedby` on
-   * exactly the two controls the restriction governs. Without it a screen-reader operator who
-   * lands on a disabled Deactivate hears silence where the reason is sitting in plain text
-   * directly underneath.
+   * exactly the controls the restriction governs - Delete always; the status toggle only when
+   * the restriction also blocks deactivation. Without it a screen-reader operator who lands on a
+   * disabled Deactivate hears silence where the reason is sitting in plain text directly
+   * underneath.
    */
   restrictionId?: string;
   onEditUsername: (account: DeveloperAccountEntry) => void;
@@ -259,7 +266,7 @@ function RowActions({
           onClick={() => onToggleStatus(account)}
           disabled={policy.toggleDisabled}
           aria-label={`${toggleVerb} ${name}`}
-          aria-describedby={policy.restriction ? restrictionId : undefined}
+          aria-describedby={policy.toggleRestricted ? restrictionId : undefined}
         >
           <Power aria-hidden="true" className="h-3.5 w-3.5" />
           {toggleVerb}

@@ -256,17 +256,24 @@ export function PersonnelDirectoryView({
 
       {/* Four counts, all derived from the roster already in hand. The same strip the two account
           directories open with, so the three administrative modules state their shape identically
-          rather than each inventing a panel. */}
-      <SummaryBar
-        label="Personnel directory summary"
-        figures={[
-          { label: "Personnel", value: summary.total },
-          { label: "Active", value: summary.active, tone: "success" },
-          { label: "Pathologists", value: summary.pathologists },
-          { label: "Med. Technologists", value: summary.medtechs },
-        ]}
-        note="PRC-licensed personnel who sign laboratory reports."
-      />
+          rather than each inventing a panel.
+
+          Gated on `!isLoading`, which is the only one of the load facts that means "an answer
+          arrived". During the initial in-flight load, zero figures would mislead the reader into
+          thinking the directory is genuinely empty when it has not resolved yet. A successful
+          empty response still shows its zeros, because an answer did arrive. */}
+      {!isLoading && (
+        <SummaryBar
+          label="Personnel directory summary"
+          figures={[
+            { label: "Personnel", value: summary.total },
+            { label: "Active", value: summary.active, tone: "success" },
+            { label: "Pathologists", value: summary.pathologists },
+            { label: "Med. Technologists", value: summary.medtechs },
+          ]}
+          note="PRC-licensed personnel who sign laboratory reports."
+        />
+      )}
 
       {/* ── Search and filter toolbar ───────────────────────────────────────── */}
       <section

@@ -62,29 +62,24 @@ export function SummaryBar({ label, figures, note, className, ...props }: Summar
       <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-6">
         <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-1 sm:flex-wrap sm:items-baseline sm:gap-x-7">
           {figures.map((figure) => (
-            <div key={figure.label} className="min-w-0">
+            <div key={figure.label} className="flex min-w-0 flex-col">
+              {/* dt precedes dd in DOM order so assistive technology reads label-then-value.
+                  CSS order reverses them visually: value above label. */}
+              <dt className="order-2 mt-1 break-words text-[11px] font-semibold uppercase leading-tight tracking-[0.06em] text-brand-text-muted">
+                {figure.label}
+              </dt>
               <dd
                 className={cn(
-                  "text-[19px] font-bold leading-none tabular-nums",
+                  "order-1 text-[19px] font-bold leading-none tabular-nums",
                   VALUE_TONE[figure.tone ?? "default"]
                 )}
               >
                 {figure.value}
               </dd>
-              {/* The label sits UNDER the number: the figure is what the eye lands on, and the
-                  word is what confirms it. Reversing them turns the strip into a list of
-                  headings with numbers attached.
-
-                  It wraps rather than truncates. A truncated label degrades to nothing at all
-                  once the column is narrow enough, and an unlabelled figure is not a shorter
-                  label - it is a number whose meaning is gone. Two lines cost less. */}
-              <dt className="mt-1 break-words text-[11px] font-semibold uppercase leading-tight tracking-[0.06em] text-brand-text-muted">
-                {figure.label}
-              </dt>
               {figure.hint && (
-                <p className="mt-0.5 break-words text-[11px] leading-tight text-brand-text-subtle">
+                <dd className="order-3 mt-0.5 break-words text-[11px] leading-tight text-brand-text-subtle">
                   {figure.hint}
-                </p>
+                </dd>
               )}
             </div>
           ))}

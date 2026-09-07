@@ -178,6 +178,11 @@ function rowPolicy(
   const isActive = user.status === "Active";
   const isCurrentUser = user.id === currentUserId;
   const isLastActiveAdmin = isActive && user.role === "Admin" && activeAdminCount === 1;
+  // True only when an account protection blocks DEACTIVATION specifically. Distinct from
+  // `toggleDisabled`, which also covers transient single-flight holds that carry no protection
+  // sentence. An inactive current user stays reactivatable, so the restriction (delete-only)
+  // does not describe its Reactivate action.
+  const toggleRestricted = isActive && (isCurrentUser || isLastActiveAdmin);
   const isStatusUpdating = statusUpdatingUserId === user.id;
   const isRowBusy = deletingUserId === user.id || isStatusUpdating;
   // Status changes are single-flight. A second click - on this row or on another - while a
@@ -207,6 +212,7 @@ function rowPolicy(
     isRowBusy,
     isStatusUpdating,
     restriction,
+    toggleRestricted,
     actionsDisabled,
     toggleDisabled:
       actionsDisabled ||
@@ -232,8 +238,10 @@ type RowPolicy = ReturnType<typeof rowPolicy>;
  * than four competing ones. Delete still routes through the confirmation dialog.
  *
  * `restrictionId` is the id of the sentence explaining why a control is unavailable. It is passed
- * to `aria-describedby` on exactly the two controls the restriction governs, so a screen-reader
- * operator who lands on a disabled Deactivate hears the reason instead of silence.
+ * to `aria-describedby` on exactly the controls the restriction governs - Delete always; the
+ * status toggle only when the restriction also blocks deactivation. So a screen-reader operator
+ * who lands on a disabled Deactivate hears the reason instead of silence, while an enabled
+ * Reactivate is not announced as restricted.
  */
 function RowActions({
   user,
@@ -313,7 +321,7 @@ function RowActions({
           disabled={policy.toggleDisabled}
           isLoading={policy.isStatusUpdating}
           aria-label={`${toggleVerb} ${name}`}
-          aria-describedby={policy.restriction ? restrictionId : undefined}
+          aria-describedby={policy.toggleRestricted ? restrictionId : undefined}
         >
           {!policy.isStatusUpdating && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
           {toggleVerb}
@@ -341,7 +349,7 @@ function RowActions({
           aria-hidden="true"
           className="flex items-center gap-1.5 text-[11px] leading-snug text-brand-text-muted"
         >
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand-text-subtle" />
+          <Loader2 className="h-3 w-3 shrink-0 motion-safe:animate-spin text-brand-text-subtle" />
           <span>Updating account status...</span>
         </p>
       )}

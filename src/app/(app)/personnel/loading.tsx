@@ -1,5 +1,5 @@
 import React from "react";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/Skeleton";
 
 /**
  * Route-level placeholder for the Personnel Directory.
@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
  */
 export default function PersonnelLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading personnel directory" className="space-y-4 pb-6">
+    <SkeletonRegion isLoading label="Loading personnel directory" className="space-y-4 pb-6">
       {/* Summary strip: the four counts, number over label - the same strip the two account
           directories open with. */}
       <div className="rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5">
@@ -76,6 +76,6 @@ export default function PersonnelLoading() {
           ))}
         </div>
       </div>
-    </div>
+    </SkeletonRegion>
   );
 }

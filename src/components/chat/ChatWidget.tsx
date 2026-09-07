@@ -31,6 +31,107 @@ const WELCOME_MESSAGE: ChatMessage = {
 
 const CHAT_PANEL_ID = "lab-support-chat";
 
+function textToNodes(text: string, keyPrefix: string): React.ReactNode[] {
+  const lines = text.split("\n");
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) {
+      nodes.push(<br key={`${keyPrefix}-nl${i}`} />);
+    }
+    if (lines[i]) {
+      nodes.push(<React.Fragment key={`${keyPrefix}-s${i}`}>{lines[i]}</React.Fragment>);
+    }
+  }
+  return nodes;
+}
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const boldRegex = /\*\*(.+?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+  let token = 0;
+  while ((match = boldRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(...textToNodes(text.slice(lastIndex, match.index), `t${token++}`));
+    }
+    parts.push(
+      <strong key={`s${token++}`}>{textToNodes(match[1], `b${token++}`)}</strong>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(...textToNodes(text.slice(lastIndex), `t${token++}`));
+  }
+  return parts;
+}
+
+type Block = { type: "text" | "ul" | "ol"; items: string[] };
+
+function renderAssistantContent(content: string): React.ReactNode {
+  if (!content) return <br />;
+  const paragraphs = content.split(/\n{2,}/);
+  const blocks: React.ReactNode[] = [];
+  let idx = 0;
+
+  for (const paragraph of paragraphs) {
+    const lines = paragraph.split("\n");
+    if (lines.every((line) => line.trim() === "")) continue;
+    const classified: Array<{ type: "text" | "ul" | "ol"; text: string }> = [];
+
+    for (const line of lines) {
+      if (/^[*-]\s/.test(line)) {
+        classified.push({ type: "ul", text: line.slice(2) });
+      } else if (/^\d+\.\s/.test(line)) {
+        classified.push({ type: "ol", text: line.replace(/^\d+\.\s/, "") });
+      } else {
+        classified.push({ type: "text", text: line });
+      }
+    }
+
+    const groups: Block[] = [];
+    for (const item of classified) {
+      const last = groups[groups.length - 1];
+      if (last && last.type === item.type) {
+        last.items.push(item.text);
+      } else {
+        groups.push({ type: item.type, items: [item.text] });
+      }
+    }
+
+    const elements: React.ReactNode[] = [];
+    for (const group of groups) {
+      if (group.type === "ul") {
+        elements.push(
+          <ul key={idx++} className="list-disc pl-5">
+            {group.items.map((item, i) => (
+              <li key={i}>{renderInline(item)}</li>
+            ))}
+          </ul>
+        );
+      } else if (group.type === "ol") {
+        elements.push(
+          <ol key={idx++} className="list-decimal pl-5">
+            {group.items.map((item, i) => (
+              <li key={i}>{renderInline(item)}</li>
+            ))}
+          </ol>
+        );
+      } else {
+        elements.push(
+          <p key={idx++}>{renderInline(group.items.join("\n"))}</p>
+        );
+      }
+    }
+
+    if (elements.length > 0) {
+      blocks.push(<React.Fragment key={`pg${idx}`}>{elements}</React.Fragment>);
+    }
+  }
+
+  return blocks.length > 0 ? blocks : <br />;
+}
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -248,9 +349,12 @@ export function ChatWidget() {
                 </div>
               ) : (
                 <div key={index} className="flex justify-start">
-                  <div className="max-w-[85%] whitespace-pre-wrap rounded-md border border-brand-border bg-brand-structural px-3 py-2 text-[13px] leading-relaxed text-brand-text [overflow-wrap:anywhere]">
-                    {message.content ||
-                      (isStreaming && index === messages.length - 1 ? "\u2026" : "")}
+                  <div className="max-w-[85%] rounded-md border border-brand-border bg-brand-structural px-3 py-2 text-[13px] leading-relaxed text-brand-text [overflow-wrap:anywhere]">
+                    {message.content
+                      ? renderAssistantContent(message.content)
+                      : isStreaming && index === messages.length - 1
+                        ? "…"
+                        : null}
                   </div>
                 </div>
               )
@@ -281,7 +385,7 @@ export function ChatWidget() {
               type="text"
               value={input}
               onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder="Ask a question about the system\u2026"
+              placeholder="Ask a question about the system…"
               autoComplete="off"
               disabled={isStreaming}
               className="h-9 min-w-0 flex-1 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-[border-color,box-shadow] placeholder:text-slate-500 hover:border-brand-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80"

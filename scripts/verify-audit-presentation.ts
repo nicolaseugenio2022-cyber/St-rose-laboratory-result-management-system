@@ -66,12 +66,19 @@
  *     of them: a prefix WRAPPER around the map expression
  *     (`firstFive(Object.entries(...).map(cb), 5)`), which is neither interposed nor chained; a
  *     post-map computed member (`))[TRANSFORM](...)`) or index (`))[0]`), because the chain check
- *     matches dot notation only; and any withholding written OUTSIDE this section at all - a
- *     narrowed `setSelectedEvent`, a `DetailRow` that returns null for some rows, a `children`
- *     expression that blanks unlabelled values, the ternary condition guarding the panel, or
- *     `redactDetails` in `audit-read-service.ts` dropping keys instead of masking values. That
- *     last group is the cost of scoping the assertions honestly to what they can actually see,
- *     and it is the residual left by retiring the raw `JSON.stringify` payload;
+ *     matches dot notation only; and any withholding written where no assertion reads - which is
+ *     most of this section, not merely the code outside it. The checks see three spans: the map
+ *     literal somewhere in the section, the callback head as far as `<DetailRow`, and the text
+ *     after the first `</DetailRow>`. Everything else in the extracted block is unread, INSIDE
+ *     the section included: the ternary condition that chooses between the mapped rows and the
+ *     empty state, the `DetailRow` attributes other than the matched label expression, and the
+ *     `children` expression. So a condition that never selects the map, an added attribute that
+ *     suppresses a row, or a `children` expression that blanks unlabelled values all pass every
+ *     assertion here - as does what is genuinely outside the section: a narrowed
+ *     `setSelectedEvent`, a `DetailRow` that returns null for some rows, or `redactDetails` in
+ *     `audit-read-service.ts` dropping keys instead of masking values. That whole group is the
+ *     cost of scoping the assertions honestly to what they can actually see, and it is the
+ *     residual left by retiring the raw `JSON.stringify` payload;
  *   - the label-fallback check is a 120-character proximity match, not a structural one, so
  *     `... : ""} title={humanizeIdentifier(key)}` satisfies it while the visible label is blank,
  *     and ordinary reformatting can push the two anchors past the window;

@@ -59,8 +59,9 @@
  *     the audit service through a helper would drop its outcome values with no signal;
  *   - the invariant 8 details-cell locator takes the first right-aligned cell without a uniqueness
  *     guard (exactly one exists today);
- *   - the render-loop filter ban inspects only the span between `Object.entries` and `.map(`, so a
- *     filter applied after the map, or an early return inside it, would not be caught;
+ *   - the render-loop checks are now bound to the mapping callback itself, so a `.filter(` inside
+ *     it and a conditional or block-bodied return are both caught. A `.filter(` applied to the
+ *     RESULT of the map, after `</DetailRow>`, still would not be;
  *   - ONE locator still scans the whole file rather than a bounded region and takes the first
  *     match with no uniqueness guard: the invariant 7 Outcome cell. It occurs exactly once today,
  *     so the assertion inspects what it names - but nothing enforces that, and this is the same
@@ -913,17 +914,38 @@ function verifyUnrecognisedDetailKeysStillRender(): void {
     "details panel Recorded detail section"
   );
 
-  const loop = /Object\.entries\(selectedEvent\.details\)([\s\S]{0,120}?)\.map\(/.exec(
-    recordedDetailSection
+  // Bound to the mapping CALLBACK, not to the span in front of it.
+  //
+  // Banning `.filter(` between `Object.entries` and `.map(` only ever caught the most obvious way
+  // to drop a key. A callback is free to return null for whichever keys it likes - and an early
+  // return inside it satisfies every assertion that only inspects what comes before `.map(`, while
+  // the panel silently withholds recorded audit fields. That is the exact outcome this guarantee
+  // exists to prevent, so "we banned one spelling of it" is not enough now that the raw payload no
+  // longer sits behind the curated view as a second surface.
+  //
+  // Extracting through to `</DetailRow>` puts the whole callback under the assertions below, and
+  // requiring the arrow to return a DetailRow DIRECTLY - a parenthesised JSX body, not a block and
+  // not a conditional - removes the room a selective return needs.
+  const detailRowCallback = regionIn(
+    recordedDetailSection,
+    "Object.entries(selectedEvent.details)",
+    "</DetailRow>",
+    "recorded detail mapping callback"
   );
-  assert(loop, "the details panel must iterate the recorded detail entries");
+
   assert(
-    !loop[1].includes(".filter("),
+    /\.map\(\s*\([^)]*\)\s*=>\s*\(\s*<DetailRow\b/.test(detailRowCallback),
+    "the recorded detail entries must map DIRECTLY to a DetailRow; a block body or a conditional return could withhold selected keys while satisfying every other assertion here"
+  );
+  assert(
+    !detailRowCallback.includes(".filter("),
     "the details panel must not filter recorded detail entries; every key the server sent must reach the operator"
   );
+  // Scoped to the same callback, so the fallback that is checked is the one that actually labels
+  // the rendered row - not a lookalike expression elsewhere in the section.
   assert(
     /hasOwnProperty\.call\(DETAIL_LABELS,\s*key\)[\s\S]{0,120}?humanizeIdentifier\(key\)/.test(
-      recordedDetailSection
+      detailRowCallback
     ),
     "an unlabelled detail key must fall back to a humanized label rather than being dropped"
   );

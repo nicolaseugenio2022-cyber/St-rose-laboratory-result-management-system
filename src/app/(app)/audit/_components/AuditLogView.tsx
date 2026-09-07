@@ -712,11 +712,12 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
     [limit, cancelPendingLoad, beginRequest]
   );
 
-  // The server already rendered a page, so the list is current as of mount. Stamped here rather
-  // than in the initial state so the value is only ever produced on the client.
-  useEffect(() => {
-    setLastSyncedAt(new Date());
-  }, []);
+  // No mount-time stamp. An earlier revision stamped `lastSyncedAt` on hydration, which dates the
+  // list to when the BROWSER woke up rather than to when the server read the rows - and on a slow
+  // device those are far apart, so the page would have reported server-rendered rows as freshly
+  // updated. Overstating the freshness of an audit list is exactly the wrong way to be wrong.
+  // The value stays null until a load actually completes; until then the status says
+  // "Auto-syncing" with no time attached, which claims nothing it cannot support.
 
   /**
    * Inputs the auto-sync tick reads, held in a ref rather than closed over.

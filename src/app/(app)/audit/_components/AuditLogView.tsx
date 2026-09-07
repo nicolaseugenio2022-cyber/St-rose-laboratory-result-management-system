@@ -422,6 +422,30 @@ const AUDIT_TIMESTAMP_FORMAT = new Intl.DateTimeFormat("en-US", {
   second: "2-digit",
 });
 
+/**
+ * The last-synced stamp, carrying a date only when it needs one.
+ *
+ * A time alone cannot say which day it belongs to, and this stamp can outlive the day it was
+ * taken: a failed background sync pauses the timer until the operator acts, and a hidden tab
+ * syncs nothing at all. Either one can carry "updated 11:52 PM" across midnight, where it reads
+ * as eight minutes old instead of nine hours - and in the hidden-tab case the label still says
+ * "Auto-syncing", which makes the claim worse rather than merely vague.
+ *
+ * Dating it unconditionally would answer that by putting a full timestamp into an 11px ambient
+ * status that is read at a glance, so the date appears only on the reading where the time alone
+ * would be ambiguous. The exact instant is always available on the element itself.
+ */
+function formatLastSyncedAt(value: Date, now: Date): string {
+  const sameDay =
+    value.getFullYear() === now.getFullYear() &&
+    value.getMonth() === now.getMonth() &&
+    value.getDate() === now.getDate();
+
+  return sameDay
+    ? AUDIT_TIME_FORMAT.format(value)
+    : `${AUDIT_DATE_FORMAT.format(value)}, ${AUDIT_TIME_FORMAT.format(value)}`;
+}
+
 function formatOccurredAtParts(value: string): { date: string; time: string; full: string } {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return { date: value, time: "", full: value };
@@ -942,9 +966,16 @@ export function AuditLogView({ initialPage, initialCriteria }: AuditLogViewProps
                   {lastSyncedAt && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="whitespace-nowrap tabular-nums">
-                        updated {AUDIT_TIME_FORMAT.format(lastSyncedAt)}
-                      </span>
+                      {/* A <time> rather than a span: the machine-readable instant and the full
+                          local timestamp both travel with the element, so the exact moment is
+                          recoverable even on the reading where the visible text is just a time. */}
+                      <time
+                        dateTime={lastSyncedAt.toISOString()}
+                        title={AUDIT_TIMESTAMP_FORMAT.format(lastSyncedAt)}
+                        className="whitespace-nowrap tabular-nums"
+                      >
+                        updated {formatLastSyncedAt(lastSyncedAt, new Date())}
+                      </time>
                     </>
                   )}
                 </>

@@ -108,7 +108,7 @@ No client-approved automatic computations exist.
 | Field | Default | Editable |
 |--------|----------|----------|
 | Address | STA. ROSA, NUEVA ECIJA | Yes |
-| Requested By | Dr. Ma. Floricel Dedace-Lagrazon | Yes |
+| Requested By | Dr. Ralph Roland Asperas | Yes (optional) |
 | Date | Current Date | Yes |
 | Sex | None | Required |
 
@@ -127,9 +127,17 @@ No client-approved automatic computations exist.
 
 Default
 
-- Dr. Ma. Floricel Dedace-Lagrazon
+- Dr. Ralph Roland Asperas
 
-Editable to another physician.
+Offered physicians for this examination, by client decision:
+
+- Dr. Ralph Roland Asperas
+- Dr. Heinz Roland Asperas
+
+Dr. Ma. Floricel Dedace-Lagrazon was the former default and is removed from Fecalysis only. The
+physician remains in the managed directory and remains available to every other examination.
+
+Editable to another physician, and optional - a report stays valid with no requesting physician.
 
 ---
 
@@ -240,9 +248,9 @@ Preview, Browser Print, and PDF MUST produce identical output.
 
 Automatically populate:
 
-Dr. Ma. Floricel Dedace-Lagrazon
+Dr. Ralph Roland Asperas
 
-The user may edit and replace with another physician.
+The user may edit and replace with another physician, or leave it blank.
 
 ---
 

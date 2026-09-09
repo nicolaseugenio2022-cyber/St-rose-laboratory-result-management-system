@@ -36,8 +36,38 @@ export function formatWithSuffix(value: string | null | undefined, suffix: strin
 }
 
 /**
+ * Removes a fixed display suffix from a value being TYPED, without touching anything else.
+ *
+ * `stripFixedSuffix` below trims, which is correct for a value that has settled and wrong for one
+ * that has not. Both sides of a controlled input run through a suffix strip - the stored value is
+ * stripped to produce what the field displays, and what the field emits is stripped again before
+ * it is stored - so a trim there deletes the trailing space of an in-progress word on every
+ * keystroke. The field is restored to the trimmed text and the next character lands flush against
+ * the previous word: "TOO NUMEROUS TO COUNT" was stored as "TOONUMEROUSTOCOUNT", making a space
+ * untypable in every result that declares a suffix.
+ *
+ * So this returns the value EXACTLY as given whenever the suffix is not present, which is the case
+ * for every intermediate state of a phrase being typed. Only when the value genuinely ends with the
+ * suffix is anything removed, and then the separator space that preceded the suffix goes with it -
+ * that space belongs to the suffix, not to the operator's text.
+ *
+ * Interior spacing is never the suffix's business, and is never touched here.
+ */
+export function stripFixedSuffixDuringEntry(value: string | null | undefined, suffix: string): string {
+  if (!value) return "";
+  const trimmedSuffix = suffix.trim();
+  if (!trimmedSuffix) return value;
+
+  if (!value.toLowerCase().endsWith(trimmedSuffix.toLowerCase())) return value;
+  return value.slice(0, value.length - trimmedSuffix.length).replace(/\s+$/, "");
+}
+
+/**
  * Removes a fixed display suffix from legacy stored input so Encoding edits only
  * the staff-entered value portion. Matching is case-insensitive and whitespace-tolerant.
+ *
+ * For a SETTLED value only - a stored result being hydrated, completed or rendered. Never on the
+ * keystroke path: use `stripFixedSuffixDuringEntry` there, and see why above.
  */
 export function stripFixedSuffix(value: string | null | undefined, suffix: string): string {
   if (!value || value.trim() === "") return "";

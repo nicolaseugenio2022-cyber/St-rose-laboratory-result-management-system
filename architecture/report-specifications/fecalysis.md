@@ -28,8 +28,12 @@
 - **Renderer Family:** Tabular
 
 ### Requested By & Demographic Policy
-- **Requested By Default:** `Dr. Ma. Floricel Dedace-Lagrazon` (Editable initial value)
-- **Requested By Policy:** Populates Dr. Ma. Floricel Dedace-Lagrazon when empty; editable by staff.
+- **Requested By Default:** `Dr. Ralph Roland Asperas` (Editable initial value)
+- **Requested By Policy:** Populates Dr. Ralph Roland Asperas when empty; editable by staff. The
+  offered physicians are restricted to Dr. Ralph Roland Asperas and Dr. Heinz Roland Asperas for
+  this examination. Superseded by client decision: Dr. Ma. Floricel Dedace-Lagrazon was the former
+  default and is removed from Fecalysis only - the physician remains in the managed directory and
+  remains available to every other examination. Requested By is optional here as everywhere.
 - **Patient Status Collection Policy:** Omitted / Not collected for Encoding UI (New Confirmed Client Decision).
 - **Patient Status Output Policy:** Omitted from report demographic header.
 

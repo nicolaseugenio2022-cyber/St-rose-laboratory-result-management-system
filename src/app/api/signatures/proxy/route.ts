@@ -279,7 +279,9 @@ export async function GET(request: NextRequest) {
 
   // ── Mode: reportId + personnelId. A completed report's own signatory row ──────────────────
   // Resolved from `report_signatories`, so current personnel is never consulted and changing a
-  // Pathologist's signature today cannot alter what an already-issued report renders. The row is
+  // signatory's signature today - Pathologist or Medical Technologist - cannot alter what an
+  // already-issued report renders. No role check is applied or needed here: the row itself is
+  // the authority, and it exists only because completion resolved it server-side. The row is
   // NOT immutable, though: Replacement Mode deletes and re-inserts it while the report id
   // survives, so this address is never cached.
   if (mode === "frozen") {
@@ -339,7 +341,7 @@ export async function GET(request: NextRequest) {
     // exist and which hold a signature.
     if (
       !person ||
-      person.role !== "Pathologist" ||
+      (person.role !== "Pathologist" && person.role !== "MedicalTechnologist") ||
       !person.isActive ||
       !person.signatureImageUrl
     ) {

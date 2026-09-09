@@ -248,12 +248,36 @@ async function main(): Promise<void> {
     assert(referencePrimitives.length === 0, `${templateCode} must emit no reference primitive - measured ${referencePrimitives.map((primitive) => primitive.id).join(", ")}`);
     assert(!/\bRef:/.test(pageText(serologyPage)), `${templateCode} output must carry no Ref: label`);
   }
-  // The shared grid keeps its third column: the cell is empty, the column is not removed, so the
-  // EXAMINATION and RESULT tracks stay exactly where every other report puts them.
-  for (const templateCode of ["HBSAG", "RPR", "DENGUE_DUO", "PREG_TEST"]) {
+  // SUPERSEDED: this loop previously required all three result headers, keeping an empty third
+  // column so the tracks aligned with every other report. The client reports that the TEST and
+  // REFERENCE VALUES headings do not belong on a qualitative screening result, and these five
+  // reports carry no reference data at all - the assertions above already prove no reference
+  // display, no reference primitive and no Ref: label exist on any of them. The column is now
+  // removed rather than emptied, and the first header is blank so the test names keep their
+  // column and lose their label.
+  //
+  // Asserted structurally, not by count alone: an empty header string still emits a primitive, so
+  // a count would stay green if the third column came back carrying nothing. The header TEXTS are
+  // what pin the contract.
+  for (const templateCode of ["BLOOD_TYPING", "HBSAG", "RPR", "DENGUE_DUO", "PREG_TEST"]) {
     const serologyPage = pages.get(templateCode)!;
-    const headers = serologyPage.primitives.filter((primitive) => /^result-header-\d+$/.test(primitive.id));
-    assert(headers.length === 3, `${templateCode} must keep all three result headers so the reference column stays structurally aligned - measured ${headers.length}`);
+    const headers = serologyPage.primitives
+      .filter((primitive): primitive is typeof primitive & { text: string } => /^result-header-\d+$/.test(primitive.id) && "text" in primitive)
+      .map((primitive) => primitive.text);
+    assert(headers.length === 2, `${templateCode} must compose exactly two result columns so the reference track is removed, not emptied - measured ${headers.length}`);
+    assert(JSON.stringify(headers) === JSON.stringify(["", "RESULT"]), `${templateCode} result headers must be exactly ["", "RESULT"] - measured ${JSON.stringify(headers)}`);
+    // Scoped to the header row, never the whole page: DENGUE_DUO's approved printed title is
+    // "DENGUE DUO TEST", so a page-wide search for the word would reject the report's own title.
+    assert(!headers.some((header) => /\bTEST\b/.test(header)), `${templateCode} must compose no TEST column heading - measured ${JSON.stringify(headers)}`);
+    assert(!/REFERENCE VALUES/.test(pageText(serologyPage)), `${templateCode} must print no REFERENCE VALUES heading anywhere on the page`);
+    // The names and the results themselves must survive the column removal.
+    const definition = ReportDefinitionRegistry.getDefinition(templateCode)!;
+    for (const parameter of definition.parameters) {
+      const labelPrimitives = serologyPage.primitives.filter((primitive) => primitive.id.startsWith(`result-${parameter.parameterCode}-label`));
+      const valuePrimitives = serologyPage.primitives.filter((primitive) => primitive.id.startsWith(`result-${parameter.parameterCode}-value`));
+      assert(labelPrimitives.length > 0, `${templateCode}/${parameter.parameterCode} must still compose its test name`);
+      assert(valuePrimitives.length > 0, `${templateCode}/${parameter.parameterCode} must still compose its result value`);
+    }
   }
 
   assert(!pageText(pages.get("BLOOD_TYPING")!).includes("Dr."), "Blood Typing blank Requested By must remain blank");

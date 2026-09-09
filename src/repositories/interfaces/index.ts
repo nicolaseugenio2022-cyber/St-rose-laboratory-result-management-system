@@ -1,7 +1,9 @@
 import { 
   IPatientReportSession, 
   IPersonnel, 
-  IUserProfile, 
+  IPhysician,
+  IPhysicianExaminationAssignment,
+  IUserProfile,
   IReportTemplate, 
   ITemplateParameter, 
   ITemplateSignatoryRequirement 
@@ -164,6 +166,65 @@ export interface IPersonnelRepository {
   create(personnel: Omit<IPersonnel, "id" | "createdAt" | "updatedAt">): Promise<IPersonnel>;
   update(id: string, updates: Partial<IPersonnel>): Promise<IPersonnel>;
   toggleActiveStatus(id: string, isActive: boolean): Promise<IPersonnel>;
+}
+
+/**
+ * The managed physician directory behind the report "Requested By" field.
+ *
+ * Mirrors IPersonnelRepository deliberately, including the absence of any delete method: a
+ * physician who no longer refers is deactivated, never removed, so historical reports keep
+ * resolving the name they were issued with.
+ */
+export interface IPhysicianRepository {
+  findById(id: string): Promise<IPhysician | null>;
+  findAllActive(): Promise<IPhysician[]>;
+  findAll(): Promise<IPhysician[]>;
+  create(physician: Omit<IPhysician, "id" | "createdAt" | "updatedAt">): Promise<IPhysician>;
+  update(id: string, updates: Partial<IPhysician>): Promise<IPhysician>;
+  toggleActiveStatus(id: string, isActive: boolean): Promise<IPhysician>;
+  findAllAssignments(): Promise<IPhysicianExaminationAssignment[]>;
+  findAssignmentsByTemplate(templateCode: string): Promise<IPhysicianExaminationAssignment[]>;
+  findAssignmentsByPhysician(physicianId: string): Promise<IPhysicianExaminationAssignment[]>;
+  /**
+   * Save one physician's record AND its complete examination-assignment set as ONE transaction.
+   *
+   * All of it or none of it. The record is created or updated, the physician's previous pairs are
+   * replaced wholesale, the default is transferred onto the templates named, and the physician's
+   * identifier is returned - and a failure anywhere leaves the directory exactly as it was. This
+   * replaces a sequence of independent statements that could commit partially and strand a
+   * physician half-configured, or clear ANOTHER physician's default while reporting failure.
+   *
+   * A replacement, not a merge: a code absent from `templateCodes` is no longer an assignment of
+   * that physician afterwards. No physician row is ever deleted - the no-hard-delete rule this
+   * directory rests on (a historical report must keep resolving the name it was issued with) is
+   * unaffected by anything that happens here.
+   *
+   * Returns the physician's id, produced server-side, so a newly created physician never has to
+   * be found again by name.
+   */
+  savePhysicianConfiguration(configuration: PhysicianConfigurationInput): Promise<string>;
+}
+
+/** The writable half of an assignment: the pair, plus whether it is the template's default. */
+export interface PhysicianExaminationAssignmentInput {
+  templateCode: string;
+  isDefault: boolean;
+}
+
+/**
+ * One complete physician form save.
+ *
+ * `id` is null for a physician being created: the identifier is produced by the transaction and
+ * handed back, never guessed by the caller. `defaultTemplateCodes` is a subset of `templateCodes`
+ * - a default that is not assigned is refused by the schema, by the server action and by the
+ * database function, in that order.
+ */
+export interface PhysicianConfigurationInput {
+  id: string | null;
+  fullName: string;
+  isActive: boolean;
+  templateCodes: readonly string[];
+  defaultTemplateCodes: readonly string[];
 }
 
 export interface IUserProfileRepository {

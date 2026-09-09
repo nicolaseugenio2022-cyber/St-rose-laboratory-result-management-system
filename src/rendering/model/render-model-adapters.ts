@@ -1,6 +1,7 @@
 import type {
   CompletedReportSnapshot,
   CompletedSessionSnapshot,
+  FrozenPatientAge,
 } from "@/domain/completion/completed-snapshot";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import type {
@@ -17,6 +18,7 @@ import type {
   ResultPresentationSpec,
 } from "@/domain/types/report-definition";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
+import { resolvePatientAge } from "@/domain/patient-age";
 import { stripFixedSuffix } from "@/services/formatter-registry";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
 import { normalizeCalculationModes } from "@/domain/calculation-mode";
@@ -84,16 +86,50 @@ function formatLongDateUppercase(value: string): string {
   }).format(date).toUpperCase();
 }
 
+/**
+ * How a report's age WORDING is arrived at.
+ *
+ * "Resolved" applies the current rule and is what a draft renders at - what the operator sees is
+ * what completion will freeze. "AsIssued" reproduces the wording of the era a report was issued in,
+ * and is the only mode a completed report ever uses.
+ */
+type AgeWordingMode = "Resolved" | "AsIssued";
+
 function resolveDemographics(
   demographics: PatientDemographics,
-  ageDisplay: "NumberOnly" | "NumberWithUnit" = "NumberWithUnit"
+  ageDisplay: "NumberOnly" | "NumberWithUnit" = "NumberWithUnit",
+  options: { frozenAge?: FrozenPatientAge | null; wording?: AgeWordingMode } = {}
 ): ResolvedDemographicsRenderModel {
-  const validAge = Number.isFinite(demographics.age) && demographics.age > 0 ? demographics.age : null;
+  const wording = options.wording ?? "Resolved";
+  const frozenAge = options.frozenAge ?? null;
+  // A completed report prints what it printed on the day it was issued. Three cases, in order:
+  //
+  //   1. a snapshot carrying a frozen age uses that wording verbatim - a later correction to the
+  //      age rule cannot reach it;
+  //   2. a snapshot written BEFORE the frozen field existed is rendered with the wording rule of
+  //      its own era, which built the string as `${value} ${unit}` and therefore printed "1 years".
+  //      Ungrammatical, and preserved exactly, because restating an issued report is worse than a
+  //      plural that was already on the page;
+  //   3. a draft resolves under the current rule, so what the operator sees is what completion
+  //      will freeze.
+  // The as-issued branch reads the STORED fields directly, with the baseline's own guard, rather
+  // than anything the resolver derives. That is what makes it byte-identical to the pre-correction
+  // construction `${demographics.age} ${demographics.ageUnit}` for every snapshot, and it removes
+  // the last coupling between an already-issued report and the current age rule.
+  const storedAge = Number.isFinite(demographics.age) && demographics.age > 0 ? demographics.age : null;
+  const resolvedAge = resolvePatientAge(demographics);
+  const validAge = frozenAge ? frozenAge.value : wording === "AsIssued" ? storedAge : resolvedAge.value;
+  const resolvedUnit = frozenAge ? frozenAge.unit : wording === "AsIssued" ? demographics.ageUnit : resolvedAge.unit ?? demographics.ageUnit;
+  const wordedAge = frozenAge
+    ? frozenAge.display
+    : wording === "AsIssued"
+      ? storedAge == null ? "" : `${storedAge} ${demographics.ageUnit}`
+      : resolvedAge.display;
   return {
     fullName: demographics.fullName || "",
     age: validAge,
-    ageUnit: demographics.ageUnit,
-    ageDisplay: validAge == null ? "" : ageDisplay === "NumberOnly" ? String(validAge) : `${validAge} ${demographics.ageUnit}`,
+    ageUnit: resolvedUnit,
+    ageDisplay: validAge == null ? "" : ageDisplay === "NumberOnly" ? String(validAge) : wordedAge,
     sex: demographics.sex || "",
     address: demographics.address ?? "",
     examinationDate: demographics.examinationDate || "",
@@ -101,6 +137,29 @@ function resolveDemographics(
     referrerName: demographics.referrerName ?? "",
     companyName: demographics.companyName ?? "",
   };
+}
+
+/**
+ * The age presentation a report renders at, honouring the version its presentation was
+ * introduced at.
+ *
+ * A definition may correct how the age is printed - CBC moved from a bare number to a number with
+ * its unit - without restating what an already-issued report said. A snapshot frozen before the
+ * declared version keeps the superseded presentation; a draft and every new completion get the
+ * current one. Absent a version gate this is simply the declared presentation, which is how every
+ * other definition behaves.
+ */
+function resolveAgePresentation(
+  definition: ClinicalReportDefinition,
+  renderContractVersion?: number
+): "NumberOnly" | "NumberWithUnit" | undefined {
+  const spec = definition.renderContract?.demographics;
+  if (!spec) return undefined;
+  const effectiveVersion = renderContractVersion ?? definition.renderContract?.renderContractVersion ?? STANDARD_RENDER_CONTRACT_VERSION;
+  if (spec.sinceRenderContractVersion !== undefined && effectiveVersion < spec.sinceRenderContractVersion) {
+    return spec.supersededAgeDisplay;
+  }
+  return spec.ageDisplay;
 }
 
 function findResult(report: ILaboratoryReport, parameter: ParameterSpec): ILaboratoryResult | undefined {
@@ -153,12 +212,15 @@ function composeSignatorySlots(
     //   3. `signatureImageUrl` - the stored reference, which only ever exists server-side now
     //      (and in verifier fixtures). The client transport cannot carry it.
     // Whichever wins is sanitized identically, so an address is no more trusted than a path.
+    // Resolved for every signatory role. This was Pathologist-only, because the project's former
+    // signatory policy made a Medical Technologist textual by rule; the laboratory has since
+    // decided a MedTech may sign, so the role special-case is REMOVED rather than widened - one
+    // rule, applied to whoever fills the slot. A signatory with no signature on file still
+    // resolves to null, and the renderer's OmitImage behaviour already covers that.
     const overrideAsset = matching ? signatureAssets[matching.personnelId] : undefined;
-    const signatureSource = spec.personnelRole === "Pathologist"
-      ? sanitizeOptionalSignatureSource(
-          overrideAsset ?? matching?.signatureAddress ?? matching?.signatureImageUrl
-        )
-      : null;
+    const signatureSource = sanitizeOptionalSignatureSource(
+      overrideAsset ?? matching?.signatureAddress ?? matching?.signatureImageUrl
+    );
     return {
       ...spec,
       personnelId: matching?.personnelId || "",
@@ -273,7 +335,12 @@ function draftReport(
         evaluationOutcome: value.evaluationOutcome,
         computationMetadata: value.computationMetadata ? structuredClone(value.computationMetadata) : null,
         displayOrder: parameter.displayOrder,
-        omission: !selected || (!value.formattedResultValue && !parameter.isRequired && parameter.blankOmission) ? "Omit" : "Render",
+        // A parameter is rendered only when it was selected AND carries an actual value. A
+        // checked parameter the operator intentionally left blank is omitted from the report
+        // entirely rather than printed as an empty row - the same rule completion applies when
+        // it freezes the snapshot, so Preview, Print and PDF show exactly what was frozen.
+        // Whitespace-only is blank; "0", "0.0", "false", "Negative" and "Nonreactive" are not.
+        omission: !selected || !(value.formattedResultValue || "").trim() ? "Omit" : "Render",
         conditionalLabel: conditionalSeparator >= 0 ? value.formattedResultValue!.slice(0, conditionalSeparator).trim() : null,
       };
     });
@@ -286,7 +353,7 @@ function draftReport(
     staticContentVersion: definition.renderContract?.staticContentVersion ?? STANDARD_STATIC_CONTENT_VERSION,
     staticContent: resolveStaticContent(definition, demographics, results),
     resultSections: structuredClone(definition.renderContract?.resultSections || []),
-    ageDisplay: resolveDemographics(demographics, definition.renderContract?.demographics?.ageDisplay).ageDisplay,
+    ageDisplay: resolveDemographics(demographics, resolveAgePresentation(definition)).ageDisplay,
     requestedBy: {
       label: definition.requestedByPolicy.fieldLabel || "Requested By",
       value: resolveRequestedBy(report, definition, demographics),
@@ -299,6 +366,11 @@ function draftReport(
     },
     additionalFields: { ...(report.encodingData?.additionalFields || {}) },
     results,
+    // Render reflects stored state; it never re-derives it. The laboratory's standing remark is
+    // seeded once, when the report is created (see initialLaboratoryRemarks in report-encoding).
+    // Substituting it again here would make Live Preview disagree with completion, which freezes
+    // report.remarks verbatim, and would silently restore a remark the operator deliberately
+    // cleared. A blank stored remark therefore renders blank on every surface.
     remarks: report.remarks || "",
     reagentKitInfo: report.reagentKitInfo ? { ...report.reagentKitInfo } : null,
     repeatableFindings: populatedFindings(report.encodingData?.repeatableFindings),
@@ -425,7 +497,7 @@ function completedReport(
     ...metadata,
     staticContent: resolveStaticContent(definition, snapshot.demographics, results),
     resultSections: structuredClone(definition.renderContract?.resultSections || []),
-    ageDisplay: resolveDemographics(snapshot.demographics, definition.renderContract?.demographics?.ageDisplay).ageDisplay,
+    ageDisplay: resolveDemographics(snapshot.demographics, resolveAgePresentation(definition, metadata.renderContractVersion), { frozenAge: snapshot.frozenAge, wording: "AsIssued" }).ageDisplay,
     requestedBy: {
       label: definition.requestedByPolicy.fieldLabel || "Requested By",
       value: report.requestedBy,
@@ -455,7 +527,7 @@ export function resolveDraftSessionRenderModel(
 ): ResolvedSessionRenderModel {
   const reports = session.reports.map((report) => draftReport(report, requireDefinition(definitions, report.templateCode), session.demographics, signatureAssets));
   const agePresentation = session.reports.length === 1
-    ? requireDefinition(definitions, session.reports[0].templateCode).renderContract?.demographics?.ageDisplay
+    ? resolveAgePresentation(requireDefinition(definitions, session.reports[0].templateCode))
     : undefined;
   return deepCloneAndFreeze({
     origin: "Draft",
@@ -475,7 +547,7 @@ export function resolveCompletedSessionRenderModel(
 ): ResolvedSessionRenderModel {
   const reports = snapshot.reports.map((report) => completedReport(snapshot, report, requireDefinition(definitions, report.templateCode)));
   const agePresentation = snapshot.reports.length === 1
-    ? requireDefinition(definitions, snapshot.reports[0].templateCode).renderContract?.demographics?.ageDisplay
+    ? resolveAgePresentation(requireDefinition(definitions, snapshot.reports[0].templateCode), snapshot.reports[0].renderContractVersion)
     : undefined;
   return deepCloneAndFreeze({
     origin: "Completed",
@@ -483,7 +555,7 @@ export function resolveCompletedSessionRenderModel(
     completedAt: snapshot.completedAt,
     snapshotVersion: snapshot.snapshotVersion,
     logoSource: CANONICAL_REPORT_LOGO_SOURCE,
-    demographics: resolveDemographics(snapshot.demographics, agePresentation),
+    demographics: resolveDemographics(snapshot.demographics, agePresentation, { frozenAge: snapshot.frozenAge, wording: "AsIssued" }),
     reports,
   });
 }
@@ -532,7 +604,7 @@ function legacyCompletedReport(
     staticContentVersion: definition.renderContract?.staticContentVersion ?? STANDARD_STATIC_CONTENT_VERSION,
     staticContent: resolveStaticContent(definition, demographics, results),
     resultSections: structuredClone(definition.renderContract?.resultSections || []),
-    ageDisplay: resolveDemographics(demographics, definition.renderContract?.demographics?.ageDisplay).ageDisplay,
+    ageDisplay: resolveDemographics(demographics, resolveAgePresentation(definition, STANDARD_RENDER_CONTRACT_VERSION), { wording: "AsIssued" }).ageDisplay,
     requestedBy: {
       label: definition.requestedByPolicy.fieldLabel || "Requested By",
       value: report.encodingData && Object.prototype.hasOwnProperty.call(report.encodingData, "requestedBy")
@@ -570,7 +642,11 @@ export function resolveSessionRenderModel(
     completedAt: session.completedAt || null,
     snapshotVersion: null,
     logoSource: CANONICAL_REPORT_LOGO_SOURCE,
-    demographics: resolveDemographics(session.demographics),
+    // AsIssued, like the per-report reader above it. This is a COMPLETED session, so its
+    // session-level demographics must be worded as issued too - leaving it at the "Resolved"
+    // default made the one completed path that was not converted, and it would have re-worded a
+    // pre-snapshot completion under today's rule.
+    demographics: resolveDemographics(session.demographics, undefined, { wording: "AsIssued" }),
     reports,
   });
 }

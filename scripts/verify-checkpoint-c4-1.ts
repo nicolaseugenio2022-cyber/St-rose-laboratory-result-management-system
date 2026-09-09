@@ -177,7 +177,20 @@ async function main(): Promise<void> {
       assert(!result.referenceDisplay || rendered.includes(normalized(result.referenceDisplay)), `${report.templateCode}/${result.parameterCode} must preserve referenceDisplay`);
       assert(!result.unitDisplay || rendered.includes(normalized(result.unitDisplay)), `${report.templateCode}/${result.parameterCode} must preserve unitDisplay`);
     }
-    assert(!page.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist-signature")), `${report.templateCode} must not create a Medical Technologist image`);
+    // SUPERSEDED: this required that a Medical Technologist could NEVER carry a signature image.
+    // The laboratory has since decided a MedTech may sign, so the rule is no longer about the ROLE
+    // - it is that an image is composed exactly when that slot carries a resolved signature asset,
+    // and never otherwise. Stated as an equivalence rather than an absence, so it stays meaningful
+    // in both directions instead of passing vacuously on a fixture whose signatories have none.
+    // Scoped to the shared standard signatory band. The HIV certificate composes its own columns
+    // with their own primitive ids and is asserted separately, below.
+    if (report.layoutFamily !== "Certificate") {
+      for (const slot of report.signatories) {
+        const slotImageId = slot.personnelRole === "Pathologist" ? "pathologist-signature" : "medical-technologist-signature";
+        const hasImage = page.primitives.some((primitive) => primitive.kind === "image" && primitive.id === slotImageId);
+        assert(hasImage === Boolean(slot.signatureAsset), `${report.templateCode}/${slot.slotId} composes a signature image exactly when it has one on file`);
+      }
+    }
   }
 
   assert(JSON.stringify(familyCounts) === JSON.stringify({ StandardAdaptiveTabular: 6, CompactResultGrid: 9, Certificate: 1, MicroscopyTwoColumn: 1 }), "all four layout families must retain their approved counts");
@@ -190,8 +203,14 @@ async function main(): Promise<void> {
   // returns the reference track's width to the RESULT column, so two rows that previously wrapped
   // onto a second line now fit on one and the report ends 9.1 mm higher - two row heights exactly.
   // Every other pin is untouched, which is what proves the change stayed inside one report.
+  // The intentionally-blank-results change re-mints CHEM_10 (130.65 -> 126.10) and HDL_LDL
+  // (121.55 -> 117.00), one row height each. A result carrying no value is now omitted from the
+  // report rather than printed as an empty row, and this fixture feeds CHOLESTEROL 150 with
+  // TRIGLYCERIDES 700, which makes LDL negative; StrictPositive blanks it, so its row is no
+  // longer composed. Both reports lose exactly that one row. No other pin moves, which is again
+  // what proves the rule did not leak into reports whose results are all populated.
   const EXPECTED_REPORT_BOTTOMS_MM: Record<string, number> = {
-    FECALYSIS: 135.2, CHEM_10: 130.65, CBC: 130.65, HDL_LDL: 121.55, HIV_RESULT: 120.8,
+    FECALYSIS: 135.2, CHEM_10: 126.1, CBC: 130.65, HDL_LDL: 117.0, HIV_RESULT: 120.8,
     CHEM_8: 112.45, URINALYSIS: 109.95, DENGUE_DUO: 104.2, OGTT: 98.8, HBA1C: 95.1,
     HBSAG: 95.1, RPR: 95.1, PREG_TEST: 95.1, BLOOD_TYPING: 94.25, CT_BT: 94.25,
     RBS: 89.7, ESR: 89.7,

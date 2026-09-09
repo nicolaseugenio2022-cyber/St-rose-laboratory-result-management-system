@@ -147,3 +147,41 @@ export interface IAutoSuggestion {
   usageCount: number;
   lastUsedAt: string;
 }
+
+/**
+ * A requesting physician in the managed directory that backs the report "Requested By" field.
+ *
+ * Deliberately NOT a `personnel` role. `IPersonnel` models a PRC-licensed signatory of this
+ * laboratory and requires credentials, a licence number and a signature reference; a requesting
+ * physician has none of those here. The only thing the report needs is the name exactly as it
+ * must print, so that is the only substantive field this record carries.
+ */
+export interface IPhysician {
+  id: string;
+  /** The full display name exactly as it prints on a report, e.g. "Dr. Ralph Roland Asperas". */
+  fullName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One physician's association with one examination template.
+ *
+ * Normalized deliberately - one row per (physician, template) pair rather than an array column on
+ * either side. The pairing is what the database can constrain: the pair is unique, and a partial
+ * unique index admits at most one `isDefault` row per template. Neither guarantee is expressible
+ * against a JSON array, and both are guarantees the encoding screen relies on when it offers a
+ * single pre-selected physician for the examination being encoded.
+ *
+ * `isDefault` is a property of the PAIR, not of the physician: the same physician may be the
+ * default for one examination and merely an option for another.
+ */
+export interface IPhysicianExaminationAssignment {
+  physicianId: string;
+  /** References `report_templates.template_code`, e.g. "FECALYSIS". */
+  templateCode: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

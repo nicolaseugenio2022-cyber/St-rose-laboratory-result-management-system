@@ -3,10 +3,17 @@
 import "server-only";
 
 import type { HydratedTemplateSpec } from "@/services/interfaces";
-import type { IPersonnel, IPatientReportSession } from "@/domain/models/interfaces";
+import type {
+  IPersonnel,
+  IPhysician,
+  IPhysicianExaminationAssignment,
+  IPatientReportSession,
+} from "@/domain/models/interfaces";
+import type { WorkspacePhysicianOption } from "@/features/physicians/physician-directory-entry";
 import type { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { resolveAuthenticatedRequest } from "@/lib/session";
 import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
+import { SupabasePhysicianRepository } from "@/repositories/supabase-physician-repository";
 import {
   DraftNotDeletableError,
   SessionUnavailableError,
@@ -399,6 +406,57 @@ export async function listActivePersonnelAction(): Promise<IPersonnel[]> {
   await requireOperationalCaller();
   const repository = new SupabasePersonnelRepository();
   return repository.findAllActive();
+}
+
+/**
+ * Project one active physician and the assignment rows onto the Workspace's own shape.
+ *
+ * Field by field, never a spread. A spread would carry the row `id` and the `createdAt` /
+ * `updatedAt` administration timestamps straight across, and would keep carrying whatever column
+ * is added to `IPhysician` next - which is precisely the failure this projection exists to stop.
+ */
+function toWorkspacePhysicianOption(
+  physician: IPhysician,
+  assignments: readonly IPhysicianExaminationAssignment[]
+): WorkspacePhysicianOption {
+  const mine = assignments.filter((assignment) => assignment.physicianId === physician.id);
+  return {
+    fullName: physician.fullName,
+    assignedTemplateCodes: mine.map((assignment) => assignment.templateCode),
+    defaultTemplateCodes: mine
+      .filter((assignment) => assignment.isDefault)
+      .map((assignment) => assignment.templateCode),
+  };
+}
+
+/**
+ * The managed physician directory, for the operator encoding a report.
+ *
+ * It lives here, beside `listActivePersonnelAction`, for one reason: `requireOperationalCaller` is
+ * module-private, and it is the only guard in the repository that admits an ordinary laboratory
+ * User. The physician ADMINISTRATION actions are guarded by `requirePersonnelAdmin` /
+ * `requirePersonnelReader`, which are Admin and Developer only - correct for managing the
+ * directory, and wrong for reading it while encoding, where they would silently hand every
+ * operator an empty roster.
+ *
+ * `findAllActive` rather than `findAll`: a deactivated physician is filtered out in SQL, so they
+ * stop being offered for new work while every report that already names them is untouched.
+ *
+ * IT RETURNS THE NARROW PROJECTION, NOT `IPhysician[]`, AND THAT IS THE ACTUAL BOUNDARY. Narrowing
+ * the record in a Workspace wrapper afterwards did not close anything: every exported function in
+ * this module is separately registered in the production server-action manifest and is therefore
+ * reachable from client code on its own, wrapper or no wrapper. Whatever THIS function returns is
+ * what a browser can obtain. So the row `id`, `createdAt` and `updatedAt` stop here - they are
+ * never serialized in the first place, rather than being dropped one caller later.
+ */
+export async function listActivePhysiciansAction(): Promise<WorkspacePhysicianOption[]> {
+  await requireOperationalCaller();
+  const repository = new SupabasePhysicianRepository();
+  const [physicians, assignments] = await Promise.all([
+    repository.findAllActive(),
+    repository.findAllAssignments(),
+  ]);
+  return physicians.map((physician) => toWorkspacePhysicianOption(physician, assignments));
 }
 
 /**

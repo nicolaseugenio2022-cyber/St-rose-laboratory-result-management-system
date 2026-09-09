@@ -14,7 +14,8 @@ import {
 } from "@/domain/types/report-definition";
 import { GenericReportResolver } from "@/services/generic-report-resolver";
 import type { EvaluationContext } from "@/services/parameter-evaluation-service";
-import { stripFixedSuffix } from "@/services/formatter-registry";
+import { stripFixedSuffix, stripFixedSuffixDuringEntry } from "@/services/formatter-registry";
+import { initialLaboratoryRemarks } from "@/domain/laboratory-remarks";
 import {
   normalizeCalculationModes,
   resolveCalculationMode,
@@ -198,7 +199,10 @@ export function buildEncodingReport(input: BuildEncodingReportInput): Laboratory
     templateCode: definition.templateCode,
     templateTitle: definition.templateTitle,
     rendererFamily: existingReport?.rendererFamily || input.rendererFamily,
-    remarks: existingReport ? existingReport.remarks : definition.defaultRemarks || "",
+    // A NEW report starts at the definition's own remark when it declares one and at the
+    // laboratory's standing remark otherwise. An existing report keeps whatever it already
+    // carries, including a remark the operator deliberately cleared.
+    remarks: existingReport ? existingReport.remarks : initialLaboratoryRemarks(definition.defaultRemarks),
     reagentKitInfo,
     encodingData: {
       ...(existingReport?.encodingData || {}),
@@ -303,8 +307,11 @@ export function applyEncodingResultValue(
   evaluationContext: EvaluationContext = {}
 ): LaboratoryReportDomain {
   const parameter = definition.parameters.find((item) => item.parameterCode === parameterCode);
+  // The keystroke path, so the suffix strip must not trim: this runs once per character, and a
+  // trim here deletes the trailing space of an in-progress word before the next one arrives.
+  // See stripFixedSuffixDuringEntry.
   const editableValue = parameter?.suffixSpec
-    ? stripFixedSuffix(value, parameter.suffixSpec.suffix)
+    ? stripFixedSuffixDuringEntry(value, parameter.suffixSpec.suffix)
     : value;
 
   let nextResults = report.results.map((result) =>
@@ -355,9 +362,17 @@ export function applyAllSelectableParameters(
   });
 }
 
+/**
+ * What the result field DISPLAYS for a stored value.
+ *
+ * The other half of the controlled-input cycle, and it has to preserve spacing for the same reason
+ * the store path does: this is what the browser appends the next character to. Trimming here would
+ * re-delete a trailing space the store path had just preserved, and the concatenation defect would
+ * survive unchanged.
+ */
 export function getEditableResultValue(parameter: ParameterSpec, storedValue: string): string {
   return parameter.suffixSpec
-    ? stripFixedSuffix(storedValue, parameter.suffixSpec.suffix)
+    ? stripFixedSuffixDuringEntry(storedValue, parameter.suffixSpec.suffix)
     : storedValue;
 }
 

@@ -7,11 +7,12 @@
  */
 
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
+import { RESULT_ONLY_STANDARD_RENDER_CONTRACT } from "./shared-render-contracts";
 import { lessThan, validEntryOnly } from "./evaluation-policies";
 
 /**
  * BLOOD_TYPING: 2 parameters (ABO Typing, Rh Typing).
- * Requested By: Optional staff entry, no default physician.
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * No automatic default result selection.
  */
 export const BLOOD_TYPING_DEFINITION: ClinicalReportDefinition = {
@@ -20,6 +21,7 @@ export const BLOOD_TYPING_DEFINITION: ClinicalReportDefinition = {
   reportTitle: "BLOOD TYPING",
   examinationFamily: "Serology & Blood Bank",
   rendererFamily: "SimpleResult",
+  renderContract: RESULT_ONLY_STANDARD_RENDER_CONTRACT,
   parameters: [
     {
       parameterCode: "ABO_TYPING",
@@ -60,7 +62,7 @@ export const BLOOD_TYPING_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * OGTT: 3 timed glucose tolerance parameters (FBS, 1 Hour, 2 Hours).
- * Requested By Default: Dr. Heinz Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const OGTT_DEFINITION: ClinicalReportDefinition = {
   templateCode: "OGTT",
@@ -109,7 +111,7 @@ export const OGTT_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Heinz Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,

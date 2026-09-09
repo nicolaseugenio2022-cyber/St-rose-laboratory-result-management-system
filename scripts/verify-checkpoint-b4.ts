@@ -260,7 +260,15 @@ assert(!collapsedMarkup.includes("Patient Status") && !collapsedMarkup.includes(
 // in a title attribute, and a bare substring check matched that attribute and stayed green when
 // the visible value was removed. Mutation proof caught it. Matching the whole joined line means
 // dropping any single demographic breaks this assertion.
-assert(collapsedMarkup.includes(">Test Patient<") && collapsedMarkup.includes(">21 y/o · Male · 2026-08-09 · STA. ROSA, NUEVA ECIJA<"), "collapsed demographics restate every demographic value, so collapsing hides the editors and not the data");
+// The age segment is the shared `formatPatientAge` wording rather than the old `${age} y/o`.
+// That literal restated the number under a unit it had never checked, so an eight-month-old
+// read "0 y/o" in the very summary the operator uses to confirm patient identity.
+assert(collapsedMarkup.includes(">Test Patient<") && collapsedMarkup.includes(">21 years · Male · 2026-08-09 · STA. ROSA, NUEVA ECIJA<"), "collapsed demographics restate every demographic value, so collapsing hides the editors and not the data");
+// The reported defect, at this surface: a patient under one year is summarised in months, and the
+// summary agrees with what the report prints.
+const infantDemographics: PatientDemographics = { ...collapsedDemographics, dateOfBirth: "2026-01-09", examinationDate: "2026-09-09", age: 8, ageUnit: "months" };
+const infantMarkup = renderToStaticMarkup(React.createElement(PatientDemographicsForm, { demographics: infantDemographics, onChange: noOp, isExpanded: false }));
+assert(infantMarkup.includes(">8 months · Male · 2026-09-09 · STA. ROSA, NUEVA ECIJA<"), "collapsed demographics summarise a patient under one year in completed months, never in years");
 assert(findAddressControl(PatientDemographicsForm({ demographics: collapsedDemographics, onChange: noOp, isExpanded: false })) === null, "collapsed demographics expose no editable Address control");
 const expansion: { requested: boolean | null } = { requested: null };
 const collapsedTree = PatientDemographicsForm({ demographics: collapsedDemographics, onChange: noOp, isExpanded: false, onToggleExpanded: (next) => { expansion.requested = next; } });
@@ -560,6 +568,8 @@ assert(evaluateParameterValue(amorphousParameter, partialConditional, { sex: "Fe
 const progressNodeRequire = createRequire(join(process.cwd(), "package.json"));
 const progressActionsId = progressNodeRequire.resolve(join(process.cwd(), "src/features/server-boundary/server-actions"));
 progressNodeRequire.cache[progressActionsId] = { id: progressActionsId, filename: progressActionsId, loaded: true, children: [], paths: [], exports: { listAutoSuggestionsAction: async () => [] } } as never;
+const progressPhysicianActionsId = progressNodeRequire.resolve(join(process.cwd(), "src/app/(dashboard)/workspace/_actions/workspace-physician-actions"));
+progressNodeRequire.cache[progressPhysicianActionsId] = { id: progressPhysicianActionsId, filename: progressPhysicianActionsId, loaded: true, children: [], paths: [], exports: { listWorkspacePhysiciansAction: async () => [] } } as never;
 const { DynamicResultForm } = progressNodeRequire(join(process.cwd(), "src/app/(dashboard)/workspace/_components/DynamicResultForm")) as { DynamicResultForm: unknown };
 const progressSpec = { template: urineDefinition, parameters: urineDefinition.parameters, signatoryRequirement: { requiredPathologistsCount: 1, requiredMedtechsCount: 1 } };
 const progressBaseReport = buildEncodingReport({ definition: urineDefinition, sessionId: "s", reportId: "r", rendererFamily: "DiagnosticGrid", signatories: [] });

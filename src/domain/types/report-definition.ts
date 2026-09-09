@@ -117,6 +117,18 @@ export interface RequestedByPolicySpec {
   fieldLabel?: string;
   isEditable: boolean;
   isRequired: boolean;
+  /**
+   * Physicians this examination may be requested by, when it is restricted to a subset of the
+   * laboratory's directory.
+   *
+   * Absent means unrestricted, which is every examination but one: the control offers the whole
+   * managed directory. Present means the offered list is narrowed to exactly these names for THIS
+   * report, without removing anyone from the directory that other examinations still draw on.
+   *
+   * A suggestion restriction only. The field stays free text and stays optional, so this never
+   * validates, rewrites or blocks what an operator types - it decides what is offered.
+   */
+  allowedPhysicians?: string[];
 }
 
 export interface AdditionalEncodingFieldSpec {
@@ -204,6 +216,14 @@ export interface DeclarativeRenderContractSpec {
   demographics?: {
     ageDisplay?: "NumberOnly" | "NumberWithUnit";
     layoutVariant?: "Standard" | "CBC";
+    /**
+     * When set, `ageDisplay` applies only from this render-contract version onward, and a report
+     * frozen at an earlier version keeps `supersededAgeDisplay` instead. This is how the printed
+     * age presentation is corrected without restating what an already-issued report said.
+     */
+    sinceRenderContractVersion?: number;
+    /** The presentation a report frozen BEFORE `sinceRenderContractVersion` keeps. */
+    supersededAgeDisplay?: "NumberOnly" | "NumberWithUnit";
   };
   standardComposition?: {
     // Two or three columns. A two-entry declaration is a report that carries no reference track at

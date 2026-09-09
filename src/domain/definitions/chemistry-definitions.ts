@@ -27,7 +27,7 @@ import { lessThan, numericRange } from "./evaluation-policies";
 
 /**
  * CHEM_8: 6 parameters (Fasting Blood Sugar, Cholesterol, Triglycerides, Uric Acid, SGPT, Creatinine).
- * Requested By: REQUIRED, no automatic physician default.
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const CHEM_8_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CHEM_8",
@@ -49,13 +49,16 @@ export const CHEM_8_DEFINITION: ClinicalReportDefinition = {
     { ...CREATININE_PARAM, displayOrder: 6 },
   ],
   requestedByPolicy: {
-    // CHEM_8.md: "Requested By defaults to Dr. Ralph Roland Asperas but remains editable."
-    // The former null left this required field empty on a freshly selected CHEM_8, so the report
-    // opened already failing its own completion check. The default is applied only at report
-    // initialization; a physician the operator then types or selects is never overwritten.
+    // NOT the authority any more, and no longer even in agreement with it. Which physician a new
+    // CHEM_8 starts at is an assignment in the managed physician directory, where every Clinical
+    // Chemistry examination defaults to Dr. Heinz Roland Asperas - a deliberate correction of the
+    // declaration below, which the seed did not carry over. What survives here is the fallback the
+    // encoder uses only while those assignments have not been read. Either way a default is
+    // applied at report materialization only; a physician the operator then types, or deliberately
+    // clears, is never overwritten.
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -68,7 +71,7 @@ export const CHEM_8_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * HDL_LDL: 8 parameters (Fasting Blood Sugar, Cholesterol, Triglycerides, HDL, LDL, Uric Acid, SGPT, Creatinine).
- * Requested By Default: Dr. Heinz Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const HDL_LDL_DEFINITION: ClinicalReportDefinition = {
   templateCode: "HDL_LDL",
@@ -94,7 +97,7 @@ export const HDL_LDL_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Heinz Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -107,7 +110,7 @@ export const HDL_LDL_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * CHEM_10: 10 parameters (Fasting Blood Sugar, Cholesterol, Triglycerides, HDL, LDL, Uric Acid, Blood Urea Nitrogen, SGPT/ALT, SGOT/AST, Creatinine).
- * Requested By Default: Dr. Heinz Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const CHEM_10_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CHEM_10",
@@ -135,7 +138,7 @@ export const CHEM_10_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Heinz Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -148,7 +151,7 @@ export const CHEM_10_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * RBS: 1 parameter (Random Blood Sugar).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const RBS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "RBS",
@@ -173,7 +176,7 @@ export const RBS_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -186,7 +189,7 @@ export const RBS_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * HBA1C: 1 parameter (HbA1c). Exact mixed-case casing "HbA1c".
- * Requested By Default: Dr. Heinz Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Kit metadata: Lot F20712509AD, Exp 2028-04-26 (Editable)
  */
 export const HBA1C_DEFINITION: ClinicalReportDefinition = {
@@ -213,7 +216,7 @@ export const HBA1C_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Heinz Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,

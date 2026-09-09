@@ -26,6 +26,16 @@ export interface ModalProps {
   /** Set false for flows that must not be dismissed by Escape or backdrop click. */
   dismissible?: boolean;
   /**
+   * How the dialog body is laid out.
+   *
+   * "scroll" (default) puts the padded, scrolling region here, which is right for ordinary
+   * content. "managed" hands the whole body box to the child as a flex row of the panel: the
+   * child then owns its own scrolling region AND any action bar, so the bar can sit OUTSIDE that
+   * region and consume its own layout space instead of floating over the content. A sticky footer
+   * inside a scrolling region is not a fix for that - content still passes behind it.
+   */
+  bodyLayout?: "scroll" | "managed";
+  /**
    * "alertdialog" for confirmations that interrupt the user and require a
    * decision; the default "dialog" suits ordinary forms and detail views.
    */
@@ -73,6 +83,7 @@ export function Modal({
   className,
   initialFocusRef,
   dismissible = true,
+  bodyLayout = "scroll",
   role = "dialog",
   closeLabel = "Close dialog",
 }: ModalProps) {
@@ -151,7 +162,17 @@ export function Modal({
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div
+          className={cn(
+            "min-h-0 flex-1",
+            bodyLayout === "managed"
+              ? // The child is the flex column: it draws its own scroll region and its own footer.
+                "flex flex-col overflow-hidden"
+              : "overflow-y-auto px-4 py-4"
+          )}
+        >
+          {children}
+        </div>
       </DialogContent>
     </Dialog>
   );

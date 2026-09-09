@@ -28,7 +28,9 @@ function rendererFamily(definition: ClinicalReportDefinition): RendererFamily {
 function signatory(
   role: "MedicalTechnologist" | "Pathologist",
   order: number,
-  pathologistSignature: string | null = "/optional-pathologist-signature.png"
+  // The signature reference for THIS signatory, whatever its role. It was Pathologist-only while
+  // the project's policy made a Medical Technologist textual; both roles may now hold one.
+  signatureSource: string | null = "/optional-pathologist-signature.png"
 ): SignatorySnapshot {
   return {
     personnelId: `c42-${role}-${order}`,
@@ -36,7 +38,7 @@ function signatory(
     printedFullName: role === "Pathologist" ? "C4.2 PATHOLOGIST" : `C4.2 MEDTECH ${order}`,
     printedCredentials: role === "Pathologist" ? "MD, FPSP" : "RMT",
     printedPrcLicenseNumber: `C42-${order}`,
-    signatureImageUrl: role === "Pathologist" ? pathologistSignature : null,
+    signatureImageUrl: signatureSource,
     displayOrder: order,
   };
 }
@@ -53,7 +55,10 @@ function inputValue(parameter: ParameterSpec): string {
 
 function reportFor(
   definition: ClinicalReportDefinition,
-  pathologistSignature: string | null = "/optional-pathologist-signature.png"
+  pathologistSignature: string | null = "/optional-pathologist-signature.png",
+  // A Medical Technologist may now hold a signature. Defaulted to none so every existing fixture
+  // keeps the exact signatory shape it had, and only the case that opts in changes.
+  medtechSignature: string | null = null
 ): ILaboratoryReport {
   const isCertificate = definition.rendererFamily === "Dedicated Certificate" || definition.rendererFamily === "NarrativeCertificate";
   return {
@@ -81,8 +86,8 @@ function reportFor(
       displayOrder: parameter.displayOrder,
     })),
     signatories: isCertificate
-      ? [signatory("MedicalTechnologist", 1), signatory("MedicalTechnologist", 2), signatory("Pathologist", 3, pathologistSignature)]
-      : [signatory("Pathologist", 1, pathologistSignature), signatory("MedicalTechnologist", 2)],
+      ? [signatory("MedicalTechnologist", 1, medtechSignature), signatory("MedicalTechnologist", 2, medtechSignature), signatory("Pathologist", 3, pathologistSignature)]
+      : [signatory("Pathologist", 1, pathologistSignature), signatory("MedicalTechnologist", 2, medtechSignature)],
   };
 }
 
@@ -178,7 +183,20 @@ async function main(): Promise<void> {
     assert(page.primitives.every((primitive) => nativePrimitiveBottomMm(primitive) <= 148.5001), `${report.templateCode} primitives must remain bounded`);
     assert(!textPrimitives(page).some((primitive) => /page\s*\d+/i.test(primitive.text)), `${report.templateCode} must not add a page number`);
     assert(page.primitives.filter((primitive) => primitive.kind === "image").every((primitive) => primitive.source === "/st-rose-logo-official.png" || primitive.failurePolicy === "OmitImage"), `${report.templateCode} must not use a raster report background`);
-    assert(!page.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist-signature")), `${report.templateCode} must not create Medical Technologist signature images`);
+    // SUPERSEDED: this required that a Medical Technologist could NEVER carry a signature image.
+    // The laboratory has since decided a MedTech may sign, so the rule is no longer about the ROLE
+    // - it is that an image is composed exactly when that slot carries a resolved signature asset,
+    // and never otherwise. Stated as an equivalence rather than an absence, so it stays meaningful
+    // in both directions instead of passing vacuously on a fixture whose signatories have none.
+    // Scoped to the shared standard signatory band. The HIV certificate composes its own columns
+    // with their own primitive ids and is asserted separately, below.
+    if (report.layoutFamily !== "Certificate") {
+      for (const slot of report.signatories) {
+        const slotImageId = slot.personnelRole === "Pathologist" ? "pathologist-signature" : "medical-technologist-signature";
+        const hasImage = page.primitives.some((primitive) => primitive.kind === "image" && primitive.id === slotImageId);
+        assert(hasImage === Boolean(slot.signatureAsset), `${report.templateCode}/${slot.slotId} composes a signature image exactly when it has one on file`);
+      }
+    }
     const logo = imageById(page, "official-logo");
     assert(logo?.width === 18 && logo.height === 18 && logo.fit === "contain", `${report.templateCode} must retain the declared physical logo box`);
     assert(logo.x === 15 && logo.y === 4 && logo.y + logo.height === 22, `${report.templateCode} logo must occupy the approved 18 x 18 mm header band at x = 15 mm, ending 1.5 mm above the divider`);
@@ -391,8 +409,8 @@ async function main(): Promise<void> {
   }
 
   const cbcDefinition = ReportDefinitionRegistry.getDefinition("CBC")!;
-  const composeCbcWithSignature = (signatureSource: string | null) => {
-    const signatureSession = resolveDraftSessionRenderModel(sessionFor([reportFor(cbcDefinition, signatureSource)]));
+  const composeCbcWithSignature = (signatureSource: string | null, medtechSignatureSource: string | null = null) => {
+    const signatureSession = resolveDraftSessionRenderModel(sessionFor([reportFor(cbcDefinition, signatureSource, medtechSignatureSource)]));
     return composeNativeLivePreviewReportPage(signatureSession, signatureSession.reports[0]);
   };
   const signaturePresentPage = composeCbcWithSignature("/optional-pathologist-signature.png");
@@ -418,7 +436,23 @@ async function main(): Promise<void> {
   assert(Math.abs(standardSignature.y - (standardNameTextTop - 8.75)) < 0.001, "the Standard Pathologist signature top must sit exactly 8.75 mm above the name text top");
   assert(Math.abs(primitiveBottomByIdMm(signaturePresentPage, "pathologist-signature") - standardNameTextTop - 1.25) < 0.001, "the Standard Pathologist signature must overlap the name row by exactly 1.25 mm");
   assert(!imageById(signatureAbsentPage, "pathologist-signature") && !imageById(signatureMalformedPage, "pathologist-signature"), "absent or malformed Pathologist signatures must create no image primitive");
-  assert(!signaturePresentPage.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist")), "Medical Technologist must remain text-only");
+  // SUPERSEDED: the Medical Technologist column was text-only by policy. A MedTech may now sign,
+  // and its signature is composed by the SAME rule as the Pathologist's - so the proof is that the
+  // two frames are mirror images of each other, not that one of them is absent.
+  assert(!signaturePresentPage.primitives.some((primitive) => primitive.kind === "image" && primitive.id.includes("medical-technologist")), "a Medical Technologist with no signature on file still creates no image");
+  const medtechSignedPage = composeCbcWithSignature("/optional-pathologist-signature.png", "/optional-medtech-signature.png");
+  const medtechSignature = imageById(medtechSignedPage, "medical-technologist-signature")!;
+  const medtechNameTextTop = primitiveTopMm(medtechSignedPage, "medical-technologist-name");
+  assert(medtechSignature !== undefined, "a Medical Technologist with a signature on file composes one");
+  assert(medtechSignature.width === 24 && medtechSignature.height === 10, "the Medical Technologist signature must use the same approved 24 x 10 mm frame as the Pathologist");
+  assert(medtechSignature.x === 138 && medtechSignature.x + medtechSignature.width / 2 === 150, "the Medical Technologist signature must be centred in its own half of the band");
+  assert(Math.abs(medtechSignature.y - (medtechNameTextTop - 8.75)) < 0.001, "the Medical Technologist signature top must sit exactly 8.75 mm above its name text top, as the Pathologist's does");
+  assert(Math.abs(medtechSignature.y - imageById(medtechSignedPage, "pathologist-signature")!.y) < 0.001, "both signature frames must share one baseline");
+  // The MedTech signature must not disturb anything that was already measured.
+  assert(Math.abs(medtechSignedPage.contentBottomMm - signaturePresentPage.contentBottomMm) < 0.001, "adding a Medical Technologist signature must not move the report bottom");
+  assert(Math.abs(primitiveTopMm(medtechSignedPage, "pathologist-name") - primitiveTopMm(signaturePresentPage, "pathologist-name")) < 0.001, "adding a Medical Technologist signature must not move the Pathologist column");
+  // ...and a report whose MedTech has no signature still renders, which is the degradation rule.
+  assert(imageById(signatureAbsentPage, "medical-technologist-signature") === undefined, "a report generates normally when neither signatory has a signature image");
 
   const hiv = pages.get("HIV_RESULT")!;
   const hivNameIds = ["certificate-examiner-name", "certificate-pathologist-name", "certificate-verifier-name"];

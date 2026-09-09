@@ -157,9 +157,24 @@ assert(
 );
 
 const updateBody = extractFunctionBody(personnelActionsSource, "updatePersonnelAction");
+// Policy reversal: a Medical Technologist may now hold a signature image, so this action must
+// no longer clear it for that role. The rule is now stronger, not merely different -
+// `updatePersonnelAction` writes `signatureImageUrl` for NO role at all. The column is owned
+// exclusively by the upload/remove signature actions, which is what keeps an ordinary profile
+// edit incapable of destroying a stored signature or of installing a forged one.
 assert(
-  /resolvedRole\s*===\s*"MedicalTechnologist"[\s\S]*?signatureImageUrl\s*=\s*null/.test(updateBody),
-  "updatePersonnelAction clears signatureImageUrl for MedicalTechnologist role"
+  !/updates\.signatureImageUrl\s*=/.test(updateBody) &&
+    !/signatureImageUrl\s*:/.test(updateBody),
+  "updatePersonnelAction never writes signatureImageUrl for any role"
+);
+assert(
+  !/parsed\.signatureImageUrl/.test(updateBody) &&
+    !/rawUpdates\.signatureImageUrl/.test(updateBody),
+  "updatePersonnelAction never reads signatureImageUrl from parsed client input"
+);
+assert(
+  /key\s*===\s*"signatureImageUrl"\s*\)\s*continue/.test(updateBody),
+  "updatePersonnelAction still excludes signatureImageUrl from the audited changedFields"
 );
 
 // ── Assertion 5: listPersonnelAction uses requirePersonnelReader; no write action reuses it ──

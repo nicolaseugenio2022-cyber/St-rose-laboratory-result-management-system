@@ -1,6 +1,7 @@
 import React from "react";
 import { PatientDemographics, PatientSex } from "@/domain/types";
 import { formatDateISO } from "@/lib/utils";
+import { isValidDateOfBirth, resolvePatientAge } from "@/domain/patient-age";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -38,12 +39,32 @@ export function PatientDemographicsForm({
   onToggleExpanded,
   invalidFieldId = null,
 }: PatientDemographicsFormProps) {
+  /**
+   * Every demographic edit goes through one derivation step.
+   *
+   * A date of birth and an examination date together determine the age, so whichever of the two
+   * the operator just changed, the stored `age` and `ageUnit` are recomputed from the pair. They
+   * are stored rather than derived at read time for one reason: the session LIST projects a fixed
+   * set of demographic columns and does not carry a date of birth, so the pair is what the work
+   * queue renders. The report itself always re-derives from the date of birth.
+   *
+   * With no usable date of birth nothing is recomputed and the operator's typed age stands, which
+   * is exactly how every record written before this field existed continues to behave.
+   */
   const handleChange = (field: keyof PatientDemographics, value: unknown) => {
-    onChange({
-      ...demographics,
-      [field]: value,
-    });
+    const next: PatientDemographics = { ...demographics, [field]: value };
+    const derived = resolvePatientAge(next);
+    onChange(
+      derived.source === "DateOfBirth" && derived.value !== null && derived.unit !== null
+        ? { ...next, age: derived.value, ageUnit: derived.unit }
+        : next
+    );
   };
+
+  const resolvedAge = resolvePatientAge(demographics);
+  const hasDerivedAge = resolvedAge.source === "DateOfBirth";
+  const dateOfBirthRejected =
+    Boolean(demographics.dateOfBirth) && !isValidDateOfBirth(demographics.dateOfBirth, demographics.examinationDate);
 
   /**
    * The collapsed one-line summary.
@@ -68,7 +89,10 @@ export function PatientDemographicsForm({
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-brand-text-muted" title={demographics.address || undefined}>
           {[
-            demographics.age ? `${demographics.age} y/o` : null,
+            // The same wording the report prints, from the same resolver: an eight-month-old
+            // reads "8 months" here and "8 months" on the sheet. The old `${age} y/o` restated
+            // the number under a unit it had not checked, which is the defect this corrects.
+            resolvedAge.display || null,
             demographics.sex || null,
             demographics.examinationDate || null,
             demographics.address || null,
@@ -141,21 +165,82 @@ export function PatientDemographicsForm({
           />
         </div>
 
-        {/* Simplified Age Field */}
+        {/* Date of Birth. Optional, and the authority on age whenever it is supplied. */}
+        <div>
+          <label htmlFor="patient-date-of-birth" className={FIELD_LABEL_CLASS}>
+            Date of Birth
+          </label>
+          <Input
+            id="patient-date-of-birth"
+            type="date"
+            data-patient-date-of-birth
+            aria-invalid={dateOfBirthRejected ? true : undefined}
+            aria-describedby={dateOfBirthRejected ? "patient-date-of-birth-error" : undefined}
+            value={demographics.dateOfBirth || ""}
+            onChange={(e) => handleChange("dateOfBirth", e.target.value)}
+            className="scroll-mt-32"
+          />
+          {dateOfBirthRejected && (
+            <p id="patient-date-of-birth-error" role="alert" className="mt-1 text-xs font-semibold text-brand-danger">
+              Enter a real date of birth on or before the examination date.
+            </p>
+          )}
+        </div>
+
+        {/* Age. Derived from the date of birth when there is one, typed when there is not. */}
         <div>
           <label htmlFor="patient-age" className={FIELD_LABEL_CLASS}>
             Age <span className="text-brand-danger">*</span>
           </label>
-          <Input
-            id="patient-age"
-            type="number"
-            min="0"
-            value={demographics.age || ""}
-            onChange={(e) => handleChange("age", parseInt(e.target.value, 10) || 0)}
-            className="scroll-mt-32 tabular-nums"
-            placeholder="e.g. 35"
-            required
-          />
+          {hasDerivedAge ? (
+            // Read-only rather than absent: the operator must still SEE the age the report will
+            // print, and must not be able to type one that disagrees with the date of birth.
+            <Input
+              id="patient-age"
+              type="text"
+              data-patient-age-derived
+              value={resolvedAge.display}
+              readOnly
+              aria-describedby="patient-age-derivation"
+              className="scroll-mt-32 tabular-nums"
+            />
+          ) : (
+            // No date of birth, so the operator states BOTH the number and its unit. A number
+            // without a unit is what printed an eight-month-old as "8 years": the unit was
+            // hardcoded and the operator had no way to correct it. The stored unit is used as the
+            // selected value, so editing an existing record preserves whatever it was written
+            // with rather than silently restating it.
+            <div className="flex gap-2">
+              <Input
+                id="patient-age"
+                type="number"
+                min="0"
+                value={demographics.age || ""}
+                onChange={(e) => handleChange("age", parseInt(e.target.value, 10) || 0)}
+                className="scroll-mt-32 tabular-nums"
+                placeholder="e.g. 35"
+                required
+              />
+              <Select
+                id="patient-age-unit"
+                data-patient-age-unit
+                aria-label="Age unit"
+                options={[]}
+                value={demographics.ageUnit || "years"}
+                onChange={(e) => handleChange("ageUnit", e.target.value as PatientDemographics["ageUnit"])}
+                className="w-28 shrink-0"
+              >
+                <option value="days">Days</option>
+                <option value="months">Months</option>
+                <option value="years">Years</option>
+              </Select>
+            </div>
+          )}
+          <p id="patient-age-derivation" className="mt-1 text-xs text-brand-text-subtle">
+            {hasDerivedAge
+              ? "Calculated from the date of birth and the examination date."
+              : "Enter a date of birth to calculate this automatically."}
+          </p>
         </div>
 
         {/* Sex Field with No Default Selection */}

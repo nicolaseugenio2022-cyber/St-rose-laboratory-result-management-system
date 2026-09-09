@@ -12,7 +12,7 @@ import { numericRange, sexSpecificRange, unresolvedEvaluation, validEntryOnly } 
 
 /**
  * CBC: 10 parameters (Hemoglobin, Hematocrit, RBC Count, WBC Count, Platelet Count, Neutrophil, Lymphocyte, Eosinophil, Monocyte, Basophil).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Default Remarks: "TEST/S RECHECKED; RESULT/S VERIFIED" (Editable)
  * Abnormal indicators: Shared complete-word HIGH / LOW output policy; CBC declares no suppression.
  * Patient Status: No Encoding demographic collection (demographicCollection: false). Static label reserved for layout.
@@ -22,9 +22,13 @@ export const CBC_DEFINITION: ClinicalReportDefinition = {
   templateTitle: "Complete Blood Count (CBC)",
   reportTitle: null, // Omit report title on document per contract
   renderContract: {
-    renderContractVersion: 1,
+    renderContractVersion: 2,
+    // v1 printed the age as a bare number. v2 prints it with its unit, so an infant reads
+    // "8 months" instead of an unqualified "8". Every CBC completed under v1 keeps the bare
+    // number it was issued with.
+    supersededRenderContractVersions: [1],
     staticContentVersion: "standard-report-v1",
-    demographics: { ageDisplay: "NumberOnly", layoutVariant: "CBC" },
+    demographics: { ageDisplay: "NumberWithUnit", supersededAgeDisplay: "NumberOnly", sinceRenderContractVersion: 2, layoutVariant: "CBC" },
     standardComposition: {
       resultHeaders: ["EXAMINATION", "RESULT", "NORMAL VALUES"],
       columnRatios: [31, 30, 39],
@@ -173,7 +177,7 @@ export const CBC_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false, // No Patient Status Encoding collection
@@ -187,7 +191,7 @@ export const CBC_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * CT_BT: 2 parameters (Bleeding Time, Clotting Time).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const CT_BT_DEFINITION: ClinicalReportDefinition = {
   templateCode: "CT_BT",
@@ -222,7 +226,7 @@ export const CT_BT_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -235,7 +239,7 @@ export const CT_BT_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * ESR: 1 parameter (Erythrocyte Sedimentation Rate).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Unresolved note preserved for child age cutoff threshold.
  */
 export const ESR_DEFINITION: ClinicalReportDefinition = {
@@ -265,7 +269,7 @@ export const ESR_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,

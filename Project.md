@@ -1178,10 +1178,19 @@ Across native layouts:
 ## Signatory and Signature Policy
 
 - Pathologist textual identity always renders when applicable
-- A Pathologist signature image is optional
-- Missing, blank, malformed, inaccessible, or load-failed Pathologist signatures degrade to a blank image area without blocking rendering
+- A signature image is optional for every signatory
+- Missing, blank, malformed, inaccessible, or load-failed signatures degrade to a blank image area without blocking rendering
 - No fallback or invented signature is permitted
-- Medical Technologists are textual only; no Medical Technologist signature image primitive is created
+- **Medical Technologists may hold a signature image.** This supersedes the former rule that a Medical
+  Technologist was textual only and that no Medical Technologist signature image primitive was ever
+  created. Changed on the laboratory's explicit instruction. The signature is optional exactly as a
+  Pathologist's is: a Medical Technologist without one renders textually and the report generates
+  normally, and a report completed before this change keeps the output it was issued with, because a
+  completed snapshot renders from its own frozen signatory rows and is never redrawn from current
+  personnel. Printed name, credentials and PRC licence are unaffected in every case.
+- The HIV certificate remains an exception: its Examiner and Verifier columns stay textual, because the
+  approved certificate layout places its `Performed by:` and `Verified by:` headings exactly where a
+  signature frame would sit. Changing that layout is a report-specification decision and has not been made.
 - Standard signatory order is Pathologist followed by Medical Technologist
 - HIV signatory order is Examiner → Verifier → Pathologist
 

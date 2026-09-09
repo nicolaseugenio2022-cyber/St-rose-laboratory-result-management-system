@@ -35,9 +35,14 @@ export function formatPersonnelName(person: PersonnelDirectoryEntry): string {
 /**
  * Signature state, reported as a plain fact.
  *
- * A signature image is optional. A Pathologist without one still signs reports through their
+ * A signature image is optional. A signatory without one still signs reports through their
  * printed name, credentials and PRC licence, so "no image" is a normal configuration rather than
  * an outstanding task: it carries no warning colour, no alert icon and no urgency vocabulary.
+ *
+ * Both signing roles may hold an image - the server accepts an upload for a Pathologist and for
+ * a Medical Technologist alike - so the "not required" state is reserved for a role that is
+ * neither, and is unreachable while those are the only two roles the directory holds. It stays
+ * because the role union is not this component's to close.
  *
  * The three states stay distinguishable because each carries its own icon and its own word.
  * Nothing here is conveyed by colour - every state renders in the same muted text - so the
@@ -51,7 +56,7 @@ type SignatureState = {
 };
 
 export function signatureState(person: PersonnelDirectoryEntry): SignatureState {
-  if (person.role !== "Pathologist") {
+  if (person.role !== "Pathologist" && person.role !== "MedicalTechnologist") {
     return {
       label: "Not required",
       Icon: MinusCircle,

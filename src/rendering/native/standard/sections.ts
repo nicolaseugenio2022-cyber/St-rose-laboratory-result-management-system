@@ -418,7 +418,16 @@ export function composeStandardSignatories(report: ResolvedReportRenderModel, y:
   const pathologist = slotBySemantic(report, "Pathologist");
   const medtech = slotBySemantic(report, "MedicalTechnologist");
   const nameY = y + 7.4;
-  if (pathologist?.signatureAsset) primitives.push({ kind: "image", id: "pathologist-signature", source: pathologist.signatureAsset.source, x: PAGE_X + (slotWidth - 24) / 2, y: y - 1.35, width: 24, height: 10, fit: "contain", failurePolicy: pathologist.signatureAsset.failurePolicy });
+  // Both signature columns are composed identically, each above its own printed name. The image
+  // occupies the space already reserved above the name line and contributes no height, so a
+  // signatory who has uploaded one and a signatory who has not produce the same geometry - which
+  // is what keeps a report renderable when either signature is missing.
+  const signatureImage = (slot: ResolvedSignatorySlot | undefined, id: string, slotIndex: number) => {
+    if (!slot?.signatureAsset) return;
+    primitives.push({ kind: "image", id, source: slot.signatureAsset.source, x: PAGE_X + slotIndex * slotWidth + (slotWidth - 24) / 2, y: y - 1.35, width: 24, height: 10, fit: "contain", failurePolicy: slot.signatureAsset.failurePolicy });
+  };
+  signatureImage(pathologist, "pathologist-signature", 0);
+  signatureImage(medtech, "medical-technologist-signature", 1);
   const addSlot = (slot: ResolvedSignatorySlot | undefined, slotIndex: number, role: string) => {
     const x = PAGE_X + slotIndex * slotWidth;
     const key = role.toLowerCase().replaceAll(" ", "-");

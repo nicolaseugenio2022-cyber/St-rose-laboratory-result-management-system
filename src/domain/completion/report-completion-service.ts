@@ -13,6 +13,7 @@ import { normalizeCalculationModes, resolveCalculationMode } from "@/domain/calc
 import { stripFixedSuffix } from "@/services/formatter-registry";
 import { ValidationError } from "@/lib/errors";
 import { resolveReferenceDisplay } from "@/domain/reference-display";
+import { isValidDateOfBirth, resolvePatientAge } from "@/domain/patient-age";
 
 const STANDARD_SIGNATORIES = { requiredPathologistsCount: 1, requiredMedtechsCount: 1 };
 const STANDARD_RENDER_CONTRACT_VERSION = 1;
@@ -42,7 +43,20 @@ function freezeRenderContractMetadata(definition: ClinicalReportDefinition): Fro
 function validateDemographics(session: IPatientReportSession, errors: Record<string, string>): void {
   const demographics = session.demographics;
   if (!nonBlank(demographics.fullName)) errors["demographics.fullName"] = "Patient full name is required.";
-  if (!Number.isFinite(demographics.age) || demographics.age <= 0) errors["demographics.age"] = "Patient age must be greater than zero.";
+  // A date of birth, once supplied, must be a real date on or before the examination date -
+  // otherwise no age can be derived from it and the report would print one the record does not
+  // support.
+  if (demographics.dateOfBirth && !isValidDateOfBirth(demographics.dateOfBirth, demographics.examinationDate)) {
+    errors["demographics.dateOfBirth"] = "Patient date of birth must be a real date on or before the examination date.";
+  }
+  // Age is required, but a patient under one month old completes zero years AND zero months, so a
+  // "greater than zero" test would reject a genuine newborn. A derivable date of birth is
+  // therefore accepted as the age in its own right; without one, the typed number still has to be
+  // positive exactly as before.
+  const resolvedAge = resolvePatientAge(demographics);
+  if (resolvedAge.source !== "DateOfBirth" && (!Number.isFinite(demographics.age) || demographics.age <= 0)) {
+    errors["demographics.age"] = "Patient age must be greater than zero.";
+  }
   if (!demographics.sex) errors["demographics.sex"] = "Patient sex is required.";
   if (!nonBlank(demographics.examinationDate)) errors["demographics.examinationDate"] = "Examination date is required.";
   // Patient Status is deliberately ignored. Address is snapshotted exactly but remains optional.
@@ -117,7 +131,13 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     const key = `${prefix}.results.${parameter.parameterCode}`;
 
     if (parameter.isRequired && !selected) errors[key] = `${parameter.parameterName} is required and cannot be deselected.`;
-    if (parameter.isRequired && !nonBlank(parameter.inputType === "Computed" ? resolvedResult.formattedResultValue : rawValue)) errors[key] = `${parameter.parameterName} is required.`;
+    // A checked parameter may be left INTENTIONALLY blank. The operator ran the panel but did not
+    // report that analyte, and refusing to complete the session forced them to invent a value or
+    // uncheck a parameter they had genuinely considered. A blank is therefore not an error - it is
+    // simply not reported, and the omission below keeps it out of the record entirely.
+    //
+    // "Blank" is whitespace-only, never falsiness: "0", "0.0", "false", "Negative" and
+    // "Nonreactive" are all real clinical results and every one of them is non-blank here.
     if (selected && nonBlank(rawValue) && parameter.inputType === "NumericText" && !Number.isFinite(Number(rawValue))) errors[key] = `${parameter.parameterName} must be numeric.`;
     if (selected && nonBlank(rawValue) && parameter.inputType === "SingleSelect" && !parameter.conditionalChoiceSpec && parameter.options && !parameter.options.includes(rawValue)) errors[key] = `${parameter.parameterName} has an invalid selection.`;
     if (selected && nonBlank(rawValue) && parameter.conditionalChoiceSpec) {
@@ -131,9 +151,20 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     // required and invalid checks above, and telling the operator their typed value "could not
     // be computed" would be false - this assignment is last, so it would also mask those.
     const calculationMode = resolveCalculationMode(parameter.formulaBinding, parameter.parameterCode, calculationModes);
-    if (parameter.inputType === "Computed" && calculationMode === "Auto" && (!resolvedResult.isValid || !nonBlank(resolvedResult.formattedResultValue))) errors[key] = `${parameter.parameterName} could not be computed from valid dependencies.`;
+    // An Auto computed parameter whose dependencies were ALL left blank is itself intentionally
+    // blank, not a failed computation: nothing was reported for the analytes it derives from, so
+    // reporting that it "could not be computed" would be false and would block a session the
+    // operator legitimately wants to complete. The moment any dependency carries a value, an
+    // uncomputable result is a genuine defect again and still blocks.
+    const dependenciesProvided = (parameter.formulaBinding?.dependencies || []).some((dependency) => nonBlank(rawInputs[dependency]));
+    if (parameter.inputType === "Computed" && calculationMode === "Auto" && dependenciesProvided && (!resolvedResult.isValid || !nonBlank(resolvedResult.formattedResultValue))) errors[key] = `${parameter.parameterName} could not be computed from valid dependencies.`;
 
-    if (!selected || (!nonBlank(rawValue) && !parameter.isRequired && parameter.blankOmission)) continue;
+    // What reaches the frozen record: a selected parameter carrying an actual value. A computed
+    // parameter is judged on what it computed, everything else on what was entered. A deselected
+    // or blank parameter is omitted from the snapshot, so it never appears on the report and no
+    // non-blank result is ever discarded.
+    const reportableValue = parameter.inputType === "Computed" ? resolvedResult.formattedResultValue : rawValue;
+    if (!selected || !nonBlank(reportableValue)) continue;
     results.push({
       parameterCode: parameter.parameterCode,
       parameterName: parameter.parameterName,
@@ -153,6 +184,14 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     });
   }
 
+  // A report has to say something. Blank parameters may be omitted individually, but a report
+  // that omitted every one of them would be an issued clinical document carrying no result at all.
+  const repeatableFindings = validateRepeatableFindings(report, definition, errors);
+  const hasRepeatableFinding = Object.values(repeatableFindings).some((findings) => findings.length > 0);
+  if (results.length === 0 && !hasRepeatableFinding) {
+    errors[`${prefix}.results`] = `${definition.templateTitle} must report at least one result.`;
+  }
+
   return {
     templateCode: definition.templateCode,
     templateTitle: report.templateTitle,
@@ -163,7 +202,7 @@ function composeReportSnapshot(session: IPatientReportSession, report: ILaborato
     results,
     remarks: report.remarks || "",
     reagentKitInfo: report.reagentKitInfo ? { ...report.reagentKitInfo } : null,
-    repeatableFindings: validateRepeatableFindings(report, definition, errors),
+    repeatableFindings,
     signatories: report.signatories.map((item) => ({ ...item })),
   };
 }
@@ -182,10 +221,20 @@ export class ReportCompletionService {
       return composeReportSnapshot(session, report, definition, errors);
     }).filter((item): item is CompletedReportSnapshot => item !== null);
     if (Object.keys(errors).length > 0) throw new ValidationError(`Session cannot be completed: ${Object.values(errors).join(" ")}`, errors);
+    // The age is frozen at completion - value, unit and final wording - so a later correction to
+    // the age rule cannot restate a report that has already been issued. It is written only when
+    // an age actually resolves; an unresolvable age freezes nothing rather than freezing a blank,
+    // which keeps absence meaning 'no frozen wording' rather than 'wording was empty'.
+    const resolvedAge = resolvePatientAge(session.demographics);
+    const frozenAge =
+      resolvedAge.value !== null && resolvedAge.unit !== null
+        ? { value: resolvedAge.value, unit: resolvedAge.unit, display: resolvedAge.display }
+        : null;
     return {
       snapshotVersion: CURRENT_COMPLETED_SNAPSHOT_VERSION,
       completedAt,
       demographics: structuredClone(session.demographics),
+      frozenAge,
       reports,
     };
   }

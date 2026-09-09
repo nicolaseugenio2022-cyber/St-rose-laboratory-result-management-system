@@ -10,6 +10,7 @@
  */
 
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
+import { RESULT_ONLY_STANDARD_RENDER_CONTRACT } from "./shared-render-contracts";
 import { validEntryOnly } from "./evaluation-policies";
 import {
   HIV_CERTIFICATE_STATIC_CONTENT,
@@ -18,7 +19,7 @@ import {
 
 /**
  * HBSAG: 1 qualitative parameter (Nonreactive / Reactive).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Printed Report Title: HEPATITIS B (SCREENING)
  * Kit info required (editable by staff, no invented defaults).
  */
@@ -28,6 +29,7 @@ export const HBSAG_DEFINITION: ClinicalReportDefinition = {
   reportTitle: "HEPATITIS B (SCREENING)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
   rendererFamily: "SimpleResult",
+  renderContract: RESULT_ONLY_STANDARD_RENDER_CONTRACT,
   parameters: [
     {
       parameterCode: "HBSAG_RESULT",
@@ -44,7 +46,7 @@ export const HBSAG_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -63,7 +65,7 @@ export const HBSAG_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * RPR: 1 qualitative parameter (Nonreactive / Reactive).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Printed Report Title: SYPHILIS / RPR (SCREENING)
  * Kit info required (editable by staff, no invented defaults).
  */
@@ -73,6 +75,7 @@ export const RPR_DEFINITION: ClinicalReportDefinition = {
   reportTitle: "SYPHILIS / RPR (SCREENING)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
   rendererFamily: "SimpleResult",
+  renderContract: RESULT_ONLY_STANDARD_RENDER_CONTRACT,
   parameters: [
     {
       parameterCode: "RPR_RESULT",
@@ -89,7 +92,7 @@ export const RPR_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -108,7 +111,7 @@ export const RPR_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * DENGUE_DUO: 3 qualitative parameters (NS1, IgG, IgM).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Printed Report Title: DENGUE DUO TEST
  * Kit info required: initial Lot 202512015, Exp 2028-11 (Editable)
  */
@@ -118,6 +121,7 @@ export const DENGUE_DUO_DEFINITION: ClinicalReportDefinition = {
   reportTitle: "DENGUE DUO TEST",
   examinationFamily: "Serology & Immunology",
   rendererFamily: "SimpleResult",
+  renderContract: RESULT_ONLY_STANDARD_RENDER_CONTRACT,
   parameters: [
     {
       parameterCode: "DENGUE_NS1",
@@ -155,7 +159,7 @@ export const DENGUE_DUO_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -174,7 +178,7 @@ export const DENGUE_DUO_DEFINITION: ClinicalReportDefinition = {
 
 /**
  * PREG_TEST: 1 qualitative parameter (Negative / Positive).
- * Requested By Default: Dr. Ralph Roland Asperas (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Printed Report Title: PREGNANCY TEST (URINE)
  * Kit info required (editable by staff, no invented defaults).
  */
@@ -184,6 +188,7 @@ export const PREG_TEST_DEFINITION: ClinicalReportDefinition = {
   reportTitle: "PREGNANCY TEST (URINE)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
   rendererFamily: "SimpleResult",
+  renderContract: RESULT_ONLY_STANDARD_RENDER_CONTRACT,
   parameters: [
     {
       parameterCode: "PREG_RESULT",
@@ -200,7 +205,7 @@ export const PREG_TEST_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: "Dr. Ralph Roland Asperas",
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -220,7 +225,7 @@ export const PREG_TEST_DEFINITION: ClinicalReportDefinition = {
 /**
  * HIV_RESULT: 1 qualitative parameter (Nonreactive / Reactive).
  * Dedicated Certificate layout.
- * Requested By Policy: Referring Doctor: REQUIRED, no default physician.
+ * Requested By Policy: Referring Doctor is OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  * Printed Report Title: HIV 1 & 2 RAPID TEST CERTIFICATE
  * Kit info required (editable by staff, no invented defaults).
  */
@@ -259,7 +264,7 @@ export const HIV_RESULT_DEFINITION: ClinicalReportDefinition = {
     defaultPhysician: null, // Staff entry required, no default physician
     fieldLabel: "Referring Doctor",
     isEditable: true,
-    isRequired: true,      // REQUIRED (Referring Doctor is mandatory)
+    isRequired: false, // Optional, like every other examination: a report stays valid without one
   },
   additionalEncodingFields: [
     {

@@ -39,12 +39,16 @@ export interface PersonnelLookup {
  * selected under. Both are integrity faults: a signature attributed to the wrong person, or to
  * nobody, must never reach a frozen record.
  *
- * A Pathologist with no uploaded signature resolves to `null`. That is a valid, existing state
- * and the renderer's OmitImage behaviour already covers it.
+ * Both signatory roles are resolved identically, from the authoritative personnel record named
+ * by `personnelId`. Medical Technologists were previously forced to `null` here because the
+ * project did not allow them to hold a signature image; that policy is reversed, so the special
+ * case is gone rather than merely widened - one rule, applied to every signatory.
  *
- * A Medical Technologist always resolves to `null`. MedTech records never carry a signature -
- * `updatePersonnelAction` actively clears it - so this is the same rule stated where it is now
- * enforced rather than merely expected.
+ * A person with no uploaded signature - of either role - resolves to `null`. That is a valid,
+ * existing state and the renderer's OmitImage behaviour already covers it.
+ *
+ * The client-supplied `signatureImageUrl` is still overwritten unconditionally, so a forged or
+ * stale reference remains unreachable for every role.
  */
 export async function resolveSignatoriesForPersistence(
   signatories: readonly SignatorySnapshot[],
@@ -76,8 +80,7 @@ export async function resolveSignatoriesForPersistence(
       printedCredentials: signatory.printedCredentials,
       printedPrcLicenseNumber: signatory.printedPrcLicenseNumber,
       displayOrder: signatory.displayOrder,
-      signatureImageUrl:
-        record.role === "Pathologist" ? record.signatureImageUrl ?? null : null,
+      signatureImageUrl: record.signatureImageUrl ?? null,
     });
   }
 

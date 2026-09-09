@@ -13,6 +13,10 @@ import {
   X,
 } from "lucide-react";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
+// The same wording the report prints. The list row carries the stored age and unit rather than a
+// date of birth - the list projection is deliberately narrow - but the unit is now recorded
+// correctly at entry, so "8 months" reads identically here and on the sheet.
+import { formatPatientAge } from "@/domain/patient-age";
 import {
   deleteDraftSessionAction as deleteDraftSession,
   getVisibleSessionDetailAction,
@@ -786,7 +790,7 @@ export function SessionHistoryView({
                           dropped as width tightens. Both values remain available in Preview. */}
                       <div className="mt-0.5 hidden text-[11px] text-brand-text-muted lg:flex lg:items-baseline lg:gap-1.5">
                         <span className="whitespace-nowrap tabular-nums">
-                          {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
+                          {formatPatientAge(sess.demographics.age, sess.demographics.ageUnit)} / {sess.demographics.sex}
                         </span>
                         {sess.demographics.requestingPhysician && (
                           <>
@@ -863,7 +867,7 @@ export function SessionHistoryView({
 
                     <p className="text-[11px] text-brand-text-muted">
                       <span className="whitespace-nowrap tabular-nums">
-                        {sess.demographics.age} {sess.demographics.ageUnit} / {sess.demographics.sex}
+                        {formatPatientAge(sess.demographics.age, sess.demographics.ageUnit)} / {sess.demographics.sex}
                       </span>
                       {sess.demographics.requestingPhysician && <> · {sess.demographics.requestingPhysician}</>}
                       <span className="whitespace-nowrap tabular-nums"> · {sess.demographics.examinationDate || "—"}</span>

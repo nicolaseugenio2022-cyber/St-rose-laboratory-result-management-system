@@ -70,7 +70,7 @@ console.log("\n--- Test 2: CBC Declarative Definition ---");
 const cbc = ReportDefinitionRegistry.getDefinition("CBC")!;
 assert(cbc.parameters.length === 10, `CBC must have exactly 10 parameters`);
 assert(cbc.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `CBC default physician = "Dr. Ralph Roland Asperas"`);
-assert(cbc.requestedByPolicy.isRequired === true, `CBC Requested By is REQUIRED`);
+assert(cbc.requestedByPolicy.isRequired === false, `CBC Requested By is optional`);
 assert(cbc.defaultRemarks === "TEST/S RECHECKED; RESULT/S VERIFIED", `CBC default remarks = "TEST/S RECHECKED; RESULT/S VERIFIED"`);
 assert(cbc.suppressAbnormalIndicators === undefined, `CBC must declare no abnormal-indicator suppression - QA-04 retired it and CBC follows the shared complete-word HIGH / LOW output policy`);
 assert(cbc.statusPolicy.demographicCollection === false, `CBC statusPolicy.demographicCollection must be false`);
@@ -142,8 +142,24 @@ assert(!rhParam.defaultValue, `Rh has no automatic result selection default`);
 // ---------------------------------------------------------------------------
 console.log("\n--- Test 4: FECALYSIS Declarative Definition ---");
 const fecalysis = ReportDefinitionRegistry.getDefinition("FECALYSIS")!;
-assert(fecalysis.requestedByPolicy.defaultPhysician === "Dr. Ma. Floricel Dedace-Lagrazon", `FECALYSIS default physician = "Dr. Ma. Floricel Dedace-Lagrazon"`);
-assert(fecalysis.requestedByPolicy.isRequired === true, `FECALYSIS Requested By is REQUIRED`);
+// The laboratory reports Fecalysis is requested by the two Asperas doctors only. This pin
+// previously fixed the default to Dr. Ma. Floricel Dedace-Lagrazon; that physician is removed from
+// this examination and from nowhere else.
+assert(fecalysis.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `FECALYSIS default physician = "Dr. Ralph Roland Asperas"`);
+assert(
+  JSON.stringify(fecalysis.requestedByPolicy.allowedPhysicians) === JSON.stringify(["Dr. Ralph Roland Asperas", "Dr. Heinz Roland Asperas"]),
+  `FECALYSIS offers exactly the two Asperas doctors`
+);
+assert(
+  !JSON.stringify(fecalysis.requestedByPolicy).includes("Dedace"),
+  `FECALYSIS names no other requesting physician`
+);
+// ...and the removal is scoped to Fecalysis: no OTHER definition loses a physician it declares.
+for (const other of ReportDefinitionRegistry.getAllDefinitions()) {
+  if (other.templateCode === "FECALYSIS") continue;
+  assert(other.requestedByPolicy.allowedPhysicians === undefined, `${other.templateCode} keeps the unrestricted physician directory`);
+}
+assert(fecalysis.requestedByPolicy.isRequired === false, `FECALYSIS Requested By is optional`);
 
 const expectedFecalysisCodes = [
   "COLOR",
@@ -216,7 +232,7 @@ console.log("\n--- Test 5: URINALYSIS Declarative Definition ---");
 const urinalysis = ReportDefinitionRegistry.getDefinition("URINALYSIS")!;
 assert(urinalysis.rendererFamily === "DiagnosticGrid", `URINALYSIS rendererFamily = "DiagnosticGrid"`);
 assert(urinalysis.requestedByPolicy.defaultPhysician === null, `URINALYSIS default physician = null (required staff entry)`);
-assert(urinalysis.requestedByPolicy.isRequired === true, `URINALYSIS Requested By is REQUIRED`);
+assert(urinalysis.requestedByPolicy.isRequired === false, `URINALYSIS Requested By is optional`);
 
 const expectedUrinalysisCodes = [
   "COLOR",
@@ -307,12 +323,12 @@ const esr = ReportDefinitionRegistry.getDefinition("ESR")!;
 assert(esr.unresolvedNotes !== undefined && esr.unresolvedNotes?.length! > 0, `ESR unresolved notes preserved`);
 assert(esr.unresolvedNotes?.[0].topic === "Child Age Cutoff", `ESR unresolved topic = "Child Age Cutoff"`);
 assert(esr.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `ESR default physician = "Dr. Ralph Roland Asperas"`);
-assert(esr.requestedByPolicy.isEditable === true && esr.requestedByPolicy.isRequired === true, `ESR Requested By is editable and required`);
+assert(esr.requestedByPolicy.isEditable === true && esr.requestedByPolicy.isRequired === false, `ESR Requested By is editable and optional`);
 
 const ctBt = ReportDefinitionRegistry.getDefinition("CT_BT")!;
 assert(ctBt.parameters.length === 2, `CT_BT has 2 parameters`);
 assert(ctBt.requestedByPolicy.defaultPhysician === "Dr. Ralph Roland Asperas", `CT_BT default physician = "Dr. Ralph Roland Asperas"`);
-assert(ctBt.requestedByPolicy.isEditable === true && ctBt.requestedByPolicy.isRequired === true, `CT_BT Requested By is editable and required`);
+assert(ctBt.requestedByPolicy.isEditable === true && ctBt.requestedByPolicy.isRequired === false, `CT_BT Requested By is editable and optional`);
 assert(
   JSON.stringify(ctBt.parameters.map((p) => p.parameterCode)) === JSON.stringify(["BLEEDING_TIME", "CLOTTING_TIME"]),
   `CT_BT exact parameter ordering verified`

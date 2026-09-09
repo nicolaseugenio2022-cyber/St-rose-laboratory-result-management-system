@@ -53,6 +53,17 @@ export type EvaluationOutcome =
 
 export interface PatientDemographics {
   fullName: string;
+  /**
+   * The patient's date of birth, YYYY-MM-DD. Optional, and it must stay optional: every session
+   * recorded before this field existed has none, and those records are read exactly as they were
+   * written rather than migrated.
+   *
+   * Where it is present it is the authority on age - `age` and `ageUnit` below are then a derived
+   * copy kept for the session list, which projects a fixed set of columns. Where it is absent the
+   * stored pair is all there is, and it is used unchanged. `resolvePatientAge` in
+   * `@/domain/patient-age` owns that decision; nothing else may re-derive it.
+   */
+  dateOfBirth?: string;
   age: number;
   ageUnit: "years" | "months" | "days";
   sex: PatientSex;

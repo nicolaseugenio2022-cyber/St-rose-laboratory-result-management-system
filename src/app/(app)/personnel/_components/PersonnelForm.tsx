@@ -13,7 +13,6 @@ import {
   PersonnelFormValues,
 } from "@/lib/validations/personnelValidation";
 import { Alert } from "@/components/ui/Alert";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -104,7 +103,6 @@ export function PersonnelForm({
   // from the page reported the directory's loading state and left the submit control live
   // through the entire request, which is exactly the window a double submit lands in.
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingRoleChange, setPendingRoleChange] = useState<PersonnelFormValues | null>(null);
   const [isSignatureConfirmOpen, setIsSignatureConfirmOpen] = useState(false);
   // The signature control's own upload and removal are writes against the same record this
   // form saves. It guards itself against a second signature write, but nothing here or above
@@ -117,7 +115,6 @@ export function PersonnelForm({
     reset,
     watch,
     setError,
-    setValue,
     formState: { errors, isDirty },
   } = useForm<PersonnelFormValues>({
     resolver: zodResolver(personnelFormSchema),
@@ -139,7 +136,7 @@ export function PersonnelForm({
   // Two dialogs listening for Escape on the document would both act on one press: the inner
   // confirmation would close and the outer personnel dialog would discard the edit underneath
   // it. Reporting the inner state upward is what keeps that from happening.
-  const isNestedDialogOpen = pendingRoleChange !== null || isSignatureConfirmOpen;
+  const isNestedDialogOpen = isSignatureConfirmOpen;
   useEffect(() => {
     onNestedDialogChange?.(isNestedDialogOpen);
     return () => onNestedDialogChange?.(false);
@@ -162,18 +159,21 @@ export function PersonnelForm({
 
   // Same channel, fourth fact: whether anything has been typed. react-hook-form owns the
   // comparison against the record's own values, so a field edited and then put back correctly
-  // stops counting as an unsaved change - and cancelling the role-change confirmation, which
-  // restores the select with `shouldDirty: true`, does not register as one either, because that
-  // flag asks for the comparison to be re-run rather than marking the field edited. See
-  // `handleCancelRoleChange` for why `false` there would leave the field stale-dirty.
+  // stops counting as an unsaved change.
   useEffect(() => {
     onDirtyChange?.(isDirty);
     return () => onDirtyChange?.(false);
   }, [isDirty, onDirtyChange]);
 
-  // Only Pathologists may ever carry a signature image; Medical Technologists
-  // are textual only, so the signature area is never rendered for them.
-  const isPathologist = watch("role") === "Pathologist";
+  const selectedRole = watch("role");
+  // Credentials differ by role ("MD, FPSP" against "RMT"), so the placeholder still asks which
+  // role is selected.
+  const isPathologist = selectedRole === "Pathologist";
+  // Both signing roles may carry a signature image. The server accepts an upload for a
+  // Pathologist OR a Medical Technologist and clears the stored image for neither on a role
+  // change, so the signature area is rendered for both rather than for Pathologists alone.
+  const canHoldSignature =
+    selectedRole === "Pathologist" || selectedRole === "MedicalTechnologist";
 
   const submitValues = useCallback(
     async (values: PersonnelFormValues) => {
@@ -197,51 +197,20 @@ export function PersonnelForm({
   );
 
   /**
-   * The one role change that destroys stored data.
+   * Changing role no longer destroys anything.
    *
-   * A Medical Technologist cannot hold a signature image, so saving this change clears the one
-   * on file. That is worth a question - unlike a Pathologist simply having no image, which is
-   * a supported configuration and gets no warning anywhere in this module.
+   * Both signing roles may hold a signature image, and `updatePersonnelAction` writes the
+   * signature column for no role at all, so switching Pathologist to Medical Technologist leaves
+   * the stored image exactly where it was. The confirmation that used to warn about losing it
+   * described a behaviour the server no longer has, so it is gone rather than left asking a
+   * question whose premise is false.
    */
-  const destroysStoredSignature =
-    isEditing &&
-    initialData?.role === "Pathologist" &&
-    initialData.hasSignature === true;
-
   const handleFormSubmit = (values: PersonnelFormValues) => {
     // A save started while a signature upload or removal is in flight would write the same
     // record from two directions at once. The submit control is disabled for the same reason,
     // but Enter in a text field reaches here without it, so the gate is here as well.
     if (isSignatureBusy) return;
-    if (destroysStoredSignature && values.role === "MedicalTechnologist") {
-      setPendingRoleChange(values);
-      return;
-    }
     return submitValues(values);
-  };
-
-  const handleConfirmRoleChange = async () => {
-    const values = pendingRoleChange;
-    if (!values) return;
-    await submitValues(values);
-    // On success the parent closes this dialog outright; on failure the confirmation steps
-    // aside so the error is readable against the form it belongs to.
-    setPendingRoleChange(null);
-  };
-
-  const handleCancelRoleChange = () => {
-    setPendingRoleChange(null);
-    // Cancelling must leave the record exactly as it was found: the role select goes back to
-    // Pathologist, the signature area returns with it, and nothing was sent.
-    //
-    // `shouldDirty: true` rather than false, which reads backwards until you see what each one
-    // does. It does not mark the field edited - it asks react-hook-form to RE-EVALUATE the form
-    // against its defaults, and the value being restored is the default, so the field drops out
-    // of the dirty set. `false` skips that recomputation entirely, leaving the field marked dirty
-    // from the change that has just been undone; the dialog above then believed there were
-    // unsaved edits and asked to discard them on close, over a form that matched the record
-    // exactly.
-    setValue("role", initialData?.role ?? "Pathologist", { shouldDirty: true });
   };
 
   const personnelName = initialData ? formatPersonnelName(initialData) : "";
@@ -329,7 +298,7 @@ export function PersonnelForm({
 
         {/* Signature management needs a saved record to attach to, so it appears only when
             editing. On create, say so rather than showing a control that cannot work yet. */}
-        {isPathologist &&
+        {canHoldSignature &&
           (initialData?.id ? (
             <div className="sm:col-span-6">
               <PersonnelSignatureField
@@ -377,29 +346,6 @@ export function PersonnelForm({
           {isEditing ? "Save Changes" : "Create Personnel"}
         </Button>
       </div>
-
-      <ConfirmDialog
-        isOpen={pendingRoleChange !== null}
-        onCancel={handleCancelRoleChange}
-        onConfirm={handleConfirmRoleChange}
-        title="Change role and remove the signature image?"
-        description={`${personnelName} currently has a signature image on file.`}
-        confirmLabel="Change role"
-        pendingLabel="Saving..."
-        cancelLabel="Keep as Pathologist"
-        variant="destructive"
-        isPending={isSubmitting}
-      >
-        <p>
-          A Medical Technologist cannot hold a signature image, so saving this change removes
-          the stored image. Reports completed from now on will carry this person&rsquo;s
-          textual signatory information - printed name, credentials and PRC licence number.
-          Reports already completed keep the signature they were issued with.
-        </p>
-        <p className="mt-2 text-brand-text-muted">
-          Cancelling leaves the role and the stored image exactly as they are.
-        </p>
-      </ConfirmDialog>
     </form>
   );
 }

@@ -4,6 +4,7 @@ import { LaboratoryReportDomain, LaboratoryResultDomain } from "@/domain/models/
 import { ClinicalReportDefinition } from "@/domain/types/report-definition";
 import { applyAllSelectableParameters, applyCalculationMode, applyEncodingResultValue, applyParameterSelection, getEditableResultValue } from "../_lib/encoding/report-encoding";
 import { getReportEncodingProgress } from "../_lib/encoding/encoding-progress";
+import type { WorkspacePhysicianAssignment } from "../_lib/encoding/physician-suggestions";
 import { advanceToNextResultInput, collectResultInputs } from "../_lib/encoding/result-tab-navigation";
 import { normalizeCalculationModes, resolveCalculationMode, type CalculationMode } from "@/domain/calculation-mode";
 import type { PatientSex } from "@/domain/types";
@@ -31,9 +32,15 @@ export interface DynamicResultFormProps {
    * confirmation. Auto -> Manual loses nothing and is applied here directly.
    */
   onRequestManualToAuto?: (templateCode: string, parameterCode: string, parameterName: string) => void;
+  /**
+   * This examination's physician assignment, read from the database by the Workspace and passed
+   * straight through to Requested By. Undefined while it has not been read, which is what selects
+   * that control's declarative fallback roster.
+   */
+  physicianAssignment?: WorkspacePhysicianAssignment | null;
 }
 
-export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto }: DynamicResultFormProps) {
+export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto, physicianAssignment }: DynamicResultFormProps) {
   const sortedParameters = useMemo(() => [...definition.parameters].sort((a, b) => a.displayOrder - b.displayOrder), [definition]);
   const calculationModes = useMemo(() => normalizeCalculationModes(report.encodingData?.calculationModes), [report.encodingData?.calculationModes]);
   const updateEncodingData = useCallback((patch: Partial<NonNullable<ILaboratoryReport["encodingData"]>>) => {
@@ -123,7 +130,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     {/* Report setup in one recessed band, then the worksheet full-bleed to the card
         edges - the grid gets the whole width instead of losing it to a nested frame. */}
     <div className="space-y-3 border-b border-brand-border bg-brand-structural px-4 py-3">
-      <RequestedBySection policy={definition.requestedByPolicy} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
+      <RequestedBySection policy={definition.requestedByPolicy} assignment={physicianAssignment} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
     </div>
     <div>

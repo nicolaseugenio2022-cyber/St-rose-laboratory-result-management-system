@@ -41,7 +41,10 @@ export async function uploadPersonnelSignatureAction(
   if (!personnel) {
     return { success: false, error: "Personnel record was not found." };
   }
-  if (personnel.role !== "Pathologist") {
+  if (
+    personnel.role !== "Pathologist" &&
+    personnel.role !== "MedicalTechnologist"
+  ) {
     await auditService.emit({
       category: "SecurityDenial",
       eventType: "PersonnelDirectoryAccessDenied",
@@ -54,7 +57,8 @@ export async function uploadPersonnelSignatureAction(
     });
     return {
       success: false,
-      error: "Signatures are only supported for Pathologists.",
+      error:
+        "Signatures are only supported for Pathologists and Medical Technologists.",
     };
   }
 
@@ -86,10 +90,15 @@ export async function uploadPersonnelSignatureAction(
   // prevents the most likely interleaving (Admin changes role between the
   // initial check and the update).
   const currentPersonnel = await repository.findById(parsed.personnelId);
-  if (!currentPersonnel || currentPersonnel.role !== "Pathologist") {
+  if (
+    !currentPersonnel ||
+    (currentPersonnel.role !== "Pathologist" &&
+      currentPersonnel.role !== "MedicalTechnologist")
+  ) {
     return {
       success: false,
-      error: "Personnel role has changed. Signatures are only supported for Pathologists.",
+      error:
+        "Personnel role has changed. Signatures are only supported for Pathologists and Medical Technologists.",
     };
   }
 

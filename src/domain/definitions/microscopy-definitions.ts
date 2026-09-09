@@ -19,7 +19,10 @@ import { validEntryOnly } from "./evaluation-policies";
  * Bacteria: FreeText with initial default "4+" (editable)
  * Parasites: FreeText with initial automatic default "NO INTESTINAL PARASITES OR OVA SEEN" (editable)
  * Blank Omission: Optional blank findings omitted from report output (blankOmission: true)
- * Requested By Default: Dr. Ma. Floricel Dedace-Lagrazon (Editable, Required)
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report
+ * starts at, are decided by the managed physician directory - not declared here. Fecalysis is the
+ * one examination the laboratory restricts, and that restriction is now an assignment in the
+ * directory rather than a list in this file.
  */
 export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "FECALYSIS",
@@ -181,9 +184,16 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
     },
   ],
   requestedByPolicy: {
-    defaultPhysician: "Dr. Ma. Floricel Dedace-Lagrazon",
+    // NOT the authority any more. The laboratory's rule - Fecalysis is requested by the two
+    // Asperas doctors only, and Dr. Ma. Floricel Dedace-Lagrazon is excluded from THIS examination
+    // alone - is now held as assignment rows in the managed physician directory, where an
+    // administrator can change it without a code change. What is left here is the fallback the
+    // encoder uses only while those assignments have not been read, and the seed the migration
+    // reproduced them from.
+    defaultPhysician: "Dr. Ralph Roland Asperas",
+    allowedPhysicians: ["Dr. Ralph Roland Asperas", "Dr. Heinz Roland Asperas"],
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,
@@ -200,7 +210,7 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
  * Microscopic: WBC (FreeText + " /HPF"), RBC (FreeText + " /HPF"), Epithelial Cells, Bacteria, Mucus Threads
  * Conditional Primary Crystal: Amorphous Urates / Phosphates (label choice + quantity options, omitted if blank)
  * Repeatable Findings: Additional Microscopic Findings (multiple entries)
- * Requested By: Required staff entry, no default physician.
+ * Requested By: OPTIONAL and editable. Which physicians it suggests, and which one a new report starts at, are decided by the managed physician directory - not declared here.
  */
 export const URINALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "URINALYSIS",
@@ -385,7 +395,7 @@ export const URINALYSIS_DEFINITION: ClinicalReportDefinition = {
   requestedByPolicy: {
     defaultPhysician: null, // Required staff entry, no default physician
     isEditable: true,
-    isRequired: true,
+    isRequired: false,
   },
   statusPolicy: {
     demographicCollection: false,

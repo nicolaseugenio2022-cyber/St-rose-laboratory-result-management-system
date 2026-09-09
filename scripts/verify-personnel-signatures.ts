@@ -158,10 +158,24 @@ const searchableRemoveBody = stripComments(removeBody);
   );
 }
 
-// ── Assertion 2: Upload rejects any role other than Pathologist ──
+// ── Assertion 2: Upload admits ONLY the two signature-eligible roles ──
+// Policy reversal: Medical Technologists may now hold a signature image. The rule this pins is
+// therefore "Pathologist OR MedicalTechnologist, nothing else" - not "Pathologist only". Both
+// halves of the conjunction are required, so widening this to an unconditional accept, or to a
+// single-role test that admits the other role implicitly, fails here.
 assert(
-  /personnel\.role\s*!==\s*"Pathologist"/.test(uploadBody),
-  "uploadPersonnelSignatureAction rejects non-Pathologist roles"
+  /personnel\.role\s*!==\s*"Pathologist"\s*&&\s*personnel\.role\s*!==\s*"MedicalTechnologist"/.test(
+    uploadBody
+  ),
+  "uploadPersonnelSignatureAction rejects every role other than Pathologist or MedicalTechnologist"
+);
+// The deliberate TOCTOU narrowing keeps the SAME role set at the recheck. A recheck that
+// admitted a wider set than the initial gate would make the narrowing decorative.
+assert(
+  /currentPersonnel\.role\s*!==\s*"Pathologist"\s*&&\s*\n?\s*currentPersonnel\.role\s*!==\s*"MedicalTechnologist"/.test(
+    uploadBody
+  ),
+  "the pre-write TOCTOU recheck enforces the same two signature-eligible roles"
 );
 
 // ── Assertion 3: Object path is server-generated; no client-supplied path reaches storage ──

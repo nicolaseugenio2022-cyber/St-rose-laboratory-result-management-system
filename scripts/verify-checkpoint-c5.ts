@@ -223,12 +223,17 @@ async function main(): Promise<void> {
     );
   }
 
+  // SUPERSEDED: this listed the Pathologist ids as the only permitted signature images. A Medical
+  // Technologist may now sign, so the closed set gains the standard MedTech id. It is still a
+  // CLOSED set - an image whose id is none of these remains a failure, which is what stops an
+  // unrelated asset being introduced into an exported report.
   assert(
     livePreviewPages.every((page) => page.primitives
       .filter((primitive) => primitive.kind === "image" && primitive.id !== "official-logo")
       .every((primitive) => primitive.id === "pathologist-signature"
+        || primitive.id === "medical-technologist-signature"
         || primitive.id === "certificate-pathologist-signature")),
-    "no non-Pathologist signatory slot may emit an image primitive"
+    "only a declared signatory slot may emit an image primitive"
   );
 
   let requiredLogoRejected = false;

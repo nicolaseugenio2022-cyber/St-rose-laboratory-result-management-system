@@ -1,5 +1,6 @@
 /** Checkpoint B5: completion validation and immutable snapshot verification. */
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
+import { DEFAULT_LABORATORY_REMARK } from "../src/domain/laboratory-remarks";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain, LaboratoryResultDomain } from "../src/domain/models/laboratory-report-domain";
 import { buildEncodingReport, applyCalculationMode, applyEncodingResultValue, applyParameterSelection } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
@@ -42,7 +43,10 @@ function validReport(definition: ClinicalReportDefinition): LaboratoryReportDoma
     ...report,
     encodingData: {
       ...(report.encodingData || {}),
-      requestedBy: report.encodingData?.requestedBy || (definition.requestedByPolicy.isRequired ? "Dr. Required Physician" : ""),
+      // A selected physician, always. Requested By is optional everywhere now, so gating this on
+      // `isRequired` would leave every fixture blank and quietly stop proving that a CHOSEN
+      // physician is frozen onto the report. The blank case is proved separately, on purpose.
+      requestedBy: report.encodingData?.requestedBy || "Dr. Required Physician",
       additionalFields: Object.fromEntries((definition.additionalEncodingFields || []).map((field) => [field.fieldCode, field.isRequired ? "2026-08-09 10:30" : ""])),
       repeatableFindings: report.encodingData?.repeatableFindings || {},
     },
@@ -75,21 +79,44 @@ for (const code of codes) {
   assert(session.status === "Completed" && session.completedSnapshot?.reports.length === 1, `${code} completes through its declarative policy with Patient Status absent`);
   assert(session.completedSnapshot?.reports[0].results.every((result) => result.formattedResultValue !== undefined), `${code} freezes formatted result values`);
 
-  const required = definition.parameters.find((parameter) => parameter.isRequired && parameter.inputType !== "Computed");
-  if (required) {
+  // A CHECKED parameter left intentionally blank no longer blocks completion, and no longer
+  // reaches the report. This previously blanked the first required parameter and demanded that
+  // completion be refused; an operator who ran a panel but did not report one analyte was being
+  // forced either to invent a value or to uncheck a parameter they had genuinely considered.
+  //
+  // Only definitions with more than one parameter are exercised: blanking the only parameter of a
+  // single-result report leaves nothing to report at all, which is a different rule.
+  const blankable = definition.parameters.find((parameter) => parameter.inputType !== "Computed");
+  if (blankable && definition.parameters.length > 1) {
     const report = validReport(definition);
-    report.results = report.results.map((result) => result.parameterCode === required.parameterCode ? new LaboratoryResultDomain({ ...result, resultValue: "", rawResultValue: "", formattedResultValue: "" }) : result);
-    expectValidation(() => sessionFor(definition, report).completeSession(), `${code} missing required result`, required.parameterCode);
+    report.results = report.results.map((result) => result.parameterCode === blankable.parameterCode ? new LaboratoryResultDomain({ ...result, resultValue: "", rawResultValue: "", formattedResultValue: "" }) : result);
+    const blankSession = sessionFor(definition, report);
+    blankSession.completeSession();
+    assert(blankSession.status === "Completed", `${code} completes with a checked parameter left intentionally blank`);
+    const frozen = blankSession.completedSnapshot!.reports[0].results;
+    assert(!frozen.some((result) => result.parameterCode === blankable.parameterCode), `${code} omits the intentionally blank ${blankable.parameterCode} from the frozen report`);
+    assert(frozen.length > 0, `${code} still reports its remaining results`);
+    const whitespaceReport = validReport(definition);
+    whitespaceReport.results = whitespaceReport.results.map((result) => result.parameterCode === blankable.parameterCode ? new LaboratoryResultDomain({ ...result, resultValue: "   ", rawResultValue: "   ", formattedResultValue: "   " }) : result);
+    const whitespaceSession = sessionFor(definition, whitespaceReport);
+    whitespaceSession.completeSession();
+    assert(!whitespaceSession.completedSnapshot!.reports[0].results.some((result) => result.parameterCode === blankable.parameterCode), `${code} treats a whitespace-only ${blankable.parameterCode} as blank and omits it`);
   }
 }
 
+// Requested By is OPTIONAL on every examination. This loop previously proved the opposite, and was
+// gated on `isRequired` - so flipping the policy alone would have left it silently skipping rather
+// than failing. It is inverted rather than deleted: a blank must complete, and must reach the
+// frozen record as a blank rather than acquiring a physician nobody selected.
 for (const code of codes) {
   const definition = ReportDefinitionRegistry.getDefinition(code)!;
-  if (definition.requestedByPolicy.isRequired) {
-    const report = validReport(definition);
-    const blank = new LaboratoryReportDomain({ ...report, encodingData: { ...(report.encodingData || {}), requestedBy: "" } });
-    expectValidation(() => sessionFor(definition, blank).completeSession(), `${code} missing ${definition.requestedByPolicy.fieldLabel || "Requested By"}`, "requestedBy");
-  }
+  assert(definition.requestedByPolicy.isRequired === false, `${code} Requested By is optional`);
+  const report = validReport(definition);
+  const blank = new LaboratoryReportDomain({ ...report, encodingData: { ...(report.encodingData || {}), requestedBy: "" } });
+  const blankSession = sessionFor(definition, blank);
+  blankSession.completeSession();
+  assert(blankSession.status === "Completed", `${code} completes with no requesting physician`);
+  assert(blankSession.completedSnapshot!.reports[0].requestedBy === "", `${code} freezes a blank Requested By rather than substituting a default physician`);
 }
 
 for (const definition of ReportDefinitionRegistry.getAllDefinitions().filter((item) => item.requiresKitInfo)) {
@@ -175,7 +202,17 @@ expectValidation(() => sessionFor(hiv, missingHivVerifier).completeSession(), "H
 const hivSession = sessionFor(hiv);
 hivSession.completeSession();
 assert(hivSession.completedSnapshot!.reports[0].requestedBy === "Dr. Required Physician" && hivSession.completedSnapshot!.reports[0].additionalFields.examinationDateTime === "2026-08-09 10:30" && hivSession.completedSnapshot!.reports[0].signatories.length === 3, "HIV freezes Referring Doctor, supplemental demographics, and all three signatories");
-assert(hivSession.completedSnapshot!.reports[0].reagentKitInfo?.lotNumber === "LOT-B5" && hivSession.completedSnapshot!.reports[0].remarks === "", "HIV freezes reagent kit and remarks data");
+// The frozen remark is no longer "" for a newly created report. Every examination this laboratory
+// issues now starts at the standing remark TEST/S RECHECKED; RESULT/S VERIFIED - declared once in
+// domain/laboratory-remarks.ts rather than on CBC alone - so completion freezes that text unless
+// the operator replaced it. Already-completed reports keep whatever they froze; only new work
+// carries the default.
+assert(hivSession.completedSnapshot!.reports[0].reagentKitInfo?.lotNumber === "LOT-B5" && hivSession.completedSnapshot!.reports[0].remarks === DEFAULT_LABORATORY_REMARK, "HIV freezes reagent kit and the standing laboratory remark");
+// An operator-authored remark must survive completion untouched - the default is a fallback for a
+// blank, never an overwrite.
+const customRemarkSession = sessionFor(hiv, new LaboratoryReportDomain({ ...validReport(hiv), remarks: "SPECIMEN HAEMOLYSED; REPEAT REQUESTED" }));
+customRemarkSession.completeSession();
+assert(customRemarkSession.completedSnapshot!.reports[0].remarks === "SPECIMEN HAEMOLYSED; REPEAT REQUESTED", "completion freezes an operator-authored remark exactly, without applying the laboratory default over it");
 assert(hivSession.completedSnapshot!.snapshotVersion === 2, "new completions use completed snapshot version 2");
 assert(hivSession.completedSnapshot!.reports[0].renderContractVersion === 1 && hivSession.completedSnapshot!.reports[0].printedTitle === "HIV 1 & 2 RAPID TEST CERTIFICATE" && hivSession.completedSnapshot!.reports[0].staticContentVersion === "hiv-certificate-v1", "HIV freezes render contract version, printed title, and specialized static-content version");
 for (const address of ["EDITED HIV PATIENT ADDRESS", ""]) {

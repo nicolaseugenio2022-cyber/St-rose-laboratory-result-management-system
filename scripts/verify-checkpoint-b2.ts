@@ -2,7 +2,7 @@
  * Checkpoint B2 Verification Script — 8-Area Review Audit & Regression
  *
  * Verifies:
- * 1. HIV_RESULT Requested By is REQUIRED (isRequired === true) with defaultPhysician === null.
+ * 1. HIV_RESULT Requested By is OPTIONAL (isRequired === false) with defaultPhysician === null.
  * 2. Printed report titles vs catalog names (HEPATITIS B (SCREENING), SYPHILIS / RPR (SCREENING), PREGNANCY TEST (URINE), exact mixed-case "HbA1c").
  * 3. Patient Status Architecture (demographicCollection === false, type === "Omitted").
  * 4. Qualitative option exactness and ordering (HBSAG, RPR, PREG_TEST, DENGUE_DUO, HIV_RESULT with no default result).
@@ -44,7 +44,7 @@ const B2_CODES = [
 // ---------------------------------------------------------------------------
 console.log("\n--- Area 1: HIV_RESULT Field Semantics ---");
 const hivResult = ReportDefinitionRegistry.getDefinition("HIV_RESULT")!;
-assert(hivResult.requestedByPolicy.isRequired === true, `HIV_RESULT Referring Doctor is REQUIRED (isRequired === true)`);
+assert(hivResult.requestedByPolicy.isRequired === false, `HIV_RESULT Referring Doctor is OPTIONAL (isRequired === false)`);
 assert(hivResult.requestedByPolicy.defaultPhysician === null, `HIV_RESULT Referring Doctor default is null (no default physician)`);
 
 
@@ -193,7 +193,7 @@ assert(chem10Names[7] === "SGPT / ALT", `CHEM_10 parameter 8 name is exactly "SG
 console.log("\n--- Area 7: Requested By Requiredness ---");
 for (const code of B2_CODES) {
   const def = ReportDefinitionRegistry.getDefinition(code)!;
-  assert(def.requestedByPolicy.isRequired === true, `${code} Requested By is REQUIRED (isRequired === true)`);
+  assert(def.requestedByPolicy.isRequired === false, `${code} Requested By is OPTIONAL (isRequired === false)`);
 }
 
 // Physician defaults reconfirmed

@@ -115,11 +115,12 @@ export async function updatePersonnelAction(input: unknown): Promise<PersonnelAc
   }
   if (rawUpdates.role !== undefined) updates.role = rawUpdates.role;
 
-  const resolvedRole = updates.role ?? existing.role;
-  if (resolvedRole === "MedicalTechnologist") {
-    updates.signatureImageUrl = null;
-  }
-  // For Pathologist: omit signatureImageUrl entirely to preserve existing URL.
+  // `signatureImageUrl` is deliberately never present in `updates`. Both signature-eligible
+  // roles - Pathologist and Medical Technologist - may hold a stored signature, so an
+  // ordinary profile edit must preserve whatever is on file rather than rewrite it. The
+  // reference is written only by `uploadPersonnelSignatureAction` /
+  // `removePersonnelSignatureAction`, which is what keeps this action incapable of clearing
+  // or forging one, and keeps the client-supplied payload unable to reach the column at all.
 
   if (rawUpdates.isActive !== undefined) updates.isActive = rawUpdates.isActive;
 

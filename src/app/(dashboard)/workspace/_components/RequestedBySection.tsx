@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RequestedByPolicySpec } from "@/domain/types/report-definition";
-import { listAutoSuggestionsAction } from "@/features/server-boundary/server-actions";
+import { listWorkspacePhysiciansAction } from "../_actions/workspace-physician-actions";
 import { fieldLabelClassName, fieldSurfaceClassName } from "@/components/ui/Input";
-import { mergePhysicianSuggestions } from "../_lib/encoding/physician-suggestions";
+import { resolveAssignedSuggestions, type WorkspacePhysicianAssignment } from "../_lib/encoding/physician-suggestions";
 import { cn } from "@/lib/utils";
 import { Stethoscope } from "lucide-react";
 
@@ -10,34 +10,56 @@ import { Stethoscope } from "lucide-react";
  * Requested By, per examination.
  *
  * A free-text combobox, never a closed select: the roster below is a set of suggestions, and the
- * operator may type any physician over them. The value is held on this report's `encodingData`,
- * so two examinations in one session can be requested by different doctors.
+ * operator may type any physician over them - including one the laboratory has not added to its
+ * directory - or leave the field blank. The value is held on this report's `encodingData`, so two
+ * examinations in one session can be requested by different doctors.
  *
- * Suggestions come from the report definitions first and from learned operator entries second
- * (see physician-suggestions), so the practice's doctors are offered on a laboratory that has
- * never completed a session and the list is never empty.
+ * The suggestions are this examination's physician assignments, held in the database and passed in
+ * by the Workspace: the assignment set decides who is offered here, and a separate flag on it
+ * decides who a NEW report starts at. Nothing is learned from prior operator entries any more, so
+ * the list is the same on a brand-new laboratory as on one that has encoded for a year.
+ *
+ * Until that assignment arrives the control falls back to the managed directory, fetched once
+ * through the Workspace's own server-action boundary and narrowed by whatever this report's
+ * definition declared (see physician-suggestions). The fallback exists so the first paint, and a
+ * failed assignment read, still offer the operator something to pick from.
+ *
+ * `<datalist>` is deliberately kept rather than replaced with a custom listbox: the browser's own
+ * combobox already filters the roster down as the operator types, on every platform, with the
+ * native keyboard model - and it degrades to a plain text field rather than to nothing. A
+ * directory outage falls back to an empty roster, never to a blocked field.
  */
-export function RequestedBySection({ policy, value, onChange }: {
+export function RequestedBySection({ policy, assignment, value, onChange }: {
   policy: RequestedByPolicySpec;
+  /**
+   * This examination's database assignment, or null/undefined while it has not been read. Absent
+   * selects the declarative fallback; an assignment with an empty list is an answer, and offers
+   * nobody.
+   */
+  assignment?: WorkspacePhysicianAssignment | null;
   value: string;
   onChange: (value: string) => void;
 }) {
-  const [learned, setLearned] = useState<string[]>([]);
+  const [directory, setDirectory] = useState<string[]>([]);
   useEffect(() => {
     let active = true;
-    listAutoSuggestionsAction({ category: "physician" })
-      .then((items) => {
-        if (active) setLearned(items.map((item) => item.suggestionText));
+    listWorkspacePhysiciansAction()
+      .then((names) => {
+        if (active) setDirectory(names);
       })
       .catch(() => {
-        if (active) setLearned([]);
+        if (active) setDirectory([]);
       });
     return () => {
       active = false;
     };
   }, []);
 
-  const suggestions = useMemo(() => mergePhysicianSuggestions(learned), [learned]);
+  const allowedPhysicians = policy.allowedPhysicians;
+  const suggestions = useMemo(
+    () => resolveAssignedSuggestions(assignment, directory, { allowedPhysicians }),
+    [assignment, directory, allowedPhysicians],
+  );
   const listId = `requested-by-${policy.fieldLabel || "physician"}`.replace(/\W+/g, "-").toLowerCase();
 
   return (
@@ -62,7 +84,7 @@ export function RequestedBySection({ policy, value, onChange }: {
           data-requested-by-input
           data-encoding-input
           autoComplete="off"
-          placeholder="Type or select a physician..."
+          placeholder="Search or type a physician..."
           className={cn(fieldSurfaceClassName, "block border placeholder:text-slate-500", "pr-9")}
         />
         <Stethoscope aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-brand-text-subtle" />

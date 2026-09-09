@@ -80,6 +80,7 @@ jobs:
           REACT_SERVER=(
             verify-admin-invariants.ts
             verify-audit-presentation.ts
+            verify-blank-and-optional-results.ts
             verify-checkpoint-b1.ts
             verify-checkpoint-b2.ts
             verify-checkpoint-b3.ts
@@ -94,13 +95,20 @@ jobs:
             verify-checkpoint-m6d.ts
             verify-dashboard-recent-work.ts
             verify-developer-boundary.ts
+            verify-laboratory-remarks.ts
             verify-lockout-countdown.ts
+            verify-medtech-signature-lifecycle.ts
+            verify-patient-age.ts
             verify-personnel-directory.ts
             verify-personnel-signatures.ts
+            verify-physician-assignments.ts
+            verify-physician-directory.ts
             verify-recovery-flow.ts
             verify-registry-cache.ts
+            verify-requested-by-directory.ts
             verify-signatory-resolution.ts
             verify-supabase-transport.ts
+            verify-text-result-entry.ts
             verify-workspace-signatory-boundary.ts
           )
 

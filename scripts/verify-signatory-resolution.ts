@@ -36,6 +36,14 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const CLIENT_SENTINEL: string = "/api/signatures/proxy?path=CLIENT-SUPPLIED-FORGERY.png";
 const SERVER_SENTINEL: string = "/api/signatures/proxy?path=SERVER-AUTHORITATIVE.png";
+/**
+ * A third sentinel, distinct from both. Medical Technologists may now hold a signature image,
+ * so "the MedTech reference came from the MedTech's own authoritative record" has to be
+ * provable separately from "the Pathologist reference arrived" - a single server sentinel would
+ * let a resolver that copied one person's reference onto another pass.
+ */
+const MEDTECH_SERVER_SENTINEL: string =
+  "/api/signatures/proxy?path=SERVER-AUTHORITATIVE-MEDTECH.png";
 
 /* ------------------------------------------------------------------ fixtures */
 
@@ -82,14 +90,17 @@ const clientMedtech = (order: number): SignatorySnapshot => ({
   printedFullName: `MEDTECH ${order}`,
   printedCredentials: "RMT",
   printedPrcLicenseNumber: `M-${order}`,
-  // A MedTech should never carry one; the client sends one anyway.
+  // Whatever the client sends is irrelevant to the outcome - that is the point of the fixture.
   signatureImageUrl: CLIENT_SENTINEL,
   displayOrder: order + 1,
 });
 
+// `mt-1` holds a stored signature and `mt-2` does not, so both MedTech outcomes - resolve to
+// the authoritative reference, and resolve to null when nothing is on file - are exercised
+// against the same code path the Pathologist takes.
 const AUTHORITATIVE = [
   personnelRecord("path-1", "Pathologist", SERVER_SENTINEL),
-  personnelRecord("mt-1", "MedicalTechnologist", null),
+  personnelRecord("mt-1", "MedicalTechnologist", MEDTECH_SERVER_SENTINEL),
   personnelRecord("mt-2", "MedicalTechnologist", null),
 ];
 
@@ -113,8 +124,8 @@ async function main(): Promise<void> {
     "resolution installs the exact authoritative Pathologist reference"
   );
   assert(
-    resolvedUnit[1].signatureImageUrl === null,
-    "a Medical Technologist always resolves to null"
+    resolvedUnit[1].signatureImageUrl === MEDTECH_SERVER_SENTINEL,
+    "a Medical Technologist with a stored signature resolves to that authoritative reference"
   );
   assert(
     resolvedUnit[0].printedFullName === "DR. PATHOLOGIST" &&
@@ -131,6 +142,18 @@ async function main(): Promise<void> {
   assert(
     pathologistWithoutSignature[0].signatureImageUrl === null,
     "a Pathologist with no uploaded signature resolves to null rather than the client value"
+  );
+
+  // The mirror case for the newly eligible role. `mt-2` carries no stored signature, and the
+  // client sends the forgery regardless: the absent-signature outcome must still be null and
+  // must not fall back to the transported value.
+  const medtechWithoutSignature = await resolveSignatoriesForPersistence(
+    [clientMedtech(2)],
+    lookupOf(AUTHORITATIVE)
+  );
+  assert(
+    medtechWithoutSignature[0].signatureImageUrl === null,
+    "a Medical Technologist with no uploaded signature resolves to null rather than the client value"
   );
 
   /* ------------------------------------------------------------------ 2. fail-closed */
@@ -257,9 +280,13 @@ async function main(): Promise<void> {
     });
   }
 
-  function snapshotUrls(snapshot: unknown): (string | null | undefined)[] {
+  function snapshotSignatories(snapshot: unknown): SignatorySnapshot[] {
     const reports = (snapshot as { reports: { signatories: SignatorySnapshot[] }[] }).reports;
-    return reports.flatMap((report) => report.signatories.map((s) => s.signatureImageUrl));
+    return reports.flatMap((report) => report.signatories);
+  }
+
+  function snapshotUrls(snapshot: unknown): (string | null | undefined)[] {
+    return snapshotSignatories(snapshot).map((s) => s.signatureImageUrl);
   }
 
   // ── initial completion ──────────────────────────────────────────────────────
@@ -278,13 +305,27 @@ async function main(): Promise<void> {
   );
   // Derived from the report's own signatory requirement rather than hardcoded: CBC requires
   // one Medical Technologist, and a fixed count would make this assertion a fixture fact.
-  const medtechCount = draft.reports[0].signatories.filter(
+  //
+  // Policy reversal: a MedTech reference is no longer unconditionally null. Each MedTech
+  // signatory is checked against ITS OWN authoritative record, so the two outcomes are pinned
+  // together - a stored reference is installed verbatim, and an absent one still resolves to
+  // null. Comparing per personnelId is what rules out a resolver that copied the Pathologist's
+  // reference onto everyone, which a "not null" check would have accepted.
+  const medtechSignatories = snapshotSignatories(draft.completedSnapshot).filter(
     (s) => s.role === "MedicalTechnologist"
-  ).length;
+  );
+  const medtechCount = medtechSignatories.length;
   assert(medtechCount >= 1, "the fixture carries at least one Medical Technologist");
   assert(
-    completedUrls.filter((url) => url === null || url === undefined).length === medtechCount,
-    "completion: every Medical Technologist reference is null in the snapshot"
+    medtechSignatories.every((s) => {
+      const authoritative = AUTHORITATIVE.find((record) => record.id === s.personnelId);
+      return !!authoritative && s.signatureImageUrl === (authoritative.signatureImageUrl ?? null);
+    }),
+    "completion: every Medical Technologist reference equals that person's own authoritative reference"
+  );
+  assert(
+    completedUrls.filter((url) => url === MEDTECH_SERVER_SENTINEL).length === 1,
+    "completion: the completed snapshot carries the authoritative Medical Technologist reference"
   );
 
   // The RPC payload is built from the SAME live aggregate the snapshot was composed from, so
@@ -310,6 +351,19 @@ async function main(): Promise<void> {
   assert(
     replacementUrls.filter((url) => url === SERVER_SENTINEL).length === 1,
     "replacement: the replacement snapshot carries exactly the authoritative Pathologist reference"
+  );
+  assert(
+    replacementUrls.filter((url) => url === MEDTECH_SERVER_SENTINEL).length === 1,
+    "replacement: the replacement snapshot carries the authoritative Medical Technologist reference"
+  );
+  assert(
+    snapshotSignatories(replacement.completedSnapshot)
+      .filter((s) => s.role === "MedicalTechnologist")
+      .every((s) => {
+        const authoritative = AUTHORITATIVE.find((record) => record.id === s.personnelId);
+        return !!authoritative && s.signatureImageUrl === (authoritative.signatureImageUrl ?? null);
+      }),
+    "replacement: every Medical Technologist reference equals that person's own authoritative reference"
   );
   const replacementLiveUrls = replacement.reports.flatMap((report) =>
     report.signatories.map((s) => s.signatureImageUrl ?? null)

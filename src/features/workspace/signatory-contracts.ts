@@ -59,7 +59,8 @@ export interface WorkspaceSignatorySelection {
  * Now the client composes `/api/signatures/proxy?personnelId=<id>` from an id it already
  * legitimately holds. The address names *who*, never *where*; the route resolves the object path
  * server-side and returns bytes. Forging an entry buys nothing - the route re-authorizes every
- * request and only serves an active Pathologist who actually has a signature on file.
+ * request and only serves an active signature-eligible signatory - a Pathologist or a Medical
+ * Technologist - who actually has a signature on file.
  *
  * Draft path only. Completed reports render from their own frozen `completedSnapshot`, which this
  * map never touches, so history keeps the signature current at its own completion.

@@ -16,7 +16,11 @@ const ACCEPTED_MIME = "image/png";
 
 export interface PersonnelSignatureFieldProps {
   personnelId: string;
-  /** Display name of the Pathologist this control acts on. Named in the removal confirmation. */
+  /**
+   * Display name of the signatory this control acts on - a Pathologist or a Medical
+   * Technologist, both of which the server accepts a signature image for. Named in the
+   * removal confirmation.
+   */
   personnelName: string;
   /** Server-derived. This control never receives the signature reference itself. */
   hasSignature: boolean;
@@ -368,7 +372,7 @@ export function PersonnelSignatureField({
         isPending={isRemoving}
       >
         <p>
-          Reports completed from now on will carry this Pathologist&rsquo;s textual signatory
+          Reports completed from now on will carry this person&rsquo;s textual signatory
           information - printed name, credentials and PRC licence number - in place of the
           image. Reports already completed keep the signature they were issued with.
         </p>

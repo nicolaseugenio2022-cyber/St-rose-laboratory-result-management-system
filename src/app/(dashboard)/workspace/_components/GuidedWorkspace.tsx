@@ -10,6 +10,7 @@ import type {
   WorkspaceSignatureAssetMap,
 } from "@/features/workspace/signatory-contracts";
 import { listWorkspacePersonnelAction } from "../_actions/workspace-personnel-actions";
+import { listWorkspacePhysicianOptionsAction } from "../_actions/workspace-physician-actions";
 import { PatientDemographics, PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./PatientDemographicsForm";
 import { DynamicResultForm } from "./DynamicResultForm";
@@ -42,6 +43,12 @@ import { Save, CheckCircle2, AlertCircle, Check, FileText, FlaskConical, Eye, Ed
 import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provider";
 import { ReportDefinitionRegistry } from "@/domain/definitions/report-definition-registry";
 import { applyCalculationMode, buildEncodingReport, reevaluateEncodingReport } from "../_lib/encoding/report-encoding";
+import {
+  resolveAssignedInitialRequestedBy,
+  resolveExaminationPhysicianAssignment,
+  type PhysicianExaminationOption,
+  type WorkspacePhysicianAssignment,
+} from "../_lib/encoding/physician-suggestions";
 import { getReportEncodingProgress, getSessionEncodingProgress } from "../_lib/encoding/encoding-progress";
 import { initializeNewSessionAddress } from "../_lib/encoding/new-session-demographics";
 import {
@@ -267,6 +274,10 @@ export function GuidedWorkspace({
       accessionNumber: null,
       demographics: {
         fullName: "",
+        dateOfBirth: "",
+        // Both are derived from the date of birth the moment one is entered, and typed directly
+        // when it is not. "years" is the starting unit only; it is no longer an assumption the
+        // report inherits, because the unit is now recomputed with the number rather than fixed.
         age: 0,
         ageUnit: "years",
         sex: "" as unknown as PatientSex, // No default sex selection
@@ -291,9 +302,11 @@ export function GuidedWorkspace({
    * address built from an id this component already holds. The stored `signatureImageUrl`, which
    * embeds the storage object path, never crosses the boundary in any form.
    *
-   * Only active Pathologists with a signature on file get an entry: a Medical Technologist slot
-   * is hard-nulled by `composeSignatorySlots`, so an address there could never be drawn, and an
-   * entry for someone without a signature would only produce a 404 the renderer then omits.
+   * Only an ACTIVE signature-eligible signatory WITH a signature on file gets an entry. That is
+   * now either role: the laboratory decided a Medical Technologist may sign, so
+   * `composeSignatorySlots` no longer hard-nulls that slot and an address there is drawn like any
+   * other. An entry for someone without a signature would only produce a 404 the renderer then
+   * omits, so the `hasSignature` condition still earns its place.
    *
    * Nothing merges this into `session`, writes it to recovery, or sends it to a server action.
    * It reaches exactly one consumer, below.
@@ -301,12 +314,38 @@ export function GuidedWorkspace({
   const signatureAssets = useMemo<WorkspaceSignatureAssetMap>(() => {
     const assets: Record<string, string> = {};
     for (const person of availablePersonnel) {
-      if (person.role === "Pathologist" && person.isActive && person.hasSignature) {
+      if ((person.role === "Pathologist" || person.role === "MedicalTechnologist") && person.isActive && person.hasSignature) {
         assets[person.id] = `/api/signatures/proxy?personnelId=${encodeURIComponent(person.id)}`;
       }
     }
     return assets;
   }, [availablePersonnel]);
+
+  /**
+   * The managed physician roster, carrying each physician's examination assignments.
+   *
+   * Read once for the whole session rather than per examination: the assignments travel per
+   * physician, so one round trip answers every report the operator opens.
+   *
+   * Two states, because "not read yet" and "read, and this examination has nobody" are different
+   * answers and only one of them may reach the control. `physicianOptions` stays null until the
+   * read settles - on failure too, which leaves Requested By on its declarative fallback roster
+   * rather than on an empty one. `isPhysicianRosterResolved` flips either way, and is what the
+   * materialization effects below wait on.
+   */
+  const [physicianOptions, setPhysicianOptions] = useState<PhysicianExaminationOption[] | null>(null);
+  const [isPhysicianRosterResolved, setIsPhysicianRosterResolved] = useState(false);
+
+  /**
+   * This examination's assignment: who it offers, and where a new report starts.
+   *
+   * Null while the roster is unread. Every consumer treats that as "fall back", never as "nobody".
+   */
+  const physicianAssignmentFor = useCallback(
+    (templateCode: string): WorkspacePhysicianAssignment | null =>
+      resolveExaminationPhysicianAssignment(physicianOptions, templateCode),
+    [physicianOptions]
+  );
 
   const [allActiveTemplates, setAllActiveTemplates] = useState<HydratedTemplateSpec[]>(() => initialTemplates ?? []);
 
@@ -461,6 +500,25 @@ export function GuidedWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * The physician roster read, and the one failure mode that must NOT surface as an error.
+   *
+   * Requested By is optional free text. A physician directory that cannot be read costs the
+   * operator a suggestion list and a pre-selected name; it costs them nothing they cannot type,
+   * so it never raises a validation error and never stops encoding. The resolved flag is set on
+   * both branches precisely so a failed read releases materialization instead of stalling it.
+   */
+  useEffect(() => {
+    listWorkspacePhysicianOptionsAction()
+      .then((options) => {
+        setPhysicianOptions(options);
+        setIsPhysicianRosterResolved(true);
+      })
+      .catch(() => {
+        setIsPhysicianRosterResolved(true);
+      });
+  }, []);
+
   useEffect(() => {
     if (!validationFocusTarget || workspaceMode !== "encoding") return;
 
@@ -601,7 +659,7 @@ export function GuidedWorkspace({
         availablePersonnel
       );
 
-      return buildEncodingReport({
+      const report = buildEncodingReport({
         definition,
         sessionId: prevSession.id,
         reportId: existingReport?.id || crypto.randomUUID(),
@@ -615,8 +673,40 @@ export function GuidedWorkspace({
         evaluationContext: { sex: prevSession.demographics.sex || null },
         unmatchedParameterSelection: !isReplacementMode,
       });
+
+      // NEWLY MATERIALIZED REPORTS ONLY. Every one of the three guards below is the mechanism for
+      // one rule, and none of them is redundant with another:
+      //
+      //   existingReport   - a report that already exists keeps its stored Requested By, whatever
+      //                      it holds. That covers the draft the operator typed into AND the draft
+      //                      they deliberately cleared: a cleared field is an existing value, so a
+      //                      default is never reapplied over it. Materialization happens once per
+      //                      report, so the default is applied at most once, to this report alone.
+      //   assignment       - null means the roster has not been read. The declarative fallback
+      //                      buildEncodingReport already applied stands; nothing is overwritten on
+      //                      a guess. The effects below wait for the read, so this is the outage
+      //                      path rather than the ordinary one.
+      //   legacy physician - a physician the operator entered on the session demographics is an
+      //                      operator entry, not a default, and outranks a configured one.
+      //
+      // The assignment's answer is then authoritative in BOTH directions. An examination with no
+      // active default initializes blank, which means clearing the declarative value rather than
+      // leaving it - the database deciding "no default" must not be silently overruled by a
+      // definition that still declares one.
+      if (existingReport) return report;
+      const assignment = physicianAssignmentFor(templateCode);
+      if (!assignment) return report;
+      if (prevSession.demographics.requestingPhysician?.trim()) return report;
+
+      const initialRequestedBy = resolveAssignedInitialRequestedBy(assignment);
+      if (initialRequestedBy === (report.encodingData?.requestedBy || "")) return report;
+
+      return new LaboratoryReportDomain({
+        ...report,
+        encodingData: { ...(report.encodingData || {}), requestedBy: initialRequestedBy },
+      });
     },
-    [allActiveTemplates, availablePersonnel, isReplacementMode]
+    [allActiveTemplates, availablePersonnel, isReplacementMode, physicianAssignmentFor]
   );
 
   // Resolve the hydrated spec loaded by the authenticated registry bootstrap.
@@ -625,6 +715,12 @@ export function GuidedWorkspace({
       setActiveSpec(null);
       return;
     }
+    // A report is materialized exactly once, and a configured Requested By may only be applied at
+    // that moment - afterwards there is no way to tell a default that was never applied from a
+    // value the operator cleared. So materialization waits for the physician roster read to
+    // SETTLE, not to succeed: the flag is set on failure too, and the panel already renders its
+    // "not resolved yet" empty state for this window.
+    if (!isPhysicianRosterResolved) return;
 
     const spec = allActiveTemplates.find(
       (candidate) => candidate.template.templateCode === activeTemplateCode
@@ -650,7 +746,7 @@ export function GuidedWorkspace({
           });
         });
     }
-  }, [activeTemplateCode, allActiveTemplates, buildReportForTemplate]);
+  }, [activeTemplateCode, allActiveTemplates, buildReportForTemplate, isPhysicianRosterResolved]);
 
   /**
    * Every selected examination must exist as a report in the session aggregate.
@@ -673,6 +769,9 @@ export function GuidedWorkspace({
    */
   useEffect(() => {
     if (selectedTemplateCodes.length === 0) return;
+    // Same wait as the active-report effect above, and for the same reason: this path materializes
+    // reports too, so it must not do so before the configured Requested By can be applied.
+    if (!isPhysicianRosterResolved) return;
     setSession((prevSession) => {
       const missing = selectedTemplateCodes.filter(
         (code) => !prevSession.reports.some((report) => report.templateCode === code)
@@ -689,7 +788,7 @@ export function GuidedWorkspace({
         reports: [...prevSession.reports, ...created],
       });
     });
-  }, [selectedTemplateCodes, buildReportForTemplate]);
+  }, [selectedTemplateCodes, buildReportForTemplate, isPhysicianRosterResolved]);
 
   /**
    * Selected examinations that cannot be materialized into a report.
@@ -1774,6 +1873,7 @@ export function GuidedWorkspace({
                       patientSex={session.demographics.sex || null}
                       onChangeReport={handleReportChange}
                       onRequestManualToAuto={handleRequestManualToAuto}
+                      physicianAssignment={physicianAssignmentFor(activeDefinition.templateCode)}
                     />
                     {/* Docked as a sibling of the report card, not inside it: the card clips with
                         overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}

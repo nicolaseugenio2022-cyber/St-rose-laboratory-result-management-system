@@ -293,12 +293,16 @@ async function main(): Promise<void> {
     ),
     "the Workspace receives no signature asset map from the server"
   );
-  // Only an active Pathologist who actually holds a signature earns an address.
+  // Only an ACTIVE signature-eligible signatory who actually holds a signature earns an address.
+  // Both roles are eligible now: the laboratory decided a Medical Technologist may sign. The role
+  // test is widened by exactly one role and the `isActive` and `hasSignature` conditions are still
+  // pinned in the same expression, so widening eligibility cannot smuggle in a relaxation of
+  // either - an inactive person, or one with no signature on file, still earns no address.
   assert(
-    /person\.role === "Pathologist" && person\.isActive && person\.hasSignature/.test(
+    /\(person\.role === "Pathologist" \|\| person\.role === "MedicalTechnologist"\) && person\.isActive && person\.hasSignature/.test(
       workspaceCode
     ),
-    "a draft signature address is derived only for an active Pathologist with a signature on file"
+    "a draft signature address is derived only for an active, signature-eligible signatory holding a signature on file"
   );
 
   // And the endpoint must genuinely resolve the path server-side rather than echo one back.
@@ -312,11 +316,15 @@ async function main(): Promise<void> {
       /searchParams\.get\("personnelId"\)/.test(proxyRoute),
     "the signature proxy resolves the personnel record server-side from the requested id"
   );
+  // Policy reversal: a Medical Technologist may now hold a signature image, so the draft
+  // address admits both signature-eligible roles - and nothing else. The Active and
+  // has-a-signature-on-file conditions are unchanged and still pinned in the same order, so
+  // widening the role set cannot be used to smuggle in a relaxation of either.
   assert(
-    /person\.role !== "Pathologist"[\s\S]{0,120}?!person\.isActive[\s\S]{0,120}?!person\.signatureImageUrl/.test(
+    /person\.role !== "Pathologist" && person\.role !== "MedicalTechnologist"[\s\S]{0,120}?!person\.isActive[\s\S]{0,120}?!person\.signatureImageUrl/.test(
       proxyRoute
     ),
-    "the personnelId mode requires an active Pathologist holding a signature"
+    "the personnelId mode requires an active Pathologist or Medical Technologist holding a signature"
   );
   assert(
     /path && !personnelId && !reportId/.test(proxyRoute) &&

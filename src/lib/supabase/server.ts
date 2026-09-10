@@ -52,11 +52,12 @@ if (supabaseProtocol !== "https:") {
  * Policy, deliberately asymmetric by HTTP method:
  *
  * - GET/HEAD (PostgREST selects and counts - idempotent by construction): a TOTAL budget of
- *   READ_TOTAL_BUDGET_MS shared across at most two attempts, each capped at
- *   READ_ATTEMPT_TIMEOUT_MS. One retry, only for proven transient transport failures or our own
- *   attempt timeout. A completed HTTP response - any status, including 4xx/5xx - is returned
- *   untouched and never retried. A caller's own AbortSignal always wins and is never retried.
- *   Worst-case read wait is the total budget (~8s), not attempts x timeout.
+ *   READ_TOTAL_BUDGET_MS shared across at most READ_MAX_ATTEMPTS attempts, each capped at
+ *   READ_ATTEMPT_TIMEOUT_MS. At most one retry PER FAILURE CLASS: one for proven transient
+ *   transport failures or our own attempt timeout, and one for the PGRST303 exemption below
+ *   (QA-01R-R2/R3). Any other completed HTTP response - any status, including 4xx/5xx - is
+ *   returned untouched and never retried. A caller's own AbortSignal always wins and is never
+ *   retried. Worst-case read wait is the total budget (~8s), not attempts x timeout.
  *
  * - POST/PATCH/DELETE and anything else: delegated to fetch byte-for-byte, with the caller's
  *   original init untouched. No timeout is added and no retry ever happens, because a client-side
@@ -73,7 +74,7 @@ if (supabaseProtocol !== "https:") {
  * backoff, GET/HEAD, plus automatic 503/520 status retries). Left enabled it stacks on this
  * wrapper - up to 8 socket attempts and a ~39s worst-case stall for one read. `db.retry` is
  * therefore disabled on the client below, making this wrapper the only retry layer end to end:
- * at most two network attempts per read, worst case bounded by the total budget. Disabling it
+ * at most three network attempts per read, worst case bounded by the total budget. Disabling it
  * intentionally also removes PostgREST's automatic 503/520 status retries: the approved contract
  * is that a completed HTTP response - any status - is returned to the caller untouched and never
  * automatically retried. storage-js, supabase-js core and undici fetch contain no retry layer of
@@ -82,6 +83,8 @@ if (supabaseProtocol !== "https:") {
 const READ_ATTEMPT_TIMEOUT_MS = 5_000;
 const READ_TOTAL_BUDGET_MS = 8_000;
 const READ_RETRY_DELAY_MS = 150;
+/** One initial attempt plus at most one retry for each of the two retryable failure classes. */
+const READ_MAX_ATTEMPTS = 3;
 
 /** Transient transport failure codes: connection-level faults where nothing reached PostgREST. */
 const TRANSIENT_TRANSPORT_CODES = new Set([
@@ -215,8 +218,10 @@ function isAttemptTimeout(error: unknown): boolean {
  *   - GET/HEAD only, reached solely from the read path, so no write is ever replayed;
  *   - PGRST303 only - any other 401, and every 403, 4xx and 5xx, is returned untouched, so a real
  *     authorization decision is never retried into a second denial;
- *   - one extra attempt, inside the SAME total read budget, never a third;
- *   - caller cancellation still wins, since it is checked before this on the throwing path.
+ *   - one extra attempt for this class, inside the SAME total read budget - never a second
+ *     PGRST303 retry. QA-01R-R3 lets it coexist with the single transport retry, because an
+ *     attempt timeout spending the only shared retry left a following PGRST303 unabsorbed;
+ *   - caller cancellation still wins, on the response path as well as the throwing path.
  *
  * The body is read from a CLONE, so the response handed back to the caller is untouched and its
  * stream unconsumed. Nothing from it is logged: only the classifier is compared.
@@ -261,9 +266,19 @@ export async function resilientFetch(
   }
 
   const deadline = Date.now() + READ_TOTAL_BUDGET_MS;
+
+  // QA-01R-R3: one retry PER FAILURE CLASS, never one shared retry. Each flag is spent at most
+  // once, so neither class can retry twice, and READ_MAX_ATTEMPTS bounds the loop independently.
+  let transportRetrySpent = false;
+  let jwtRetrySpent = false;
+
+  // The most recent REAL failure - a completed response or a thrown error, never both - so a
+  // budget exhausted mid-retry hands back what actually happened rather than a stale or
+  // synthetic failure.
+  let lastResponse: Response | undefined;
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= READ_MAX_ATTEMPTS; attempt += 1) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
 
@@ -273,25 +288,34 @@ export async function resilientFetch(
 
     try {
       const response = await fetch(input, { ...request, signal, redirect: "error" });
-      if (attempt === 1 && (await isTransientJwtRejection(response))) {
-        const remainingAfterAttempt = deadline - Date.now();
-        if (remainingAfterAttempt > READ_RETRY_DELAY_MS) {
-          await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAY_MS));
-          continue;
-        }
+      if (
+        !jwtRetrySpent &&
+        (await isTransientJwtRejection(response)) &&
+        // Caller cancellation always wins, on this path too.
+        !callerSignal?.aborted &&
+        deadline - Date.now() > READ_RETRY_DELAY_MS
+      ) {
+        jwtRetrySpent = true;
+        lastResponse = response;
+        lastError = undefined;
+        await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAY_MS));
+        continue;
       }
       return response;
     } catch (error) {
       // Caller cancellation always wins and is never retried.
       if (callerSignal?.aborted) throw error;
-      lastError = error;
       const retryable = isAttemptTimeout(error) || isTransientTransportError(error);
-      if (attempt === 2 || !retryable) throw error;
+      if (transportRetrySpent || !retryable) throw error;
       if (deadline - Date.now() <= READ_RETRY_DELAY_MS) throw error;
+      transportRetrySpent = true;
+      lastError = error;
+      lastResponse = undefined;
       await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAY_MS));
     }
   }
 
+  if (lastResponse) return lastResponse;
   throw lastError ?? new Error("Read request budget exhausted before any attempt completed.");
 }
 

@@ -34,7 +34,7 @@ type TransportModule = {
   resilientFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   supabaseServer: {
     from: (table: string) => {
-      select: (columns: string) => PromiseLike<{ error: unknown }>;
+      select: (columns: string) => PromiseLike<{ error: unknown; data?: unknown }>;
     };
   };
 };
@@ -92,6 +92,24 @@ async function capture(
 }
 
 const ok = () => new Response("[]", { status: 200 });
+
+// QA-01R-R3 fixtures. One per failure class, so a sequence can mix the classes deliberately.
+const ROW_BODY = '[{"id":"row"}]';
+const rows = () => new Response(ROW_BODY, { status: 200 });
+const jwt303 = () => new Response('{"code":"PGRST303"}', { status: 401 });
+
+/** The shape our own per-attempt `AbortSignal.timeout` rejects with. */
+function attemptTimeout(): Error {
+  const error = new Error("attempt timed out");
+  error.name = "TimeoutError";
+  return error;
+}
+
+function connectionReset(): Error {
+  const error = new Error("connect failure") as Error & { code?: string };
+  error.code = "ECONNRESET";
+  return error;
+}
 
 async function run(): Promise<void> {
   // Capture everything written to the console so no key can escape through a log line.
@@ -328,6 +346,202 @@ async function run(): Promise<void> {
       "the response returned after a PGRST303 retry still has an unconsumed, readable body"
     );
 
+    // ── 5b. QA-01R-R3: one retry PER FAILURE CLASS, never one shared retry ────
+    //
+    // Provider evidence: a login's client-IP findAttempts SELECT stalled on its first attempt until
+    // the 5s attempt timeout, was retried, and that retry was answered 401/PGRST303. Under the
+    // shared two-attempt allowance the timeout had already spent the only retry, so a transient
+    // rejection the R2 exemption exists to absorb reached the login as a generic infrastructure
+    // failure. The two classes are independent, so each gets its own single retry: at most three
+    // attempts, inside the same total budget, and never the same class twice.
+    const timeoutThenJwt = await capture(
+      OPAQUE_KEY,
+      { method: "GET", headers: { apikey: OPAQUE_KEY } },
+      (attempt) => {
+        if (attempt === 1) throw attemptTimeout();
+        return attempt === 2 ? jwt303() : rows();
+      }
+    );
+    assert(
+      timeoutThenJwt.calls.length === 3 && timeoutThenJwt.response?.status === 200,
+      "an attempt timeout followed by PGRST303 is retried once per class: exactly three attempts, and the success reaches the caller"
+    );
+    assert(
+      (await timeoutThenJwt.response!.text()) === ROW_BODY,
+      "the success returned after a timeout-then-PGRST303 sequence still has an unconsumed, readable body"
+    );
+
+    const jwtThenReset = await capture(
+      OPAQUE_KEY,
+      { method: "GET", headers: { apikey: OPAQUE_KEY } },
+      (attempt) => {
+        if (attempt === 1) return jwt303();
+        if (attempt === 2) throw connectionReset();
+        return rows();
+      }
+    );
+    assert(
+      jwtThenReset.calls.length === 3 && jwtThenReset.response?.status === 200,
+      "PGRST303 followed by a transport failure is retried once per class in the opposite order too: exactly three attempts, then success"
+    );
+    assert(
+      (await jwtThenReset.response!.text()) === ROW_BODY,
+      "the success returned after a PGRST303-then-transport sequence still has an unconsumed, readable body"
+    );
+
+    // The same class never earns a second retry. Two DIFFERENT transport shapes are used, so this
+    // proves the budget is per class rather than per error code.
+    const resetThenTimeout = await capture(
+      OPAQUE_KEY,
+      { method: "GET", headers: { apikey: OPAQUE_KEY } },
+      (attempt) => {
+        if (attempt === 1) throw connectionReset();
+        if (attempt === 2) throw attemptTimeout();
+        return rows();
+      }
+    );
+    assert(
+      resetThenTimeout.calls.length === 2 &&
+        resetThenTimeout.threw instanceof Error &&
+        resetThenTimeout.threw.name === "TimeoutError",
+      "a second transport failure ends the read after the single transport retry, and that final failure is thrown as-is"
+    );
+
+    // Spending the transport retry never licenses retrying a REAL authorization decision.
+    for (const [status, body, label] of [
+      [401, '{"code":"PGRST301"}', "a 401 that is not PGRST303"],
+      [403, '{"code":"42501"}', "a 403 authorization denial"],
+    ] as [number, string, string][]) {
+      const denied = await capture(
+        OPAQUE_KEY,
+        { method: "GET", headers: { apikey: OPAQUE_KEY } },
+        (attempt) => {
+          if (attempt === 1) throw connectionReset();
+          return attempt === 2 ? new Response(body, { status }) : rows();
+        }
+      );
+      assert(
+        denied.calls.length === 2 && denied.response?.status === status,
+        `${label} after a transport retry is returned untouched and never retried into success`
+      );
+      assert(
+        (await denied.response!.text()) === body,
+        `${label} after a transport retry still carries its unconsumed body`
+      );
+    }
+
+    // No non-read dispatch is ever replayed, whichever class of failure it meets - including an
+    // RPC, which PostgREST reaches by POST.
+    for (const [method, url] of [
+      ["POST", "https://verifier.invalid/rest/v1/auth_attempts"],
+      ["PATCH", "https://verifier.invalid/rest/v1/auth_attempts"],
+      ["DELETE", "https://verifier.invalid/rest/v1/auth_attempts"],
+      ["POST", "https://verifier.invalid/rest/v1/rpc/verifier_fn"],
+    ] as [string, string][]) {
+      const timedOut = await capture(
+        OPAQUE_KEY,
+        { method, headers: { apikey: OPAQUE_KEY } },
+        (attempt) => {
+          if (attempt === 1) throw attemptTimeout();
+          return rows();
+        },
+        url
+      );
+      const rejected = await capture(
+        OPAQUE_KEY,
+        { method, headers: { apikey: OPAQUE_KEY } },
+        (attempt) => (attempt === 1 ? jwt303() : rows()),
+        url
+      );
+      assert(
+        timedOut.calls.length === 1 &&
+          timedOut.threw !== null &&
+          rejected.calls.length === 1 &&
+          rejected.response?.status === 401,
+        `${method} ${new URL(url).pathname} is dispatched exactly once, whether it times out or is answered PGRST303`
+      );
+    }
+
+    // Caller cancellation is authoritative on BOTH retry paths. Each failure below is one this
+    // wrapper would otherwise retry, so only the cancellation check can stop the second attempt.
+    {
+      const controller = new AbortController();
+      const cancelledOnThrow = await capture(
+        OPAQUE_KEY,
+        { method: "GET", headers: { apikey: OPAQUE_KEY }, signal: controller.signal },
+        (attempt) => {
+          if (attempt === 1) {
+            controller.abort();
+            throw connectionReset();
+          }
+          return rows();
+        }
+      );
+      assert(
+        cancelledOnThrow.calls.length === 1 && cancelledOnThrow.threw !== null,
+        "a read the caller cancelled is never retried, even when the failure it raised is otherwise retryable"
+      );
+    }
+    {
+      const controller = new AbortController();
+      const cancelledOn303 = await capture(
+        OPAQUE_KEY,
+        { method: "GET", headers: { apikey: OPAQUE_KEY }, signal: controller.signal },
+        (attempt) => {
+          if (attempt === 1) {
+            controller.abort();
+            return jwt303();
+          }
+          return rows();
+        }
+      );
+      assert(
+        cancelledOn303.calls.length === 1 && cancelledOn303.response?.status === 401,
+        "a PGRST303 that arrives after the caller cancelled is handed back once, never retried"
+      );
+    }
+
+    // Budget exhaustion returns the FINAL REAL failure. The clock is advanced from inside the retry
+    // backoff, so the budget is provably spent between the retry decision and the next attempt;
+    // the completed 401 must come back as-is rather than be replaced by a synthetic error.
+    {
+      const realNow = Date.now;
+      const realSetTimeout = globalThis.setTimeout;
+      let skewMs = 0;
+      Date.now = () => realNow() + skewMs;
+      globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+        skewMs += 60_000;
+        return realSetTimeout(...args);
+      }) as unknown as typeof setTimeout;
+      let exhausted: Awaited<ReturnType<typeof capture>>;
+      try {
+        exhausted = await capture(
+          OPAQUE_KEY,
+          { method: "GET", headers: { apikey: OPAQUE_KEY } },
+          (attempt) => (attempt === 1 ? jwt303() : rows())
+        );
+      } finally {
+        Date.now = realNow;
+        globalThis.setTimeout = realSetTimeout;
+      }
+      // Precondition guard: the clock must have jumped exactly once, inside the one retry
+      // backoff. A timer set anywhere else would jump it before the retry decision, so the 401
+      // would come back through the ordinary direct return and the assertions below would pass
+      // without ever reaching the exhaustion path.
+      assert(
+        skewMs === 60_000,
+        "the budget-exhaustion clock advanced exactly once, inside the single PGRST303 retry backoff"
+      );
+      assert(
+        exhausted.calls.length === 1 && exhausted.response?.status === 401,
+        "when the total budget runs out during the retry backoff, the final completed 401 is returned, not a synthetic error"
+      );
+      assert(
+        (await exhausted.response!.text()) === '{"code":"PGRST303"}',
+        "the 401 returned on budget exhaustion still carries its unconsumed body"
+      );
+    }
+
     const writeFailure = await capture(OPAQUE_KEY, { method: "POST" }, () => {
       const error = new Error("connect failure") as Error & { code?: string };
       error.code = "ECONNRESET";
@@ -384,6 +598,40 @@ async function run(): Promise<void> {
       assert(
         dispatched[0].headers.get("Authorization") === null,
         "the client-dispatched PostgREST select carries NO Authorization bearer, so the wiring - not just the helper - is correct"
+      );
+    }
+
+    // ── 6a. INTEGRATION: the R3 sequence through the real exported client ─────
+    // Proves the per-class retry is what production reads get: were the client not wired to
+    // resilientFetch, the first thrown timeout would reach postgrest-js as one dispatch plus an
+    // error. It does NOT prove `db.retry: false` - resilientFetch absorbs both failures here and
+    // hands back a 200, which postgrest-js would not retry either way.
+    {
+      const { supabaseServer } = loadTransport(OPAQUE_KEY);
+      let dispatches = 0;
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => {
+        dispatches += 1;
+        if (dispatches === 1) throw attemptTimeout();
+        const json = { "Content-Type": "application/json" };
+        return dispatches === 2
+          ? new Response('{"code":"PGRST303","message":"JWT claims validation or parsing failed"}', {
+              status: 401,
+              headers: json,
+            })
+          : new Response(ROW_BODY, { status: 200, headers: json });
+      }) as typeof globalThis.fetch;
+
+      let result: { error: unknown; data?: unknown };
+      try {
+        result = await supabaseServer.from("auth_attempts").select("id");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+
+      assert(
+        dispatches === 3 && result.error === null && JSON.stringify(result.data) === ROW_BODY,
+        "through the real exported client, an attempt timeout then PGRST303 resolves with the rows after exactly three dispatches"
       );
     }
 

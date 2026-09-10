@@ -252,9 +252,11 @@ Recent major performance improvements include:
 * **Request-Scoped Authentication**: `resolveAuthenticatedRequest` validates the authenticated user once per request, keyed by cookie, and every guard reuses that result. It replaced an earlier
   `getCurrentUserProfile()` cache that assumed a disk lookup; there is no disk read on this path.
 * **Single-Owner Read Transport**: `resilientFetch` in `src/lib/supabase/server.ts` bounds read
-  latency with an 8 s total budget across at most two attempts. Writes are delegated untouched with
-  no retry, because a client-side abort on a write leaves an ambiguous outcome. postgrest-js's own
-  retry layer is disabled so this wrapper is the only retry layer end to end.
+  latency with one shared 8 s total budget across at most three network attempts: at most one retry
+  for a transport failure or attempt timeout, and at most one retry for a confirmed `PGRST303`
+  response. Writes are delegated untouched and never retried, because a client-side abort on a write
+  leaves an ambiguous outcome. postgrest-js's own retry layer stays disabled (`db.retry: false`), so
+  this wrapper is the only retry layer end to end.
 * **Server-Rendered Initial Data**: History, Workspace and the `/users` directory are delivered with
   the page instead of being fetched after hydration. `/users` went from three reads across two
   requests to one request, and recent sessions with their ownership now resolve in a single query.

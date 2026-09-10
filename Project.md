@@ -1722,6 +1722,108 @@ viewport, zero horizontal overflow, zero console errors or warnings, no hydratio
 chunk absent from every route's initial-load set and requested once on demand, all three close paths
 restoring focus, and drafts surviving close and reopen.
 
+## CLINIC-PERF-02 — Authentication and Protected-Route Performance (2026-09-11)
+
+**State: published to `main`.** One implementation commit, `1f885ec`, changing two files. It closes
+deferred item 1 of CLINIC-PERF-01. The dominant cause was not in the code: it was the production
+function region, which the user corrected in the Vercel dashboard during the slice. No clinical
+semantics, report content, authorization boundary, audit contract, retry policy or schema changed,
+and no database object or row was modified.
+
+### Measured cause: function region
+
+Production functions ran in `iad1` (`x-vercel-id: sin1::iad1`) while Supabase is in Singapore —
+inferred from gateway latency geometry, not read from the provider. Supabase `edge_logs` showed an
+origin-time p50 of ~713–858 ms for requests arriving through the IAD colo, against 63–93 ms from a
+local production build in Manila issuing the identical request mix. Postgres execution stayed under
+5 ms throughout. Login and every protected page are chains of sequential round trips — login seven,
+`/audit` three, every other protected route two — so the distance multiplied into every operation.
+
+The user switched the Vercel Function Region to `sin1` and redeployed. Afterwards `x-vercel-id`
+reads `sin1::sin1` and requests arrive through the SIN colo at an origin-time p50 of ~33–58 ms.
+Production was measured with the same Playwright harness before and after, three controlled logins
+each at 1440×900; navigation ranges span a cold and a warm pass:
+
+| Operation | `iad1` median | `sin1` median |
+|---|---|---|
+| Login to usable Dashboard | 5321 ms (5180–7908) | 1256 ms (908–1258) |
+| `/history` | 1904–2460 ms | 328–430 ms |
+| `/audit` | 2438–2702 ms | 348–502 ms |
+| `/users` | 1594–1979 ms | 351 ms |
+| `/personnel` | 1990–1995 ms | 343–401 ms |
+| `/dashboard` | 1542 ms | 337 ms |
+| `/workspace` | 2238 ms | 712 ms |
+
+**The Function Region is a Vercel project setting, not a repository file.** Nothing in the
+repository pins it, and a drift back to a US region would silently reproduce a ~4× slowdown. The
+commit deployed by that redeploy was not independently verified.
+
+### What shipped: the `/audit` Developer-identity overlap (`1f885ec`)
+
+The Admin audit read must know the Developer identities to build its exclusion filter, and it
+discovered them only after resolving the caller. The page now calls `prefetchDeveloperIdentities()`
+before `getCurrentUserProfile()`, and `readPage` consumes the same promise through a per-render
+React `cache()` memo on the audit service's credential repository
+(`src/services/audit-read-service-instance.ts`). Outside a render — the 30-second auto-sync Server
+Action — the memo is a pass-through, so that path is unchanged. Nothing is cached across requests.
+
+Gateway logs prove the depth change. Before: caller row, ~100 ms later the identities, ~100 ms later
+the audit query and count. After: the identities and the caller row start together and the audit
+query follows the caller row by ~106 ms. Targeted `/audit` navigation on a local production build,
+10 samples each: median 469 ms to 410 ms.
+
+**Accepted trade-off.** The identity read now starts before the caller is authorized. For a
+Developer, User, inactive or stale-token caller the result is discarded on the server and never
+reaches a response; anonymous requests never reach the page because middleware rejects them first.
+The independent reviewer — a fresh read-only Claude context, verdict APPROVED WITH SHOULD-FIX, no
+blocking finding — raised this against **Data Access Boundary** above. That rule is read as governing
+the server actions and route handlers that client components call, not a Server Component page's
+server-internal read whose result is consumed only after authorization. The user approved the
+trade-off as stated.
+
+### Login is unchanged
+
+Login remains seven sequential round trips: rate-limit history (two concurrent reads), lockout
+release, credential lookup, attempt record and success audit, then the Dashboard's caller read and
+its data reads. Every stage is frozen — `authActions.ts`, `login-rate-limit.ts` and `session.ts` are
+SHA-256 pinned and `authenticate` is contiguity-pinned. The region fix cut login by 76% without
+touching them; any further reduction remains the pin decision recorded under CLINIC-PERF-01.
+
+`PGRST303` recurred: three 401 `PGRST303` responses on the rate-limit read during the slice, roughly
+one per seven such reads, each absorbed by the existing single retry. No login failed. The cause
+remains provider-side.
+
+### Deferred, with no implementation claimed
+
+1. **Admin Dashboard user summary.** `DashboardView` reads full credential rows, including
+   `password_hash` and `security_answer_hash`, for every Admin and User account only to count them.
+   `getUserSummaryVisibleTo`, which projects only role and status, already exists.
+2. **Audit auto-sync depth.** `readAuditPageAction` still runs caller, identities, then query every
+   30 seconds; only the page render was overlapped.
+3. **Workspace on a fresh `sin1` instance** measured a 712 ms median against ~330 ms elsewhere,
+   consistent with the per-process registry warm-up.
+4. **Sidebar prefetch cost.** Viewport prefetch of each `(app)` route renders the layout and costs one
+   `user_profiles` read per prefetched link. It is not on the critical path.
+
+### Known gaps
+
+- The Supabase region is inferred, not read from the provider.
+- Local full-pass timings are three samples per route. Routes the change cannot reach varied by up to
+  +11% within overlapping ranges, which is treated as run-to-run variance.
+- The Superdesign review was not run: it requires `npx` and sends code to an external service.
+  Perceived-performance evidence is Playwright's: skeleton feedback in 11–77 ms, CLS 0.000, and no
+  horizontal overflow or console errors at 1440×900 and 390×844.
+- Live writes: 18 controlled logins, each writing one `auth_attempts` row and one
+  `AuthenticationSucceeded` audit row. The user's own concurrent production session accounted for four
+  further logins and five logouts. No other table changed.
+
+### Verification
+
+`tsc`, `next lint`, `next build`, `git diff --check`, `verify-checkpoint-m6c`,
+`verify-checkpoint-m6d`, `verify-developer-boundary` (91 cases) and `verify-audit-presentation` all
+passed against the exact committed bytes, with an equal SHA-256 handshake before and after the suite.
+Playwright acceptance ran against the local production build at 1440×900 and 390×844.
+
 ## Carried Items From This Period
 
 - **The app-wide duplicate page heading is undecided.** `/users`, `/personnel`, `/history`, `/audit`, `SessionHistoryView` and `DeveloperDashboardSection` all render an in-page `<h2>` beneath the global route header fed by `src/config/navigation.ts`, producing the title twice with two different subtitles. Because the pattern is app-wide, fixing it on any subset creates new inconsistency; it needs one decision and one slice.

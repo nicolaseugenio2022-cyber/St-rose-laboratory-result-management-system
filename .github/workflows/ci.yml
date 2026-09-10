@@ -95,6 +95,7 @@ jobs:
             verify-checkpoint-m6d.ts
             verify-dashboard-recent-work.ts
             verify-developer-boundary.ts
+            verify-directory-record-deletion.ts
             verify-laboratory-remarks.ts
             verify-lockout-countdown.ts
             verify-medtech-signature-lifecycle.ts

@@ -6,8 +6,10 @@ import type {
   IPhysicianExaminationAssignment,
 } from "@/domain/models/interfaces";
 import type {
+  DirectoryDeletionActor,
   IPhysicianRepository,
   PhysicianConfigurationInput,
+  PhysicianDeletionOutcome,
 } from "@/repositories/interfaces";
 
 const PHYSICIAN_COLUMNS = `
@@ -17,6 +19,15 @@ const PHYSICIAN_COLUMNS = `
   created_at,
   updated_at
 `;
+
+/** Every word `delete_inactive_physician()` can answer. Anything else is not an answer. */
+const PHYSICIAN_DELETION_OUTCOMES: ReadonlySet<string> = new Set<PhysicianDeletionOutcome>([
+  "DELETED",
+  "NOT_FOUND",
+  "STILL_ACTIVE",
+  "REFERENCED_BY_REPORTS",
+  "HAS_ASSIGNMENTS",
+]);
 
 /**
  * The assignment projection. `id` is deliberately absent: the row is addressed by its natural key
@@ -244,5 +255,35 @@ export class SupabasePhysicianRepository implements IPhysicianRepository {
       throw new Error("Supabase physician configuration save returned no identifier.");
     }
     return data;
+  }
+
+  /**
+   * Permanently delete ONE inactive physician, and audit it, as ONE transaction.
+   *
+   * Everything happens inside `delete_inactive_physician()`: the row is locked, its inactivity,
+   * its assignments and every report reference are re-decided, the row is deleted, and the deletion
+   * audit is written before the transaction commits. This repository issues no delete of its own,
+   * and assignments are never cascaded: they are refused, and the Administrator clears them first.
+   *
+   * Errors are thrown, never swallowed or read as a refusal: an outage or a failed audit write
+   * rolled the whole transaction back, and the caller must not report it as either a deletion or a
+   * refusal. An answer outside the closed set is thrown for the same reason.
+   */
+  async deleteInactive(
+    id: string,
+    actor: DirectoryDeletionActor
+  ): Promise<PhysicianDeletionOutcome> {
+    const { data, error } = await supabaseServer.rpc("delete_inactive_physician", {
+      p_physician_id: id,
+      p_actor_user_id: actor.userId,
+      p_actor_username: actor.username,
+      p_actor_role: actor.role,
+    });
+
+    if (error) throw error;
+    if (typeof data !== "string" || !PHYSICIAN_DELETION_OUTCOMES.has(data)) {
+      throw new Error("Supabase physician deletion returned an unrecognised outcome.");
+    }
+    return data as PhysicianDeletionOutcome;
   }
 }

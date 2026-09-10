@@ -193,9 +193,9 @@ assert(
   ),
   "template_code is a NOT NULL foreign key to report_templates(template_code)"
 );
-// RESTRICT, never CASCADE. There is no physician delete path in this application - removal is the
-// soft is_active toggle - and a cascading delete would silently discard configuration rather than
-// refuse the removal.
+// RESTRICT, never CASCADE. The one physician delete path (`delete_inactive_physician()`,
+// CLINIC-UI-UX-08R1) depends on this: a physician who still holds an assignment is refused, where a cascading delete
+// would silently discard configuration and could strand no default where one was expected.
 const onDeleteActions = tableBody.match(/ON\s+DELETE\s+(\w+)/gi) ?? [];
 assert(
   onDeleteActions.length === 2 &&
@@ -713,7 +713,7 @@ assert(
 );
 assert(
   !/DELETE\s+FROM\s+physicians\b/i.test(configurationMigrationSql),
-  "no physician record is ever deleted - deactivation remains the only removal"
+  "save_physician_configuration deletes no physician record - the configuration save is never a removal path"
 );
 
 /* ── The transaction does the whole save, in the order the constraints require ─────────────── */
@@ -913,11 +913,46 @@ for (const eventType of [
   );
 }
 // No new event type and no new details key: the audit presentation list is closed.
+//
+// CLINIC-UI-UX-08R1: scoped to the save's own body, which is what this message claims, and allowed
+// only the three types the save emits. The whole-file letter this used to read is kept as its own
+// assertion below - an exact, closed set, unchanged - and the one approved new member,
+// PhysicianRecordDeleted, is written by the database function `delete_inactive_physician()` in the
+// deletion's own transaction, never by this file.
 assert(
-  !/eventType:\s*"Physician(?!RecordCreated|RecordUpdated|StatusToggled|ExaminationAssignmentsUpdated)/.test(
-    configurationActionsSource
+  !/eventType:\s*"Physician(?!RecordCreated|RecordUpdated|ExaminationAssignmentsUpdated)/.test(
+    configurationAction
   ),
   "the atomic save invents no new physician audit event type"
+);
+const physicianEventTypes = Array.from(
+  new Set(
+    // `[^"]*`, not a letter class: a type such as "Physician_Purged" must be caught too.
+    (configurationActionsSource.match(/eventType:\s*"Physician[^"]*"/g) ?? []).map((entry) =>
+      entry.replace(/^eventType:\s*"|"$/g, "")
+    )
+  )
+).sort();
+assert(
+  JSON.stringify(physicianEventTypes) ===
+    JSON.stringify([
+      "PhysicianExaminationAssignmentsUpdated",
+      "PhysicianRecordCreated",
+      "PhysicianRecordUpdated",
+      "PhysicianStatusToggled",
+    ]),
+  `physician-actions.ts emits exactly the four pre-existing physician audit event types (found: ${JSON.stringify(physicianEventTypes)})`
+);
+const deletionMigrationSql = getSource(
+  "supabase/migrations/20260913120000_stable_physician_references_and_atomic_directory_deletion.sql"
+);
+const databasePhysicianEventTypes = Array.from(
+  deletionMigrationSql.matchAll(/'PersonnelCredential',\s*'(Physician[^']*)'/g),
+  (match) => match[1]
+);
+assert(
+  JSON.stringify(databasePhysicianEventTypes) === JSON.stringify(["PhysicianRecordDeleted"]),
+  `the deletion function writes exactly one physician audit event type, the approved PhysicianRecordDeleted (found: ${JSON.stringify(databasePhysicianEventTypes)})`
 );
 
 assert(
@@ -1257,9 +1292,24 @@ for (const [actionName, eventType] of [
 // patterns are executable-shaped rather than a bare word, so this cannot be tripped by prose:
 // this file's own comments legitimately discuss deletion, and a raw \bDELETE\b negative would
 // fail on the explanation instead of on the code.
+//
+// CLINIC-UI-UX-08R1: the file now also holds deletePhysicianAction, the one permanent deletion,
+// which is not a status change. The whole-file letter still holds - it reaches the repository
+// method, which calls the audited database function, never `.delete(` or SQL - and each status
+// action is also proved to reach no deletion at all.
 assert(
   !/\.delete\(/.test(statusActionsSource) && !/\bDELETE\s+FROM\b/i.test(statusActionsSource),
-  "no status-changing action deletes anything - deactivation remains the only removal"
+  "physician-actions.ts issues no direct delete anywhere - its one permanent deletion goes through the repository to the audited database function"
 );
+for (const actionName of STATUS_CHANGING_ACTIONS) {
+  const actionBody = stripTsComments(extractExportedFunctionBody(statusActionsSource, actionName));
+  assert(
+    actionBody.length > 0 &&
+      !/\.delete\(/.test(actionBody) &&
+      !/deleteInactive\(/.test(actionBody) &&
+      !/\bDELETE\s+FROM\b/i.test(actionBody),
+    `${actionName} deletes nothing - deactivation remains a status change, never a removal`
+  );
+}
 
 console.log("\nAll physician deactivation invariants verified.");

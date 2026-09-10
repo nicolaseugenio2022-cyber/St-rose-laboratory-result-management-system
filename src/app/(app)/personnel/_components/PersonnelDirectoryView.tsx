@@ -7,15 +7,29 @@ import {
   PersonnelFormValues,
   personnelRoleLabel,
 } from "@/lib/validations/personnelValidation";
+import {
+  RECORD_DELETION_FAILURE_MESSAGE,
+  RECORD_DELETION_REFUSAL_MESSAGES,
+  RECORD_DELETION_UNAUDITED_NOTICE,
+} from "@/features/personnel/record-deletion";
 import { listPersonnelAction } from "@/features/server-boundary/personnel-actions";
-import type { PersonnelActionResult } from "@/features/server-boundary/personnel-actions";
+import type {
+  PersonnelActionResult,
+  PersonnelDeleteActionResult,
+} from "@/features/server-boundary/personnel-actions";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SummaryBar } from "@/components/ui/SummaryBar";
-import { PersonnelTable, formatPersonnelName } from "./PersonnelTable";
+import {
+  PersonnelTable,
+  formatPersonnelName,
+  type RowError,
+  type RowWrite,
+} from "./PersonnelTable";
 import { PersonnelFormModal } from "./PersonnelFormModal";
 
 export interface PersonnelDirectoryViewProps {
@@ -23,8 +37,17 @@ export interface PersonnelDirectoryViewProps {
   personnel?: readonly PersonnelDirectoryEntry[];
   onSubmit?: (values: PersonnelFormValues, editingPersonnel: PersonnelDirectoryEntry | null) => Promise<PersonnelActionResult>;
   onToggleStatus?: (person: PersonnelDirectoryEntry) => Promise<void>;
+  onDelete?: (person: PersonnelDirectoryEntry) => Promise<PersonnelDeleteActionResult>;
   isLoading?: boolean;
 }
+
+/**
+ * A filter label, beside its control at every width, so each filter row is one control tall
+ * while every field keeps a visible, associated label. On a phone the fields still stack, and the
+ * fixed label width keeps their controls aligned in one column.
+ */
+const FILTER_LABEL_CLASS =
+  "w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted sm:w-auto";
 
 const ROLE_FILTER_OPTIONS = [
   { label: "All roles", value: "ALL" },
@@ -81,6 +104,7 @@ export function PersonnelDirectoryView({
   personnel: initialPersonnel = [],
   onSubmit,
   onToggleStatus,
+  onDelete,
   isLoading = false,
 }: PersonnelDirectoryViewProps) {
   const [personnel, setPersonnel] = useState<readonly PersonnelDirectoryEntry[]>(initialPersonnel);
@@ -96,6 +120,29 @@ export function PersonnelDirectoryView({
   // handler only after a render, so two presses landing before that render both read `null`
   // and both write. The ref is current the instant the first press claims it.
   const busyPersonnelIdRef = useRef<string | null>(null);
+  const [busyAction, setBusyAction] = useState<RowWrite | null>(null);
+  // The dialog's subject outlives its open flag, so the closing dialog never flashes empty.
+  const [deleteTarget, setDeleteTarget] = useState<PersonnelDirectoryEntry | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [rowError, setRowError] = useState<RowError | null>(null);
+  // A warning, not a success, when the deletion committed but its audit record did not.
+  const [deletionNotice, setDeletionNotice] = useState<{
+    message: string;
+    tone: "success" | "warning";
+  } | null>(null);
+  const deletionNoticeRef = useRef<HTMLDivElement>(null);
+
+  // After a completed deletion the control that opened the dialog has gone with its row, so the
+  // dialog cannot hand focus back to it. The confirmation takes focus instead - but only when focus
+  // has actually been lost, never taken from wherever the operator has already moved it.
+  useEffect(() => {
+    if (!deletionNotice || isDeleteDialogOpen) return;
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body) deletionNoticeRef.current?.focus();
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [deletionNotice, isDeleteDialogOpen]);
 
   const refreshPersonnel = useCallback(async () => {
     try {
@@ -161,12 +208,15 @@ export function PersonnelDirectoryView({
 
   const handleOpenCreate = () => {
     setNotice(null);
+    setRowError(null);
     setEditingPersonnel(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (person: PersonnelDirectoryEntry) => {
+    // An earlier refusal may be exactly what this edit resolves, so it does not outlive it.
     setNotice(null);
+    setRowError(null);
     setEditingPersonnel(person);
     setIsModalOpen(true);
   };
@@ -211,6 +261,8 @@ export function PersonnelDirectoryView({
     if (busyPersonnelIdRef.current !== null) return;
     busyPersonnelIdRef.current = person.id;
     setBusyPersonnelId(person.id);
+    setBusyAction("toggle");
+    setRowError(null);
     try {
       await onToggleStatus(person);
       await refreshPersonnel();
@@ -219,6 +271,69 @@ export function PersonnelDirectoryView({
     } finally {
       busyPersonnelIdRef.current = null;
       setBusyPersonnelId(null);
+      setBusyAction(null);
+    }
+  };
+
+  const handleRequestDelete = (person: PersonnelDirectoryEntry) => {
+    // Nothing opens over a write in flight: every row's controls are disabled, and this closes the
+    // window before that render lands.
+    if (busyPersonnelIdRef.current !== null) return;
+    setNotice(null);
+    setRowError(null);
+    setDeletionNotice(null);
+    setDeleteTarget(person);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    // A confirmed deletion cannot be cancelled into an unknown state; the dialog locks itself too.
+    if (busyPersonnelIdRef.current !== null) return;
+    setIsDeleteDialogOpen(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    const person = deleteTarget;
+    if (!person) return;
+    if (!onDelete) {
+      setIsDeleteDialogOpen(false);
+      setNotice("Personnel management is not connected yet.");
+      return;
+    }
+    // Single-flight, through the same guard as the toggle: a second press - a double click, a held
+    // Enter - arrives while the first is in flight and is dropped before any request is sent.
+    if (busyPersonnelIdRef.current !== null) return;
+    busyPersonnelIdRef.current = person.id;
+    setBusyPersonnelId(person.id);
+    setBusyAction("delete");
+    try {
+      const result = await onDelete(person);
+      if (result.success) {
+        const name = formatPersonnelName(person);
+        setDeletionNotice(
+          result.auditRecorded
+            ? { message: `${name} was permanently deleted.`, tone: "success" }
+            : { message: `${name} ${RECORD_DELETION_UNAUDITED_NOTICE}`, tone: "warning" }
+        );
+      } else if (result.error === "NOT_FOUND") {
+        // The row is about to disappear on refresh, so the message cannot live on it.
+        setNotice(RECORD_DELETION_REFUSAL_MESSAGES.NOT_FOUND);
+      } else {
+        setRowError({ id: person.id, message: RECORD_DELETION_REFUSAL_MESSAGES[result.error] });
+      }
+      // Re-read either way: a success removes the row, and a refusal may be reporting state that
+      // changed underneath this screen.
+      await refreshPersonnel();
+    } catch {
+      // The request failed without an answer, so whether the delete committed is unknown. Said at
+      // page level - the row may be gone - and the directory is re-read so the list shows which.
+      setNotice(RECORD_DELETION_FAILURE_MESSAGE);
+      await refreshPersonnel();
+    } finally {
+      busyPersonnelIdRef.current = null;
+      setBusyPersonnelId(null);
+      setBusyAction(null);
+      setIsDeleteDialogOpen(false);
     }
   };
 
@@ -254,6 +369,18 @@ export function PersonnelDirectoryView({
         </Alert>
       )}
 
+      {deletionNotice && (
+        <div
+          ref={deletionNoticeRef}
+          tabIndex={-1}
+          className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring"
+        >
+          <Alert variant={deletionNotice.tone} onDismiss={() => setDeletionNotice(null)}>
+            {deletionNotice.message}
+          </Alert>
+        </div>
+      )}
+
       {/* Four counts, all derived from the roster already in hand. The same strip the two account
           directories open with, so the three administrative modules state their shape identically
           rather than each inventing a panel.
@@ -278,7 +405,7 @@ export function PersonnelDirectoryView({
       {/* ── Search and filter toolbar ───────────────────────────────────────── */}
       <section
         aria-label="Search and filter personnel"
-        className="space-y-2.5 rounded-lg border border-brand-border bg-brand-structural px-3 py-2.5"
+        className="space-y-2 rounded-lg border border-brand-border bg-brand-structural px-3 py-2"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -315,56 +442,67 @@ export function PersonnelDirectoryView({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {/* The label is written out here rather than passed to Input, because the search
-              icon has to be positioned against the control alone - Input's own label would
-              sit inside the same box and pull the icon off centre. The classes are the
-              primitive's, so this label and the two Select labels stay identical. */}
-          <div className="min-w-0 lg:col-span-2">
-            <label
-              htmlFor="personnel-search"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted"
-            >
-              Search
-            </label>
-            <div className="relative">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-subtle"
-              />
-              <Input
-                id="personnel-search"
-                type="search"
-                placeholder="Name, credentials, or PRC licence"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-9"
-              />
+        {/* The controls and their count are one group, so the count sits directly under the
+            fields it describes. Every label is written out rather than passed to Input or Select:
+            the search icon has to be positioned against the control alone, and all three labels
+            share one class so they stay identical. */}
+        <div className="space-y-1.5">
+          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:items-center lg:gap-4">
+            <div className="flex min-w-0 items-center gap-2 sm:col-span-2 lg:flex-1">
+              <label htmlFor="personnel-search" className={FILTER_LABEL_CLASS}>
+                Search
+              </label>
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-subtle"
+                />
+                <Input
+                  id="personnel-search"
+                  type="search"
+                  placeholder="Name, credentials, or PRC licence"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 lg:w-60">
+              <label htmlFor="personnel-role-filter" className={FILTER_LABEL_CLASS}>
+                Role
+              </label>
+              <div className="min-w-0 flex-1">
+                <Select
+                  id="personnel-role-filter"
+                  options={ROLE_FILTER_OPTIONS}
+                  value={roleFilter}
+                  onChange={(event) => setRoleFilter(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 lg:w-52">
+              <label htmlFor="personnel-status-filter" className={FILTER_LABEL_CLASS}>
+                Status
+              </label>
+              <div className="min-w-0 flex-1">
+                <Select
+                  id="personnel-status-filter"
+                  options={STATUS_FILTER_OPTIONS}
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                />
+              </div>
             </div>
           </div>
-          <Select
-            id="personnel-role-filter"
-            label="Role"
-            options={ROLE_FILTER_OPTIONS}
-            value={roleFilter}
-            onChange={(event) => setRoleFilter(event.target.value)}
-          />
-          <Select
-            id="personnel-status-filter"
-            label="Status"
-            options={STATUS_FILTER_OPTIONS}
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          />
-        </div>
 
-        {/* Announced politely: a count that changes as the user types is useful to hear, but
-            not urgent enough to interrupt them mid-keystroke. */}
-        <p aria-live="polite" className="text-[11px] text-brand-text-muted">
-          Showing <span className="font-semibold tabular-nums text-brand-text">{resultCount}</span>{" "}
-          of <span className="font-semibold tabular-nums text-brand-text">{summary.total}</span>{" "}
-          {summary.total === 1 ? "record" : "records"}
-        </p>
+          {/* Announced politely: a count that changes as the user types is useful to hear, but
+              not urgent enough to interrupt them mid-keystroke. */}
+          <p aria-live="polite" className="text-[11px] text-brand-text-muted">
+            Showing <span className="font-semibold tabular-nums text-brand-text">{resultCount}</span>{" "}
+            of <span className="font-semibold tabular-nums text-brand-text">{summary.total}</span>{" "}
+            {summary.total === 1 ? "record" : "records"}
+          </p>
+        </div>
       </section>
 
       {isLoading ? (
@@ -377,7 +515,10 @@ export function PersonnelDirectoryView({
           canManage={canManage}
           onEdit={handleOpenEdit}
           onToggleStatus={handleToggleStatus}
+          onDelete={handleRequestDelete}
           busyPersonnelId={busyPersonnelId}
+          busyAction={busyAction}
+          rowError={rowError}
           isFiltered={hasActiveFilters}
           onClearFilters={handleClearFilters}
         />
@@ -392,6 +533,42 @@ export function PersonnelDirectoryView({
           onSubmit={handleSubmit}
           onSignatureChanged={handleSignatureChanged}
         />
+      )}
+
+      {/* The shared destructive confirmation: focus lands on Cancel, Escape and the close control
+          dismiss, focus returns to the Delete control that opened it, and while the request is in
+          flight both actions lock and the dialog cannot be dismissed. The record is named in full
+          so the operator confirms against the person, not against a row position. */}
+      {canManage && (
+        <ConfirmDialog
+          isOpen={isDeleteDialogOpen}
+          onCancel={handleCancelDelete}
+          onConfirm={handleConfirmDelete}
+          title="Delete this personnel record permanently?"
+          description="The record is removed from the directory for good. This cannot be undone."
+          confirmLabel="Delete permanently"
+          pendingLabel="Deleting…"
+          variant="destructive"
+          isPending={busyAction === "delete"}
+        >
+          {deleteTarget && (
+            <div className="space-y-2.5">
+              <div className="rounded-md border border-brand-border bg-brand-structural px-3 py-2">
+                <p className="break-words text-[13px] font-semibold text-brand-text">
+                  {formatPersonnelName(deleteTarget)}
+                </p>
+                <p className="mt-0.5 break-words text-[11px] text-brand-text-muted">
+                  {personnelRoleLabel(deleteTarget.role)} · PRC licence{" "}
+                  <span className="font-mono tabular-nums">{deleteTarget.prcLicenseNumber}</span>
+                </p>
+              </div>
+              <p className="text-xs leading-relaxed text-brand-text-muted">
+                Only a record that no laboratory report has used can be deleted. Completed
+                reports, their signatories and the audit history are never changed.
+              </p>
+            </div>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   );

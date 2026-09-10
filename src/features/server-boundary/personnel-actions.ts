@@ -4,11 +4,16 @@ import "server-only";
 
 import type { IPersonnel } from "@/domain/models/interfaces";
 import type { PersonnelDirectoryEntry } from "@/features/personnel/personnel-directory-entry";
+import type {
+  PersonnelDeletionRefusal,
+  RecordDeletionResult,
+} from "@/features/personnel/record-deletion";
 import { requirePersonnelAdmin, requirePersonnelReader } from "@/lib/personnel-guard";
 import {
   createPersonnelSchema,
   updatePersonnelSchema,
   personnelStatusSchema,
+  personnelDeleteSchema,
 } from "@/lib/validations/personnelValidation";
 import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
 import { auditService } from "@/services/audit-service-instance";
@@ -16,6 +21,9 @@ import { auditService } from "@/services/audit-service-instance";
 export type PersonnelActionResult =
   | { success: true }
   | { success: false; error: "DUPLICATE_PRC" };
+
+/** Its own closed union: a deletion is refused for reasons no other personnel write can produce. */
+export type PersonnelDeleteActionResult = RecordDeletionResult<PersonnelDeletionRefusal>;
 
 /**
  * Project a server-side personnel record onto the client-safe directory entry.
@@ -190,4 +198,54 @@ export async function togglePersonnelStatusAction(input: unknown): Promise<void>
       isActive: updated.isActive,
     },
   });
+}
+
+/**
+ * Permanently delete ONE inactive personnel record that no laboratory report names.
+ *
+ * Deactivation remains the ordinary, reversible withdrawal. This is the rare clean-up of a record
+ * that was never used - a mistyped entry, a duplicate. The caller is an Administrator, checked
+ * BEFORE the payload is parsed - Developer and User callers are refused by the guard, which audits
+ * the refusal exactly as for every other write - and the id is parsed strictly. Every other
+ * condition is decided by the database, inside `delete_inactive_personnel()`, in the one
+ * transaction that also deletes the row and writes its audit record:
+ *
+ *   - the record exists and is INACTIVE - an active signatory must be deactivated first;
+ *   - no laboratory report names it: no `report_signatories` row and no signatory frozen into a
+ *     completed snapshot. A record in that history is kept, inactive, for good.
+ *
+ * The function locks the record's row before it checks anything, and
+ * `report_signatories.personnel_id` carries no ON DELETE action, so a signatory saved concurrently
+ * either waits for the decision or makes the database refuse the delete. Nothing is cascaded.
+ *
+ * THE SIGNATURE OBJECT IS RETAINED, BY POLICY. A stored signature image stays in the private
+ * `personnel-signatures` bucket when its record is deleted, for three reasons. The signature actions
+ * never delete an object either, so every image ever uploaded stays available to audit. A storage
+ * call cannot join the row delete in one transaction: made after it, it can fail and leave the
+ * object anyway; made before it, it can strand a row pointing at nothing. And once the row is gone
+ * no application path serves the object - the signature proxy serves a path only while a personnel
+ * row or a `report_signatories` row references it, and this deletion is allowed only when no report
+ * does. The function writes the retained path into the deletion audit as `objectPath` so an
+ * operator can find it. A retained, unreachable object is a known residual, not an oversight.
+ *
+ * A refusal commits nothing and records nothing, exactly like DUPLICATE_PRC. DELETED means the row
+ * and its PersonnelRecordDeleted audit record committed together, so `auditRecorded` is true. A
+ * failed request is thrown: the transaction rolled back, or its answer was lost, and the screen then
+ * says the deletion could not be confirmed and re-reads the directory rather than claiming either.
+ */
+export async function deletePersonnelAction(input: unknown): Promise<PersonnelDeleteActionResult> {
+  const caller = await requirePersonnelAdmin();
+  const parsed = personnelDeleteSchema.parse(input);
+  const repository = new SupabasePersonnelRepository();
+
+  const outcome = await repository.deleteInactive(parsed.id, {
+    userId: caller.userId,
+    username: caller.username,
+    role: caller.role,
+  });
+
+  if (outcome === "DELETED") {
+    return { success: true, auditRecorded: true };
+  }
+  return { success: false, error: outcome };
 }

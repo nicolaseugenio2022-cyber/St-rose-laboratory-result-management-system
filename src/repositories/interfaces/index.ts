@@ -159,6 +159,26 @@ export interface IPatientReportSessionRepository {
   purgeExpiredSessions(): Promise<number>; // Returns count of purged sessions
 }
 
+/**
+ * The Administrator a permanent deletion is recorded against. Always taken from the server-side
+ * guard, never from the client payload.
+ */
+export interface DirectoryDeletionActor {
+  userId: string;
+  username: string;
+  role: AuthRole;
+}
+
+/** What `delete_inactive_personnel()` answers: a closed set of words, DELETED or one refusal. */
+export type PersonnelDeletionOutcome =
+  | "DELETED"
+  | "NOT_FOUND"
+  | "STILL_ACTIVE"
+  | "REFERENCED_BY_REPORTS";
+
+/** What `delete_inactive_physician()` answers; a physician is also refused for its assignments. */
+export type PhysicianDeletionOutcome = PersonnelDeletionOutcome | "HAS_ASSIGNMENTS";
+
 export interface IPersonnelRepository {
   findById(id: string): Promise<IPersonnel | null>;
   findAllActive(): Promise<IPersonnel[]>;
@@ -169,11 +189,28 @@ export interface IPersonnelRepository {
 }
 
 /**
+ * Permanent deletion of a personnel record, declared apart from IPersonnelRepository on purpose:
+ * that contract's shape is frozen at Milestone 6B, and this capability is not part of it.
+ */
+export interface IPersonnelDeletionRepository {
+  /**
+   * Permanently delete ONE inactive record that no laboratory report names, and record the
+   * deletion, in ONE database transaction - `delete_inactive_personnel()`.
+   *
+   * The function locks the row, re-decides every condition, deletes, and writes the audit record
+   * before it commits; either both happen or neither does. This method issues no table delete of
+   * its own. Returns the function's answer; a failed request is thrown, never read as a refusal.
+   */
+  deleteInactive(id: string, actor: DirectoryDeletionActor): Promise<PersonnelDeletionOutcome>;
+}
+
+/**
  * The managed physician directory behind the report "Requested By" field.
  *
- * Mirrors IPersonnelRepository deliberately, including the absence of any delete method: a
- * physician who no longer refers is deactivated, never removed, so historical reports keep
- * resolving the name they were issued with.
+ * Mirrors IPersonnelRepository deliberately. A physician who no longer refers is deactivated;
+ * permanent deletion exists only for an inactive physician with no examination assignment that no
+ * laboratory report references, and it is decided by the database, so historical reports keep the
+ * name they were issued with.
  */
 export interface IPhysicianRepository {
   findById(id: string): Promise<IPhysician | null>;
@@ -195,14 +232,24 @@ export interface IPhysicianRepository {
    * physician half-configured, or clear ANOTHER physician's default while reporting failure.
    *
    * A replacement, not a merge: a code absent from `templateCodes` is no longer an assignment of
-   * that physician afterwards. No physician row is ever deleted - the no-hard-delete rule this
-   * directory rests on (a historical report must keep resolving the name it was issued with) is
-   * unaffected by anything that happens here.
+   * that physician afterwards. This save deletes no physician row; permanent removal is
+   * `deleteInactive` alone.
    *
    * Returns the physician's id, produced server-side, so a newly created physician never has to
    * be found again by name.
    */
   savePhysicianConfiguration(configuration: PhysicianConfigurationInput): Promise<string>;
+  /**
+   * Permanently delete ONE inactive physician that holds no examination assignment and that no
+   * laboratory report references, and record the deletion, in ONE database transaction -
+   * `delete_inactive_physician()`.
+   *
+   * Assignments are never cascaded: `physician_examination_assignments.physician_id` is ON DELETE
+   * RESTRICT and the function refuses first, so an orphaned assignment or default is
+   * unrepresentable. This method issues no table delete of its own. Returns the function's answer;
+   * a failed request is thrown, never read as a refusal.
+   */
+  deleteInactive(id: string, actor: DirectoryDeletionActor): Promise<PhysicianDeletionOutcome>;
 }
 
 /** The writable half of an assignment: the pair, plus whether it is the template's default. */

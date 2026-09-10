@@ -1,5 +1,14 @@
 import React from "react";
-import { Edit2, Power, UserCheck, PenLine, PenOff, MinusCircle } from "lucide-react";
+import {
+  AlertCircle,
+  Edit2,
+  Power,
+  Trash2,
+  UserCheck,
+  PenLine,
+  PenOff,
+  MinusCircle,
+} from "lucide-react";
 import type { PersonnelDirectoryEntry } from "@/features/personnel/personnel-directory-entry";
 import { personnelRoleLabel } from "@/lib/validations/personnelValidation";
 import {
@@ -20,10 +29,23 @@ export interface PersonnelTableProps {
   canManage: boolean;
   onEdit: (person: PersonnelDirectoryEntry) => void;
   onToggleStatus: (person: PersonnelDirectoryEntry) => void;
+  /** Opens the permanent-deletion confirmation. Offered for inactive records only. */
+  onDelete: (person: PersonnelDirectoryEntry) => void;
   busyPersonnelId?: string | null;
+  /** Which write the busy record is waiting on, so only that control shows pending feedback. */
+  busyAction?: RowWrite | null;
+  /** A refusal or failure that belongs to one record, shown on that record. */
+  rowError?: RowError | null;
   /** True when a search or filter is narrowing the list, so "nothing here" can be phrased honestly. */
   isFiltered?: boolean;
   onClearFilters?: () => void;
+}
+
+export type RowWrite = "toggle" | "delete";
+
+export interface RowError {
+  id: string;
+  message: string;
 }
 
 export function formatPersonnelName(person: PersonnelDirectoryEntry): string {
@@ -100,76 +122,116 @@ function RoleBadge({ person }: { person: PersonnelDirectoryEntry }) {
 }
 
 /**
- * The two row actions, shared by the desktop row and the narrow-width record.
+ * The row actions, shared by the desktop row and the narrow-width record.
  *
  * One component rather than two copies: a second copy is where a visible label and its accessible
  * name silently drift apart.
  *
- * Both controls carry their own word at both widths. The desktop row previously reduced Edit to a
- * bare pencil whose name existed only for a screen reader, so a sighted operator had to recognise
- * the pictogram while the phone layout - the same action - spelled it out. The tinting matches the
- * two account directories: quiet ghost controls, warning for the withdrawing action and success
- * for the restoring one, so the same operation reads the same way across all three modules.
+ * Every control carries its own word at both widths. Three tiers, each read by fill: Edit is the
+ * neutral outline; the status toggle is a quiet ghost tinted warning for the withdrawing action and
+ * success for the restoring one, matching the two account directories; Delete is the destructive
+ * fill, and it exists only on an INACTIVE record - an active record must be deactivated first, so
+ * the permanent action is never one press away from a record in use. The server re-decides all of
+ * it; showing or hiding a control grants nothing.
  */
 function RowActions({
   person,
-  isBusy,
+  busyAction,
   isDisabled,
   onEdit,
   onToggleStatus,
+  onDelete,
+  errorMessage,
   layout,
 }: {
   person: PersonnelDirectoryEntry;
-  /** This record is the one being written. Only it shows pending feedback. */
-  isBusy: boolean;
+  /** The write this record is waiting on, if any. Only that control shows pending feedback. */
+  busyAction: RowWrite | null;
   /** Some record is being written. Every row's actions stand down until it settles. */
   isDisabled: boolean;
   onEdit: (person: PersonnelDirectoryEntry) => void;
   onToggleStatus: (person: PersonnelDirectoryEntry) => void;
+  onDelete: (person: PersonnelDirectoryEntry) => void;
+  /** Why the last write against this record did not happen. */
+  errorMessage: string | null;
   layout: "row" | "record";
 }) {
   const name = formatPersonnelName(person);
   const activateVerb = person.isActive ? "Deactivate" : "Activate";
   const isRecord = layout === "record";
+  const isToggling = busyAction === "toggle";
+  const isDeleting = busyAction === "delete";
   // The record layout is rendered only below lg, where the pointer is a finger: its controls
   // keep a 44px target rather than the 32px a size="sm" Button gives a mouse.
   const touch = isRecord ? "min-h-11 flex-1" : "min-h-11 sm:min-h-8";
   return (
-    <div
-      role="group"
-      aria-label={`Actions for ${name}`}
-      className={
-        isRecord ? "flex items-center gap-2" : "flex items-center justify-end gap-1.5"
-      }
-    >
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onEdit(person)}
-        disabled={isDisabled}
-        className={touch}
-        aria-label={`Edit ${name}`}
+    <div className={isRecord ? "space-y-1.5" : "space-y-1"}>
+      <div
+        role="group"
+        aria-label={`Actions for ${name}`}
+        className={
+          isRecord
+            ? "flex items-center gap-2"
+            : "flex items-center justify-end gap-1.5"
+        }
       >
-        <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
-        Edit
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onToggleStatus(person)}
-        disabled={isDisabled}
-        isLoading={isBusy}
-        aria-label={`${activateVerb} ${name}`}
-        className={[
-          person.isActive
-            ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
-            : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success",
-          touch,
-        ].join(" ")}
-      >
-        {!isBusy && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
-        {activateVerb}
-      </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onEdit(person)}
+          disabled={isDisabled}
+          className={touch}
+          aria-label={`Edit ${name}`}
+        >
+          <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onToggleStatus(person)}
+          disabled={isDisabled}
+          isLoading={isToggling}
+          aria-label={`${activateVerb} ${name}`}
+          className={[
+            person.isActive
+              ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
+              : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success",
+            touch,
+          ].join(" ")}
+        >
+          {!isToggling && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
+          {activateVerb}
+        </Button>
+        {!person.isActive && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => onDelete(person)}
+            disabled={isDisabled}
+            isLoading={isDeleting}
+            aria-label={`Delete ${name}`}
+            className={touch}
+          >
+            {!isDeleting && <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
+            Delete
+          </Button>
+        )}
+      </div>
+      {errorMessage && (
+        <p
+          role="alert"
+          className={[
+            "flex items-start gap-1.5 text-[11px] leading-snug text-brand-danger",
+            isRecord ? "" : "ml-auto max-w-72 text-left",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <AlertCircle aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{errorMessage}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -191,7 +253,10 @@ export function PersonnelTable({
   canManage,
   onEdit,
   onToggleStatus,
+  onDelete,
   busyPersonnelId,
+  busyAction = null,
+  rowError = null,
   isFiltered = false,
   onClearFilters,
 }: PersonnelTableProps) {
@@ -236,6 +301,9 @@ export function PersonnelTable({
   // down, because a second toggle fired against the stale list would be reconciled away by the
   // refresh the first one is still waiting on. Pending feedback stays on the busy record only.
   const isAnyRowBusy = busyPersonnelId != null;
+  const busyActionFor = (id: string): RowWrite | null =>
+    busyPersonnelId === id ? busyAction : null;
+  const errorFor = (id: string): string | null => (rowError?.id === id ? rowError.message : null);
 
   return (
     <>
@@ -298,10 +366,12 @@ export function PersonnelTable({
                     <TableCell className="text-right">
                       <RowActions
                         person={person}
-                        isBusy={isBusy}
+                        busyAction={busyActionFor(person.id)}
                         isDisabled={isAnyRowBusy}
                         onEdit={onEdit}
                         onToggleStatus={onToggleStatus}
+                        onDelete={onDelete}
+                        errorMessage={errorFor(person.id)}
                         layout="row"
                       />
                     </TableCell>
@@ -371,10 +441,12 @@ export function PersonnelTable({
                 <div className="border-t border-brand-border bg-brand-structural px-3.5 py-2">
                   <RowActions
                     person={person}
-                    isBusy={isBusy}
+                    busyAction={busyActionFor(person.id)}
                     isDisabled={isAnyRowBusy}
                     onEdit={onEdit}
                     onToggleStatus={onToggleStatus}
+                    onDelete={onDelete}
+                    errorMessage={errorFor(person.id)}
                     layout="record"
                   />
                 </div>

@@ -2,7 +2,12 @@ import "server-only";
 
 import { supabaseServer } from "@/lib/supabase/server";
 import type { IPersonnel } from "@/domain/models/interfaces";
-import type { IPersonnelRepository } from "@/repositories/interfaces";
+import type {
+  DirectoryDeletionActor,
+  IPersonnelDeletionRepository,
+  IPersonnelRepository,
+  PersonnelDeletionOutcome,
+} from "@/repositories/interfaces";
 
 const PERSONNEL_COLUMNS = `
   id,
@@ -17,6 +22,14 @@ const PERSONNEL_COLUMNS = `
   created_at,
   updated_at
 `;
+
+/** Every word `delete_inactive_personnel()` can answer. Anything else is not an answer. */
+const PERSONNEL_DELETION_OUTCOMES: ReadonlySet<string> = new Set<PersonnelDeletionOutcome>([
+  "DELETED",
+  "NOT_FOUND",
+  "STILL_ACTIVE",
+  "REFERENCED_BY_REPORTS",
+]);
 
 interface PersonnelRow {
   id: string;
@@ -85,7 +98,9 @@ function toPersonnelUpdateRow(updates: Partial<IPersonnel>): PersonnelUpdateRow 
   return row;
 }
 
-export class SupabasePersonnelRepository implements IPersonnelRepository {
+export class SupabasePersonnelRepository
+  implements IPersonnelRepository, IPersonnelDeletionRepository
+{
   async findById(id: string): Promise<IPersonnel | null> {
     const { data, error } = await supabaseServer
       .from("personnel")
@@ -161,5 +176,34 @@ export class SupabasePersonnelRepository implements IPersonnelRepository {
     if (error) throw error;
     if (!data) throw new Error("Supabase personnel status update returned no data.");
     return mapPersonnel(data as PersonnelRow);
+  }
+
+  /**
+   * Permanently delete ONE inactive personnel record, and audit it, as ONE transaction.
+   *
+   * Everything happens inside `delete_inactive_personnel()`: the row is locked, its inactivity and
+   * every report reference are re-decided, the row is deleted, and the deletion audit is written
+   * before the transaction commits. This repository issues no table delete of its own.
+   *
+   * Errors are thrown, never swallowed or read as a refusal: an outage or a failed audit write
+   * rolled the whole transaction back, and the caller must not report it as either a deletion or a
+   * refusal. An answer outside the closed set is thrown for the same reason.
+   */
+  async deleteInactive(
+    id: string,
+    actor: DirectoryDeletionActor
+  ): Promise<PersonnelDeletionOutcome> {
+    const { data, error } = await supabaseServer.rpc("delete_inactive_personnel", {
+      p_personnel_id: id,
+      p_actor_user_id: actor.userId,
+      p_actor_username: actor.username,
+      p_actor_role: actor.role,
+    });
+
+    if (error) throw error;
+    if (typeof data !== "string" || !PERSONNEL_DELETION_OUTCOMES.has(data)) {
+      throw new Error("Supabase personnel deletion returned an unrecognised outcome.");
+    }
+    return data as PersonnelDeletionOutcome;
   }
 }

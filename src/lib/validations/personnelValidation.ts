@@ -126,6 +126,12 @@ export const personnelStatusSchema = z
   })
   .strict();
 
+export const personnelDeleteSchema = z
+  .object({
+    id: z.string().uuid("Invalid personnel identifier."),
+  })
+  .strict();
+
 export const uploadPersonnelSignatureSchema = z
   .object({
     personnelId: z.string().uuid("Invalid personnel identifier."),

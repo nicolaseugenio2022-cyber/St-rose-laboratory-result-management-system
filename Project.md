@@ -1285,7 +1285,7 @@ Duplicate PRC licence numbers are reported as a **typed result** (`{ success: fa
 
 This closes the **Personnel and Credential audit writer** previously listed as outstanding above. The Session-lifecycle audit writers and the remaining Milestone 6 hardening work are unaffected.
 
-**Two inactive synthetic acceptance records are retained** in the live directory: `ACCEPTANCE-EDITED P2-PATHOLOGIST` (`ACC-P2-PATH-0001`) and `ACCEPTANCE-EDITED P2-MEDTECH` (`ACC-P2-MT-0001`). Both were parked inactive rather than deleted, since personnel are never hard-deleted, and both are therefore **excluded from clinical signatory selection**. Their retention or retirement is an operator decision.
+**Two inactive synthetic acceptance records are retained** in the live directory: `ACCEPTANCE-EDITED P2-PATHOLOGIST` (`ACC-P2-PATH-0001`) and `ACCEPTANCE-EDITED P2-MEDTECH` (`ACC-P2-MT-0001`). Both were parked inactive rather than deleted, and both are therefore **excluded from clinical signatory selection**. Deactivation is the normal, reversible way to remove a personnel record. Permanent deletion is available to Administrators only, and only for an inactive record that no laboratory report, report signatory or completed snapshot references; protected clinical, report, signature and audit history is never deleted. Their retention or retirement is an operator decision.
 
 **Three residuals are recorded and deliberately not fixed in this publication.**
 

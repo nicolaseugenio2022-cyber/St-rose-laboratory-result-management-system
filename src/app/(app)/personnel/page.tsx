@@ -7,12 +7,14 @@ import {
   createPersonnelAction,
   updatePersonnelAction,
   togglePersonnelStatusAction,
+  deletePersonnelAction,
 } from "@/features/server-boundary/personnel-actions";
 import {
   listPhysiciansAction,
   listPhysicianAssignmentsAction,
   savePhysicianConfigurationAction,
   togglePhysicianStatusAction,
+  deletePhysicianAction,
 } from "@/features/server-boundary/physician-actions";
 import { checkRouteAccess, getCurrentUserProfile } from "@/lib/auth-guards";
 
@@ -107,6 +109,13 @@ export default async function PersonnelPage() {
               isActive: !person.isActive,
             });
           }}
+          onDelete={async (person) => {
+            "use server";
+            // Only the id crosses. `deletePersonnelAction` authorizes for itself and re-decides
+            // inactivity and every report reference immediately before the write, so this
+            // pass-through adds no authorization and removes none.
+            return deletePersonnelAction({ id: person.id });
+          }}
         />
       </section>
 
@@ -157,12 +166,18 @@ export default async function PersonnelPage() {
           }}
           onToggleStatus={async (physician) => {
             "use server";
-            // Soft toggle only. A physician row is never deleted, so a historical report keeps
-            // resolving the name it was issued with.
+            // The reversible withdrawal. Permanent deletion is the separate action below.
             await togglePhysicianStatusAction({
               id: physician.id,
               isActive: !physician.isActive,
             });
+          }}
+          onDelete={async (physician) => {
+            "use server";
+            // Only the id crosses. `deletePhysicianAction` authorizes for itself and refuses an
+            // active physician, one still holding an examination assignment, and one any
+            // laboratory report names - so a historical report keeps the name it was issued with.
+            return deletePhysicianAction({ id: physician.id });
           }}
         />
       </section>

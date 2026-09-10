@@ -8,8 +8,12 @@
  * The three guarantees worth having durable, in order of consequence:
  *   1. Every write action authorizes BEFORE it reaches the repository. Proved by index comparison
  *      on a comment-stripped function body, so commented-out code cannot satisfy an ordering check.
- *   2. Nothing anywhere in this feature can hard-delete. Deactivation is the only removal, because
- *      a historical report must keep resolving the physician name it was issued with.
+ *   2. Nothing in this feature can issue a table delete against `physicians`. CLINIC-UI-UX-08R1
+ *      added a permanent deletion by explicit user decision, but only as `delete_inactive_physician()`,
+ *      which re-decides inactivity, assignments and every report reference and audits in the same
+ *      transaction; it is reached only through the Administrator-guarded `deletePhysicianAction`,
+ *      and the UI offers it only on an inactive record. Deactivation remains the reversible
+ *      withdrawal.
  *   3. The migration is non-destructive and applies identically to a clean and to a populated
  *      database - it must add, and only add.
  *
@@ -446,8 +450,14 @@ assert(
  *     assignment table's foreign key is ON DELETE RESTRICT, so a physician cannot be erased from
  *     that side either.
  *
- * The scan is deliberately not relaxed into "ignore .delete() anywhere". The single delete that
- * IS permitted is pinned by target and by filter directly underneath.
+ * The scan is deliberately not relaxed into "ignore .delete() anywhere".
+ *
+ * CLINIC-UI-UX-08R1, by explicit user decision: an inactive physician that no report references
+ * may now be permanently deleted - but only by `delete_inactive_physician()`, which locks the row,
+ * re-decides every condition and audits in one transaction. So the letter below is unchanged: no
+ * PostgREST chain against `physicians` reaches `.delete()`, and the repository holds no delete at
+ * all. The assignment foreign key stays ON DELETE RESTRICT, so no assignment or default can be
+ * orphaned from that side either.
  */
 const strippedRepository = stripComments(physicianRepositorySource);
 // Fail closed: an emptied haystack satisfies every negative below while proving nothing.
@@ -506,9 +516,17 @@ assert(
 for (const entry of physicianTableChains) {
   assert(
     !/\.delete\(/.test(entry.chain),
-    "no query against the physicians table reaches .delete() - a physician row is never hard-deleted, so a historical report keeps resolving the name it was issued with"
+    "no query against the physicians table reaches .delete() - the one permanent deletion is the audited database function"
   );
 }
+const deleteInactiveBody =
+  /async deleteInactive\([\s\S]*?\n {2}\}/.exec(strippedRepository)?.[0] ?? "";
+assert(
+  /\.rpc\("delete_inactive_physician", \{/.test(deleteInactiveBody) &&
+    !/\.from\(/.test(deleteInactiveBody) &&
+    !/ASSIGNMENT_TABLE/.test(deleteInactiveBody),
+  "deleteInactive reaches only delete_inactive_physician - no table chain, and never the assignment table: assignments are refused, never cascaded"
+);
 
 // The positive half, so the invariant is not left resting on a negative alone.
 const toggleActiveStatusBody =
@@ -521,15 +539,15 @@ assert(
   /\.from\("physicians"\)/.test(toggleActiveStatusBody) &&
     /\.update\(\{ is_active: isActive \}\)/.test(toggleActiveStatusBody) &&
     !/\.delete\(/.test(toggleActiveStatusBody),
-  "toggleActiveStatus withdraws a physician by updating is_active on the physicians row, which is the only physician-withdrawal path the repository has"
+  "toggleActiveStatus withdraws a physician by updating is_active on the physicians row, which is the reversible physician-withdrawal path"
 );
 
-// THE REPOSITORY NOW HOLDS NO DELETE AT ALL - strictly stronger than the single bounded delete
-// this used to pin. Un-assignment is still a real row deletion, but it happens inside the
-// `save_physician_configuration` transaction, where it is one statement among the four that
-// commit or roll back together. verify-physician-assignments.ts asserts it there, bounded to the
-// saved physician's own rows by `WHERE physician_id = v_physician_id`, and asserts that the
-// function deletes no `physicians` row at all.
+// THE REPOSITORY HOLDS NO DELETE AT ALL. Un-assignment is still a real row deletion, but it
+// happens inside the `save_physician_configuration` transaction, where it is one statement among
+// the four that commit or roll back together. verify-physician-assignments.ts asserts it there,
+// bounded to the saved physician's own rows by `WHERE physician_id = v_physician_id`, and asserts
+// that the function deletes no `physicians` row at all. The permanent physician deletion is
+// `delete_inactive_physician()`, reached through rpc() and pinned above.
 const deleteChains = repositoryChains.filter((entry) => /\.delete\(/.test(entry.chain));
 assert(
   deleteChains.length === 0,
@@ -601,17 +619,25 @@ assert(
   physicianRepositoryInterface.length > 0,
   "IPhysicianRepository is declared in the repository interfaces"
 );
+// CLINIC-UI-UX-08R1, by explicit user decision: "declares no delete" became "declares exactly one
+// deletion method, deleteInactive(id, actor)", which answers with the database function's closed
+// outcome rather than a deleted row. Judged on comment-stripped text, so the interface's own prose
+// about deletion can neither satisfy nor trip it.
+const physicianRepositoryInterfaceCode = stripComments(physicianRepositoryInterface);
+const declaredErasers =
+  physicianRepositoryInterfaceCode.match(/\b(?:delete|remove|purge|destroy)\w*\s*\(/gi) ?? [];
 assert(
-  !/\bdelete\s*\(/.test(physicianRepositoryInterface) &&
-    !/\bremove\s*\(/.test(physicianRepositoryInterface) &&
-    !/\bpurge\s*\(/.test(physicianRepositoryInterface),
-  "IPhysicianRepository declares no delete, remove or purge method"
+  declaredErasers.length === 1 &&
+    /\bdeleteInactive\(id: string, actor: DirectoryDeletionActor\): Promise<PhysicianDeletionOutcome>;/.test(
+      physicianRepositoryInterfaceCode
+    ),
+  `IPhysicianRepository declares exactly one deletion method, deleteInactive(id, actor), and no remove, purge or destroy method (found: ${JSON.stringify(declaredErasers)})`
 );
 assert(
   /toggleActiveStatus\(id: string, isActive: boolean\): Promise<IPhysician>;/.test(
     physicianRepositoryInterface
   ),
-  "IPhysicianRepository offers deactivation as the only removal"
+  "IPhysicianRepository keeps deactivation as the reversible withdrawal"
 );
 assert(
   /class\s+SupabasePhysicianRepository\s+implements\s+IPhysicianRepository/.test(
@@ -835,13 +861,16 @@ assert(
   "PhysicianDirectoryEntry declares no index signature escape hatch"
 );
 
-/* ─────────────────── No hard-delete anywhere in the feature ───────────────────────────────── */
+/* ────────── No direct delete; one audited database deletion (CLINIC-UI-UX-08R1) ──────────── */
 
-// The actions layer keeps the whole-file letter: it owns no query chain at all, so any delete
-// appearing there would be a new path rather than a scoped one.
+// By explicit user decision a physician may now be permanently deleted - but never by a table
+// delete. The actions layer owns no query chain and issues no delete at all; the one permanent
+// deletion is a repository call from ONE action, reached only after the Administrator guard and the
+// strict parse, and the repository hands it to `delete_inactive_physician()`, which re-decides
+// inactivity, assignments and every report reference and audits in the same transaction.
 assert(
-  !/\.delete\(/.test(physicianActionsSource),
-  "physician actions expose no hard-delete path"
+  !/\.from\(/.test(physicianActionsSource) && !/\.delete\(/.test(physicianActionsSource),
+  "physician actions own no query chain and issue no direct delete"
 );
 for (const [label, source] of [
   ["physician actions", physicianActionsSource],
@@ -849,11 +878,10 @@ for (const [label, source] of [
 ] as const) {
   assert(!/\bDELETE\s+FROM\b/i.test(source), `${label} contain no DELETE FROM statement`);
 }
-// The repository now keeps the same whole-file letter as the actions: zero deletes. The
-// assignment-set replacement moved into the `save_physician_configuration` transaction, where
+// The repository keeps the whole-file letter it held before this package: zero deletes. The
+// assignment-set replacement is inside the `save_physician_configuration` transaction, where
 // verify-physician-assignments.ts pins it as the function's only DELETE, bounded to the saved
-// physician's own rows. Pinning ZERO here means a delete cannot reappear in this layer at all -
-// which is what "every assignment write goes through the transaction" means in practice.
+// physician's own rows; the permanent deletion is the database function.
 assert(
   (physicianRepositorySource.match(/\.delete\(/g) ?? []).length === 0,
   "the physician repository holds no delete of its own; the assignment-set replacement is inside the transaction, pinned by verify-physician-assignments.ts"
@@ -861,6 +889,57 @@ assert(
 assert(
   !/\bremove\b/.test(physicianActionsSource),
   "physician actions contain no remove call"
+);
+
+const deletePhysicianBody = stripComments(
+  extractFunctionBody(physicianActionsSource, "deletePhysicianAction")
+);
+// Any receiver, on comment-stripped source: a second call through a differently named variable or
+// a fresh `new SupabasePhysicianRepository()` must count too.
+assert(
+  (stripComments(physicianActionsSource).match(/\.deleteInactive\(/g) ?? []).length === 1 &&
+    /\brepository\.deleteInactive\(parsed\.id, \{/.test(deletePhysicianBody),
+  "exactly one physician action reaches the repository's deletion, and it is deletePhysicianAction"
+);
+// Index comparison on a comment-stripped body: the guard and the parse come before the one call,
+// and only DELETED is reported as a success.
+const deletePhysicianSteps: ReadonlyArray<readonly [string, RegExp]> = [
+  ["the Administrator guard", /await\s+requirePersonnelAdmin\s*\(\s*\)/],
+  ["the strict id parse", /physicianDeleteSchema\.parse\s*\(\s*input\s*\)/],
+  [
+    "the one database deletion, recorded against the session's Administrator",
+    /repository\.deleteInactive\(parsed\.id, \{\s*userId: caller\.userId,\s*username: caller\.username,\s*role: caller\.role,\s*\}\)/,
+  ],
+  [
+    "the success, reported only for DELETED",
+    /if \(outcome === "DELETED"\) \{\s*return \{ success: true, auditRecorded: true \};\s*\}/,
+  ],
+  ["the refusal, passed through as the database decided it", /return \{ success: false, error: outcome \};/],
+];
+let previousDeleteStep = -1;
+for (const [step, pattern] of deletePhysicianSteps) {
+  const index = deletePhysicianBody.search(pattern);
+  assert(
+    index > previousDeleteStep,
+    `deletePhysicianAction reaches ${step} after every earlier step`
+  );
+  previousDeleteStep = index;
+}
+assert(
+  !/findById|findAssignmentsByPhysician|auditService|\.code === "23503"|catch\s*\(/.test(deletePhysicianBody),
+  "deletePhysicianAction decides nothing from a pre-read, catches nothing and writes no audit of its own - the database function re-decides and audits in the deletion's transaction"
+);
+const physicianRepositoryCode = stripComments(physicianRepositorySource);
+assert(
+  (physicianRepositoryCode.match(/\.rpc\("delete_inactive_physician"/g) ?? []).length === 1 &&
+    /\.rpc\("delete_inactive_physician", \{\s*p_physician_id: id,\s*p_actor_user_id: actor\.userId,\s*p_actor_username: actor\.username,\s*p_actor_role: actor\.role,\s*\}\)/.test(
+      physicianRepositoryCode
+    ),
+  "the physician repository reaches delete_inactive_physician once, carrying only the id and the actor"
+);
+assert(
+  !/requirePersonnelReader/.test(deletePhysicianBody),
+  "deletePhysicianAction never reuses the reader guard, which would admit a Developer"
 );
 assert(
   /togglePhysicianStatusAction/.test(physicianActionsSource),
@@ -946,6 +1025,18 @@ for (const eventType of [
     `the physician write path records the ${eventType} event`
   );
 }
+// The deletion is recorded by the database, in the same transaction as the delete itself, under
+// the same category and the one curated details key this feature already uses.
+const deletionMigrationSql = getSource(
+  "supabase/migrations/20260913120000_stable_physician_references_and_atomic_directory_deletion.sql"
+);
+assert(
+  !physicianActionsSource.includes('"PhysicianRecordDeleted"') &&
+    /'PersonnelCredential',\s*'PhysicianRecordDeleted',[\s\S]*?jsonb_build_object\('isActive', v_physician\.is_active\)/.test(
+      deletionMigrationSql
+    ),
+  "the physician deletion records PhysicianRecordDeleted from inside delete_inactive_physician(), with only the curated isActive key"
+);
 
 /* ═══════════════════════ UI: the physician directory's client components ═══════════════════
  *
@@ -1131,7 +1222,16 @@ assert(
   "every physician row-action group is withheld from a caller who may not manage physicians, in the table and in the narrow-width record list alike"
 );
 
-/* ─────────────── UI property 2: deactivation is the only removal, in the UI too ───────────── */
+/* ────────── UI property 2: the one destructive control is Delete, on inactive records only ─────────
+ *
+ * CLINIC-UI-UX-08R1 replaced "the UI offers no destructive control at all" by explicit user
+ * decision. What replaces it is bounded, not relaxed: the editor and its modal still offer no
+ * destructive word or call of any kind; the table offers exactly one destructive control, rendered
+ * only inside the `!physician.isActive` guard and wired to `onDelete`; the view reaches `onDelete`
+ * from one place only, the confirmation's confirm handler, behind the single-flight guard; and the
+ * page wires that to the one server action, which re-decides everything. No component holds a
+ * direct delete path. Presentation still grants nothing - the action's own guard is proved above.
+ */
 
 // Two shapes, because a delete arrives as either. The word scan catches a control labelled or
 // named for destruction; the call scan catches the invocation behind it. Member calls are
@@ -1143,26 +1243,91 @@ const DESTRUCTIVE_CALL = /(?<![\w$.])[A-Za-z_$][\w$]*(?:[Dd]elete|[Dd]estroy|[Pp
 
 for (const [label, component] of PHYSICIAN_COMPONENTS) {
   assert(
+    !/\.delete\s*\(/.test(component) && !/\bDELETE\s+FROM\b/i.test(component),
+    `${label} contains no direct delete path`
+  );
+}
+for (const [label, component] of [
+  ["PhysicianForm", physicianForm],
+  ["PhysicianFormModal", physicianFormModal],
+] as const) {
+  assert(
     !DESTRUCTIVE_WORD.test(component),
-    `${label} offers no delete, remove, destroy or purge control - a physician record is withdrawn by deactivation, never erased`
+    `${label} offers no delete, remove, destroy or purge control - the editor never erases a physician record`
   );
   assert(
     !DESTRUCTIVE_CALL.test(component),
     `${label} calls nothing that erases a physician record`
   );
-  assert(
-    !/\.delete\s*\(/.test(component) && !/\bDELETE\s+FROM\b/i.test(component),
-    `${label} contains no direct delete path`
+}
+
+function destructiveCalls(source: string): string[] {
+  return (source.match(new RegExp(DESTRUCTIVE_CALL.source, "g")) ?? []).map((call) =>
+    call.replace(/\s*\($/, "")
   );
 }
-// The positive half: the withdrawal that IS offered is the reversible status toggle.
+
+const INACTIVE_PHYSICIAN_GUARD = /\{\s*!\s*physician\.isActive\s*&&/;
+const inactiveRegions = guardedExpressions(physicianTable, INACTIVE_PHYSICIAN_GUARD);
+assert(
+  countMatches(physicianTable, /variant="danger"/) === 1 &&
+    inactiveRegions.length === 1 &&
+    countMatches(inactiveRegions[0], /variant="danger"/) === 1,
+  "PhysicianTable renders exactly one destructive control, and only inside the !physician.isActive guard - an active physician is never offered Delete"
+);
+assert(
+  /onClick=\{\(\) => onDelete\(physician\)\}/.test(inactiveRegions[0]) &&
+    /aria-label=\{`Delete \$\{name\}`\}/.test(inactiveRegions[0]),
+  "the Delete control names the physician it acts on and only opens the confirmation through onDelete"
+);
+const tableErasingCalls = destructiveCalls(physicianTable);
+assert(
+  tableErasingCalls.length === 1 &&
+    tableErasingCalls[0] === "onDelete" &&
+    countMatches(inactiveRegions[0], /onDelete\(/) === 1,
+  `PhysicianTable's only erasing call is onDelete, inside the inactive guard (found: ${JSON.stringify(tableErasingCalls)})`
+);
+
+const ALLOWED_VIEW_ERASING_CALLS = new Set(["onDelete", "setDeleteTarget", "setIsDeleteDialogOpen"]);
+const viewErasingCalls = destructiveCalls(physicianView);
+assert(
+  viewErasingCalls.every((call) => ALLOWED_VIEW_ERASING_CALLS.has(call)) &&
+    viewErasingCalls.filter((call) => call === "onDelete").length === 1,
+  `PhysicianDirectoryView reaches onDelete exactly once and calls nothing else that erases (found: ${JSON.stringify(viewErasingCalls)})`
+);
+const confirmDeleteHandler =
+  /const handleConfirmDelete = async \(\) => \{[\s\S]*?\n {2}\};/.exec(physicianView)?.[0] ?? "";
+const singleFlightIndex = confirmDeleteHandler.search(
+  /if \(busyPhysicianIdRef\.current !== null\) return;/
+);
+assert(
+  singleFlightIndex >= 0 &&
+    singleFlightIndex < confirmDeleteHandler.indexOf("await onDelete(physician)"),
+  "the one onDelete call sits in the confirm handler, behind the single-flight guard, so a second press is dropped before any request is sent"
+);
+const confirmDialogRegions = manageRegions.filter((region) => /<ConfirmDialog\b/.test(region));
+assert(
+  countMatches(physicianView, /<ConfirmDialog\b/) === 1 &&
+    confirmDialogRegions.length === 1 &&
+    /onConfirm=\{handleConfirmDelete\}/.test(confirmDialogRegions[0]) &&
+    /variant="destructive"/.test(confirmDialogRegions[0]) &&
+    /isPending=\{busyAction === "delete"\}/.test(confirmDialogRegions[0]),
+  "the deletion is confirmed through one destructive ConfirmDialog, mounted only for a caller who may manage physicians and locked while the request is in flight"
+);
+assert(
+  /onDelete=\{async \(physician\) => \{\s*"use server";[\s\S]*?return deletePhysicianAction\(\{ id: physician\.id \}\);/.test(
+    personnelPage
+  ),
+  "the physician Delete confirmation is wired to deletePhysicianAction, passing the id alone"
+);
+// The positive half: the ordinary withdrawal is still the reversible status toggle.
 assert(
   /onToggleStatus/.test(physicianTable) && /onToggleStatus/.test(physicianView),
   "the physician directory withdraws a record through the reversible status toggle"
 );
 assert(
   /togglePhysicianStatusAction/.test(personnelPage),
-  "the physician directory's removal control is wired to the soft status toggle action"
+  "the physician directory's status control is wired to the soft status toggle action"
 );
 
 /* ─────────────── UI property 3: a duplicate name lands on the name field ──────────────────── */

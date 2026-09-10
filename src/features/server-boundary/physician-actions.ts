@@ -11,11 +11,13 @@ import type {
   PhysicianAssignmentEntry,
   PhysicianDirectoryEntry,
 } from "@/features/physicians/physician-directory-entry";
+import type { RecordDeletionResult } from "@/features/personnel/record-deletion";
 import { requirePersonnelAdmin, requirePersonnelReader } from "@/lib/personnel-guard";
 import {
   createPhysicianSchema,
   updatePhysicianSchema,
   physicianConfigurationSchema,
+  physicianDeleteSchema,
   physicianStatusSchema,
 } from "@/lib/validations/physicianValidation";
 import { SupabasePhysicianRepository } from "@/repositories/supabase-physician-repository";
@@ -158,8 +160,9 @@ export async function updatePhysicianAction(input: unknown): Promise<PhysicianAc
 }
 
 /** Returns nothing to the client. The audit payload reads the updated record server-side; the
- *  client refreshes the directory on success. Deactivation is the only removal this directory
- *  has - a physician row is never deleted, so historical reports keep resolving their name.
+ *  client refreshes the directory on success. Deactivation is the reversible withdrawal; the
+ *  permanent one, `deletePhysicianAction`, is refused for any physician a laboratory report names,
+ *  so historical reports keep the name they were issued with.
  *
  *  DEACTIVATION ALSO CLEARS THIS PHYSICIAN'S DEFAULT EXAMINATIONS, and that does not happen here.
  *  It is enforced by `trg_physicians_clear_defaults_on_deactivation`, a row trigger on the
@@ -447,4 +450,51 @@ export async function savePhysicianConfigurationAction(
   });
 
   return { success: true };
+}
+
+/** Its own closed union; neither frozen result union above is widened. */
+export type PhysicianDeleteActionResult = RecordDeletionResult;
+
+/**
+ * Permanently delete ONE inactive physician that nothing still points at.
+ *
+ * Deactivation remains the ordinary, reversible withdrawal. The caller is an Administrator,
+ * checked BEFORE the payload is parsed - Developer and User callers are refused by the guard, which
+ * audits the refusal as for every other write - and the id is parsed strictly. Every other
+ * condition is decided by the database, inside `delete_inactive_physician()`, in the one
+ * transaction that also deletes the row and writes its audit record:
+ *
+ *   - the physician exists and is INACTIVE;
+ *   - the physician holds NO examination assignment. Assignments are never cascaded: the
+ *     Administrator clears them through the atomic editor save first, so a default or an
+ *     assignment can never be left pointing at a physician who no longer exists;
+ *   - no laboratory report references the physician - by the stable reference a report takes
+ *     when its Requested By names a managed physician, which survives a rename, or by the printed
+ *     name on a draft, a completed report, a legacy session or a completed snapshot. Such a
+ *     physician is kept, inactive, for good.
+ *
+ * The function locks the physician's row before it checks anything, and the report reference and
+ * the assignments are foreign keys ON DELETE RESTRICT, so a report or an assignment saved
+ * concurrently either waits for the decision or makes the database refuse the delete.
+ *
+ * A refusal commits nothing and records nothing. DELETED means the row and its
+ * PhysicianRecordDeleted audit record committed together, so `auditRecorded` is true. A failed
+ * request is thrown: the transaction rolled back, or its answer was lost, and the screen then says
+ * the deletion could not be confirmed and re-reads the directory rather than claiming either.
+ */
+export async function deletePhysicianAction(input: unknown): Promise<PhysicianDeleteActionResult> {
+  const caller = await requirePersonnelAdmin();
+  const parsed = physicianDeleteSchema.parse(input);
+  const repository = new SupabasePhysicianRepository();
+
+  const outcome = await repository.deleteInactive(parsed.id, {
+    userId: caller.userId,
+    username: caller.username,
+    role: caller.role,
+  });
+
+  if (outcome === "DELETED") {
+    return { success: true, auditRecorded: true };
+  }
+  return { success: false, error: outcome };
 }

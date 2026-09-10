@@ -34,6 +34,12 @@ export const physicianStatusSchema = z
   })
   .strict();
 
+export const physicianDeleteSchema = z
+  .object({
+    id: z.string().uuid("Invalid physician identifier."),
+  })
+  .strict();
+
 export type CreatePhysicianValues = z.infer<typeof createPhysicianSchema>;
 export type UpdatePhysicianValues = z.infer<typeof updatePhysicianSchema>;
 export type PhysicianStatusValues = z.infer<typeof physicianStatusSchema>;

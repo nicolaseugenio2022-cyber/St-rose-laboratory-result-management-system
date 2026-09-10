@@ -112,7 +112,12 @@ const serverActionsSource = getSource("src/features/server-boundary/server-actio
 const personnelFormSource = getSource("src/app/(app)/personnel/_components/PersonnelForm.tsx");
 
 // ── Assertion 1: Every write action calls requirePersonnelAdmin() before any repository call ──
-for (const actionName of ["createPersonnelAction", "updatePersonnelAction", "togglePersonnelStatusAction"]) {
+for (const actionName of [
+  "createPersonnelAction",
+  "updatePersonnelAction",
+  "togglePersonnelStatusAction",
+  "deletePersonnelAction",
+]) {
   const actionBody = extractFunctionBody(personnelActionsSource, actionName);
   assert(actionBody.length > 0, `${actionName} body was extracted from personnel-actions.ts`);
   // Stripping removes commented-out code so it cannot satisfy an invocation-ordering check.
@@ -131,10 +136,15 @@ assert(
   "requirePersonnelAdmin checks role === 'Admin' exactly"
 );
 
-// ── Assertion 3: No hard-delete path in personnel-actions.ts ──
+// ── Assertion 3: No direct delete; one audited database deletion (CLINIC-UI-UX-08R1) ──
+// By explicit user decision a personnel record may now be permanently deleted - but never by a
+// table delete. The actions own no query chain and issue no delete at all; exactly one action
+// reaches the repository's deletion, only after the Administrator guard and the strict parse; and
+// the repository holds no delete either - it calls `delete_inactive_personnel()`, which re-decides
+// inactivity and every report reference and writes the deletion audit in the same transaction.
 assert(
-  !/\.delete\(/.test(personnelActionsSource),
-  "personnel actions expose no hard-delete path"
+  !/\.from\(/.test(personnelActionsSource) && !/\.delete\(/.test(personnelActionsSource),
+  "personnel actions own no query chain and issue no direct delete"
 );
 assert(
   !/\bremove\b/.test(personnelActionsSource),
@@ -143,6 +153,56 @@ assert(
 assert(
   !/\bDELETE\s+FROM\b/i.test(personnelActionsSource),
   "personnel actions contain no DELETE FROM statement"
+);
+const deletePersonnelBody = stripComments(
+  extractFunctionBody(personnelActionsSource, "deletePersonnelAction")
+);
+// Any receiver, on comment-stripped source: a second call through a differently named variable or
+// a fresh `new SupabasePersonnelRepository()` must count too.
+assert(
+  (stripComments(personnelActionsSource).match(/\.deleteInactive\(/g) ?? []).length === 1 &&
+    /\brepository\.deleteInactive\(parsed\.id, \{/.test(deletePersonnelBody),
+  "exactly one personnel action reaches the repository's deletion, and it is deletePersonnelAction"
+);
+const deletePersonnelSteps: ReadonlyArray<readonly [string, RegExp]> = [
+  ["the Administrator guard", /await\s+requirePersonnelAdmin\s*\(\s*\)/],
+  ["the strict id parse", /personnelDeleteSchema\.parse\s*\(\s*input\s*\)/],
+  [
+    "the one database deletion, recorded against the session's Administrator",
+    /repository\.deleteInactive\(parsed\.id, \{\s*userId: caller\.userId,\s*username: caller\.username,\s*role: caller\.role,\s*\}\)/,
+  ],
+  [
+    "the success, reported only for DELETED",
+    /if \(outcome === "DELETED"\) \{\s*return \{ success: true, auditRecorded: true \};\s*\}/,
+  ],
+  ["the refusal, passed through as the database decided it", /return \{ success: false, error: outcome \};/],
+];
+let previousDeleteStep = -1;
+for (const [step, pattern] of deletePersonnelSteps) {
+  const index = deletePersonnelBody.search(pattern);
+  assert(
+    index > previousDeleteStep,
+    `deletePersonnelAction reaches ${step} after every earlier step`
+  );
+  previousDeleteStep = index;
+}
+assert(
+  !/findById|auditService|\.code === "23503"|catch\s*\(/.test(deletePersonnelBody),
+  "deletePersonnelAction decides nothing from a pre-read, catches nothing and writes no audit of its own - the database function re-decides and audits in the deletion's transaction"
+);
+const personnelRepositoryCode = stripComments(
+  getSource("src/repositories/supabase-personnel-repository.ts")
+);
+assert(
+  (personnelRepositoryCode.match(/\.delete\(/g) ?? []).length === 0,
+  "the personnel repository exposes no hard-delete path of its own"
+);
+assert(
+  (personnelRepositoryCode.match(/\.rpc\(/g) ?? []).length === 1 &&
+    /\.rpc\("delete_inactive_personnel", \{\s*p_personnel_id: id,\s*p_actor_user_id: actor\.userId,\s*p_actor_username: actor\.username,\s*p_actor_role: actor\.role,\s*\}\)/.test(
+      personnelRepositoryCode
+    ),
+  "the personnel repository's one database call is delete_inactive_personnel, carrying only the id and the actor"
 );
 
 // ── Assertion 4: signatureImageUrl never read from parsed client input; MedTech write always sends null ──
@@ -190,6 +250,10 @@ assert(
     !/requirePersonnelReader/.test(updateBody) &&
     !/requirePersonnelReader/.test(toggleBody),
   "no write action reuses requirePersonnelReader"
+);
+assert(
+  !/requirePersonnelReader/.test(deletePersonnelBody),
+  "deletePersonnelAction never reuses requirePersonnelReader, which would admit a Developer"
 );
 
 // ── Assertion 6: personnel-actions.ts imports server-only and introduces no concrete Supabase type ──

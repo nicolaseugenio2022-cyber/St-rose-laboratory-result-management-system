@@ -267,6 +267,26 @@ Recent major performance improvements include:
 * **Supabase Monitoring Optimizations**: `getSupabaseCounts()` executes queries in parallel. Queries now have a 10-second `AbortController` timeout and a 30-second cache TTL to prevent hangs and repeated overhead.
 * **Route Loading Skeletons**: `loading.tsx` files across routes (dashboard, workspace, history, audit, users) provide immediate visual feedback.
 * **Workspace Template Cache Parallelization**: Template metadata loading uses parallel/bulk Supabase queries (`Promise.all()`) instead of sequential loading. Reduces 52 sequential browser-to-Supabase queries to 3 parallel bulk queries, cutting cache warm-up from ~5–26 seconds to ~300–500ms.
+* **Workspace Physician Bootstrap (CLINIC-PERF-01)**: the physician roster is fetched during the
+  server render alongside the registry and personnel reads, started before their `await` so it
+  overlaps rather than follows, and kept in its own failure domain so a physician outage cannot also
+  erase the catalogue. `GuidedWorkspace` starts with the roster resolved, so reports materialize on
+  the first paint instead of waiting on a post-hydration round trip, and `RequestedBySection` reuses
+  the same list rather than fetching it again. Both client fetches remain as guarded fallbacks. The
+  Workspace normal path now makes **zero** post-hydration server-action requests, down from one
+  roster call plus one per Requested By mount.
+* **Deferred Chat Panel (CLINIC-PERF-01)**: `ChatWidget` ships only the launcher. The conversation
+  state, NDJSON streaming reader, assistant-content renderer and composer live in `ChatPanel` and
+  load on first open via `next/dynamic`, removing 8,440 bytes from every protected page's initial
+  JavaScript. The chunk appears in no route's initial-load set and is requested once, on demand; the
+  panel stays mounted afterwards so conversation history and drafts survive close and reopen.
+
+**Login latency is not yet addressed.** Query cost is not the bottleneck — every application query
+measures sub-millisecond to low-single-digit milliseconds in `pg_stat_statements`, and every
+hot-path index exists and is used. The cost is round-trip count plus the read retry budget. Stage
+instrumentation is currently blocked by frozen assertions (`authActions.ts` is SHA-256 pinned by
+`verify-checkpoint-m6c`; `authenticate` is contiguity-pinned by `verify-checkpoint-m6d`), and the
+one available round-trip reduction is not security-equivalent. Tracked as CLINIC-PERF-02.
 
 ## Current Working State
 
@@ -294,6 +314,13 @@ Recent work includes:
   Personnel directories, and the History and Audit viewers
 * `src/rendering/**` added to the Tailwind `content` globs, which had left twelve live-preview
   classes uncompiled
+* CLINIC-PERF-01: Workspace physician roster moved into the server bootstrap, and the support chat
+  panel deferred to first open
+* CLINIC-PERF-01 chat lifecycle corrections: the launcher no longer steals focus on page load; the
+  first-open placeholder keeps `aria-controls`/`aria-expanded` truthful without claiming to be an
+  operable dialog; its loading announcement sits outside the `aria-busy` subtree so it is not
+  suppressed, and is exposed exactly once; and Escape closes the chat while the chunk is still
+  loading
 
 ## Known Issues / Pending Work
 
@@ -309,6 +336,14 @@ Recent work includes:
    inert. Do not introduce new brand-token opacity utilities.
 5. One commit, `a16965d`, carries a pasted status line as its subject. History has not been
    rewritten to correct it.
+6. Login latency is unmeasured in production and uncorrected (CLINIC-PERF-02). The blocking stage is
+   round-trip count, not query cost; stage timing cannot currently be added because
+   `src/features/auth/authActions.ts` is SHA-256 pinned and `UserService.authenticate` is
+   contiguity-pinned, and the one available round-trip reduction would cost a throttled attacker an
+   extra account read. Closing it needs a decision on whether the implementation or the pins change.
+7. The Developer Dashboard derives its signatory count by fetching every `report_signatories` row and
+   de-duplicating in memory. PostgREST cannot count distinct values, so an exact fix needs a database
+   function or view; the metric is correct today but the read is unbounded.
 
 Items 1 to 4 of the previous list are resolved: the `(dashboard)` route group has its own
 `layout.tsx`, audit logs persist to the Supabase `audit_logs` table, passwords are scrypt-hashed,

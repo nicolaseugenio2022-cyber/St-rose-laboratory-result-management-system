@@ -1590,6 +1590,138 @@ Recorded because each passed `tsc`, lint, all 28 verifiers and `next build` befo
   this branch, and none was applied.
 - Manual acceptance of the report presentation changes is the user's, and is not claimed here.
 
+## CLINIC-PERF-01 — Login and Page-Load Performance Corrections (2026-09-11)
+
+**State: published to `main`.** Six paths in one implementation commit. Scope was presentation and
+data-delivery only: no clinical semantics, no report content, no retention rule, no authorization
+boundary, no audit contract and no schema were altered.
+
+### Production evidence that shaped the slice
+
+`pg_stat_statements` was read read-only against the live project. Every application query is
+sub-millisecond to low-single-digit milliseconds — the `user_profiles` account lookup averages
+0.099 ms across 6,566 calls, the `auth_attempts` insert 3.30 ms, the `audit_logs` insert 2.35 ms —
+and every hot-path index exists and is used. The performance advisors report only two INFO-level
+unindexed foreign keys, on tables of 28 and 65 rows. **No index was added, because none is
+justified**, and the largest table in the database holds 1,067 rows. `postgrest_logs` showed
+PostgREST restarting inside the observed window (schema-cache reload, connection-pool re-init),
+which is consistent with the transient `PGRST303` the transport policy already absorbs.
+
+The conclusion that follows: page and login latency here is **round-trip count plus the retry and
+timeout budget**, not query cost. Every correction below removes round trips or bytes; none is a
+spinner over unchanged work.
+
+### What shipped
+
+**Workspace physician bootstrap.** The physician roster was read after hydration, and report
+materialization waited on it, so the operator watched an empty desk for a full client round trip.
+It now joins the existing registry and personnel bootstrap in `workspace/page.tsx`, started before
+their `await` so it overlaps rather than follows, and kept in its **own failure domain** so a
+physician outage cannot also erase the catalogue and the personnel roster. `GuidedWorkspace` seeds
+its state from the prop and starts the roster resolved; `RequestedBySection` receives the same list
+instead of fetching it again. Both client fetches are retained, guarded, as the fallback when the
+server bootstrap fails, so no error path is lost.
+
+Measured: the Workspace normal path issues **zero** post-hydration server-action requests, where it
+previously issued one roster call plus one more per Requested By mount. Live acceptance showed three
+physicians offered, the configured default pre-applied, and the field still free text and optional.
+
+**Chat panel deferral.** The support chat mounted its whole implementation on every protected page
+while closed. `ChatWidget` is now the launcher only; the conversation state, the NDJSON streaming
+reader, the assistant-content renderer and the composer moved to `ChatPanel` and load on first open
+through `next/dynamic`, mirroring the existing `SharedRenderingEngine` precedent. 8,440 bytes leave
+every protected page's initial JavaScript and are fetched once, on demand. The panel stays mounted
+after its first load, so conversation history and any draft survive close and reopen. Both
+application shells are untouched — the export name and path did not change.
+
+**Chat focus and loading lifecycle (R1–R3).** Four corrections, each found by review of the
+preceding candidate:
+
+- The launcher took keyboard focus on **mount**, so every protected page load pulled focus onto the
+  floating chat button. Focus restoration is now a real open-to-closed transition.
+- First open now renders a placeholder carrying the panel's `id` and geometry, so `aria-controls`
+  and `aria-expanded` stay truthful while the chunk loads and the swap causes no layout jump. The
+  placeholder is **not** a dialog: it holds nothing focusable and focus stays on the launcher, so
+  announcing an operable dialog would have been false.
+- `aria-busy` no longer sits on the live region it would suppress — a busy region withholds its own
+  updates, so the earlier arrangement could never announce. The busy container carries the `id`,
+  `aria-busy` and the visible text; a single `sr-only` `role="status"` sibling **outside** that
+  subtree carries the announcement, and the visible copy is `aria-hidden`, so the message is exposed
+  exactly once and is removed when loading completes or is cancelled.
+- Escape closes the chat while the chunk is still loading, handed to the panel's own handler the
+  moment it mounts so the two never both listen.
+
+`/api/chat`, streaming, message rendering, the privacy warning and every error message are unchanged.
+
+### Examined and deliberately left alone
+
+- **Protected-route account validation** is already memoized per render by React `cache()` in
+  `src/lib/session.ts` (Milestone 6 P4). One read per request; no change needed.
+- **Audit Logs.** The Developer-identity lookup genuinely gates the page query — the exclusion
+  filter is built from its result, and the legacy branch cannot be evaluated without the identity
+  lists. Removing the waterfall would need either a stale cache, which could expose Developer
+  records, or restructured exclusion SQL. Row and count already run in one `Promise.all`, and
+  auto-sync already stands down on six conditions. Left unchanged.
+- **Developer Dashboard signatory count.** `report_signatories.select("personnel_id")` counts
+  *distinct* `personnel_id` values. PostgREST's `count: 'exact', head: true` counts rows, not
+  distinct values, and no equivalent aggregate exists in the repository; substituting a `personnel`
+  count would change the metric's meaning. Left unchanged; see the deferral below.
+
+### Login performance was NOT improved, and no change was made
+
+This is the honest outcome of the slice and is carried forward as **CLINIC-PERF-02**.
+
+The measured login sequence is five sequential round trips before the redirect — rate-limit history
+(two concurrent reads), lockout release, account lookup, attempt record, success audit — each
+sub-4 ms in Postgres. Two independent obstacles stopped correction:
+
+1. **Instrumentation is blocked by frozen assertions.** `src/features/auth/authActions.ts` is
+   SHA-256 byte-pinned by `verify-checkpoint-m6c.ts:441`. `UserService.authenticate` is pinned by
+   `verify-checkpoint-m6d.ts:695-709`: a contiguous `record` / failure-audit / throw block, the
+   literal call text `await this.loginRateLimiter.assertAllowed(username, clientIp)`, and **no
+   `catch` or `finally` token anywhere in the function**, matched against raw source including
+   comments. No stage timing can be added at either end without breaking a frozen assertion.
+2. **The one available reduction is not security-equivalent.** Starting the credential lookup
+   concurrently with the rate-limit gate is textually compatible with the pins and saves one round
+   trip, but it would cost a throttled attacker an extra `user_profiles` SELECT per rejected
+   request, weakening flood resistance. Equivalence cannot be proven, so the behaviour stands.
+
+Closing this requires a decision on whether the implementation or the pins are what should change,
+and that decision is the user's.
+
+### Deferred, with no implementation claimed
+
+1. **CLINIC-PERF-02 — login and protected-route latency**, measured against real Vercel and Supabase
+   rather than localhost. Security-sensitive: it touches authentication and would require
+   independent review under `AGENTS.md` §5.4.
+2. **Distinct-signatory aggregate.** A `SECURITY INVOKER` function or view returning
+   `count(distinct personnel_id) from report_signatories`, replacing the unbounded row fetch while
+   preserving the metric exactly. Needs a migration; proposed only.
+3. **Audit identity/query waterfall.** Removable only by folding the Developer exclusion into a
+   single SQL expression, not by caching.
+4. **Unindexed foreign keys** on `report_signatories.personnel_id` and
+   `patient_report_sessions.created_by_user_id`. Immaterial at 28 and 65 rows; revisit at scale.
+
+### Known gaps
+
+- The Supabase MCP was **read-only** throughout. No migration, DDL, schema change or data write was
+  made. The only live writes in the acceptance window were the user's own login, which wrote one
+  `auth_attempts` row and one `AuthenticationSucceeded` audit row.
+- Browser acceptance ran against a **local** production build. Localhost timings exclude the
+  Vercel-to-Supabase network latency that dominates real production, so they are relative, not
+  absolute. That is precisely what CLINIC-PERF-02 exists to measure.
+- The accessibility evidence is **static and DOM-structural** — roles, `aria-busy`, live-region
+  count and placement, exposure counts. No screen reader was run, so spoken output is not claimed.
+
+### Verification
+
+`tsc`, `next lint`, `next build`, `git diff --check`, and the **full 37-script verifier suite** all
+pass. Playwright acceptance ran against the production build at 1440x900 and 390x844 with the panel
+chunk throttled by route interception: no focus theft on any of the six protected routes at either
+viewport, zero horizontal overflow, zero console errors or warnings, no hydration errors, the panel
+chunk absent from every route's initial-load set and requested once on demand, all three close paths
+restoring focus, and drafts surviving close and reopen.
+
 ## Carried Items From This Period
 
 - **The app-wide duplicate page heading is undecided.** `/users`, `/personnel`, `/history`, `/audit`, `SessionHistoryView` and `DeveloperDashboardSection` all render an in-page `<h2>` beneath the global route header fed by `src/config/navigation.ts`, producing the title twice with two different subtitles. Because the pattern is app-wide, fixing it on any subset creates new inconsistency; it needs one decision and one slice.

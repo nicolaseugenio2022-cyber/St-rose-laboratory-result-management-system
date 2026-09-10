@@ -38,9 +38,15 @@ export interface DynamicResultFormProps {
    * that control's declarative fallback roster.
    */
   physicianAssignment?: WorkspacePhysicianAssignment | null;
+  /**
+   * The managed directory the Workspace has already read, passed straight through to Requested
+   * By as its fallback roster. Undefined means the Workspace has not read it, which leaves that
+   * control fetching the directory itself exactly as before.
+   */
+  physicianDirectory?: readonly string[];
 }
 
-export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto, physicianAssignment }: DynamicResultFormProps) {
+export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto, physicianAssignment, physicianDirectory }: DynamicResultFormProps) {
   const sortedParameters = useMemo(() => [...definition.parameters].sort((a, b) => a.displayOrder - b.displayOrder), [definition]);
   const calculationModes = useMemo(() => normalizeCalculationModes(report.encodingData?.calculationModes), [report.encodingData?.calculationModes]);
   const updateEncodingData = useCallback((patch: Partial<NonNullable<ILaboratoryReport["encodingData"]>>) => {
@@ -130,7 +136,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
     {/* Report setup in one recessed band, then the worksheet full-bleed to the card
         edges - the grid gets the whole width instead of losing it to a nested frame. */}
     <div className="space-y-3 border-b border-brand-border bg-brand-structural px-4 py-3">
-      <RequestedBySection policy={definition.requestedByPolicy} assignment={physicianAssignment} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
+      <RequestedBySection policy={definition.requestedByPolicy} assignment={physicianAssignment} directory={physicianDirectory} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
       <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
     </div>
     <div>

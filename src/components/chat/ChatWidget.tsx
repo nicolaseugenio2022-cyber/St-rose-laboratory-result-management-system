@@ -1,277 +1,176 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, MessageSquare, Send, Sparkles, X } from "lucide-react";
+import dynamic from "next/dynamic";
+import { MessageSquare, X } from "lucide-react";
 
-import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 /**
  * A floating support chat for the authenticated application shells. It sits in the
  * bottom-right corner of the viewport as a teal action button that expands into a
- * bounded panel. The conversation lives only in this component's memory: it is never
+ * bounded panel. The conversation lives only in the panel's memory: it is never
  * persisted, so a page reload clears it and nothing user- or patient-identifying is
  * written by the client.
  *
- * The panel marks a log region with polite announcements: streaming assistant text is
- * read as it arrives rather than being spelled out all at once. The composer is focused
- * when the panel opens and focus is returned to the launcher when it closes; Escape
- * closes it. The `print:hidden` matches the rest of the chrome - the widget is a screen
- * convenience and must never leak between the page and a printout.
+ * CLINIC-PERF-01: this module is the LAUNCHER ONLY. Every protected page mounted the
+ * whole widget - the conversation state, the NDJSON streaming reader, the assistant-content
+ * renderer and the composer - while the panel was closed, so each navigation downloaded and
+ * parsed code that nothing on the page could run until the operator chose to open it. The
+ * body lives in `ChatPanel` and is fetched on first open through `next/dynamic`, the same
+ * mechanism the Workspace and History already use for the rendering engine.
+ *
+ * What did not change: the launcher's markup, classes, icons and aria wiring; the panel's
+ * appearance and privacy warning; the `/api/chat` contract; Escape-to-close; and the focus
+ * model - the composer takes focus on open, and focus returns to this button on close.
  */
-type ChatMessage = { role: "user" | "assistant"; content: string };
 
-const WELCOME_MESSAGE: ChatMessage = {
-  role: "assistant",
-  content:
-    "Hello! I'm the St. Rose Lab Assistant. I can help you use the system — encoding " +
-    "reports, signatories, history and printing. Please keep patient names and clinical " +
-    "data out of this chat; messages are handled by an external AI provider.",
-};
-
+/**
+ * The first-open placeholder, and why the panel identity lives on it.
+ *
+ * CLINIC-PERF-01-R1: the launcher sets `aria-expanded="true"` the moment it is pressed, and
+ * `aria-controls` names `CHAT_PANEL_ID`. Between that press and the chunk arriving there was
+ * nothing in the document with that id, so on a slow connection the button claimed an
+ * expanded panel that did not exist and assistive technology was pointed at nothing. This
+ * placeholder carries the same id, so the relationship the launcher advertises is true for
+ * the whole of that interval.
+ *
+ * CLINIC-PERF-01-R2: it is not a dialog. The first revision reused the panel's
+ * `role="dialog"` and label, which claimed an operable dialog while focus deliberately stayed
+ * on the launcher and there was nothing inside to operate - a dialog nobody is in, with no
+ * focusable content, is a false promise to a screen-reader user.
+ *
+ * CLINIC-PERF-01-R3: the announcement had to leave the busy container. R2 put `role="status"`
+ * and `aria-busy="true"` on the SAME element, which is self-defeating: `aria-busy` tells
+ * assistive technology to withhold updates from that region until it settles, so the live
+ * region suppressed the very message it existed to deliver, and the region is then replaced
+ * rather than settled - the update never arrives at all. The two responsibilities are now
+ * separate elements:
+ *
+ *   - the CONTROLLED container keeps `id` and `aria-busy="true"`, and carries the geometry
+ *     and the visible text. It has no role and no live semantics, so nothing about it is
+ *     expected to be announced while it is busy.
+ *   - a single `role="status"` sr-only SIBLING, outside that busy subtree, carries the
+ *     message. Being outside is what makes it eligible to be announced at all.
+ *
+ * The visible copy is `aria-hidden`, so the text is presented once visually and once to
+ * assistive technology - never twice to the same reader. Both elements are returned by this
+ * one component, so the announcement is removed on exactly the events that retire the
+ * placeholder: the panel finishing its load, and the operator cancelling before it does.
+ *
+ * The panel's own `role="log"` does not exist yet while this is on screen, so there is
+ * exactly one live region at any moment and nothing can interleave.
+ *
+ * The geometry classes are copied from the panel deliberately, so the placeholder occupies
+ * exactly the box the panel will occupy and the swap causes no layout jump. The sr-only
+ * sibling is removed from flow and contributes none of it. The entrance animation is NOT
+ * copied: animating the placeholder in and then the panel in again would play the same
+ * motion twice for one open.
+ */
 const CHAT_PANEL_ID = "lab-support-chat";
 
-function textToNodes(text: string, keyPrefix: string): React.ReactNode[] {
-  const lines = text.split("\n");
-  const nodes: React.ReactNode[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (i > 0) {
-      nodes.push(<br key={`${keyPrefix}-nl${i}`} />);
-    }
-    if (lines[i]) {
-      nodes.push(<React.Fragment key={`${keyPrefix}-s${i}`}>{lines[i]}</React.Fragment>);
-    }
-  }
-  return nodes;
+const CHAT_LOADING_MESSAGE = "Loading Lab Support Assistant…";
+
+function ChatPanelFallback() {
+  return (
+    <>
+      <span role="status" className="sr-only">
+        {CHAT_LOADING_MESSAGE}
+      </span>
+      <section
+        id={CHAT_PANEL_ID}
+        aria-busy="true"
+        className={cn(
+          "no-print fixed bottom-[4.5rem] right-4 z-40 flex w-[min(24rem,calc(100vw-2rem))]",
+          "flex-col items-center justify-center overflow-hidden rounded-xl border border-brand-border-strong bg-brand-surface",
+          "shadow-overlay",
+          "h-[26rem] max-h-[calc(100dvh-7.5rem)] sm:h-[30rem] print:hidden",
+          "px-4 text-[13px] text-brand-text-muted"
+        )}
+      >
+        <span aria-hidden="true">{CHAT_LOADING_MESSAGE}</span>
+      </section>
+    </>
+  );
 }
 
-function renderInline(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  const boldRegex = /\*\*(.+?)\*\*/g;
-  let lastIndex = 0;
-  let match;
-  let token = 0;
-  while ((match = boldRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(...textToNodes(text.slice(lastIndex, match.index), `t${token++}`));
-    }
-    parts.push(
-      <strong key={`s${token++}`}>{textToNodes(match[1], `b${token++}`)}</strong>
-    );
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    parts.push(...textToNodes(text.slice(lastIndex), `t${token++}`));
-  }
-  return parts;
-}
-
-type Block = { type: "text" | "ul" | "ol"; items: string[] };
-
-function renderAssistantContent(content: string): React.ReactNode {
-  if (!content) return <br />;
-  const paragraphs = content.split(/\n{2,}/);
-  const blocks: React.ReactNode[] = [];
-  let idx = 0;
-
-  for (const paragraph of paragraphs) {
-    const lines = paragraph.split("\n");
-    if (lines.every((line) => line.trim() === "")) continue;
-    const classified: Array<{ type: "text" | "ul" | "ol"; text: string }> = [];
-
-    for (const line of lines) {
-      if (/^[*-]\s/.test(line)) {
-        classified.push({ type: "ul", text: line.slice(2) });
-      } else if (/^\d+\.\s/.test(line)) {
-        classified.push({ type: "ol", text: line.replace(/^\d+\.\s/, "") });
-      } else {
-        classified.push({ type: "text", text: line });
-      }
-    }
-
-    const groups: Block[] = [];
-    for (const item of classified) {
-      const last = groups[groups.length - 1];
-      if (last && last.type === item.type) {
-        last.items.push(item.text);
-      } else {
-        groups.push({ type: item.type, items: [item.text] });
-      }
-    }
-
-    const elements: React.ReactNode[] = [];
-    for (const group of groups) {
-      if (group.type === "ul") {
-        elements.push(
-          <ul key={idx++} className="list-disc pl-5">
-            {group.items.map((item, i) => (
-              <li key={i}>{renderInline(item)}</li>
-            ))}
-          </ul>
-        );
-      } else if (group.type === "ol") {
-        elements.push(
-          <ol key={idx++} className="list-decimal pl-5">
-            {group.items.map((item, i) => (
-              <li key={i}>{renderInline(item)}</li>
-            ))}
-          </ol>
-        );
-      } else {
-        elements.push(
-          <p key={idx++}>{renderInline(group.items.join("\n"))}</p>
-        );
-      }
-    }
-
-    if (elements.length > 0) {
-      blocks.push(<React.Fragment key={`pg${idx}`}>{elements}</React.Fragment>);
-    }
-  }
-
-  return blocks.length > 0 ? blocks : <br />;
-}
+const ChatPanel = dynamic(
+  () => import("@/components/chat/ChatPanel").then((chatModule) => chatModule.ChatPanel),
+  { loading: () => <ChatPanelFallback /> }
+);
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Latched once the panel module has actually mounted.
+   *
+   * It keeps the panel RENDERED after a close, which is what preserves the conversation and
+   * any half-typed draft across close/reopen - the panel returns null while shut rather than
+   * unmounting. Before the first open both flags are false, so `ChatPanel` is not rendered at
+   * all and its chunk is never requested.
+   *
+   * It also bounds the placeholder: if the operator closes the panel while the chunk is still
+   * in flight, this is still false, the whole subtree unmounts, and no loading placeholder is
+   * left on screen claiming to be open. The in-flight import is not wasted - the module
+   * resolves into the bundler's cache, so reopening mounts it without a second request.
+   */
+  const [isPanelLoaded, setIsPanelLoaded] = useState(false);
 
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  /**
+   * Whether the panel has been open since the last focus restoration.
+   *
+   * CLINIC-PERF-01-R1: the restore effect below previously ran on MOUNT as well, because
+   * `isOpen` starts false and "not open" was treated as "just closed". Every protected page
+   * load therefore pulled keyboard focus out of the page and onto the floating chat button.
+   * This ref makes the effect a real open -> closed TRANSITION detector: it is only armed by
+   * an actual open, so the initial mount restores nothing and focus stays where the page put
+   * it. A ref rather than state, because arming it must not itself cause a render.
+   */
+  const hasBeenOpenedRef = useRef(false);
 
-  // Focus enters the composer when the panel opens and returns to the launcher on close.
+  const closePanel = useCallback(() => setIsOpen(false), []);
+  const handlePanelReady = useCallback(() => setIsPanelLoaded(true), []);
+
+  // Focus returns to the launcher only after the panel has actually been open and is now
+  // closed - by the launcher, by the header close button, or by Escape. Focusing the composer
+  // on open is the panel's own effect, because it owns that field's ref.
   useEffect(() => {
     if (isOpen) {
-      const id = window.setTimeout(() => inputRef.current?.focus(), 0);
-      return () => window.clearTimeout(id);
+      hasBeenOpenedRef.current = true;
+      return;
     }
+    if (!hasBeenOpenedRef.current) return;
+    hasBeenOpenedRef.current = false;
     toggleRef.current?.focus();
-    return undefined;
   }, [isOpen]);
 
-  // Stay pinned to the newest message while the conversation (or a stream) grows.
+  /**
+   * Escape during the first-open fetch, and only then.
+   *
+   * CLINIC-PERF-01-R2: Escape-to-close lives in `ChatPanel`, so while the chunk was still in
+   * flight the key did nothing - the operator had opened something they could not dismiss
+   * from the keyboard, for exactly as long as the network took. This covers that window and
+   * nothing else.
+   *
+   * `isPanelLoaded` is the handover, so the two handlers can never both be listening: the
+   * moment the panel mounts it registers its own and this effect tears down. The panel's
+   * effect runs first (child before parent), so the transition is a swap rather than a gap,
+   * and both would do the same thing anyway.
+   *
+   * Focus needs no restoration here - it never left the launcher during loading, because the
+   * placeholder holds nothing focusable and the composer does not exist yet. The transition
+   * effect above still runs on the close and re-focuses the launcher, which is harmless when
+   * it is already the active element.
+   */
   useEffect(() => {
-    const region = scrollRef.current;
-    if (region) region.scrollTop = region.scrollHeight;
-  }, [messages, isStreaming]);
-
-  useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isPanelLoaded) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setIsOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen]);
-
-  const sendMessage = useCallback(
-    async (raw: string) => {
-      const text = raw.trim();
-      if (!text || isStreaming) return;
-
-      const history: ChatMessage[] = [...messages, { role: "user", content: text }];
-      setMessages([...history, { role: "assistant", content: "" }]);
-      setInput("");
-      setError(null);
-      setIsStreaming(true);
-
-      let assembled = "";
-      try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history }),
-        });
-
-        if (!response.ok) {
-          let message = "The assistant is having trouble right now. Please try again.";
-          try {
-            const body = (await response.json()) as { error?: unknown };
-            if (response.status === 429) {
-              message = "You've sent a lot of messages in a short time. Wait a moment and try again.";
-            } else if (response.status === 503) {
-              message = "Chat support isn't configured yet. Contact your administrator.";
-            } else if (typeof body.error === "string") {
-              message = body.error;
-            }
-          } catch {
-            // Keep the generic message.
-          }
-          setError(message);
-          setMessages(history);
-          return;
-        }
-
-        // The middleware redirects an expired or missing session to the login page, which
-        // comes back as HTML with a 200. Without this guard the NDJSON parser would swallow
-        // that page silently and leave an empty bubble.
-        const contentType = response.headers.get("content-type") ?? "";
-        if (contentType.includes("text/html")) {
-          setError("Your session may have been closed. Refresh the page to continue.");
-          setMessages(history);
-          return;
-        }
-
-        if (!response.body) {
-          setError("The assistant returned an empty response. Please try again.");
-          setMessages(history);
-          return;
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let newlineIndex: number;
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(trimmed);
-            } catch {
-              continue;
-            }
-            if (typeof parsed !== "object" || parsed === null) continue;
-            const payload = parsed as { text?: unknown; done?: unknown; error?: unknown };
-            if (typeof payload.text === "string" && payload.text.length > 0) {
-              assembled += payload.text;
-              const snapshot = assembled;
-              setMessages((prev) => {
-                if (prev.length === 0) return prev;
-                const next = [...prev];
-                next[next.length - 1] = { role: "assistant", content: snapshot };
-                return next;
-              });
-            }
-            if (typeof payload.error === "string") {
-              setError(payload.error);
-            }
-          }
-        }
-      } catch {
-        setError("The assistant is unavailable right now. Please try again.");
-        setMessages(history);
-      } finally {
-        setIsStreaming(false);
-      }
-    },
-    [messages, isStreaming]
-  );
-
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    void sendMessage(input);
-  };
+  }, [isOpen, isPanelLoaded]);
 
   return (
     <>
@@ -297,112 +196,13 @@ export function ChatWidget() {
         )}
       </button>
 
-      {isOpen && (
-        <section
-          id={CHAT_PANEL_ID}
-          role="dialog"
-          aria-label="Lab support chat"
-          className={cn(
-            "no-print fixed bottom-[4.5rem] right-4 z-40 flex w-[min(24rem,calc(100vw-2rem))]",
-            "flex-col overflow-hidden rounded-xl border border-brand-border-strong bg-brand-surface",
-            "shadow-overlay motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95",
-            "h-[26rem] max-h-[calc(100dvh-7.5rem)] sm:h-[30rem] print:hidden"
-          )}
-        >
-          {/* Header band: identity navy with a quiet teal mark, matching the shell chrome. */}
-          <header className="flex shrink-0 items-center justify-between gap-3 bg-brand-navy px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/10 text-brand-tint">
-                <Sparkles aria-hidden="true" className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <h2 className="truncate text-sm font-semibold leading-tight text-white">
-                  Lab Support Assistant
-                </h2>
-                <p className="text-[11px] leading-tight text-brand-navy-muted">Powered by Groq</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              aria-label="Close lab support chat"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-brand-navy-muted transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy"
-            >
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </header>
-
-          {/* Message log: announced politely as assistant text streams in. */}
-          <div
-            ref={scrollRef}
-            role="log"
-            aria-live="polite"
-            aria-label="Chat messages"
-            className="min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-brand-surface px-3.5 py-4"
-          >
-            {messages.map((message, index) =>
-              message.role === "user" ? (
-                <div key={index} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-md bg-brand-primary px-3 py-2 text-[13px] leading-relaxed text-white [overflow-wrap:anywhere]">
-                    {message.content}
-                  </div>
-                </div>
-              ) : (
-                <div key={index} className="flex justify-start">
-                  <div className="max-w-[85%] rounded-md border border-brand-border bg-brand-structural px-3 py-2 text-[13px] leading-relaxed text-brand-text [overflow-wrap:anywhere]">
-                    {message.content
-                      ? renderAssistantContent(message.content)
-                      : isStreaming && index === messages.length - 1
-                        ? "…"
-                        : null}
-                  </div>
-                </div>
-              )
-            )}
-
-            {error && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-md border border-brand-danger bg-brand-danger-bg px-3 py-2 text-xs font-medium text-brand-danger"
-              >
-                <AlertCircle aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Composer: a compact field in the shared surface geometry with the medium action. */}
-          <form
-            onSubmit={handleSubmit}
-            className="flex shrink-0 items-center gap-2 border-t border-brand-border bg-brand-surface p-3"
-          >
-            <label htmlFor="lab-support-chat-input" className="sr-only">
-              Message
-            </label>
-            <input
-              ref={inputRef}
-              id="lab-support-chat-input"
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder="Ask a question about the system…"
-              autoComplete="off"
-              disabled={isStreaming}
-              className="h-9 min-w-0 flex-1 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-[border-color,box-shadow] placeholder:text-slate-500 hover:border-brand-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring disabled:cursor-not-allowed disabled:bg-brand-structural disabled:text-brand-text-muted disabled:opacity-80"
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              isLoading={isStreaming}
-              disabled={!input.trim() || isStreaming}
-              className="h-9 shrink-0 px-3"
-              aria-label="Send message"
-            >
-              <Send aria-hidden="true" className="h-4 w-4" />
-            </Button>
-          </form>
-        </section>
+      {(isOpen || isPanelLoaded) && (
+        <ChatPanel
+          isOpen={isOpen}
+          panelId={CHAT_PANEL_ID}
+          onClose={closePanel}
+          onReady={handlePanelReady}
+        />
       )}
     </>
   );

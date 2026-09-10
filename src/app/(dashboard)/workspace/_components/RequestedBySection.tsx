@@ -29,7 +29,7 @@ import { Stethoscope } from "lucide-react";
  * native keyboard model - and it degrades to a plain text field rather than to nothing. A
  * directory outage falls back to an empty roster, never to a blocked field.
  */
-export function RequestedBySection({ policy, assignment, value, onChange }: {
+export function RequestedBySection({ policy, assignment, directory: providedDirectory, value, onChange }: {
   policy: RequestedByPolicySpec;
   /**
    * This examination's database assignment, or null/undefined while it has not been read. Absent
@@ -37,11 +37,23 @@ export function RequestedBySection({ policy, assignment, value, onChange }: {
    * nobody.
    */
   assignment?: WorkspacePhysicianAssignment | null;
+  /**
+   * The fallback roster, when the Workspace has already read it (CLINIC-PERF-01).
+   *
+   * The Workspace now receives the physician directory during its SERVER render, so by the time
+   * this control mounts the same list is already in memory. Passing it down is the same list, not
+   * a copy of a different read: it is `listActivePhysiciansAction` mapped to `fullName`, which is
+   * precisely what `listWorkspacePhysiciansAction` below returns. Undefined means the Workspace
+   * has no roster to give - a server bootstrap failure, or any other caller - and the fetch below
+   * runs unchanged, through the same guarded boundary it always used.
+   */
+  directory?: readonly string[];
   value: string;
   onChange: (value: string) => void;
 }) {
   const [directory, setDirectory] = useState<string[]>([]);
   useEffect(() => {
+    if (providedDirectory) return; // the Workspace already read the directory server-side
     let active = true;
     listWorkspacePhysiciansAction()
       .then((names) => {
@@ -53,12 +65,14 @@ export function RequestedBySection({ policy, assignment, value, onChange }: {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const roster = providedDirectory ?? directory;
   const allowedPhysicians = policy.allowedPhysicians;
   const suggestions = useMemo(
-    () => resolveAssignedSuggestions(assignment, directory, { allowedPhysicians }),
-    [assignment, directory, allowedPhysicians],
+    () => resolveAssignedSuggestions(assignment, roster, { allowedPhysicians }),
+    [assignment, roster, allowedPhysicians],
   );
   const listId = `requested-by-${policy.fieldLabel || "physician"}`.replace(/\W+/g, "-").toLowerCase();
 

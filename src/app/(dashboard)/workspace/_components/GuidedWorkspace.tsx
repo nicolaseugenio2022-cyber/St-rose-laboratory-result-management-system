@@ -259,6 +259,7 @@ export function GuidedWorkspace({
   reopenSessionId,
   initialTemplates,
   initialPersonnel,
+  initialPhysicianOptions,
 }: {
   reopenSessionId?: string;
   /** Catalog and personnel fetched during server render (see workspace/page.tsx). When present,
@@ -267,6 +268,10 @@ export function GuidedWorkspace({
    *  client fetches below run unchanged, so no error path is lost. */
   initialTemplates?: HydratedTemplateSpec[];
   initialPersonnel?: WorkspacePersonnelEntry[];
+  /** The physician roster, on the same terms and from the same server boundary as the two above.
+   *  When present the roster starts RESOLVED, so reports materialize on the first paint instead
+   *  of waiting for a post-hydration round trip. Absent selects the client fetch below unchanged. */
+  initialPhysicianOptions?: PhysicianExaminationOption[];
 }) {
   const [session, setSession] = useState<PatientReportSessionAggregate>(() => {
     return new PatientReportSessionAggregate({
@@ -333,8 +338,25 @@ export function GuidedWorkspace({
    * rather than on an empty one. `isPhysicianRosterResolved` flips either way, and is what the
    * materialization effects below wait on.
    */
-  const [physicianOptions, setPhysicianOptions] = useState<PhysicianExaminationOption[] | null>(null);
-  const [isPhysicianRosterResolved, setIsPhysicianRosterResolved] = useState(false);
+  const [physicianOptions, setPhysicianOptions] = useState<PhysicianExaminationOption[] | null>(
+    () => initialPhysicianOptions ?? null
+  );
+  const [isPhysicianRosterResolved, setIsPhysicianRosterResolved] = useState(
+    () => initialPhysicianOptions !== undefined
+  );
+
+  /**
+   * The bare roster the Requested By control falls back to, derived rather than re-fetched.
+   *
+   * `listWorkspacePhysiciansAction` returns exactly this - `listActivePhysiciansAction` mapped to
+   * `fullName`, in the server's order - so taking it from the roster already in hand is the same
+   * list, not an approximation of it. Undefined while the roster is unread, which is what leaves
+   * the control on its own fetch.
+   */
+  const physicianDirectoryNames = useMemo(
+    () => (physicianOptions ? physicianOptions.map((option) => option.fullName) : undefined),
+    [physicianOptions]
+  );
 
   /**
    * This examination's assignment: who it offers, and where a new report starts.
@@ -509,6 +531,7 @@ export function GuidedWorkspace({
    * both branches precisely so a failed read releases materialization instead of stalling it.
    */
   useEffect(() => {
+    if (initialPhysicianOptions) return; // server render already delivered the roster
     listWorkspacePhysicianOptionsAction()
       .then((options) => {
         setPhysicianOptions(options);
@@ -517,6 +540,7 @@ export function GuidedWorkspace({
       .catch(() => {
         setIsPhysicianRosterResolved(true);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1874,6 +1898,7 @@ export function GuidedWorkspace({
                       onChangeReport={handleReportChange}
                       onRequestManualToAuto={handleRequestManualToAuto}
                       physicianAssignment={physicianAssignmentFor(activeDefinition.templateCode)}
+                      physicianDirectory={physicianDirectoryNames}
                     />
                     {/* Docked as a sibling of the report card, not inside it: the card clips with
                         overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}

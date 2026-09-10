@@ -184,7 +184,10 @@ function rowPolicy(
   // does not describe its Reactivate action.
   const toggleRestricted = isActive && (isCurrentUser || isLastActiveAdmin);
   const isStatusUpdating = statusUpdatingUserId === user.id;
-  const isRowBusy = deletingUserId === user.id || isStatusUpdating;
+  // Named on its own, beside `isStatusUpdating`, so Delete can show its own pending state the way
+  // the status toggle already does - and the way the Personnel directory's Delete does.
+  const isDeleting = deletingUserId === user.id;
+  const isRowBusy = isDeleting || isStatusUpdating;
   // Status changes are single-flight. A second click - on this row or on another - while a
   // transition is in flight re-sends it or races two refreshes against each other, and the
   // reader has no way to tell which answer won. Every toggle is held until the pending one
@@ -210,6 +213,7 @@ function rowPolicy(
     isCurrentUser,
     isLastActiveAdmin,
     isRowBusy,
+    isDeleting,
     isStatusUpdating,
     restriction,
     toggleRestricted,
@@ -327,16 +331,23 @@ function RowActions({
           {toggleVerb}
         </Button>
 
+        {/* The shared `danger` variant, exactly as the Personnel and Physician directories use it -
+            not a ghost button repainted red here. Deleting an account is the same class of
+            irreversible act as deleting a directory record, and it now carries the same tinted
+            destructive fill, hover, focus and pending treatment everywhere it is offered. The three
+            local colour classes this button used to carry are gone rather than moved: the variant
+            already states them, and a second copy could drift from it. */}
         <Button
-          variant="ghost"
+          variant="danger"
           size="sm"
-          className={cn(touch, "text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger")}
+          className={touch}
           onClick={() => onDelete(user)}
           disabled={policy.deleteDisabled}
+          isLoading={policy.isDeleting}
           aria-label={`Delete ${name}`}
           aria-describedby={policy.restriction ? restrictionId : undefined}
         >
-          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+          {!policy.isDeleting && <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
           Delete
         </Button>
       </div>

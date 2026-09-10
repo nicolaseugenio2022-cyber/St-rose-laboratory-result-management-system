@@ -545,7 +545,7 @@ export function PersonnelDirectoryView({
           onCancel={handleCancelDelete}
           onConfirm={handleConfirmDelete}
           title="Delete this personnel record permanently?"
-          description="The record is removed from the directory for good. This cannot be undone."
+          description="The live directory record is removed for good. This cannot be undone."
           confirmLabel="Delete permanently"
           pendingLabel="Deleting…"
           variant="destructive"
@@ -563,8 +563,9 @@ export function PersonnelDirectoryView({
                 </p>
               </div>
               <p className="text-xs leading-relaxed text-brand-text-muted">
-                Only a record that no laboratory report has used can be deleted. Completed
-                reports, their signatories and the audit history are never changed.
+                The person is removed from the live directory. Completed reports keep the
+                signatory name, credentials, PRC licence and signature exactly as issued, and
+                the audit history is never changed.
               </p>
             </div>
           )}

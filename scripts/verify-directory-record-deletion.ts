@@ -1,5 +1,15 @@
 /**
- * CLINIC-UI-UX-08R1 - permanent deletion of personnel and physician records.
+ * CLINIC-UI-UX-08R1, extended by CLINIC-UI-UX-08R2 - permanent deletion of personnel and physician
+ * records.
+ *
+ * CLINIC-UI-UX-08R2 changed ONE policy, for personnel only: a record historical reports name can
+ * now be removed from the live directory. It is safe because a completed report never depended on
+ * the live record - its signatory's printed name, credentials, PRC licence and signature reference
+ * are frozen on its own `report_signatories` row - and because that row's foreign key was repointed
+ * from `personnel` to a permanent `personnel_identities` record rather than removed, nulled or
+ * cascaded. `verifyPersonnelDeletionMigration()` proves that design; the personnel assertions in
+ * `verifyMigration()` now read the migration that supersedes the function, not the one that
+ * introduced it. Physician deletion is untouched and still refuses a referenced record.
  *
  * CHARTER. Deletion is decided and performed by the database: `delete_inactive_personnel()` and
  * `delete_inactive_physician()` lock the row, re-decide every condition, delete it and write the
@@ -224,9 +234,15 @@ const KINDS: readonly RecordKind[] = [
     action: deletePersonnelAction,
     fn: "delete_inactive_personnel",
     idArg: "p_personnel_id",
-    refusals: ["NOT_FOUND", "STILL_ACTIVE", "REFERENCED_BY_REPORTS"],
-    // A personnel record holds no examination assignment, so this word is not a personnel answer.
-    foreignWords: ["HAS_ASSIGNMENTS"],
+    refusals: ["NOT_FOUND", "STILL_ACTIVE"],
+    // A personnel record holds no examination assignment, so HAS_ASSIGNMENTS is not a personnel
+    // answer - and since CLINIC-UI-UX-08R2 neither is REFERENCED_BY_REPORTS. A completed report
+    // keeps its signatory's printed identity and signature reference on its own frozen
+    // `report_signatories` row, which references the permanent identity rather than the live
+    // directory entry, so a record historical reports name is deleted like any other. Listing the
+    // word here is the positive proof of that: were the database to answer it, the repository must
+    // throw rather than let the screen report a refusal that no longer exists.
+    foreignWords: ["HAS_ASSIGNMENTS", "REFERENCED_BY_REPORTS"],
   },
   {
     label: "physician",
@@ -473,6 +489,20 @@ function verifyNoDirectDelete(): void {
 const MIGRATION_PATH =
   "supabase/migrations/20260913120000_stable_physician_references_and_atomic_directory_deletion.sql";
 
+/**
+ * CLINIC-UI-UX-08R2. The migration that supersedes `delete_inactive_personnel()`.
+ *
+ * A migration is forward-only, so the personnel function is defined twice in the tree: once in the
+ * file above, which is applied and must never be edited, and once here, which is what the database
+ * actually runs. Every personnel assertion below reads THIS file. The older definition is left
+ * where it is and is not asserted against, or the verifier would pin a policy the database has
+ * stopped enforcing and pass while the live behaviour diverged.
+ *
+ * `delete_inactive_physician()` is NOT redefined here, so it is still read from the older file.
+ */
+const PERSONNEL_DELETION_MIGRATION_PATH =
+  "supabase/migrations/20260914120000_historical_safe_personnel_deletion.sql";
+
 function stripSqlComments(sql: string): string {
   return sql.replace(/--[^\n]*/g, "");
 }
@@ -588,15 +618,26 @@ function verifyMigration(): void {
   );
 
   // The two deletion functions: one transaction, fixed order, closed answers.
-  for (const [name, table, eventType, constraint, words] of [
+  //
+  // Each is read from the file that currently DEFINES it: the physician function from the older
+  // migration, the personnel function from the CLINIC-UI-UX-08R2 migration that supersedes it.
+  //
+  // `constraint` is the one foreign-key violation a delete is allowed to translate into
+  // REFERENCED_BY_REPORTS. It is null for personnel, which no longer has one: nothing references
+  // `personnel` at all after CLINIC-UI-UX-08R2, so a violation there would be an unmodelled state
+  // and must abort the transaction rather than be answered with a refusal word.
+  const personnelSql = readPersonnelDeletionMigration();
+  for (const [source, name, table, eventType, constraint, words] of [
     [
+      personnelSql,
       "delete_inactive_personnel",
       "personnel",
       "PersonnelRecordDeleted",
-      "report_signatories_personnel_id_fkey",
-      ["DELETED", "NOT_FOUND", "REFERENCED_BY_REPORTS", "STILL_ACTIVE"],
+      null,
+      ["DELETED", "NOT_FOUND", "STILL_ACTIVE"],
     ],
     [
+      sql,
       "delete_inactive_physician",
       "physicians",
       "PhysicianRecordDeleted",
@@ -604,17 +645,19 @@ function verifyMigration(): void {
       ["DELETED", "HAS_ASSIGNMENTS", "NOT_FOUND", "REFERENCED_BY_REPORTS", "STILL_ACTIVE"],
     ],
   ] as const) {
-    const body = functionBody(sql, name);
+    const body = functionBody(source, name);
     const validate = body.search(/p_actor_role IS DISTINCT FROM 'Admin'\s+THEN\s+RAISE EXCEPTION 'INVALID_PAYLOAD[^']*'\s+USING ERRCODE = 'ST007';/);
     const lock = body.search(new RegExp(`FROM ${table}\\s+WHERE ${table}\\.id = p_\\w+_id\\s+FOR UPDATE;`));
     const notFound = body.indexOf("RETURN 'NOT_FOUND';");
     const stillActive = body.indexOf("RETURN 'STILL_ACTIVE';");
     const del = body.search(new RegExp(`DELETE FROM ${table}\\s+WHERE ${table}\\.id = v_\\w+\\.id\\s+AND NOT ${table}\\.is_active;`));
-    const handler = body.search(
-      new RegExp(
-        `EXCEPTION WHEN foreign_key_violation THEN\\s+GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;\\s+IF v_constraint = '${constraint}' THEN\\s+RETURN 'REFERENCED_BY_REPORTS';\\s+END IF;\\s+RAISE;\\s+END;`
-      )
-    );
+    const handler = constraint
+      ? body.search(
+          new RegExp(
+            `EXCEPTION WHEN foreign_key_violation THEN\\s+GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;\\s+IF v_constraint = '${constraint}' THEN\\s+RETURN 'REFERENCED_BY_REPORTS';\\s+END IF;\\s+RAISE;\\s+END;`
+          )
+        )
+      : del;
     const rowGuard = body.search(/IF v_deleted <> 1 THEN\s+RAISE EXCEPTION/);
     const audit = body.indexOf("INSERT INTO audit_logs");
     const deleted = body.indexOf("RETURN 'DELETED';");
@@ -624,11 +667,18 @@ function verifyMigration(): void {
         notFound > lock &&
         stillActive > notFound &&
         del > stillActive &&
-        handler > del &&
+        handler >= del &&
         rowGuard > handler &&
         audit > rowGuard &&
         deleted > audit,
       `${name} validates, locks the row, refuses a missing or active record, deletes, maps only its own foreign key, requires exactly one deleted row, then audits, then answers DELETED - in that order`
+    );
+    // A function with no constraint to translate must carry no foreign-key handler at all. Without
+    // this, dropping the `constraint` entry above would silently stop checking the handler rather
+    // than prove its absence.
+    assert(
+      constraint !== null || !/EXCEPTION\s+WHEN\s+foreign_key_violation/i.test(body),
+      `${name} translates no foreign-key violation into a refusal word - it has none to translate`
     );
     assert(
       (body.match(/INSERT INTO audit_logs/g) ?? []).length === 1 &&
@@ -659,20 +709,171 @@ function verifyMigration(): void {
       ),
     "a physician named by printed text alone - a report, a legacy session or a completed snapshot - is refused as referenced"
   );
-  const personnel = functionBody(sql, "delete_inactive_personnel");
-  assert(
-    /completed_snapshot @> jsonb_build_object\([\s\S]*?'signatories',\s*jsonb_build_array\(jsonb_build_object\('personnelId', v_personnel\.id::text\)\)/.test(
-      personnel
-    ),
-    "a personnel record named only by a signatory frozen into a completed snapshot is refused as referenced"
-  );
+  const personnel = functionBody(personnelSql, "delete_inactive_personnel");
   assert(
     /v_personnel\.signature_image_url ~ '\^\/api\/signatures\/proxy\\\?path=personnel%2F\[0-9a-f\]\{8\}-/.test(personnel) &&
       /'objectPath',\s+replace\(substr\(v_personnel\.signature_image_url, char_length\('\/api\/signatures\/proxy\?path='\) \+ 1\), '%2F', '\/'\)/.test(
         personnel
       ) &&
-      !/storage\./i.test(sql),
+      !/storage\./i.test(sql) &&
+      !/storage\./i.test(personnelSql),
     "the retained signature's path is recorded under objectPath only for the canonical stored form, and no storage object is touched"
+  );
+}
+
+/* ──────────────────── CLINIC-UI-UX-08R2: historical-safe personnel deletion ─────────────────── */
+
+function readPersonnelDeletionMigration(): string {
+  assert(
+    existsSync(join(cwd, PERSONNEL_DELETION_MIGRATION_PATH)),
+    "the historical-safe personnel deletion migration is present"
+  );
+  const sql = stripSqlComments(readSource(PERSONNEL_DELETION_MIGRATION_PATH));
+  assert(sql.trim().length > 1000, "the personnel deletion migration's executable SQL was read");
+  return sql;
+}
+
+/**
+ * The archival design, and what it must never have done instead.
+ *
+ * The policy change is that an inactive Pathologist or Medical Technologist can be removed from the
+ * live directory even when historical reports name them. The only honest way to reach that is to
+ * stop the frozen signatory row from depending on the LIVE record while keeping every value it
+ * holds - including `personnel_id`, which is half of the address the signature proxy resolves a
+ * completed report's signature by (`?reportId=&personnelId=`). So the foreign key is repointed at a
+ * permanent identity, not removed, not made to cascade, and not nulled.
+ */
+function verifyPersonnelDeletionMigration(): void {
+  const sql = readPersonnelDeletionMigration();
+
+  // The permanent identity, with this schema's posture: RLS on, and reachable by service_role only.
+  assert(
+    /CREATE TABLE IF NOT EXISTS personnel_identities \(\s*id UUID PRIMARY KEY,\s*created_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)\s*\);/.test(
+      sql
+    ),
+    "personnel_identities is created with the personnel id as its primary key"
+  );
+  assert(
+    /ALTER TABLE personnel_identities ENABLE ROW LEVEL SECURITY;/.test(sql) &&
+      /REVOKE ALL ON TABLE personnel_identities FROM PUBLIC, anon, authenticated;/.test(sql),
+    "personnel_identities enables row level security and is unreachable by PUBLIC, anon or authenticated"
+  );
+  // An identity row is written once and never changed or removed - that permanence is what keeps a
+  // frozen signatory row's parent valid forever. The privilege set has to say so, and because
+  // Supabase default-grants ALL on a new public table to service_role, only the REVOKE enforces it.
+  assert(
+    /GRANT SELECT, INSERT ON TABLE personnel_identities TO service_role;/.test(sql) &&
+      /REVOKE UPDATE, DELETE, TRUNCATE ON TABLE personnel_identities FROM service_role;/.test(sql) &&
+      !/GRANT\s+ALL\s+ON\s+TABLE\s+personnel_identities/i.test(sql),
+    "the identity table can only be read from and inserted into - update, delete and truncate are revoked even from service_role"
+  );
+
+  // Identity rows come only from a real personnel insert, so the foreign key below is a real
+  // guarantee rather than an auto-satisfied formality - and a RETIRED identity can never be reused.
+  const trigger = functionBody(sql, "record_personnel_identity");
+  assert(
+    /INSERT INTO personnel_identities \(id\) VALUES \(NEW\.id\);/.test(trigger) &&
+      !/ON CONFLICT/i.test(trigger),
+    "a new personnel record records its identity, and reusing a retired identity raises rather than being absorbed"
+  );
+  assert(
+    /CREATE TRIGGER trg_personnel_record_identity\s+BEFORE INSERT ON personnel\s+FOR EACH ROW\s+EXECUTE FUNCTION record_personnel_identity\(\);/.test(
+      sql
+    ),
+    "the identity is recorded by the database before every personnel insert, never by the application"
+  );
+  assert(
+    /ADD CONSTRAINT personnel_id_identity_fkey\s+FOREIGN KEY \(id\) REFERENCES personnel_identities \(id\) ON DELETE RESTRICT;/.test(
+      sql
+    ),
+    "a personnel record is a child of its identity, ON DELETE RESTRICT - deleting the record never deletes the identity"
+  );
+
+  // The frozen signatory row keeps its exact personnel_id and gains a parent that outlives the
+  // directory entry. The constraint is re-created immediately, under the same name.
+  const dropIndex = sql.indexOf(
+    "ALTER TABLE report_signatories DROP CONSTRAINT IF EXISTS report_signatories_personnel_id_fkey;"
+  );
+  const addIndex = sql.search(
+    /ALTER TABLE report_signatories\s+ADD CONSTRAINT report_signatories_personnel_id_fkey\s+FOREIGN KEY \(personnel_id\) REFERENCES personnel_identities \(id\) ON DELETE RESTRICT;/
+  );
+  assert(
+    dropIndex >= 0 && addIndex > dropIndex,
+    "report_signatories_personnel_id_fkey is repointed at the permanent identity, keeping its name, its column and ON DELETE RESTRICT"
+  );
+  // Scanned with the privilege statements removed. `REVOKE UPDATE, DELETE, TRUNCATE ...` NAMES those
+  // verbs in order to take them away, which is the opposite of performing them; matching the bare
+  // words across the whole file would read a hardening step as a destructive one. Removing GRANT and
+  // REVOKE statements - and nothing else - keeps the assertion's meaning exactly, because no
+  // privilege statement can contain a DROP or a TRUNCATE of its own.
+  const executableSql = sql.replace(/^[ \t]*(?:GRANT|REVOKE)\b[^;]*;/gim, "");
+  assert(
+    (sql.match(/DROP CONSTRAINT/g) ?? []).length === 1 &&
+      !/\bDROP\s+(?:TABLE|COLUMN|TRIGGER|FUNCTION|INDEX)\b/i.test(executableSql) &&
+      !/\bTRUNCATE\b/i.test(executableSql),
+    "the only thing the migration drops is that one foreign key, which it immediately re-creates"
+  );
+  assert(
+    !/\bCASCADE\b/i.test(sql) &&
+      !/\bSET\s+NULL\b/i.test(sql) &&
+      !/ALTER\s+(?:TABLE\s+report_signatories\s+)?ALTER\s+COLUMN/i.test(sql) &&
+      !/report_signatories[\s\S]{0,80}?DROP NOT NULL/i.test(sql),
+    "nothing cascades or detaches, and report_signatories.personnel_id is neither made nullable nor nulled - the signature address depends on its exact value"
+  );
+
+  // Nothing clinical is written, by the migration or by the function it installs.
+  assert(
+    !/\b(?:UPDATE|INSERT INTO)\s+patient_report_sessions\b/i.test(sql) &&
+      !/SET\s+(?:encoding_data|demographics|completed_snapshot)\b/i.test(sql) &&
+      !/\b(?:UPDATE|DELETE FROM)\s+audit_logs\b/i.test(sql) &&
+      !/\b(?:UPDATE|DELETE FROM|INSERT INTO)\s+(?:report_signatories|laboratory_reports|laboratory_results|physician_examination_assignments|physicians)\b/i.test(
+        sql
+      ),
+    "the migration writes no session, report, result, snapshot, signatory, assignment, physician or existing audit row"
+  );
+
+  // Security posture of both functions this file installs, and of nothing else.
+  assert(!/SECURITY\s+DEFINER/i.test(sql), "no function in the personnel deletion migration is SECURITY DEFINER");
+  for (const name of ["record_personnel_identity", "delete_inactive_personnel"]) {
+    const body = functionBody(sql, name);
+    assert(
+      body.length > 0 &&
+        /\bLANGUAGE plpgsql\s+SECURITY INVOKER\s+SET search_path = public, pg_temp\s+AS \$function\$/.test(body),
+      `${name} is SECURITY INVOKER with its search_path pinned to public, pg_temp`
+    );
+    assert(
+      new RegExp(`REVOKE EXECUTE ON FUNCTION ${name}\\([^)]*\\) FROM PUBLIC, anon, authenticated;`).test(sql),
+      `${name} cannot be executed by PUBLIC, anon or authenticated`
+    );
+  }
+  const grants = Array.from(sql.matchAll(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(\w+)\([^)]*\)\s+TO\s+([^;]+);/gi)).map(
+    (match) => `${match[1]} -> ${match[2].trim()}`
+  );
+  assert(
+    canonical(grants.sort()) === canonical(["delete_inactive_personnel -> service_role"]) &&
+      !/\bGRANT\s+EXECUTE\b[^;]*\b(?:anon|authenticated|PUBLIC)\b/i.test(sql),
+    `only the personnel deletion function is newly executable, and only by service_role (found: ${JSON.stringify(grants)})`
+  );
+
+  // The policy itself: the two references that used to refuse are gone, and the delete is confined
+  // to `personnel`.
+  const personnel = functionBody(sql, "delete_inactive_personnel");
+  assert(
+    !/REFERENCED_BY_REPORTS/.test(personnel) &&
+      !/completed_snapshot/i.test(personnel) &&
+      !/report_signatories/i.test(personnel),
+    "a personnel record named by a frozen signatory row or by a completed snapshot is no longer refused - the function reads neither"
+  );
+  assert(
+    (personnel.match(/DELETE FROM/g) ?? []).length === 1 &&
+      /DELETE FROM personnel\s+WHERE personnel\.id = v_personnel\.id\s+AND NOT personnel\.is_active;/.test(personnel) &&
+      !/\bUPDATE\s+\w+\s+SET\b/i.test(personnel),
+    "the deletion removes exactly one row, from personnel, and rewrites no other row anywhere"
+  );
+  assert(
+    /FROM personnel\s+WHERE personnel\.id = p_personnel_id\s+FOR UPDATE;/.test(personnel) &&
+      personnel.indexOf("FOR UPDATE;") < personnel.indexOf("IF v_personnel.is_active THEN"),
+    "the record is still locked before its inactivity is decided, so it cannot be reactivated underneath the delete"
   );
 }
 
@@ -816,6 +1017,7 @@ async function main(): Promise<void> {
 
   verifyNoDirectDelete();
   verifyMigration();
+  verifyPersonnelDeletionMigration();
 
   const messages = recordDeletion.RECORD_DELETION_REFUSAL_MESSAGES;
   const codes = ["NOT_FOUND", "STILL_ACTIVE", "REFERENCED_BY_REPORTS", "HAS_ASSIGNMENTS"] as const;
@@ -833,6 +1035,28 @@ async function main(): Promise<void> {
   assert(
     /Deactivate/.test(messages.STILL_ACTIVE) && /assign/i.test(messages.HAS_ASSIGNMENTS),
     "the active and assignment refusals each say what the Administrator must do first"
+  );
+
+  // CLINIC-UI-UX-08R2. The personnel confirmation must describe the deletion it now performs.
+  // Saying a referenced record cannot be deleted, in the dialog that is about to delete one, is
+  // worse than saying nothing: the operator confirms against a promise the server no longer keeps.
+  const personnelView = readSource(
+    "src/app/(app)/personnel/_components/PersonnelDirectoryView.tsx"
+  );
+  const personnelDialog = guardedRegions(stripComments(personnelView), /\{\s*canManage\s*&&/).filter(
+    (region) => /<ConfirmDialog\b/.test(region)
+  )[0];
+  assert(
+    personnelDialog !== undefined &&
+      /live directory/i.test(personnelDialog) &&
+      /Completed reports keep the[\s\S]{0,120}?signature/i.test(personnelDialog) &&
+      /cannot be undone/i.test(personnelDialog),
+    "the personnel confirmation says the live directory record goes permanently, that completed reports keep their signatory information, and that it cannot be undone"
+  );
+  assert(
+    !/no laboratory report has used/i.test(personnelView) &&
+      !/cannot be deleted/i.test(personnelDialog ?? ""),
+    "the personnel confirmation no longer tells the operator that a record laboratory reports use cannot be deleted"
   );
 
   verifyScreen();

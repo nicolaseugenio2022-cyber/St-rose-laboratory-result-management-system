@@ -23,12 +23,16 @@ const PERSONNEL_COLUMNS = `
   updated_at
 `;
 
-/** Every word `delete_inactive_personnel()` can answer. Anything else is not an answer. */
+/**
+ * Every word `delete_inactive_personnel()` can answer. Anything else is not an answer.
+ *
+ * REFERENCED_BY_REPORTS is no longer one of them, and is therefore now as foreign here as
+ * HAS_ASSIGNMENTS: an answer of either is thrown, never reported as a refusal the screen explains.
+ */
 const PERSONNEL_DELETION_OUTCOMES: ReadonlySet<string> = new Set<PersonnelDeletionOutcome>([
   "DELETED",
   "NOT_FOUND",
   "STILL_ACTIVE",
-  "REFERENCED_BY_REPORTS",
 ]);
 
 interface PersonnelRow {
@@ -181,9 +185,14 @@ export class SupabasePersonnelRepository
   /**
    * Permanently delete ONE inactive personnel record, and audit it, as ONE transaction.
    *
-   * Everything happens inside `delete_inactive_personnel()`: the row is locked, its inactivity and
-   * every report reference are re-decided, the row is deleted, and the deletion audit is written
-   * before the transaction commits. This repository issues no table delete of its own.
+   * Everything happens inside `delete_inactive_personnel()`: the row is locked, its inactivity is
+   * re-decided, the row is deleted, and the deletion audit is written before the transaction
+   * commits. This repository issues no table delete of its own.
+   *
+   * A record historical reports name is deleted like any other. Each completed report keeps its own
+   * frozen `report_signatories` row - printed name, credentials, PRC licence and signature
+   * reference - and that row references the permanent identity, not the directory entry, so no
+   * report, result, snapshot or signatory row is touched by the deletion.
    *
    * Errors are thrown, never swallowed or read as a refusal: an outage or a failed audit write
    * rolled the whole transaction back, and the caller must not report it as either a deletion or a

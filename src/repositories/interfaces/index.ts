@@ -169,15 +169,31 @@ export interface DirectoryDeletionActor {
   role: AuthRole;
 }
 
-/** What `delete_inactive_personnel()` answers: a closed set of words, DELETED or one refusal. */
-export type PersonnelDeletionOutcome =
+/**
+ * What `delete_inactive_personnel()` answers: a closed set of words, DELETED or one refusal.
+ *
+ * REFERENCED_BY_REPORTS is deliberately NOT among them. A completed report keeps its signatory's
+ * name, credentials, PRC licence and signature on its own frozen `report_signatories` row, and that
+ * row now references the permanent `personnel_identities` record rather than the live directory
+ * entry, so removing the directory entry changes nothing a completed report renders. The function
+ * has no reason left to refuse a record that once signed.
+ */
+export type PersonnelDeletionOutcome = "DELETED" | "NOT_FOUND" | "STILL_ACTIVE";
+
+/**
+ * What `delete_inactive_physician()` answers.
+ *
+ * Stated in full rather than extended from the personnel set: a physician is named by PRINTED TEXT
+ * inside reports, sessions and completed snapshots, which no separate row preserves, so a physician
+ * any retained report names is still refused as REFERENCED_BY_REPORTS. The two closed sets are
+ * independent contracts and must not move together.
+ */
+export type PhysicianDeletionOutcome =
   | "DELETED"
   | "NOT_FOUND"
   | "STILL_ACTIVE"
-  | "REFERENCED_BY_REPORTS";
-
-/** What `delete_inactive_physician()` answers; a physician is also refused for its assignments. */
-export type PhysicianDeletionOutcome = PersonnelDeletionOutcome | "HAS_ASSIGNMENTS";
+  | "REFERENCED_BY_REPORTS"
+  | "HAS_ASSIGNMENTS";
 
 export interface IPersonnelRepository {
   findById(id: string): Promise<IPersonnel | null>;
@@ -194,12 +210,15 @@ export interface IPersonnelRepository {
  */
 export interface IPersonnelDeletionRepository {
   /**
-   * Permanently delete ONE inactive record that no laboratory report names, and record the
-   * deletion, in ONE database transaction - `delete_inactive_personnel()`.
+   * Permanently delete ONE inactive record, and record the deletion, in ONE database transaction -
+   * `delete_inactive_personnel()`.
    *
    * The function locks the row, re-decides every condition, deletes, and writes the audit record
    * before it commits; either both happen or neither does. This method issues no table delete of
    * its own. Returns the function's answer; a failed request is thrown, never read as a refusal.
+   *
+   * A record historical reports name is deleted like any other: the reports keep their own frozen
+   * signatory rows and nothing clinical is cascaded, deleted or rewritten.
    */
   deleteInactive(id: string, actor: DirectoryDeletionActor): Promise<PersonnelDeletionOutcome>;
 }

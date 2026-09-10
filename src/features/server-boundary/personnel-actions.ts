@@ -201,32 +201,39 @@ export async function togglePersonnelStatusAction(input: unknown): Promise<void>
 }
 
 /**
- * Permanently delete ONE inactive personnel record that no laboratory report names.
+ * Permanently delete ONE inactive personnel record from the LIVE directory.
  *
- * Deactivation remains the ordinary, reversible withdrawal. This is the rare clean-up of a record
- * that was never used - a mistyped entry, a duplicate. The caller is an Administrator, checked
- * BEFORE the payload is parsed - Developer and User callers are refused by the guard, which audits
- * the refusal exactly as for every other write - and the id is parsed strictly. Every other
- * condition is decided by the database, inside `delete_inactive_personnel()`, in the one
- * transaction that also deletes the row and writes its audit record:
+ * Deactivation remains the ordinary, reversible withdrawal. This removes the directory entry for
+ * good, and it is offered for a record historical reports name as well as for one nothing ever
+ * used. The caller is an Administrator, checked BEFORE the payload is parsed - Developer and User
+ * callers are refused by the guard, which audits the refusal exactly as for every other write - and
+ * the id is parsed strictly. Every other condition is decided by the database, inside
+ * `delete_inactive_personnel()`, in the one transaction that also deletes the row and writes its
+ * audit record:
  *
- *   - the record exists and is INACTIVE - an active signatory must be deactivated first;
- *   - no laboratory report names it: no `report_signatories` row and no signatory frozen into a
- *     completed snapshot. A record in that history is kept, inactive, for good.
+ *   - the record exists and is INACTIVE - an active signatory must be deactivated first.
  *
- * The function locks the record's row before it checks anything, and
- * `report_signatories.personnel_id` carries no ON DELETE action, so a signatory saved concurrently
- * either waits for the decision or makes the database refuse the delete. Nothing is cascaded.
+ * That is now the whole condition. It used to also require that no laboratory report named the
+ * record, which made anyone who had ever signed undeletable. What a completed report prints about
+ * its signatory - name, credentials, PRC licence, signature reference, order - lives on that
+ * report's own `report_signatories` row, and that row references the permanent
+ * `personnel_identities` record rather than the live directory entry. The directory entry is
+ * therefore not a dependency of any issued report, and removing it changes nothing one renders.
  *
- * THE SIGNATURE OBJECT IS RETAINED, BY POLICY. A stored signature image stays in the private
- * `personnel-signatures` bucket when its record is deleted, for three reasons. The signature actions
- * never delete an object either, so every image ever uploaded stays available to audit. A storage
- * call cannot join the row delete in one transaction: made after it, it can fail and leave the
- * object anyway; made before it, it can strand a row pointing at nothing. And once the row is gone
- * no application path serves the object - the signature proxy serves a path only while a personnel
- * row or a `report_signatories` row references it, and this deletion is allowed only when no report
- * does. The function writes the retained path into the deletion audit as `objectPath` so an
- * operator can find it. A retained, unreachable object is a known residual, not an oversight.
+ * NOTHING CLINICAL IS TOUCHED. The function deletes one row, from `personnel`, and nothing else.
+ * No report, result, session, completed snapshot, signatory row or audit record is deleted,
+ * detached or rewritten, and no foreign key it relies on cascades. The row is locked before
+ * anything is checked, so it cannot be reactivated underneath the decision.
+ *
+ * THE SIGNATURE OBJECT IS RETAINED, BY POLICY, AND STAYS REACHABLE. A stored signature image stays
+ * in the private `personnel-signatures` bucket when its record is deleted. The signature actions
+ * never delete an object either, so every image ever uploaded stays available to audit, and a
+ * storage call could not join the row delete in one transaction in any case. Where a completed
+ * report references the object, the signature proxy still serves it to an authorized caller: the
+ * frozen address resolves through the report's own `report_signatories` row, which survives, and
+ * the legacy path address is still validated against that row. Only an object no report references
+ * becomes unreachable once the directory entry is gone. The function writes the retained path into
+ * the deletion audit as `objectPath` either way, so an operator can find it.
  *
  * A refusal commits nothing and records nothing, exactly like DUPLICATE_PRC. DELETED means the row
  * and its PersonnelRecordDeleted audit record committed together, so `auditRecorded` is true. A

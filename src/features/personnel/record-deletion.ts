@@ -4,10 +4,10 @@
  * Client-safe on purpose - it imports nothing - so the refusal codes the server returns and the
  * sentences the directory shows for them live in one module and cannot drift apart.
  *
- * Deactivation remains the ordinary, reversible withdrawal. Deletion is the rare clean-up of a
- * record nothing issued depends on, and the server decides every condition for it: the record is
- * inactive, no laboratory report names it, and (for a physician) no examination assignment still
- * points at it. A refusal is data the screen explains, never an exception.
+ * Deactivation remains the ordinary, reversible withdrawal. Deletion permanently removes the LIVE
+ * directory record, and the server decides every condition for it: the record is inactive, no
+ * laboratory report names a physician by printed text, and (for a physician) no examination
+ * assignment still points at it. A refusal is data the screen explains, never an exception.
  */
 export type RecordDeletionRefusal =
   | "NOT_FOUND"
@@ -15,8 +15,23 @@ export type RecordDeletionRefusal =
   | "REFERENCED_BY_REPORTS"
   | "HAS_ASSIGNMENTS";
 
-/** A personnel record carries no examination assignments, so it cannot be refused for them. */
-export type PersonnelDeletionRefusal = Exclude<RecordDeletionRefusal, "HAS_ASSIGNMENTS">;
+/**
+ * The two words a personnel deletion can be refused with.
+ *
+ * A personnel record carries no examination assignments, so it cannot be refused for them; and it
+ * is never refused for being named by a report either. Every completed report keeps its signatory's
+ * printed name, credentials, PRC licence and signature on its own frozen row, which references the
+ * permanent identity rather than the live directory entry, so removing the entry changes nothing a
+ * completed report renders.
+ *
+ * REFERENCED_BY_REPORTS remains in `RecordDeletionRefusal` because a PHYSICIAN is still refused for
+ * it: a physician is named by printed text inside reports, sessions and completed snapshots, and no
+ * separate row preserves that text independently of the directory.
+ */
+export type PersonnelDeletionRefusal = Exclude<
+  RecordDeletionRefusal,
+  "HAS_ASSIGNMENTS" | "REFERENCED_BY_REPORTS"
+>;
 
 /**
  * `auditRecorded` says whether the deletion's audit record is known to have been written. The

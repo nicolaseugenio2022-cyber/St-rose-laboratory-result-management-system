@@ -8,11 +8,18 @@ import {
   toAuditReaderRole,
   type AuditReadCriteria,
 } from "@/services/audit-read-service";
-import { auditReadService } from "@/services/audit-read-service-instance";
+import {
+  auditReadService,
+  prefetchDeveloperIdentities,
+} from "@/services/audit-read-service-instance";
 
 const DEFAULT_AUDIT_PAGE_SIZE = 25;
 
 export default async function AuditPage() {
+  // CLINIC-PERF-02: started before the caller resolves, so the Developer-identity read overlaps the
+  // authenticated-user read instead of following it. Authorization below is unchanged, and only
+  // readPage's Admin branch consumes the result.
+  prefetchDeveloperIdentities();
   const currentUserProfile = await getCurrentUserProfile();
   const access = checkRouteAccess("/audit", currentUserProfile);
 

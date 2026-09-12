@@ -42,12 +42,21 @@ export function WorkspaceShell({ children, currentUserRole }: WorkspaceShellProp
           id="workspace-main"
           tabIndex={-1}
           inert={isDrawerOpen || undefined}
+          // Anchors the chat surfaces to the navigation rail from lg up. An attribute rather
+          // than a prop because the panel's loading placeholder is rendered by a callback that
+          // receives none, and both surfaces must share one position or the placeholder lands
+          // in the opposite corner and jumps when the real panel arrives.
+          data-chat-anchor="workspace-rail"
           className="flex min-w-0 flex-1 flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
         >
           {children}
-          {/* Support chat, fixed bottom-right; inert with the workspace while the mobile
-              drawer is open. */}
-          <ChatWidget />
+          {/* Support chat; inert with the workspace while the mobile drawer is open. On a phone
+              it is the bottom-right button it has always been. From lg up it moves into the
+              navigation rail's own column, because at the bottom-right it covered the sticky
+              Report Details row and its Show/Hide control - a fixed element reserves no space,
+              so the only alternatives were an interactive control sitting underneath it or a
+              permanent band of empty desk below the worksheet. */}
+          <ChatWidget launcherPlacement="workspace-rail" />
         </div>
       </div>
     </WorkspaceNavigationGuardProvider>

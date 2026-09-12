@@ -587,9 +587,16 @@ export function SessionHistoryView({
       const deleted = await deleteCompletedSession({ sessionId: session.id });
       setPendingCompletedDeleteEntry(null);
       if (!deleted.success) {
-        // An expected refusal: an unauthorized caller, or a session already gone. Nothing was
-        // deleted, so the list is deliberately NOT refreshed.
+        // An expected refusal: an unauthorized caller, or a session already gone. The refusal
+        // itself says which of those it was to nobody - the server collapses every reason into
+        // one sentence on purpose, so a refusal can never be used to discover whether a session
+        // exists. The list is re-read anyway, and that leaks nothing: it returns exactly the rows
+        // this caller was already entitled to see, and it is what the refusal text asks the
+        // operator to do by hand. A row that is genuinely gone stops being offered; a row that is
+        // still there stays, with the reason still on screen above it. Leaving the list alone was
+        // the old behaviour, and it made an already-deleted row refuse forever.
         setDeleteError(deleted.error);
+        setReloadToken((current) => current + 1);
         return;
       }
       setReloadToken((current) => current + 1);
@@ -614,9 +621,12 @@ export function SessionHistoryView({
       setPendingDeleteEntry(null);
       if (!deleted.success) {
         // Expected refusal - missing, not owned, or no longer a draft. All three share one
-        // sentence by design, so this never becomes an existence oracle. The list is NOT
-        // refreshed: nothing was deleted.
+        // sentence by design, so this never becomes an existence oracle, and nothing below
+        // inspects which one it was. The list is re-read on the refusal as well as on success,
+        // for the reason given in the completed handler above: the rows returned are the ones
+        // this caller may already see, so refreshing discloses nothing the refusal did not.
         setDeleteError(deleted.error);
+        setReloadToken((current) => current + 1);
         return;
       }
       setReloadToken((current) => current + 1);

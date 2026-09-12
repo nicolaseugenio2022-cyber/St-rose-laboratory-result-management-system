@@ -1939,7 +1939,7 @@ export function GuidedWorkspace({
               </div>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 gap-3 overflow-hidden pb-[var(--floating-dock-clearance)]">
+            <div className="flex h-full min-h-0 gap-3 overflow-hidden">
               {/* The work queue, docked. 240px, and only at a width where surrendering 240px
                   still leaves the worksheet more than it needs; below that the same queue is
                   the drawer instead, reached from the trigger above. */}
@@ -1975,7 +1975,19 @@ export function GuidedWorkspace({
                   keyboard is never parked underneath it (WCAG 2.2 Focus Not Obscured). It is a
                   single unconditional value now: the two-row context strip that used to force a
                   conditional one has moved out of this scroller and into the frame. */}
-              <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-3 scroll-pb-16">
+              {/* The launcher clearance lives HERE, inside the scroller, not on the row above.
+                  On the row it was subtracted from the layout: the Workspace stopped 72px short
+                  of the viewport at every scroll position and a permanent strip of page
+                  background showed beneath it. As padding on the scrolling content it costs the
+                  layout nothing and is only reached at the end of the content, which is the one
+                  moment the last control needs to clear the fixed launchers.
+
+                  `scroll-pb-16` stays and is NOT duplicate clearance. It is scroll-padding, so
+                  it reserves no space; it exists because the sticky Report Details footer
+                  overlays the bottom of this scroller, and without it a control reached by
+                  keyboard parks underneath that footer (WCAG 2.4.11). The two solve different
+                  problems - one clears the launchers, the other clears the footer. */}
+              <div className="flex-1 min-w-0 h-full overflow-y-auto pr-1 space-y-3 scroll-pt-3 scroll-pb-16 pb-[var(--floating-dock-clearance)] lg:pb-0">
                 {/* Demographics, expanded: a white working card at the top of the pane. While the
                     operator is editing the patient, the fields ARE the work, so they scroll with
                     it. Collapsed, the same component renders its summary in the ribbon above, so

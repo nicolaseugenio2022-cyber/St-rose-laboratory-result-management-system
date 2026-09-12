@@ -80,6 +80,7 @@ function ChatPanelFallback() {
       <section
         id={CHAT_PANEL_ID}
         aria-busy="true"
+        data-chat-surface
         className={cn(
           "no-print fixed bottom-[4.5rem] right-4 z-40 flex w-[min(24rem,calc(100vw-2rem))]",
           "flex-col items-center justify-center overflow-hidden rounded-xl border border-brand-border-strong bg-brand-surface",
@@ -99,7 +100,28 @@ const ChatPanel = dynamic(
   { loading: () => <ChatPanelFallback /> }
 );
 
-export function ChatWidget() {
+export interface ChatWidgetProps {
+  /**
+   * Where the launcher sits from `lg` up. Below `lg` it is always the bottom-right button,
+   * because that is the only placement a thumb reaches on a phone.
+   *
+   * "floating" is the default and the behaviour every route outside the Workspace keeps: fixed
+   * at the bottom-right corner at every width.
+   *
+   * "workspace-rail" moves it into the Workspace navigation rail's own column on desktop. The
+   * rail is 56px of navy at the far left, its links stop below the brand block, and the mobile
+   * navigation launcher that used to share that corner is `lg:hidden` - so the space is empty
+   * and belongs to navigation rather than to the worksheet. This exists because the launcher is
+   * `position: fixed` and reserves no space, so at the bottom-right it sat on top of the sticky
+   * Report Details row and its Show/Hide control at 1024 and 1440. Measured, not assumed: 1920
+   * escaped only because the shell caps at 1680px and centres, leaving a margin for the button
+   * to land in. Nothing else about the control changes - same size, same colour, same accessible
+   * name, same panel, same focus handling, one button and one tab stop.
+   */
+  launcherPlacement?: "floating" | "workspace-rail";
+}
+
+export function ChatWidget({ launcherPlacement = "floating" }: ChatWidgetProps = {}) {
   const [isOpen, setIsOpen] = useState(false);
   /**
    * Latched once the panel module has actually mounted.
@@ -186,7 +208,18 @@ export function ChatWidget() {
           "bg-brand-primary text-white shadow-overlay transition-colors motion-reduce:transition-none",
           "hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2",
           "focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
-          "active:scale-[0.97] motion-reduce:active:scale-100 print:hidden"
+          "active:scale-[0.97] motion-reduce:active:scale-100 print:hidden",
+          // Into the rail's column from lg up, centred in its 56px width: (56 - 48) / 2 = 4px.
+          // `right-auto` is required - without it the button keeps both offsets and stretches.
+          launcherPlacement === "workspace-rail" && "lg:left-1 lg:right-auto",
+          // Out of the way while the panel is open, because on desktop the panel opens from the
+          // same corner and would otherwise sit on top of its own launcher. Hidden only from lg
+          // up: on a phone the panel is bottom-right and the launcher is its close affordance.
+          //
+          // `hidden` and not `invisible`, so it leaves the tab order rather than becoming an
+          // invisible stop. Focus restoration still works: closing flips `isOpen` first, so the
+          // button is back in the document by the time the restore effect runs and focuses it.
+          launcherPlacement === "workspace-rail" && isOpen && "lg:hidden"
         )}
       >
         {isOpen ? (

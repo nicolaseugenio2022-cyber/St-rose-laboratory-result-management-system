@@ -123,7 +123,24 @@ export function EncodingReportFooter({
       aria-label="Report footer"
       // Sticky chrome on a white working surface: the same low elevation as every other panel,
       // with the stronger border because this edge sits against the canvas.
-      className="sticky bottom-0 z-20 overflow-hidden rounded-lg border border-brand-border-strong bg-brand-card shadow-low"
+      // STICKY IS A DESKTOP BEHAVIOUR ONLY.
+      //
+      // Below lg this sits in normal flow after the last parameter row. Pinned to the bottom on
+      // a phone it floated over the result rows: parameters ran underneath Laboratory Remarks,
+      // and inputs continued behind the panel where they could be neither read nor operated.
+      // A narrow screen has no room to give a persistent band to chrome - the operator scrolls
+      // to the footer, which is where it belongs in reading order anyway.
+      //
+      // From lg up the accepted desktop behaviour is unchanged: pinned, and bounded by the
+      // ceiling token. That bound exists because sticky can only pin this while it FITS its
+      // scroll column; past that it degrades and the bottom edge escapes the viewport. The
+      // bound is a token in globals.css rather than an arbitrary utility because the expression
+      // it holds did not survive the utility parser - the class was emitted into the markup and
+      // produced no rule, so max-height computed to `none` while reading as if it applied.
+      //
+      // The bound is `lg:` too: in normal flow there is nothing to bound, and capping the height
+      // on a phone would reintroduce the inner scroll this change exists to remove.
+      className="flex flex-col overflow-hidden rounded-lg border border-brand-border-strong bg-brand-card shadow-low lg:sticky lg:bottom-0 lg:z-20 lg:max-h-[var(--encoding-footer-max-height)]"
     >
       {/* Remarks sit above the disclosure, never inside it: this field must be readable and
           editable at any moment without expanding anything, and the CBC default text has to be
@@ -200,7 +217,10 @@ export function EncodingReportFooter({
           // reachable because the panel scrolls rather than clipping. dvh, not vh, so mobile
           // browser chrome shrinks the bound with the viewport instead of overflowing it.
           // White body; each section inside is a structural tint group, never another card.
-          "max-h-[38dvh] space-y-3 overflow-y-auto overscroll-contain border-t border-brand-border bg-brand-card p-3",
+          // 38dvh stays the PREFERRED bound on a tall screen, where the results must stay
+          // dominant. `min-h-0` lets the flex parent above shrink this below its content height
+          // on a short one, so the bound that actually applies is whichever is smaller.
+          "min-h-0 space-y-3 overscroll-contain border-t border-brand-border bg-brand-card p-3 lg:max-h-[38dvh] lg:overflow-y-auto",
           !isExpanded && "hidden"
         )}
       >

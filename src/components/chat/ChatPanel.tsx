@@ -307,6 +307,7 @@ export function ChatPanel({
       id={panelId}
       role="dialog"
       aria-label="Lab support chat"
+      data-chat-surface
       className={cn(
         "no-print fixed bottom-[4.5rem] right-4 z-40 flex w-[min(24rem,calc(100vw-2rem))]",
         "flex-col overflow-hidden rounded-xl border border-brand-border-strong bg-brand-surface",

@@ -160,6 +160,47 @@
      device safe area underneath on a phone with a home indicator. Applied only below lg,
      where the collision actually happens; the desktop layout keeps the geometry it had. */
   --floating-dock-clearance: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+
+  /* --- ENCODING FOOTER CEILING ---
+     How tall the sticky Report Details footer may become. `position: sticky` can only pin an
+     element to the bottom of its scroll column while it FITS that column; past that it degrades
+     and the bottom edge escapes the viewport. Measured at 320x568: the column is 174px and an
+     unbounded expanded footer reached 381px, landing at 573px in a 568px viewport, underneath
+     both fixed launchers.
+
+     38dvh is the preferred share on a tall screen, where the result rows must stay dominant.
+     The second term is the floor for a short one: 25rem covers the command bar, the clinical
+     ribbon, the queue trigger and the launcher clearance above and below. The smaller wins.
+
+     It lives here rather than in an arbitrary utility because a `min()` containing a comma and
+     a nested `calc()` did not survive the utility parser - the class was emitted into the markup
+     but produced no rule at all, and `max-height` computed to `none` while the comment beside it
+     claimed otherwise. A token is checked once, here, and cannot fail silently at a call site. */
+  --encoding-footer-max-height: min(38dvh, calc(100dvh - 25rem));
+
+  /* Rail width, so the chat panel's left inset is derived from the rail rather than retyped
+     beside it. `w-14` on the Workspace navigation rail is 3.5rem. */
+  --workspace-rail-width: 3.5rem;
+}
+
+/* --- LEFT-ANCHORED CHAT, WORKSPACE DESKTOP ONLY ---
+   The launcher sits in the navigation rail from lg up, so the panel opens beside the rail
+   rather than from the opposite corner. Scoped by an ancestor attribute the Workspace shell
+   sets, so every other route keeps the bottom-right panel untouched.
+
+   Both chat surfaces are matched: the panel itself and the loading placeholder that stands in
+   while its chunk is still in flight. They carry identical positioning, and driving them from
+   one rule is what stops the placeholder appearing in the right-hand corner and jumping left
+   the moment the real panel mounts.
+
+   `position: fixed` throughout, so opening overlays the worksheet and never resizes or shifts
+   it, and no bottom clearance is reintroduced. */
+@media (min-width: 1024px) {
+  [data-chat-anchor="workspace-rail"] [data-chat-surface] {
+    left: calc(var(--workspace-rail-width) + 1rem);
+    right: auto;
+    bottom: 1rem;
+  }
 }
 
 /* ==========================================================================

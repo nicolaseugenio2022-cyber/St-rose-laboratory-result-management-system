@@ -24,7 +24,32 @@ export const SYSTEM_CONSTANTS = {
     FOCUS_RING: "#0B6384",
   },
   RETENTION: {
-    COMPLETED_REPORT_DAYS: 30,
+    /**
+     * How long a COMPLETED session is retained, in days, measured from its ORIGINAL completion.
+     *
+     * The client reduced this from 30 days to 7. It is the single behavioural definition of the
+     * window: nothing in SQL computes an expiry - `expires_at` is always supplied by the
+     * application - and no second copy of the number decides anything. Every sentence that states
+     * the duration reads it from here, so wording cannot drift from behaviour again.
+     *
+     * The ANCHOR is unchanged and stays completion time. Replacement never re-stamps `completed_at`
+     * or `expires_at`, so a replaced report keeps the window it was issued with.
+     */
+    COMPLETED_REPORT_DAYS: 7,
+    /**
+     * How close to expiry a retained completed session has to be before it is called
+     * "expiring soon", in days.
+     *
+     * It has to be smaller than the window, or the label is true of every retained record and
+     * therefore tells the operator nothing. At 30 days a 7-day warning distinguished the last
+     * quarter of the window; at a 7-day window it covered all of it, which is what this value
+     * corrects. Two days leaves a usable middle: expiring today or tomorrow is urgent, the day
+     * after is a warning, and everything else is simply retained.
+     *
+     * Declared here, once, next to the window, because the dashboard count, the dashboard row
+     * marker and the History retention chip all have to agree about it.
+     */
+    EXPIRING_SOON_DAYS: 2,
   },
   A4_PAGE: {
     WIDTH_MM: 210,

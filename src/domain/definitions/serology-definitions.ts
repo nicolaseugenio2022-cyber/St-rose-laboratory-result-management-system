@@ -25,6 +25,9 @@ import {
  */
 export const HBSAG_DEFINITION: ClinicalReportDefinition = {
   templateCode: "HBSAG",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Hepatitis B Surface Antigen (HBsAg)",
   reportTitle: "HEPATITIS B (SCREENING)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
@@ -71,6 +74,9 @@ export const HBSAG_DEFINITION: ClinicalReportDefinition = {
  */
 export const RPR_DEFINITION: ClinicalReportDefinition = {
   templateCode: "RPR",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Rapid Plasma Reagin (RPR)",
   reportTitle: "SYPHILIS / RPR (SCREENING)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
@@ -117,6 +123,9 @@ export const RPR_DEFINITION: ClinicalReportDefinition = {
  */
 export const DENGUE_DUO_DEFINITION: ClinicalReportDefinition = {
   templateCode: "DENGUE_DUO",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Dengue Duo Test",
   reportTitle: "DENGUE DUO TEST",
   examinationFamily: "Serology & Immunology",
@@ -184,6 +193,9 @@ export const DENGUE_DUO_DEFINITION: ClinicalReportDefinition = {
  */
 export const PREG_TEST_DEFINITION: ClinicalReportDefinition = {
   templateCode: "PREG_TEST",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Pregnancy Test",
   reportTitle: "PREGNANCY TEST (URINE)", // Exact printed report title
   examinationFamily: "Serology & Immunology",
@@ -231,6 +243,9 @@ export const PREG_TEST_DEFINITION: ClinicalReportDefinition = {
  */
 export const HIV_RESULT_DEFINITION: ClinicalReportDefinition = {
   templateCode: "HIV_RESULT",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "HIV 1 & 2 Rapid Test Certificate",
   reportTitle: "HIV 1 & 2 RAPID TEST CERTIFICATE",
   renderContract: {

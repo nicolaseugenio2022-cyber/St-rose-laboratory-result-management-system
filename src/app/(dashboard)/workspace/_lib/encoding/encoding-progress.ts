@@ -31,8 +31,14 @@ export interface ReportEncodingProgress {
   completedCount: number;
   /** Rounded percentage, 0 when nothing is selected. */
   completionPercent: number;
-  /** A report is complete only with at least one selected result and every one of them complete. */
-  isComplete: boolean;
+  /**
+   * A selected result of this report evaluated to `Invalid`.
+   *
+   * Whether the report can be COMPLETED is deliberately not decided here. That question belongs to
+   * the completion rule itself (`isReportCompletable`), and a second local answer to it would be
+   * free to drift from the one the Complete button enforces - which is the exact disagreement this
+   * module exists to prevent.
+   */
   /**
    * True when a **selected** result for this report evaluated to `Invalid`.
    *
@@ -110,7 +116,6 @@ export function getReportEncodingProgress(
     selectedCount: selected.length,
     completedCount,
     completionPercent: selected.length ? Math.round(completedCount / selected.length * 100) : 0,
-    isComplete: selected.length > 0 && completedCount === selected.length,
     // Exact equality against the one outcome that blocks completion. Never a truthiness test and
     // never a set membership check that could quietly grow to include High or Low.
     hasInvalidResult: selected.some((result) => result.evaluationOutcome === "Invalid"),
@@ -118,18 +123,22 @@ export function getReportEncodingProgress(
 }
 
 /**
- * One selected examination. The caller resolves the pair it already holds; a template still
- * loading, removed from the registry, or not yet built into a report arrives with a missing half
- * and counts as incomplete rather than being dropped from the denominator.
+ * One selected examination, with the completion rule's own answer for it.
+ *
+ * `isCompletable` is supplied by the caller, from `isReportCompletable` - the rule the Complete
+ * button enforces - rather than recomputed here. A template still loading, removed from the
+ * registry, or not yet built into a report arrives with a missing half and counts as not ready,
+ * rather than being dropped from the denominator.
  */
 export interface SessionEncodingProgressEntry {
   report?: ILaboratoryReport | null;
   definition?: ClinicalReportDefinition | null;
+  isCompletable?: boolean;
 }
 
 export interface SessionEncodingProgress {
-  /** Selected examinations whose every selected result is complete. */
-  completedReports: number;
+  /** Selected examinations whose results satisfy the completion rule. */
+  completableReports: number;
   /** Selected examinations, complete or not. */
   totalReports: number;
 }
@@ -138,11 +147,8 @@ export interface SessionEncodingProgress {
 export function getSessionEncodingProgress(
   entries: readonly SessionEncodingProgressEntry[]
 ): SessionEncodingProgress {
-  const completedReports = entries.filter(
-    (entry) =>
-      Boolean(entry.report) &&
-      Boolean(entry.definition) &&
-      getReportEncodingProgress(entry.report!, entry.definition!).isComplete
+  const completableReports = entries.filter(
+    (entry) => Boolean(entry.report) && Boolean(entry.definition) && entry.isCompletable === true
   ).length;
-  return { completedReports, totalReports: entries.length };
+  return { completableReports, totalReports: entries.length };
 }

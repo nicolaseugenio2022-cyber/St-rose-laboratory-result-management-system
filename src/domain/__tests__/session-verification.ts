@@ -2,6 +2,7 @@ import { PatientReportSessionAggregate } from "../models/patient-report-session-
 import { LaboratoryReportDomain } from "../models/laboratory-report-domain";
 import { AccessionNumberGenerator } from "../services/accession-number-generator";
 import { calculateExpirationDate, getRemainingRetentionDays } from "../../lib/utils";
+import { SYSTEM_CONSTANTS } from "../../lib/constants";
 import { referenceEvaluationService } from "../../services/reference-evaluation-service";
 
 /**
@@ -142,7 +143,11 @@ export async function verifyPatientReportSessionPhase3(): Promise<{
   const completedDate = new Date(session.completedAt!);
   const expectedExpiration = calculateExpirationDate(completedDate);
   const remainingDays = getRemainingRetentionDays(session.expiresAt!);
-  const retentionMathValid = session.expiresAt === expectedExpiration.toISOString() && remainingDays >= 29 && remainingDays <= 30;
+  const retentionWindowDays = SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS;
+  const retentionMathValid =
+    session.expiresAt === expectedExpiration.toISOString() &&
+    remainingDays >= retentionWindowDays - 1 &&
+    remainingDays <= retentionWindowDays;
 
   // Verify Validation vs Clinical Interpretation Decoupling
   const rule = { evaluationType: "NumericRange" as const, minValue: 120, maxValue: 160 };

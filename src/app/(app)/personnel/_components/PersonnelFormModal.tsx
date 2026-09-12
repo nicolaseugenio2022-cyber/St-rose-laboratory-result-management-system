@@ -81,10 +81,6 @@ export function PersonnelFormModal({
   };
 
   return (
-    // The shared dialog caps itself to the viewport and scrolls its body; this is the one form
-    // long enough to need the wider panel and its own containment, kept so the sticky action
-    // row inside the form stays reachable however the dialog is laid out. tailwind-merge
-    // resolves max-w-2xl over the shared max-w-lg.
     <>
       <Modal
         isOpen={isOpen}
@@ -94,7 +90,13 @@ export function PersonnelFormModal({
         }
         title={title}
         description={description}
-        className="max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-h-[calc(100dvh-3rem)]"
+        // Width only; tailwind-merge resolves max-w-2xl over the shared max-w-lg. The shared panel
+        // is already capped to the viewport with its own height and overflow. Re-declaring
+        // `overflow-y-auto` and a `max-h-*` here made the panel a second scroll container around
+        // the body's own - two scrollbars. `managed` hands the body to the form, which draws the
+        // one scrolling region and keeps its action bar outside it, as PhysicianFormModal does.
+        bodyLayout="managed"
+        className="max-w-2xl"
       >
         <PersonnelForm
           initialData={initialData}

@@ -3,6 +3,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import type { CompletedSessionSnapshot } from "../src/domain/completion/completed-snapshot";
+import { ReportCompletionService } from "../src/domain/completion/report-completion-service";
 import type { ILaboratoryReport, IPatientReportSession } from "../src/domain/models/interfaces";
 import type { RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition, ParameterSpec } from "../src/domain/types/report-definition";
@@ -549,6 +550,167 @@ async function main(): Promise<void> {
     "a legacy completed FECALYSIS report carrying no frozen snapshot must contain no italic primitive"
   );
 
+  // ----- REPORT-QA-03: ESR prints its unit with the RESULT value -----
+  // Stored "10", printed "10 mm/hr". Presentation only and version-gated: the value entered,
+  // validated, evaluated and frozen stays unit-free, and an ESR completed at contract v1 keeps the
+  // bare number it was issued with.
+  const esrDefinition = ReportDefinitionRegistry.getDefinition("ESR")!;
+  const esrParameter = esrDefinition.parameters.find((parameter) => parameter.parameterCode === "ESR_RESULT")!;
+  assert(
+    esrParameter.unit === "mm/hr" &&
+      esrParameter.resultPresentation?.unitPlacement === "WithResult" &&
+      esrParameter.resultPresentation?.sinceRenderContractVersion === 2 &&
+      esrDefinition.renderContract?.renderContractVersion === 2 &&
+      esrDefinition.renderContract?.supersededRenderContractVersions?.includes(1) === true,
+    "ESR must declare its unit-with-result presentation from contract v2, with v1 still supported"
+  );
+  // Only ESR places a unit in the RESULT value.
+  const unitPlacingParameters = ReportDefinitionRegistry.getAllDefinitions().flatMap((definition) =>
+    definition.parameters
+      .filter((parameter) => parameter.resultPresentation?.unitPlacement !== undefined)
+      .map((parameter) => `${definition.templateCode}/${parameter.parameterCode}`)
+  );
+  assert(
+    unitPlacingParameters.join(",") === "ESR/ESR_RESULT",
+    `only ESR/ESR_RESULT may place its unit in the RESULT value - measured ${unitPlacingParameters.join(", ") || "none"}`
+  );
+
+  const esrReportWith = (resultValue: string, unit?: string): ILaboratoryReport => {
+    const report = reportFor(esrDefinition);
+    report.results[0].resultValue = resultValue;
+    if (unit !== undefined) report.results[0].unit = unit;
+    return report;
+  };
+  const esrValueText = (page: NativeComposedPage): string => textByIdPrefix(page, "result-ESR_RESULT-value");
+  const esrUnitCount = (value: string): number => (value.match(/mm\/hr/g) || []).length;
+  const esrValueLines = (page: NativeComposedPage): string[] =>
+    page.primitives.filter((primitive) => primitive.id.startsWith("result-ESR_RESULT-value")).map((primitive) => primitive.id);
+
+  // 1. Draft: the entered value stays unit-free, the RESULT presents it with the unit - one space,
+  // the unit exactly once, on one line - and the reference is untouched.
+  const esrDraftModel = resolveDraftSessionRenderModel(sessionFor([esrReportWith("10")]));
+  const esrDraftResult = esrDraftModel.reports[0].results[0];
+  const esrDraftPage = composeAll(esrDraftModel).get("ESR")!;
+  assert(esrDraftResult.rawValue === "10", `the ESR draft must keep its entered value "10" - measured "${esrDraftResult.rawValue}"`);
+  assert(esrDraftResult.formattedValue === "10 mm/hr", `the ESR draft result must present as "10 mm/hr" - measured "${esrDraftResult.formattedValue}"`);
+  assert(esrValueText(esrDraftPage) === "10 mm/hr", `the ESR RESULT cell must print "10 mm/hr" - measured "${esrValueText(esrDraftPage)}"`);
+  assert(esrUnitCount(esrValueText(esrDraftPage)) === 1, "the ESR RESULT cell must print mm/hr exactly once");
+  assert(
+    textByIdPrefix(esrDraftPage, "result-ESR_RESULT-reference") === "0–20 mm/hr",
+    `the female ESR reference must remain "0–20 mm/hr" - measured "${textByIdPrefix(esrDraftPage, "result-ESR_RESULT-reference")}"`
+  );
+  for (const value of ["10", "120"]) {
+    const lines = esrValueLines(composeAll(resolveDraftSessionRenderModel(sessionFor([esrReportWith(value)]))).get("ESR")!);
+    assert(lines.join(",") === "result-ESR_RESULT-value-line-1", `"${value} mm/hr" must fit the ESR RESULT column on one line - measured ${lines.join(", ")}`);
+  }
+
+  // 2. A blank entry never acquires the unit, and an Invalid one is unchanged.
+  //
+  // A CHECKED blank parameter now stays on the draft sheet - the approved client requirement - so
+  // the row IS composed. What must not happen is the unit arriving without a result: the RESULT
+  // cell stays empty and mm/hr appears once, in the reference, exactly as it does for a populated
+  // row. A malformed entry - including one typed with its unit - is shown exactly as typed, still
+  // evaluates Invalid, and completion still refuses it.
+  for (const blank of ["", "   "]) {
+    const blankModel = resolveDraftSessionRenderModel(sessionFor([esrReportWith(blank)]));
+    const blankResult = blankModel.reports[0].results[0];
+    assert(blankResult.formattedValue === blank && blankResult.omission === "Render", `a checked blank ESR ("${blank}") must stay blank and stay on the sheet - measured "${blankResult.formattedValue}" / ${blankResult.omission}`);
+    const blankPage = composeAll(blankModel).get("ESR")!;
+    assert(
+      esrValueText(blankPage).trim() === "",
+      `a blank ESR ("${blank}") must compose an empty RESULT cell - measured "${esrValueText(blankPage)}"`
+    );
+    assert(
+      esrUnitCount(textByIdPrefix(blankPage, "result-ESR_RESULT-")) === 1,
+      `a blank ESR ("${blank}") must print mm/hr exactly once, in its reference - measured ${esrUnitCount(textByIdPrefix(blankPage, "result-ESR_RESULT-"))}`
+    );
+  }
+  for (const malformed of ["abc", "10 mm/hr"]) {
+    const invalidResult = resolveDraftSessionRenderModel(sessionFor([esrReportWith(malformed)])).reports[0].results[0];
+    assert(
+      invalidResult.evaluationOutcome === "Invalid" && invalidResult.formattedValue === malformed,
+      `a malformed ESR ("${malformed}") must evaluate Invalid and present exactly as typed - measured "${invalidResult.formattedValue}" / ${invalidResult.evaluationOutcome}`
+    );
+    let refusal: unknown;
+    try {
+      ReportCompletionService.validateAndCompose(sessionFor([esrReportWith(malformed)]), "2026-09-11T00:00:00.000Z");
+    } catch (error) {
+      refusal = error;
+    }
+    assert(
+      refusal instanceof Error && refusal.message.includes("Erythrocyte Sedimentation Rate is invalid."),
+      `completion must still refuse the malformed ESR "${malformed}" (got ${String(refusal)})`
+    );
+  }
+
+  // 3. Completion freezes the unit-free value at contract v2, and the completed report presents it
+  // with the unit exactly as the draft did.
+  const esrSnapshot = ReportCompletionService.validateAndCompose(sessionFor([esrReportWith("10")]), "2026-09-11T00:00:00.000Z");
+  const esrFrozen = esrSnapshot.reports[0];
+  assert(esrFrozen.renderContractVersion === 2, `a new ESR completion must freeze contract v2 - measured ${esrFrozen.renderContractVersion}`);
+  assert(
+    esrFrozen.results[0].rawResultValue === "10" && esrFrozen.results[0].formattedResultValue === "10",
+    `a new ESR completion must freeze the unit-free value "10" - measured "${esrFrozen.results[0].rawResultValue}" / "${esrFrozen.results[0].formattedResultValue}"`
+  );
+  assert(
+    esrFrozen.results[0].referenceDisplay === "0–20 mm/hr" && esrFrozen.results[0].unit === "mm/hr" && esrFrozen.results[0].suffix === null,
+    "a new ESR completion must freeze its reference, unit and absent suffix unchanged"
+  );
+  const esrCompletedPage = composeAll(resolveCompletedSessionRenderModel(esrSnapshot)).get("ESR")!;
+  assert(esrValueText(esrCompletedPage) === "10 mm/hr", `a completed v2 ESR must print "10 mm/hr" - measured "${esrValueText(esrCompletedPage)}"`);
+
+  // 4. History. The same frozen content at contract v1, a snapshotVersion 1 record that froze no
+  // render metadata, and a legacy completion with no snapshot at all each keep the bare number.
+  const esrV1Page = composeAll(resolveCompletedSessionRenderModel({
+    ...esrSnapshot,
+    reports: esrSnapshot.reports.map((report) => ({ ...report, renderContractVersion: 1 })),
+  })).get("ESR")!;
+  assert(esrValueText(esrV1Page) === "10", `a completed v1 ESR must keep the bare "10" it was issued with - measured "${esrValueText(esrV1Page)}"`);
+  assert(textByIdPrefix(esrV1Page, "result-ESR_RESULT-reference") === "0–20 mm/hr", "a completed v1 ESR must keep its reference");
+  // The unit changes the RESULT text only: both versions close at the same y.
+  assert(
+    esrV1Page.contentBottomMm === esrCompletedPage.contentBottomMm,
+    `the ESR unit must not move report geometry - v1 ${esrV1Page.contentBottomMm}, v2 ${esrCompletedPage.contentBottomMm}`
+  );
+  const esrSnapshotV1: CompletedSessionSnapshot = {
+    ...esrSnapshot,
+    snapshotVersion: 1,
+    reports: esrSnapshot.reports.map(
+      ({
+        renderContractVersion: _renderContractVersion,
+        printedTitle: _printedTitle,
+        staticContentVersion: _staticContentVersion,
+        ...report
+      }) => report
+    ) as CompletedSessionSnapshot["reports"],
+  };
+  assert(!("renderContractVersion" in esrSnapshotV1.reports[0]), "the ESR v1 fixture carries no frozen render metadata");
+  const esrSnapshotV1Text = esrValueText(composeAll(resolveCompletedSessionRenderModel(esrSnapshotV1)).get("ESR")!);
+  assert(esrSnapshotV1Text === "10", `a snapshotVersion 1 ESR must keep the bare "10" - measured "${esrSnapshotV1Text}"`);
+  // The legacy fixture carries the unit on its stored result, so a presentation wrongly applied at
+  // the baseline would have a unit to bake in - without it this assertion could not fail.
+  const esrLegacyModel = resolveSessionRenderModel({
+    ...sessionFor([esrReportWith("10", "mm/hr")]),
+    status: "Completed",
+    completedAt: "2026-01-01T00:00:00.000Z",
+  });
+  assert(
+    esrLegacyModel.reports[0].renderContractVersion === 1 && esrLegacyModel.reports[0].results[0].formattedValue === "10",
+    `a legacy completed ESR must resolve at v1 with its stored "10" unpresented - measured "${esrLegacyModel.reports[0].results[0].formattedValue}"`
+  );
+  assert(
+    esrUnitCount(esrValueText(composeAll(esrLegacyModel).get("ESR")!)) <= 1,
+    "a legacy completed ESR must never print mm/hr twice"
+  );
+
+  // 5. No other examination changes. CT_BT is the control: the same compact family, a unit its
+  // reference also carries, and no unit placement - its RESULT stays exactly as entered.
+  const ctBtPage = pages.get("CT_BT")!;
+  for (const parameter of ReportDefinitionRegistry.getDefinition("CT_BT")!.parameters) {
+    const printed = textByIdPrefix(ctBtPage, `result-${parameter.parameterCode}-value`);
+    assert(printed === "EXACT VALUE", `CT_BT/${parameter.parameterCode} must print its value without a unit - measured "${printed}"`);
+  }
+
 
   // 5c. A two-column contract must not swallow a UNIT.
   //
@@ -704,6 +866,18 @@ async function main(): Promise<void> {
   let logoFailure = false;
   try { await createNativeReportPdf(signaturePage, { async load() { throw new Error("logo failed"); } }); } catch { logoFailure = true; }
   assert(logoFailure, "required logo failure must remain actionable");
+
+  // REPORT-QA-03: the PDF draws the very string the Preview composes. jsPDF holds each page's
+  // content stream uncompressed in memory until output, so the drawn text operands are readable.
+  const esrPdf = await createNativeReportPdf(esrDraftPage, optionalFailureResolver);
+  const esrPdfContent = (esrPdf.internal as unknown as { pages: Array<string[] | null | undefined> }).pages
+    .flatMap((content) => content ?? [])
+    .join("\n");
+  assert(esrPdfContent.includes("(10 mm/hr)"), "the ESR PDF must draw the RESULT as \"10 mm/hr\"");
+  assert(
+    (esrPdfContent.match(/mm\/hr/g) || []).length === 2,
+    `the ESR PDF must draw mm/hr exactly twice, once in the RESULT and once in the reference - measured ${(esrPdfContent.match(/mm\/hr/g) || []).length}`
+  );
 
   const overflowBase = mutableClone(resolved);
   const overflowReport = overflowBase.reports.find((report) => report.templateCode === "CHEM_10")!;

@@ -93,6 +93,7 @@ jobs:
             verify-checkpoint-m6b.ts
             verify-checkpoint-m6c.ts
             verify-checkpoint-m6d.ts
+            verify-completed-session-deletion-integrity.ts
             verify-dashboard-recent-work.ts
             verify-developer-boundary.ts
             verify-directory-record-deletion.ts
@@ -120,6 +121,7 @@ jobs:
             verify-checkpoint-c4-1.ts
             verify-checkpoint-c4-2.ts
             verify-checkpoint-c4.ts
+            verify-workspace-encoding-and-completion.ts
           )
 
           # ---- coverage assertion -------------------------------------------------------------

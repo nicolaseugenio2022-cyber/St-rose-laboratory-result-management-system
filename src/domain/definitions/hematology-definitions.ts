@@ -246,6 +246,14 @@ export const ESR_DEFINITION: ClinicalReportDefinition = {
   templateCode: "ESR",
   templateTitle: "Erythrocyte Sedimentation Rate (ESR)",
   reportTitle: "ERYTHROCYTE SEDIMENTATION RATE",
+  renderContract: {
+    // v1 printed the result as a bare number, leaving the unit to the reference column. v2 prints
+    // the unit with the result itself - "10 mm/hr" - as an approved client correction. Every ESR
+    // completed under v1 keeps the bare number it was issued with.
+    renderContractVersion: 2,
+    supersededRenderContractVersions: [1],
+    staticContentVersion: "standard-report-v1",
+  },
   examinationFamily: "Hematology",
   rendererFamily: "SimpleResult",
   parameters: [
@@ -255,6 +263,9 @@ export const ESR_DEFINITION: ClinicalReportDefinition = {
       parameterName: "Erythrocyte Sedimentation Rate",
       inputType: "NumericText",
       unit: "mm/hr",
+      // The unit is presented with the result, never entered or stored with it: "10" is persisted
+      // and "10 mm/hr" is printed.
+      resultPresentation: { unitPlacement: "WithResult", sinceRenderContractVersion: 2 },
       isRequired: true,
       isSelectable: true,
       displayOrder: 1,

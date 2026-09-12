@@ -8,6 +8,7 @@ import { suggestedSignatoryProvider } from "@/services/suggested-signatory-provi
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { isRoutedInvalidControl } from "../_lib/encoding/completion-issue-routing";
 
 /**
  * Build one selection from a directory entry.
@@ -57,6 +58,8 @@ export interface SignatorySelectionSectionProps {
   requiredMedtechsCount: number;
   availablePersonnel: WorkspacePersonnelEntry[];
   onChange: (updatedSignatories: WorkspaceSignatorySelection[]) => void;
+  /** Selector of the control a completion failure resolved to. Optional; absent marks nothing. */
+  invalidFieldSelector?: string | null;
 }
 
 export function SignatorySelectionSection({
@@ -66,6 +69,7 @@ export function SignatorySelectionSection({
   requiredMedtechsCount,
   availablePersonnel,
   onChange,
+  invalidFieldSelector,
 }: SignatorySelectionSectionProps) {
   const pathologists = availablePersonnel.filter((p) => p.role === "Pathologist" && p.isActive);
   const medtechs = availablePersonnel.filter((p) => p.role === "MedicalTechnologist" && p.isActive);
@@ -235,6 +239,8 @@ export function SignatorySelectionSection({
                 value={selectedPathologistId}
                 onChange={(e) => handleSelectPathologist(e.target.value)}
                 options={pathologistOptions}
+                data-signatory-role="Pathologist"
+                aria-invalid={isRoutedInvalidControl(invalidFieldSelector, '[data-signatory-role="Pathologist"]') || undefined}
               />
               {activePathologist && <PrcLicenseRow person={activePathologist} />}
             </div>
@@ -246,6 +252,8 @@ export function SignatorySelectionSection({
                 value={selectedMedtech1Id}
                 onChange={(e) => handleSelectMedtech1(e.target.value)}
                 options={medtechOptions}
+                data-signatory-role="MedicalTechnologist"
+                aria-invalid={isRoutedInvalidControl(invalidFieldSelector, '[data-signatory-role="MedicalTechnologist"]') || undefined}
               />
               {activeMedtech1 && <PrcLicenseRow person={activeMedtech1} />}
             </div>

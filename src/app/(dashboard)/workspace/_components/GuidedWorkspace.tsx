@@ -15,6 +15,14 @@ import { PatientDemographics, PatientSex, PatientStatus } from "@/domain/types";
 import { PatientDemographicsForm } from "./PatientDemographicsForm";
 import { DynamicResultForm } from "./DynamicResultForm";
 import { EncodingReportFooter } from "./EncodingReportFooter";
+import {
+  collectSessionCompletionIssues,
+  isReportCompletable,
+} from "@/domain/completion/report-completion-service";
+import {
+  routeCompletionIssues,
+  type RoutedCompletionIssue,
+} from "../_lib/encoding/completion-issue-routing";
 import { ExaminationCatalog } from "./ExaminationCatalog";
 import { SelectedReportsPanel, WorkQueueTrigger, type ReportTabProgress } from "./SelectedReportsPanel";
 import { Alert } from "@/components/ui/Alert";
@@ -380,11 +388,21 @@ export function GuidedWorkspace({
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [validationFocusTarget, setValidationFocusTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
-  // The focus target above is consumed and cleared the moment focus lands, so the summary
-  // keeps its own copy to decide whether it can offer a route back to that exact field.
-  // Only the two targets the Workspace actually proves are ever recorded here.
-  const [validationFieldTarget, setValidationFieldTarget] = useState<"patient-full-name" | "patient-sex" | null>(null);
+  /**
+   * Everything blocking completion, from the completion rule itself.
+   *
+   * The Workspace used to pre-check the patient name and sex and send the session regardless, so
+   * every other blocking condition came back as one generic sentence with no field attached - and a
+   * session whose name was correctly filled in was still refused with nowhere to go. The same rule
+   * the server enforces now reports its conditions here, each carrying the examination and the
+   * control it belongs to.
+   */
+  const [completionIssues, setCompletionIssues] = useState<RoutedCompletionIssue[]>([]);
+  // A selector rather than an id: a result control is addressed by its parameter, and a signatory or
+  // reagent field by its own attribute. Consumed and cleared the moment focus lands.
+  const [validationFocusSelector, setValidationFocusSelector] = useState<string | null>(null);
+  // The one control marked programmatically invalid while focus is on it. Presentation only.
+  const [invalidFieldSelector, setInvalidFieldSelector] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<WorkspaceConfirmation | null>(null);
   const [pendingModeChange, setPendingModeChange] = useState<PendingModeChange | null>(null);
   const [isMobileCatalogOpen, setIsMobileCatalogOpen] = useState<boolean>(false);
@@ -397,6 +415,9 @@ export function GuidedWorkspace({
   const [reopenError, setReopenError] = useState<string | null>(null);
   const submissionInFlightRef = useRef(false);
   const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(true);
+  // Undefined leaves Report Details owning its own collapse state, which is the ordinary case.
+  // It is set only to OPEN the panel for a completion failure against a field inside it.
+  const [reportDetailsExpansion, setReportDetailsExpansion] = useState<boolean | undefined>(undefined);
   const hasAutoCollapsedDemographicsRef = useRef(false);
   const catalogToggleRef = useRef<HTMLButtonElement>(null);
   const catalogDrawerRef = useRef<HTMLDivElement>(null);
@@ -543,20 +564,39 @@ export function GuidedWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Land on the control the blocking condition belongs to.
+   *
+   * Retried across a few frames rather than attempted once. Routing to a failure in another
+   * examination switches the active report and may open Patient Demographics or Report Details in
+   * the same update, and the control does not exist in the document until that render has committed.
+   * A single frame was enough for the two demographics fields, which are always mounted, and is not
+   * enough for a result or a signatory in a report that was not open.
+   */
   useEffect(() => {
-    if (!validationFocusTarget || workspaceMode !== "encoding") return;
+    if (!validationFocusSelector || workspaceMode !== "encoding") return;
 
-    const frame = window.requestAnimationFrame(() => {
-      const field = document.getElementById(validationFocusTarget);
+    let attemptsLeft = 10;
+    let frame = 0;
+    const attempt = () => {
+      const field = document.querySelector(validationFocusSelector);
       if (field instanceof HTMLElement) {
         field.focus({ preventScroll: true });
         field.scrollIntoView({ behavior: "smooth", block: "center" });
+        setValidationFocusSelector(null);
+        return;
       }
-      setValidationFocusTarget(null);
-    });
+      attemptsLeft -= 1;
+      if (attemptsLeft <= 0) {
+        setValidationFocusSelector(null);
+        return;
+      }
+      frame = window.requestAnimationFrame(attempt);
+    };
+    frame = window.requestAnimationFrame(attempt);
 
     return () => window.cancelAnimationFrame(frame);
-  }, [validationFocusTarget, workspaceMode]);
+  }, [validationFocusSelector, workspaceMode]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -849,6 +889,26 @@ export function GuidedWorkspace({
    * would discard an unrelated error - "Patient full name is required", say - that arrived while
    * the unresolved template was still selected.
    */
+  /**
+   * The one sentence that refuses to write a session missing a selected examination, or null.
+   *
+   * Two conditions, both of which would otherwise persist a visit QUIETLY short of a report the
+   * operator selected: an examination that cannot be defined at all, and one whose report has not
+   * been materialized yet. The payload is built from `session.reports`, so either one writes a
+   * session with that examination simply absent - and nothing downstream can tell it apart from an
+   * examination that was never chosen. Saving and completing therefore fail CLOSED and name it.
+   */
+  const unwritableSelectionError = useMemo((): string | null => {
+    if (unresolvedSelectedCodes.length > 0) {
+      return `No approved encoding definition is registered for ${unresolvedSelectedCodes.join(", ")}. Remove it from this session to continue.`;
+    }
+    const unmaterialized = selectedTemplateCodes.filter(
+      (code) => !session.reports.some((report) => report.templateCode === code)
+    );
+    if (unmaterialized.length === 0) return null;
+    return `${unmaterialized.join(", ")} has not finished opening, so it would not be saved with this session. Wait for it to open, or remove it from this session.`;
+  }, [selectedTemplateCodes, session.reports, unresolvedSelectedCodes]);
+
   const unresolvedMessageRef = useRef<string | null>(null);
   useEffect(() => {
     if (unresolvedSelectedCodes.length > 0) {
@@ -863,6 +923,20 @@ export function GuidedWorkspace({
     setValidationError((current) => (current === ownMessage ? null : current));
   }, [unresolvedSelectedCodes]);
 
+  /**
+   * Retire the summary the moment the operator starts acting on it.
+   *
+   * A list of blocking conditions describes one exact session. The instant any value changes it can
+   * name something already resolved, and a summary that reports a satisfied requirement is worse
+   * than no summary. The next attempt states whatever is still blocking.
+   *
+   * The functional update returns the SAME array when there is nothing to clear, so React bails out
+   * rather than re-rendering the Workspace on every keystroke.
+   */
+  const retireCompletionIssues = useCallback(() => {
+    setCompletionIssues((current) => (current.length === 0 ? current : []));
+    setInvalidFieldSelector(null);
+  }, []);
   // Toggle template selection in session
   const handleToggleTemplateSelection = useCallback((templateCode: string) => {
     setSelectedTemplateCodes((prev) => {
@@ -901,7 +975,8 @@ export function GuidedWorkspace({
     // guard reads the same flag. Both are armed from here.
     setIsDirty(true);
     setSaveStatus("unsaved");
-  }, [activeTemplateCode]);
+    retireCompletionIssues();
+  }, [activeTemplateCode, retireCompletionIssues]);
 
   // Remove test from session (closes tab and activates nearest remaining)
   const handleRemoveTemplate = useCallback((templateCode: string) => {
@@ -940,6 +1015,7 @@ export function GuidedWorkspace({
   }, []);
 
   // Update active report in session aggregate
+
   const handleReportChange = useCallback(
     (updatedReport: ILaboratoryReport) => {
       setSession((prevSession) => {
@@ -953,12 +1029,18 @@ export function GuidedWorkspace({
       });
       setIsDirty(true);
       setSaveStatus("unsaved");
+      retireCompletionIssues();
     },
-    []
+    [retireCompletionIssues]
   );
 
   // Manual save draft handler
   const handleSaveDraft = useCallback(async () => {
+    if (unwritableSelectionError) {
+      setSaveStatus("unsaved");
+      setValidationError(unwritableSelectionError);
+      return;
+    }
     setSaveStatus("saving");
     try {
       const saved = await saveDraftAction({ session: toSessionTransport(session) });
@@ -976,70 +1058,59 @@ export function GuidedWorkspace({
       setSaveStatus("unsaved");
       setValidationError("Failed to save draft session.");
     }
-  }, [session]);
+  }, [session, unwritableSelectionError]);
 
-  const focusDemographicsValidationError = useCallback((message: string, target: "patient-full-name" | "patient-sex") => {
-    setPendingConfirmation(null);
-    setValidationError(message);
+  /** Open whatever holds this control, then send focus to it. */
+  const goToCompletionIssue = useCallback((issue: RoutedCompletionIssue) => {
     setWorkspaceMode("encoding");
-    setValidationFieldTarget(target);
-    setValidationFocusTarget(target);
+    if (issue.templateCode) setActiveTemplateCode(issue.templateCode);
+    if (issue.section === "PatientDemographics") setIsDemographicsExpanded(true);
+    if (issue.section === "ReportDetails") setReportDetailsExpansion(true);
+    setInvalidFieldSelector(issue.selector);
+    setValidationFocusSelector(issue.selector);
   }, []);
 
+  /**
+   * Ask the completion rule whether this session can be completed, and if not, say exactly what is
+   * blocking it and go to the first one. Returns true when nothing is blocking.
+   */
+  const resolveCompletionIssues = useCallback((): boolean => {
+    // An examination that would not be written at all is refused FIRST. The completion rule reads
+    // `session.reports`, so it cannot see an examination that never became one.
+    if (unwritableSelectionError) {
+      setPendingConfirmation(null);
+      setCompletionIssues([]);
+      setValidationError(unwritableSelectionError);
+      return false;
+    }
+    const issues = routeCompletionIssues(collectSessionCompletionIssues(session), ReportDefinitionRegistry);
+    if (issues.length === 0) {
+      setCompletionIssues([]);
+      setInvalidFieldSelector(null);
+      return true;
+    }
+    setPendingConfirmation(null);
+    setValidationError(null);
+    setCompletionIssues(issues);
+    goToCompletionIssue(issues[0]);
+    return false;
+  }, [goToCompletionIssue, session, unwritableSelectionError]);
+
   const requestCompleteConfirmation = useCallback(() => {
-    if (!session.demographics.fullName.trim()) {
-      focusDemographicsValidationError(
-        "Patient Name is required before completing session.",
-        "patient-full-name"
-      );
-      return;
-    }
-    if (!session.demographics.sex) {
-      focusDemographicsValidationError(
-        "Patient Sex is required before completing session.",
-        "patient-sex"
-      );
-      return;
-    }
+    if (!resolveCompletionIssues()) return;
 
     setPendingConfirmation("complete");
-  }, [focusDemographicsValidationError, session.demographics.fullName, session.demographics.sex]);
+  }, [resolveCompletionIssues]);
 
   const requestReplaceConfirmation = useCallback(() => {
-    if (!session.demographics.fullName.trim()) {
-      focusDemographicsValidationError(
-        "Patient Name is required before replacing this report.",
-        "patient-full-name"
-      );
-      return;
-    }
-    if (!session.demographics.sex) {
-      focusDemographicsValidationError(
-        "Patient Sex is required before replacing this report.",
-        "patient-sex"
-      );
-      return;
-    }
+    if (!resolveCompletionIssues()) return;
 
     setPendingConfirmation("replace");
-  }, [focusDemographicsValidationError, session.demographics.fullName, session.demographics.sex]);
+  }, [resolveCompletionIssues]);
 
   // Complete session handler
   const handleCompleteSession = async () => {
-    if (!session.demographics.fullName.trim()) {
-      focusDemographicsValidationError(
-        "Patient Name is required before completing session.",
-        "patient-full-name"
-      );
-      return;
-    }
-    if (!session.demographics.sex) {
-      focusDemographicsValidationError(
-        "Patient Sex is required before completing session.",
-        "patient-sex"
-      );
-      return;
-    }
+    if (!resolveCompletionIssues()) return;
     if (submissionInFlightRef.current) return;
 
     submissionInFlightRef.current = true;
@@ -1056,6 +1127,8 @@ export function GuidedWorkspace({
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
+      setCompletionIssues([]);
+      setInvalidFieldSelector(null);
       setWorkspaceMode("preview");
     } catch {
       // Unexpected rejection only - every expected refusal arrived as a typed result above.
@@ -1070,20 +1143,7 @@ export function GuidedWorkspace({
 
   // Replace the completed session wholesale (ADR-006 single-record replacement)
   const handleReplaceSession = async () => {
-    if (!session.demographics.fullName.trim()) {
-      focusDemographicsValidationError(
-        "Patient Name is required before replacing this report.",
-        "patient-full-name"
-      );
-      return;
-    }
-    if (!session.demographics.sex) {
-      focusDemographicsValidationError(
-        "Patient Sex is required before replacing this report.",
-        "patient-sex"
-      );
-      return;
-    }
+    if (!resolveCompletionIssues()) return;
     if (submissionInFlightRef.current) return;
 
     submissionInFlightRef.current = true;
@@ -1099,6 +1159,8 @@ export function GuidedWorkspace({
       setIsDirty(false);
       setSaveStatus("saved");
       setValidationError(null);
+      setCompletionIssues([]);
+      setInvalidFieldSelector(null);
       setWorkspaceMode("preview");
     } catch {
       // Unexpected rejection only. Recovery is deliberately never cleared on this path - a
@@ -1114,6 +1176,11 @@ export function GuidedWorkspace({
   // Handle save draft & exit
   const handleSaveDraftAndExit = useCallback(async () => {
     if (saveStatus === "saving") return;
+    if (unwritableSelectionError) {
+      setSaveStatus("unsaved");
+      setValidationError(unwritableSelectionError);
+      return;
+    }
 
     setShowExitModal(false);
     setSaveStatus("saving");
@@ -1133,26 +1200,30 @@ export function GuidedWorkspace({
       setSaveStatus("unsaved");
       setValidationError("Failed to save draft session before exit.");
     }
-  }, [exitDestination, router, saveStatus, session]);
+  }, [exitDestination, router, saveStatus, session, unwritableSelectionError]);
 
   const selectedSpecs = useMemo(() => {
     return allActiveTemplates.filter((spec) => selectedTemplateCodes.includes(spec.template.templateCode));
   }, [allActiveTemplates, selectedTemplateCodes]);
 
-  // Session-level encoding progress. The completion rule itself lives in encoding-progress.ts and
-  // is the same one the per-report meter draws, so the two can never disagree. Only the pairing is
-  // done here, from state the Workspace already holds: a selected examination whose report is not
-  // built yet, or whose definition does not resolve, stays in the denominator and counts as
-  // incomplete rather than silently shrinking the total.
+  // Session-level readiness. Whether one report can be completed is answered by the completion rule
+  // itself - the same rule the Complete button enforces - so the counter and the refusal can never
+  // disagree. Only the pairing is done here, from state the Workspace already holds: a selected
+  // examination whose report is not built yet, or whose definition does not resolve, stays in the
+  // denominator and counts as not ready rather than silently shrinking the total.
   const sessionProgress = useMemo(
     () =>
       getSessionEncodingProgress(
-        selectedSpecs.map((spec) => ({
-          report: session.reports.find((item) => item.templateCode === spec.template.templateCode),
-          definition: ReportDefinitionRegistry.getDefinition(spec.template.templateCode),
-        }))
+        selectedSpecs.map((spec) => {
+          const report = session.reports.find((item) => item.templateCode === spec.template.templateCode);
+          return {
+            report,
+            definition: ReportDefinitionRegistry.getDefinition(spec.template.templateCode),
+            isCompletable: report ? isReportCompletable(session, report) : false,
+          };
+        })
       ),
-    [selectedSpecs, session.reports]
+    [selectedSpecs, session]
   );
 
   // Presentation trigger only. It reuses the aggregate's own demographic rule instead of
@@ -1198,7 +1269,10 @@ export function GuidedWorkspace({
       map[code] = {
         completedCount: progress.completedCount,
         selectedCount: progress.selectedCount,
-        isComplete: progress.isComplete,
+        // Whether this report can be completed comes from the completion rule itself, never from
+        // the encoded tally beside it: the queue must not advertise a report as ready that the
+        // Complete button will then refuse.
+        isCompletable: isReportCompletable(session, report),
         // Projected from the shared completion rule, never recomputed for the queue: one rule for
         // what counts as encoded and what counts as blocking, so the queue's indicator and the
         // report's own meter cannot disagree.
@@ -1339,7 +1413,8 @@ export function GuidedWorkspace({
     });
     setIsDirty(true);
     setSaveStatus("unsaved");
-  }, []);
+    retireCompletionIssues();
+  }, [retireCompletionIssues]);
 
   // The empty state's one action. On a desktop the catalog is already on screen: expand it if
   // it was collapsed (focus then lands on its collapse control, beside the search field), or
@@ -1678,19 +1753,19 @@ export function GuidedWorkspace({
             <span
               data-session-progress
               className="hidden shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-brand-text-muted sm:inline-flex"
-              title="Reports in this session with every selected result encoded"
+              title="Reports in this session that can be completed. A checked parameter left blank is reported as omitted, not as outstanding."
             >
-              {/* The check turns teal once every report is complete and stays muted while any is
-                  pending. The words carry the state; the colour only reinforces it. */}
+              {/* The check turns teal once every report can be completed and stays muted while any
+                  cannot. The words carry the state; the colour only reinforces it. */}
               <CheckCircle2
                 aria-hidden="true"
                 className={
-                  sessionProgress.completedReports === sessionProgress.totalReports
+                  sessionProgress.completableReports === sessionProgress.totalReports
                     ? "h-3.5 w-3.5 text-brand-primary"
                     : "h-3.5 w-3.5 text-brand-text-subtle"
                 }
               />
-              {`${sessionProgress.completedReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} complete`}
+              {`${sessionProgress.completableReports} of ${sessionProgress.totalReports} report${sessionProgress.totalReports === 1 ? "" : "s"} ready`}
             </span>
           )}
         </div>
@@ -1727,36 +1802,69 @@ export function GuidedWorkspace({
         </div>
       )}
 
-      {/* Validation summary. The message string is the existing one, unchanged; the heading
-          and the route-to-field control are presentation around it. The control appears only
-          for the two targets the Workspace genuinely resolves - nothing is parsed out of the
-          message text, and no target is invented for an error that does not carry one. */}
+      {/* What is blocking completion, one line per condition.
+
+          Each line names the examination it belongs to and routes to the control it belongs to, and
+          both come from the condition's own kind and codes. Nothing is parsed out of any sentence,
+          and no destination is invented for a condition that does not carry one - a condition with
+          no single control is stated without a route rather than pointed somewhere plausible. */}
+      {completionIssues.length > 0 && (
+        <div className={`${WORKSPACE_CONTAINER} mt-3 shrink-0 px-3 sm:px-4 xl:px-6`}>
+          <Alert
+            variant="destructive"
+            title={
+              completionIssues.length === 1
+                ? "1 item must be resolved before this session can be completed"
+                : `${completionIssues.length} items must be resolved before this session can be completed`
+            }
+            onDismiss={() => {
+              setCompletionIssues([]);
+              setInvalidFieldSelector(null);
+            }}
+            dismissLabel="Dismiss validation summary"
+          >
+            <ul data-completion-issues className="space-y-1">
+              {completionIssues.map((issue, index) => (
+                <li
+                  key={`${issue.kind}-${issue.templateCode ?? "session"}-${index}`}
+                  data-completion-issue={issue.kind}
+                  data-completion-issue-template={issue.templateCode ?? undefined}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                >
+                  {issue.templateTitle && (
+                    <span className="shrink-0 font-mono text-[11px] font-semibold uppercase tracking-wide">
+                      {issue.templateTitle}
+                    </span>
+                  )}
+                  <span className="min-w-0">{issue.summary}</span>
+                  {issue.selector && (
+                    <button
+                      type="button"
+                      data-completion-issue-route
+                      onClick={() => goToCompletionIssue(issue)}
+                      className="inline-flex min-h-7 shrink-0 items-center rounded-md border border-current px-2 text-[11px] font-semibold underline-offset-2 transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                    >
+                      Go to field
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        </div>
+      )}
+
+      {/* Everything else that can go wrong: a registry that could not be read, a draft that could
+          not be saved, a refusal the server returned. One fixed sentence, never a field route. */}
       {validationError && (
         <div className={`${WORKSPACE_CONTAINER} mt-3 shrink-0 px-3 sm:px-4 xl:px-6`}>
           <Alert
             variant="destructive"
             title="Review required information"
-            onDismiss={() => {
-              setValidationError(null);
-              setValidationFieldTarget(null);
-            }}
+            onDismiss={() => setValidationError(null)}
             dismissLabel="Dismiss validation summary"
           >
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="min-w-0">{validationError}</span>
-              {validationFieldTarget && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkspaceMode("encoding");
-                    setValidationFocusTarget(validationFieldTarget);
-                  }}
-                  className="inline-flex min-h-7 shrink-0 items-center rounded-md border border-current px-2 text-[11px] font-semibold underline-offset-2 transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                >
-                  {validationFieldTarget === "patient-full-name" ? "Go to Patient Full Name" : "Go to Sex"}
-                </button>
-              )}
-            </div>
+            <span className="min-w-0">{validationError}</span>
           </Alert>
         </div>
       )}
@@ -1867,7 +1975,7 @@ export function GuidedWorkspace({
                   <PatientDemographicsForm
                     isExpanded
                     onToggleExpanded={setIsDemographicsExpanded}
-                    invalidFieldId={validationError ? validationFieldTarget : null}
+                    invalidFieldSelector={invalidFieldSelector}
                     demographics={session.demographics}
                     onChange={handleDemographicsChange}
                   />
@@ -1899,6 +2007,7 @@ export function GuidedWorkspace({
                       onRequestManualToAuto={handleRequestManualToAuto}
                       physicianAssignment={physicianAssignmentFor(activeDefinition.templateCode)}
                       physicianDirectory={physicianDirectoryNames}
+                      invalidFieldSelector={invalidFieldSelector}
                     />
                     {/* Docked as a sibling of the report card, not inside it: the card clips with
                         overflow-hidden, and a sticky descendant of a clipping ancestor never sticks. */}
@@ -1908,6 +2017,9 @@ export function GuidedWorkspace({
                       report={activeReport}
                       availablePersonnel={availablePersonnel}
                       onChangeReport={handleReportChange}
+                      invalidFieldSelector={invalidFieldSelector}
+                      isExpanded={reportDetailsExpansion}
+                      onExpandedChange={setReportDetailsExpansion}
                     />
                   </div>
                 ) : (

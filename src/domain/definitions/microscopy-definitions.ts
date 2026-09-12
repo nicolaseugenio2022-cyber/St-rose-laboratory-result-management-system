@@ -26,6 +26,10 @@ import { validEntryOnly } from "./evaluation-policies";
  */
 export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "FECALYSIS",
+  // No parameter declares a unit or a reference rule, so the worksheet draws Parameter, Result
+  // and Status only. The fixed "/HPF" suffix is unaffected: it belongs to the result expression
+  // and stays beside the field. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Routine Fecalysis",
   reportTitle: "ROUTINE FECALYSIS",
   // Fecalysis reports no reference or normal values, so it declares a two-column result grid. No
@@ -214,6 +218,10 @@ export const FECALYSIS_DEFINITION: ClinicalReportDefinition = {
  */
 export const URINALYSIS_DEFINITION: ClinicalReportDefinition = {
   templateCode: "URINALYSIS",
+  // No parameter declares a unit or a reference rule, so the worksheet draws Parameter, Result
+  // and Status only. The fixed "/HPF" suffix is unaffected: it belongs to the result expression
+  // and stays beside the field. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Routine Urinalysis",
   reportTitle: "ROUTINE URINALYSIS",
   renderContract: {

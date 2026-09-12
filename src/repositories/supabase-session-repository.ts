@@ -39,6 +39,30 @@ export class DraftNotDeletableError extends Error {
 }
 
 /**
+ * Why an ADMINISTRATOR's deletion of a COMPLETED session was refused, as a CLOSED set.
+ *
+ * Separate from `DraftDeletionRefusalReason` on purpose: the two operations have different
+ * authorization, different ownership rules and different lifecycle requirements, and one shared
+ * class would let a caller classify one as the other. The reason travels for SERVER-SIDE diagnosis
+ * only - the action collapses both into one operator-facing sentence, so "no such session" and
+ * "not completed" are indistinguishable from the browser.
+ *
+ * TWO REASONS, NOT THREE. `delete_affected_wrong_row_count` is gone because the condition it named
+ * can no longer reach this layer: the row is locked and re-decided inside `delete_completed_session`,
+ * so a row count other than one is an unmodelled database state that ABORTS the transaction rather
+ * than refusing it. A refusal word that cannot be produced is a lie about the reachable states.
+ */
+export type CompletedSessionDeletionRefusalReason = "not_found" | "not_completed";
+
+export class CompletedSessionNotDeletableError extends Error {
+  constructor(public readonly reason: CompletedSessionDeletionRefusalReason) {
+    super("Completed session is not deletable.");
+    this.name = "CompletedSessionNotDeletableError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
  * Why an existing session was refused for a write, as a CLOSED set (SHADCN-07B2).
  *
  * These were two plain `new Error(...)` calls, so the only way to tell an ownership refusal from a
@@ -63,6 +87,11 @@ export class SessionUnavailableError extends Error {
 type SessionRepositoryCaller = {
   userId: string;
   role: "Admin" | "User";
+  /**
+   * Carried so the deletion transaction audits the RESOLVED caller. It is read from the session
+   * cookie at the server boundary and injected here; no request payload can reach this field.
+   */
+  username: string;
 };
 
 type SessionOwnershipRow = {
@@ -553,6 +582,59 @@ export class SupabasePatientReportSessionRepository implements IPatientReportSes
     }
 
     throw new DraftNotDeletableError("not_draft");
+  }
+
+  /**
+   * Permanently delete ONE completed session, with its own report tree, AND write the audit record
+   * of that deletion - in ONE database transaction.
+   *
+   * ONE TRANSACTION, NOT TWO REQUESTS. This used to be a SELECT, then a DELETE that committed on
+   * its own, then a separate audit INSERT issued by the server action. A fault on that last write
+   * destroyed a clinical record and left nothing saying who destroyed it. PostgREST gives every
+   * request its own implicit transaction and exposes no multi-statement one, so the only place the
+   * two writes can be made atomic is inside the database. `delete_completed_session` holds both:
+   * either the session and its audit row both land, or neither does.
+   *
+   * THE AUDIT IS NO LONGER THIS LAYER'S, and it is not the action's either. The RPC owns it, which
+   * is why this method returns nothing to build one from.
+   *
+   * THE TREE GOES WITH IT. `laboratory_reports.session_id`, `laboratory_results.report_id` and
+   * `report_signatories.report_id` are all `ON DELETE CASCADE`, so one DELETE inside the function
+   * removes the reports, their results and their signatories. The frozen snapshot is a column on
+   * the session row. Every other foreign key on those tables points OUTWARD to a shared record -
+   * `user_profiles`, `report_templates`, `physicians`, `personnel_identities` - and is RESTRICT or
+   * NO ACTION, so nothing shared can be reached.
+   *
+   * THE ACTOR IS THE RESOLVED CALLER, never a request field. It is taken from the caller injected
+   * at construction, which the server boundary resolved from the session cookie, so the identity
+   * that is admitted and the identity that is audited are the same value.
+   *
+   * AUTHORIZATION IS NOT HERE. The Administrator check is the server action's, at the boundary
+   * where the caller identity is resolved. The function re-decides it as defence in depth and
+   * refuses a non-Administrator payload outright, but it is not the boundary.
+   *
+   * THE RACE IS SAFE. The function locks the row FOR UPDATE, re-reads its status and predicates the
+   * DELETE on `status = 'Completed'`, so a second concurrent call finds no row and answers
+   * NOT_FOUND: it writes nothing, audits nothing, and is reported as a typed refusal rather than a
+   * success that did not happen.
+   */
+  async deleteCompletedSession(id: string): Promise<void> {
+    const caller = this.requireCaller();
+    const { data, error } = await supabaseServer.rpc("delete_completed_session", {
+      p_session_id: id,
+      p_actor_user_id: caller.userId,
+      p_actor_username: caller.username,
+      p_actor_role: caller.role,
+    });
+
+    // A transport/PostgREST fault, and any exception the function raises, still throw raw and stay
+    // UNEXPECTED. Only the two decided refusal words below become the typed class.
+    if (error) throw error;
+    if (data === "NOT_FOUND") throw new CompletedSessionNotDeletableError("not_found");
+    if (data === "NOT_COMPLETED") throw new CompletedSessionNotDeletableError("not_completed");
+    if (data !== "DELETED") {
+      throw new Error("Supabase completed-session deletion returned an unrecognised outcome.");
+    }
   }
 
   private withAssignedAccession(

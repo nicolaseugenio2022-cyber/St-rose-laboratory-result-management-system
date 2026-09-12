@@ -85,7 +85,9 @@ export type OperationalActionErrorCode =
   /** A recognised domain validation failure while resolving signatories against personnel. */
   | "SIGNATORY_VALIDATION_FAILED"
   /** A recognised domain validation failure raised by completion or replacement composition. */
-  | "REPORT_VALIDATION_FAILED";
+  | "REPORT_VALIDATION_FAILED"
+  /** Administrator deletion refused: missing, not completed, or already gone. Indistinguishable. */
+  | "COMPLETED_SESSION_NOT_DELETABLE";
 
 /**
  * The single code-to-sentence mapping. `Record<OperationalActionErrorCode, string>` is what makes
@@ -93,7 +95,7 @@ export type OperationalActionErrorCode =
  *
  * `SESSION_UNAVAILABLE`, `SESSION_NOT_REOPENABLE` and `DRAFT_NOT_DELETABLE` are written to be TRUE
  * and IDENTICAL for every underlying cause - the row does not exist, it belongs to another
- * account, it is the wrong status, its 30-day retention has lapsed. The repository already folds
+ * account, it is the wrong status, its retention window has lapsed. The repository already folds
  * those into one indistinguishable outcome, and these sentences preserve that at the surface, so
  * no typed refusal becomes an existence oracle. Saying "it is not yours" would be more helpful and
  * would leak exactly the fact the query was shaped to withhold.
@@ -108,8 +110,13 @@ const OPERATIONAL_ACTION_MESSAGE: Record<OperationalActionErrorCode, string> = {
     "This session is no longer a draft, so it cannot be saved as one. Reload the session and try again.",
   COMPLETION_LIFECYCLE_INVALID:
     "Only a draft session can be completed. Reload the session and try again.",
+  // The window is written out rather than interpolated. checkpoint B5 reads this map as source text
+  // and requires each lifecycle sentence to be a double-quoted literal, which is how it proves the
+  // three codes cannot collapse onto one sentence. A template literal defeats that extraction, so
+  // the number is stated here and the focused verifier asserts it still equals
+  // SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS - drift is caught without weakening B5.
   REPLACEMENT_LIFECYCLE_INVALID:
-    "This report can no longer be replaced. Replacement requires a completed report inside its 30-day retention window. Reload and try again.",
+    "This report can no longer be replaced. Replacement requires a completed report inside its 7-day retention window. Reload and try again.",
   SESSION_UNAVAILABLE:
     "This session is no longer available for this operation. Reload and try again.",
   SESSION_NOT_REOPENABLE:
@@ -120,6 +127,8 @@ const OPERATIONAL_ACTION_MESSAGE: Record<OperationalActionErrorCode, string> = {
     "The assigned signatories could not be verified against the personnel directory. Check the signatories and try again.",
   REPORT_VALIDATION_FAILED:
     "This report did not pass validation and was not saved. Review the encoded results and try again.",
+  COMPLETED_SESSION_NOT_DELETABLE:
+    "This completed session is no longer available to delete. Refresh your history and try again.",
 };
 
 /**

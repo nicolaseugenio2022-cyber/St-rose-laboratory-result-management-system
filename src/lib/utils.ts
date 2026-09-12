@@ -19,7 +19,7 @@ export function formatDateISO(date: Date | string = new Date()): string {
 }
 
 /**
- * Calculates retention expiration date (completed_at + 30 days).
+ * Calculates retention expiration date: completed_at plus the approved retention window.
  */
 export function calculateExpirationDate(completedAt: Date | string = new Date()): Date {
   const date = typeof completedAt === "string" ? new Date(completedAt) : new Date(completedAt.getTime());

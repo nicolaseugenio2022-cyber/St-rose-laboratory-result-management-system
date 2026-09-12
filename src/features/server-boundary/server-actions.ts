@@ -15,6 +15,7 @@ import { resolveAuthenticatedRequest } from "@/lib/session";
 import { SupabasePersonnelRepository } from "@/repositories/supabase-personnel-repository";
 import { SupabasePhysicianRepository } from "@/repositories/supabase-physician-repository";
 import {
+  CompletedSessionNotDeletableError,
   DraftNotDeletableError,
   SessionUnavailableError,
   SupabasePatientReportSessionRepository,
@@ -529,4 +530,60 @@ export async function getVisibleSessionDetailAction(
   }
 
   return operationalSuccess(toSessionTransport(session));
+}
+
+/**
+ * Permanently delete one COMPLETED session. ADMINISTRATORS ONLY.
+ *
+ * TWO SEPARATE GATES, in this order. The operational guard first, which authenticates the caller
+ * and already refuses a Developer outright (`requireOperationalCaller` admits only Admin and User,
+ * and audits the refusal itself). Then the Administrator check, which is what refuses a laboratory
+ * User - a caller the operational guard legitimately admits for every other History operation.
+ *
+ * THE UI IS NOT THE BOUNDARY. History hides the control for a non-Administrator, and that is
+ * presentation only: a direct call from any non-Administrator is refused HERE, server-side, with
+ * the caller role resolved from the session rather than taken from the request.
+ *
+ * THE REFUSAL IS NOT AN ORACLE. A non-Administrator receives the same sentence as any other
+ * authorization refusal, and the three deletion refusals collapse into one sentence, so no caller
+ * can learn whether a given accession exists by asking to delete it.
+ */
+export async function deleteCompletedSessionAction(
+  input: unknown
+): Promise<OperationalActionResult<null>> {
+  const authorization = await authorizeOperationalCaller("/history");
+  if (!authorization.ok) return operationalFailure("OPERATIONAL_ACCESS_DENIED");
+  const caller = authorization.caller;
+  if (caller.role !== "Admin") {
+    // The denial audit is AWAITED before the refusal leaves this function, the same ordering the
+    // replacement guard uses: a refusal that was not recorded is a refusal nobody can review.
+    await auditService.emit({
+      category: "SecurityDenial",
+      eventType: "CompletedSessionDeletionDenied",
+      actorRole: caller.role,
+      targetRole: null,
+      performedByUserId: caller.userId,
+      performedByUsername: caller.username,
+      details: { reasonCode: "role_not_authorized" },
+    });
+    return operationalFailure("OPERATIONAL_ACCESS_DENIED");
+  }
+  const { sessionId } = parseSessionLoadInput(input);
+  const repository = new SupabasePatientReportSessionRepository(caller);
+  try {
+    await repository.deleteCompletedSession(sessionId);
+  } catch (error: unknown) {
+    // Classified by TYPE, never by message, exactly as the draft deletion is.
+    if (error instanceof CompletedSessionNotDeletableError) {
+      return operationalFailure("COMPLETED_SESSION_NOT_DELETABLE");
+    }
+    reportUnexpectedActionFailure("/history", "deleteCompletedSession", error);
+  }
+  // NO SUCCESS AUDIT HERE, AND THAT IS THE POINT. It used to be emitted from this line, after the
+  // delete had already committed on its own, so a fault on the audit write destroyed the session
+  // and left no record of who destroyed it. `delete_completed_session` now writes the
+  // SessionCompletedDeleted row inside the same transaction as the delete, so reaching this point
+  // means both landed and no fault can separate them. Re-adding an emit here would write a second
+  // event for one deletion.
+  return operationalSuccess(null);
 }

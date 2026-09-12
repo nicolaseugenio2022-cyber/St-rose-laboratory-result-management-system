@@ -17,6 +17,9 @@ import { lessThan, validEntryOnly } from "./evaluation-policies";
  */
 export const BLOOD_TYPING_DEFINITION: ClinicalReportDefinition = {
   templateCode: "BLOOD_TYPING",
+  // Qualitative results: no parameter declares a unit or a reference rule, so the worksheet
+  // draws Parameter, Result and Status only. Encoding presentation only (EncodingWorksheetSpec).
+  encodingWorksheet: { omitColumns: ["Unit", "Reference"] },
   templateTitle: "Blood Typing",
   reportTitle: "BLOOD TYPING",
   examinationFamily: "Serology & Blood Bank",

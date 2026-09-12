@@ -5,35 +5,18 @@ import { resolveReferenceDisplay } from "@/domain/reference-display";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/lib/utils";
 import { displayUnit } from "../../_lib/encoding/evaluate-encoding-result";
+import { FULL_WORKSHEET_COLUMNS, type WorksheetColumnPolicy } from "../../_lib/encoding/worksheet-columns";
 
 /**
- * The worksheet column tracks, exported so the header rendered by DynamicResultForm is laid out
- * from the same definition as the rows beneath it. Two hand-kept copies would drift the first
- * time either side is touched, and a header that does not line up is worse than no header.
+ * The column set every row in one worksheet shares, resolved once by DynamicResultForm from the
+ * examination's own declaration and handed down through the controls.
  *
- * **Every track is fixed, and that is the whole point.** Each ParameterRow is its own
- * independent grid, so a content-sized track (`auto`, `minmax(_,auto)`, `min-content`) is
- * resolved separately per row against that row's own content. The previous Unit, Reference
- * and Status tracks were all content-sized, so a row whose unit read "x10³/µL" resolved a
- * wider Unit track than one reading "%", and every column after it - including the Result
- * input - started at a different x position. Nothing but identical, content-independent
- * track sizes can align independent grids; widening the content-sized tracks until one
- * fixture happens to line up does not, because the next fixture re-resolves them.
- *
- * Parameter alone is `minmax(0,1fr)`: it is the only flexible track, it absorbs all
- * remaining width, and a `1fr` resolves from the container - which every row shares - not
- * from content. The 0 minimum lets a long parameter name wrap rather than force the row
- * past the card and into the clipped overflow.
- *
- * Narrow: Parameter and Result take the full width, then Unit | Reference | Status share one
- * line, so a row stays one readable block instead of five detached stacked cells. That line
- * is fixed-tracked for the same reason.
+ * A PROP, deliberately, not context and not a hook. `ParameterRow` is called as a plain function by
+ * checkpoint B4, which inspects the element tree it returns; a hook in here would make that call
+ * throw rather than assert. Defaulting to the full column set is also what keeps a row rendered
+ * outside a worksheet - a verifier, a single control under test - at the geometry it always had.
  */
-export const PARAMETER_ROW_TRACKS =
-  "grid-cols-[3.25rem_minmax(0,1fr)_6rem] " +
-  "sm:grid-cols-[minmax(0,1fr)_9rem_3.25rem_6rem_6rem] " +
-  "lg:grid-cols-[minmax(0,1fr)_11rem_4rem_9rem_6.5rem] " +
-  "xl:grid-cols-[minmax(0,1fr)_14rem_4.5rem_12rem_7rem]";
+const DEFAULT_WORKSHEET_COLUMNS = FULL_WORKSHEET_COLUMNS;
 
 export interface ParameterRowProps {
   parameter: ParameterSpec;
@@ -46,6 +29,8 @@ export interface ParameterRowProps {
   labelHelp?: React.ReactNode;
   validationMessage?: string;
   validationMessageId?: string;
+  /** The worksheet column set. Omitted draws every column. */
+  columns?: WorksheetColumnPolicy;
 }
 
 export function ParameterRow({
@@ -59,6 +44,7 @@ export function ParameterRow({
   labelHelp,
   validationMessage,
   validationMessageId,
+  columns = DEFAULT_WORKSHEET_COLUMNS,
 }: ParameterRowProps) {
   const renderedUnit = displayUnit(parameter);
   const reference = resolveReferenceDisplay(parameter.referenceRule, patientSex, renderedUnit);
@@ -74,7 +60,7 @@ export function ParameterRow({
         // nothing is clipped: a validation message, a wrapped sex-unset reference, a
         // ConditionalChoice pair or a computed help line all expand the row.
         "grid items-start gap-x-2 gap-y-1 px-3 py-1.5 text-xs transition-colors duration-150 sm:items-center",
-        PARAMETER_ROW_TRACKS,
+        columns.rowTracks,
         // The row being edited is the one thing an encoder must never lose track of. The brand
         // tint plus a narrow inset teal rail marks it without moving anything: the rail is always
         // present and only changes colour, so no row shifts by a pixel when focus arrives. The
@@ -83,7 +69,7 @@ export function ParameterRow({
         isSelected ? "hover:bg-brand-structural" : "bg-brand-structural opacity-60"
       )}
     >
-      <div className="col-span-3 flex min-w-0 items-start gap-2 sm:col-span-1">
+      <div className={cn("flex min-w-0 items-start gap-2", columns.parameterCellSpan)}>
         {/* No tabIndex at all: a native checkbox is already focusable, and its natural DOM
             order is exactly the order the operator reads the row in. tabIndex={-1} had made
             individual selection mouse-only - a keyboard operator could reach the bulk
@@ -134,8 +120,21 @@ export function ParameterRow({
         </div>
       </div>
 
-      <div data-control-column className={cn("col-span-3 min-w-0 sm:col-span-1", !isSelected && "pointer-events-none opacity-40")}>
-        {children}
+      <div data-control-column className={cn("min-w-0", columns.resultCellSpan, !isSelected && "pointer-events-none opacity-40")}>
+        {/* A fixed suffix is part of the result expression, not a column: "0-2" is entered and
+            "0-2 /HPF" is reported. With no Unit column to carry it, it sits beside the field so the
+            operator still sees what will be printed, and it stays outside the editable value exactly
+            as before - nothing here changes what is stored. */}
+        {columns.showUnitColumn ? children : (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="min-w-0 flex-1">{children}</div>
+            {parameter.suffixSpec && (
+              <span data-fixed-suffix="true" className="shrink-0 font-mono text-xs text-brand-text-muted">
+                {renderedUnit}
+              </span>
+            )}
+          </div>
+        )}
         {validationMessage && (
           <p
             id={validationMessageId}
@@ -148,27 +147,32 @@ export function ParameterRow({
         )}
       </div>
 
-      <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-xs text-brand-text-muted">
-        {renderedUnit || ""}
-      </span>
+      {columns.showUnitColumn && (
+        <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-xs text-brand-text-muted">
+          {renderedUnit || ""}
+        </span>
+      )}
 
-      {/* Reference column. Rendered even when empty so the remaining cells keep their track:
+      {/* Reference column, where the examination draws one. Rendered even when empty so the
+          remaining cells keep their track:
           grid items are placed in source order, so omitting this element would shift Status
           into the reference track. The track is a fixed width, so an empty reference leaves
           the column empty and Status stays exactly where it is on every other row - and a long
           sex-unset reference wraps inside that width instead of widening the column and
           pushing Result and Status sideways. The per-element max-w that used to bound the
           wrap is gone: the track is the bound, and two bounds could disagree. */}
-      <span className="min-w-0">
-        {reference && (
-          <span
-            data-reference-display
-            className="inline-block w-full whitespace-normal break-words font-mono text-xs leading-snug text-brand-text-muted"
-          >
-            Ref: {reference}
-          </span>
-        )}
-      </span>
+      {columns.showReferenceColumn && (
+        <span className="min-w-0">
+          {reference && (
+            <span
+              data-reference-display
+              className="inline-block w-full whitespace-normal break-words font-mono text-xs leading-snug text-brand-text-muted"
+            >
+              Ref: {reference}
+            </span>
+          )}
+        </span>
+      )}
 
       <div data-status-column className="min-w-0">
         {/* The outcome flag is the shared StatusBadge, which carries exactly the mapping this

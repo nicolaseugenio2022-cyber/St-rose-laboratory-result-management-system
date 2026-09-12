@@ -3,6 +3,7 @@ import { SessionHistoryView } from "./_components/SessionHistoryView";
 import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 import { describeErrorShape } from "@/lib/safe-error";
+import { getCurrentUserProfile } from "@/lib/auth-guards";
 
 export const runtime = "nodejs";
 
@@ -26,5 +27,17 @@ export default async function HistoryPage() {
     initialEntries = undefined;
   }
 
-  return <SessionHistoryView initialEntries={initialEntries} />;
+  // The viewer's capability is resolved HERE, on the server, from the authenticated account -
+  // the same way Personnel decides whether to offer its management controls. It reaches the view
+  // as a boolean and nothing more: no profile, no role string, no account identity. It decides
+  // what is shown; `deleteCompletedSessionAction` decides what is allowed.
+  const viewer = await getCurrentUserProfile();
+  const canDeleteCompleted = viewer?.role === "Admin";
+
+  return (
+    <SessionHistoryView
+      initialEntries={initialEntries}
+      canDeleteCompleted={canDeleteCompleted}
+    />
+  );
 }

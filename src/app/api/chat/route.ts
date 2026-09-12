@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import "server-only";
 
 import { resolveAuthenticatedRequest } from "@/lib/session";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,7 +25,7 @@ const UPSTREAM_TIMEOUT_MS = 60_000;
  */
 const SYSTEM_PROMPT = [
   "You are the St. Rose Diagnostic Laboratory support assistant for their laboratory result",
-  "management system (report encoding, clinical validation, signing, printing and the 30-day",
+  `management system (report encoding, clinical validation, signing, printing and the ${SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS}-day`,
   "completed-report history).",
   "Be concise, practical and specific to this system.",
   "You help staff use the software. You are not a medical professional: never interpret a",

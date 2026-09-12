@@ -136,7 +136,7 @@ export interface IPatientReportSession {
   reports: ILaboratoryReport[];
   createdAt: string;
   completedAt?: string | null;
-  expiresAt?: string | null; // NULL for draft, completed_at + 30 days for completed
+  expiresAt?: string | null; // NULL for draft, completed_at + the retention window for completed
   completedSnapshot?: CompletedSessionSnapshot | null;
 }
 

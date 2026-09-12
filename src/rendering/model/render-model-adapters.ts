@@ -11,7 +11,7 @@ import type {
   IRepeatableFindingValue,
 } from "@/domain/models/interfaces";
 import { getResultDisplayValue } from "@/domain/models/interfaces";
-import type { PatientDemographics, SignatorySnapshot } from "@/domain/types";
+import type { EvaluationOutcome, PatientDemographics, SignatorySnapshot } from "@/domain/types";
 import type {
   ClinicalReportDefinition,
   ParameterSpec,
@@ -70,6 +70,33 @@ function resolveLayoutFamily(rendererFamily: string): ResolvedLayoutFamily {
   const family = LAYOUT_FAMILIES[rendererFamily];
   if (!family) throw new Error(`Unsupported renderer family '${rendererFamily}'.`);
   return family;
+}
+
+/**
+ * The layout family an ALREADY COMPLETED report composes through.
+ *
+ * The stored renderer family is registry metadata, and for ESR, CT_BT and FECALYSIS the registry
+ * row disagrees with the approved declarative definition. The composition a report is laid out by
+ * is selected from that definition, so a report frozen with the registry's value resolved one
+ * layout here and a different one there, and the composer's coherence guard refused to render it:
+ * a report already issued to a patient became unrenderable rather than differently rendered.
+ *
+ * So the definition decides, for the stored snapshot and for a legacy report alike. The frozen
+ * value is still required to BE a family this renderer knows - a meaningless one stays a hard
+ * error - and it is never rewritten: a snapshot's stored bytes are untouched, and every report
+ * whose frozen family already agrees with its definition resolves exactly as before.
+ */
+function resolveCompletedLayoutFamily(
+  frozenRendererFamily: string,
+  definition: ClinicalReportDefinition
+): ResolvedLayoutFamily {
+  // The frozen family is still REQUIRED to be one this renderer knows, so a meaningless stored
+  // value stays a hard error rather than being quietly replaced. Its resolution is then discarded:
+  // the definition decides, and it decides alone. There is deliberately no branch in which the
+  // frozen value wins, because the two disagreeing is exactly the condition that made a report
+  // unrenderable.
+  resolveLayoutFamily(frozenRendererFamily);
+  return resolveLayoutFamily(definition.rendererFamily);
 }
 
 function formatLongDateUppercase(value: string): string {
@@ -322,7 +349,12 @@ function draftReport(
         parameterCode: parameter.parameterCode,
         label: parameter.parameterName,
         rawValue: value.rawResultValue,
-        formattedValue: presentedResultValue(value.formattedResultValue || "", draftPresentation(parameter)),
+        formattedValue: presentedResultValue(
+          value.formattedResultValue || "",
+          draftPresentation(parameter),
+          parameter.unit,
+          value.evaluationOutcome
+        ),
         emphasis: draftPresentation(parameter)?.emphasis ?? null,
         referenceDisplay: resolveReferenceDisplay(
           parameter.referenceRule,
@@ -335,12 +367,27 @@ function draftReport(
         evaluationOutcome: value.evaluationOutcome,
         computationMetadata: value.computationMetadata ? structuredClone(value.computationMetadata) : null,
         displayOrder: parameter.displayOrder,
-        // A parameter is rendered only when it was selected AND carries an actual value. A
-        // checked parameter the operator intentionally left blank is omitted from the report
-        // entirely rather than printed as an empty row - the same rule completion applies when
-        // it freezes the snapshot, so Preview, Print and PDF show exactly what was frozen.
-        // Whitespace-only is blank; "0", "0.0", "false", "Negative" and "Nonreactive" are not.
-        omission: !selected || !(value.formattedResultValue || "").trim() ? "Omit" : "Render",
+        // SELECTION decides whether a row appears; the entered value decides only what it says.
+        //
+        // A checked parameter the operator has not reported yet appears on the draft with its name
+        // and an empty result, because that is what the laboratory asked for: the sheet shows the
+        // panel that was run, and a row the operator can see themselves about to fill. Hiding it
+        // until a value arrived meant the draft changed shape under them as they typed, and a
+        // parameter they had deliberately checked was invisible on the very page they were checking
+        // it against. Nothing is invented for an empty row - no value, no status word, no marker.
+        //
+        // TWO EXCEPTIONS, both of them declared rather than inferred. An UNCHECKED parameter is
+        // omitted, unchanged. And a parameter whose definition declares `blankOmission` is omitted
+        // while blank, which is the client-approved per-parameter rule behind the Fecalysis optional
+        // findings and the Urinalysis amorphous-crystal row; it is read from the definition, so no
+        // template code is tested here.
+        //
+        // Whitespace-only is blank; "0", "0.0", "false", "Negative" and "Nonreactive" are real
+        // results and are never treated as blank.
+        omission:
+          !selected || (parameter.blankOmission && !(value.formattedResultValue || "").trim())
+            ? "Omit"
+            : "Render",
         conditionalLabel: conditionalSeparator >= 0 ? value.formattedResultValue!.slice(0, conditionalSeparator).trim() : null,
       };
     });
@@ -432,8 +479,9 @@ function validatedSnapshotMetadata(
  * Casing is resolved HERE, at the single boundary both render origins pass through, rather than in
  * composition. Doing it here means the value the renderers measure is the value they paint, and it
  * means a completed report presents identically to the draft it was frozen from - the snapshot's
- * stored bytes are never rewritten, only presented. Emphasis cannot be folded into a string and is
- * carried alongside it for the renderers to resolve.
+ * stored bytes are never rewritten, only presented. A unit placed with the result is baked in the
+ * same way. Emphasis cannot be folded into a string and is carried alongside it for the renderers
+ * to resolve.
  */
 function appliedPresentation(
   presentation: ResultPresentationSpec | null | undefined,
@@ -448,12 +496,27 @@ function appliedPresentation(
 
 function presentedResultValue(
   value: string,
-  presentation: ResultPresentationSpec | null | undefined
+  presentation: ResultPresentationSpec | null | undefined,
+  unit: string | null | undefined,
+  evaluationOutcome: EvaluationOutcome
 ): string {
   // The locale is fixed, never the runtime's. `toLocaleUpperCase()` with no argument follows the
   // host locale, so a Turkish-locale client would render "Reddish Brown" as "REDDİSH BROWN" - a
   // dotted capital I in a clinical result value. The report contract is English, so it is named.
-  return presentation?.casing === "Uppercase" ? value.toLocaleUpperCase("en-US") : value;
+  const cased = presentation?.casing === "Uppercase" ? value.toLocaleUpperCase("en-US") : value;
+  return presentation?.unitPlacement === "WithResult" ? valueWithUnit(cased, unit, evaluationOutcome) : cased;
+}
+
+/**
+ * A blank value stays blank rather than printing a bare unit. An Invalid value - a draft entry the
+ * operator is still correcting, which completion refuses - is shown exactly as typed, the same rule
+ * the fixed-suffix formatter applies. Otherwise value and unit are joined by exactly one space.
+ */
+function valueWithUnit(value: string, unit: string | null | undefined, evaluationOutcome: EvaluationOutcome): string {
+  const trimmedValue = value.trim();
+  const trimmedUnit = unit?.trim();
+  if (!trimmedValue || !trimmedUnit || evaluationOutcome === "Invalid") return value;
+  return `${trimmedValue} ${trimmedUnit}`;
 }
 
 function completedReport(
@@ -477,7 +540,9 @@ function completedReport(
     rawValue: result.rawResultValue,
     formattedValue: presentedResultValue(
       result.formattedResultValue,
-      presentationByParameterCode.get(result.parameterCode)
+      presentationByParameterCode.get(result.parameterCode),
+      result.unit,
+      result.evaluationOutcome
     ),
     emphasis: presentationByParameterCode.get(result.parameterCode)?.emphasis ?? null,
     referenceDisplay: result.referenceDisplay,
@@ -493,7 +558,7 @@ function completedReport(
   return {
     templateCode: report.templateCode,
     templateTitle: report.templateTitle,
-    layoutFamily: resolveLayoutFamily(report.rendererFamily),
+    layoutFamily: resolveCompletedLayoutFamily(report.rendererFamily, definition),
     ...metadata,
     staticContent: resolveStaticContent(definition, snapshot.demographics, results),
     resultSections: structuredClone(definition.renderContract?.resultSections || []),
@@ -578,7 +643,12 @@ function legacyCompletedReport(
     parameterCode: result.parameterCode,
     label: result.parameterName,
     rawValue: result.rawResultValue ?? result.resultValue,
-    formattedValue: presentedResultValue(getResultDisplayValue(result), legacyPresentation.get(result.parameterCode)),
+    formattedValue: presentedResultValue(
+      getResultDisplayValue(result),
+      legacyPresentation.get(result.parameterCode),
+      result.unit,
+      result.evaluationOutcome
+    ),
     emphasis: legacyPresentation.get(result.parameterCode)?.emphasis ?? null,
     referenceDisplay: null,
     unit: result.unit || null,
@@ -593,7 +663,7 @@ function legacyCompletedReport(
   return {
     templateCode: report.templateCode,
     templateTitle: report.templateTitle,
-    layoutFamily: resolveLayoutFamily(report.rendererFamily),
+    layoutFamily: resolveCompletedLayoutFamily(report.rendererFamily, definition),
     // The baseline this function already resolved, NOT the definition's current version.
     // Emitting the current one contradicted the comment above and split this report in two:
     // presentation was withheld at v1 while the composition selected downstream - which keys off

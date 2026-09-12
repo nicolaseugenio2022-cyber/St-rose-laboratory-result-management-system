@@ -698,10 +698,21 @@ assert(
 //     and inspecting what it actually produces. No source text is parsed for this.
 const historyActionSession = (status: "Draft" | "Completed") =>
   ({ id: "history-session", status }) as unknown as PatientReportSessionAggregate;
+/**
+ * CLIENT-HISTORY-DELETE-RETENTION re-mints the completed-session rule below.
+ *
+ * A completed session previously offered no removal to anyone, and the assertions stated exactly
+ * that. The client now requires an ADMINISTRATOR-ONLY permanent deletion, so the rule is no longer
+ * "never" - it is "only for an Administrator, and only when the server said so". The assertions are
+ * re-stated to that rule rather than left describing behaviour the component no longer has, and the
+ * NEGATIVE half is kept and strengthened: without the capability, and for every non-Administrator
+ * rendering, a completed session still offers no removal at all.
+ */
 const renderHistoryActions = (
   status: "Draft" | "Completed",
   canReopen: boolean,
-  variant: "table" | "card"
+  variant: "table" | "card",
+  canDeleteCompleted = false
 ) =>
   renderToStaticMarkup(
     React.createElement(HistorySessionActions, {
@@ -711,6 +722,8 @@ const renderHistoryActions = (
       onPreview: noOp,
       onReopen: noOp,
       onDeleteDraft: noOp,
+      canDeleteCompleted,
+      onDeleteCompleted: noOp,
     })
   );
 
@@ -726,11 +739,27 @@ for (const variant of ["table", "card"] as const) {
 
   const reopenableCompleted = renderHistoryActions("Completed", true, variant);
   assert(/>\s*Replace\s*</.test(reopenableCompleted), `HistorySessionActions renders Replace for a reopenable completed session (${variant})`);
-  assert(!reopenableCompleted.includes("Delete draft"), `HistorySessionActions never offers removal for a completed session (${variant})`);
+  assert(!reopenableCompleted.includes("Delete draft"), `HistorySessionActions never offers DRAFT removal for a completed session (${variant})`);
+  assert(!reopenableCompleted.includes("data-delete-completed"), `HistorySessionActions offers no completed-session removal without the Administrator capability (${variant})`);
 
   const deniedCompleted = renderHistoryActions("Completed", false, variant);
   assert(!/Replace|Edit/.test(deniedCompleted), `HistorySessionActions renders no Replace/Edit control for a non-reopenable completed session (${variant})`);
-  assert(!deniedCompleted.includes("Delete draft"), `HistorySessionActions renders no removal control for a non-reopenable completed session (${variant})`);
+  assert(!deniedCompleted.includes("Delete draft"), `HistorySessionActions renders no draft removal control for a non-reopenable completed session (${variant})`);
+  assert(!deniedCompleted.includes("data-delete-completed"), `HistorySessionActions renders no completed-session removal for a non-reopenable completed session without the capability (${variant})`);
+
+  // The Administrator case, in both directions. Ownership is deliberately NOT required: an
+  // Administrator may remove a completed record another operator encoded.
+  for (const canReopen of [true, false]) {
+    const adminCompleted = renderHistoryActions("Completed", canReopen, variant, true);
+    assert(adminCompleted.includes("data-delete-completed"), `HistorySessionActions offers completed-session removal to an Administrator whether or not the session is reopenable (${variant}, canReopen=${canReopen})`);
+    assert(!adminCompleted.includes("Delete draft"), `the Administrator completed-session control is never labelled as a draft removal (${variant}, canReopen=${canReopen})`);
+  }
+  // A DRAFT never offers the completed-session removal, capability or not: the control is keyed to
+  // the lifecycle state as well as the role.
+  for (const canReopen of [true, false]) {
+    const adminDraft = renderHistoryActions("Draft", canReopen, variant, true);
+    assert(!adminDraft.includes("data-delete-completed"), `a draft never offers completed-session removal, even to an Administrator (${variant}, canReopen=${canReopen})`);
+  }
 }
 
 const replaceHandlerBody = guidedWorkspaceSource.match(/const handleReplaceSession = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";

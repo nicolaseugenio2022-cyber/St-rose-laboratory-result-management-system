@@ -1,6 +1,7 @@
 import { IUserProfile } from "@/domain/models/interfaces";
 import { PatientReportSessionAggregate } from "@/domain/models/patient-report-session-aggregate";
 import { UnauthorizedError, ForbiddenError, ValidationError } from "@/lib/errors";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 
 /**
  * Security & Role-Based Access Control (RBAC) Service
@@ -36,9 +37,9 @@ export class SecurityService {
   }
 
   /**
-   * 30-Day Retention Editability Validation per SECURITY_MODEL.md Section 6.3.
+   * Retention editability validation per SECURITY_MODEL.md Section 6.3.
    * Draft sessions are editable.
-   * Completed sessions are editable ONLY within the 30-day window (`completed_at + 30 days`).
+   * Completed sessions are editable ONLY inside the approved window (`completed_at + the retention window`).
    * Expired sessions (`expires_at < NOW()`) are strictly immutable.
    */
   public canEditSession(session: PatientReportSessionAggregate, userProfile: IUserProfile): boolean {
@@ -54,7 +55,7 @@ export class SecurityService {
       const expires = new Date(session.expiresAt);
       if (now > expires) {
         throw new ValidationError(
-          `Patient Report Session '${session.accessionNumber}' has expired (30-day retention window) and is permanently immutable.`
+          `Patient Report Session '${session.accessionNumber}' has expired (${SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS}-day retention window) and is permanently immutable.`
         );
       }
       return true;

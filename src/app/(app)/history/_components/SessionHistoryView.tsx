@@ -18,6 +18,7 @@ import { PatientReportSessionAggregate } from "@/domain/models/patient-report-se
 // correctly at entry, so "8 months" reads identically here and on the sheet.
 import { formatPatientAge } from "@/domain/patient-age";
 import {
+  deleteCompletedSessionAction as deleteCompletedSession,
   deleteDraftSessionAction as deleteDraftSession,
   getVisibleSessionDetailAction,
   listRecentSessionsAction,
@@ -27,6 +28,7 @@ import type { PatientReportSessionListEntry } from "@/features/server-boundary/s
 import type { SessionHistoryEntryTransport } from "@/features/server-boundary/server-actions";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -102,11 +104,15 @@ const TABLE_COLUMN_COUNT = 4;
 // never sorted from a header (the Sort by select is canonical), so a column of its own bought
 // nothing that a dedicated line inside the identity block does not - and it now has room to sit
 // on ONE line at every width instead of `break-all` splitting an accession number in two.
+// Re-budgeted when the Administrator removal became a third action in the same cell. Actions takes
+// the 6 points it needs from patient and tests so three LABELLED controls fit its content box at a
+// 1440 desktop, and lifecycle is left exactly where it was because 22% is what its own longest
+// wording was measured against above.
 const COLUMN_WIDTH_CLASS = [
-  "w-[34%]", // patient   - name, then accession and examination date, then identity metadata
-  "w-[20%]", // tests     - 118px of content: clears the longest template code with room to wrap
+  "w-[30%]", // patient   - name, then accession and examination date, then identity metadata
+  "w-[18%]", // tests     - 128px at the tightest shell: still clears the longest template code
   "w-[22%]", // lifecycle - 132px of content: clears the longest retention wording plus its icon
-  "w-[24%]", // actions   - three controls, labelled at xl and icon-only below it
+  "w-[30%]", // actions   - three controls, labelled from 1400px and icon-only below it
 ];
 
 // Below md the table becomes a card list, which has no column headers to sort from. This select
@@ -178,11 +184,16 @@ function getRetentionDetails(session: PatientReportSessionListEntry) {
   // retyped. Retention is deliberately NOT a StatusBadge: lifecycle status (Draft / Completed) and
   // retention are separate facts, and a Draft returns null above so it never shows either a
   // retention chip or an expiry.
-  if (daysRemaining <= 2) {
+  // Danger is drawn exactly where the wording already reads as urgent on its own - "Expires
+  // today" and "Expires tomorrow" - rather than at an arbitrary day count. Warning is then the
+  // shared expiring-soon threshold, and everything beyond it is simply retained. All three tiers
+  // stay reachable inside a seven-day window; the previous seven-day warning boundary covered the
+  // whole window, which made every retained record amber and left the quiet tier unreachable.
+  if (daysRemaining <= 1) {
     return { label, icon: AlertTriangle, variant: "danger" as const, quiet: false };
   }
 
-  if (daysRemaining <= 7) {
+  if (daysRemaining <= SYSTEM_CONSTANTS.RETENTION.EXPIRING_SOON_DAYS) {
     return { label, icon: Clock, variant: "warning" as const, quiet: false };
   }
 
@@ -359,11 +370,21 @@ function toHistoryEntry(entry: SessionHistoryEntryTransport): SessionHistoryEntr
 
 export function SessionHistoryView({
   initialEntries,
+  canDeleteCompleted = false,
 }: {
   /** Server-fetched first page. When present, the first client fetch is skipped: the rows arrive
    *  with the HTML instead of after hydrate + a server-action round trip. Search, manual reload
    *  and every later refetch behave exactly as before. */
   initialEntries?: SessionHistoryEntryTransport[];
+  /**
+   * Whether this viewer may permanently delete a COMPLETED session - true only for an
+   * Administrator, resolved on the server from the authenticated account.
+   *
+   * Default FALSE so the capability is never assumed: a caller that omits it offers no removal.
+   * Presentation only. `deleteCompletedSessionAction` re-resolves the caller and refuses a
+   * non-Administrator itself, so this prop decides what is SHOWN and never what is ALLOWED.
+   */
+  canDeleteCompleted?: boolean;
 } = {}) {
   const router = useRouter();
   const [entries, setEntries] = useState<SessionHistoryEntry[]>(
@@ -392,6 +413,11 @@ export function SessionHistoryView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<SessionHistoryEntry | null>(null);
+  // A SECOND pending slot, not a reused one. The two deletions confirm different things about
+  // different lifecycle states, and one shared slot would let the completed dialog open holding a
+  // draft - the one mistake a permanent deletion must not be able to make.
+  const [pendingCompletedDeleteEntry, setPendingCompletedDeleteEntry] =
+    useState<SessionHistoryEntry | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
@@ -541,6 +567,39 @@ export function SessionHistoryView({
       return sort.direction === "ascending" ? comparison : -comparison;
     });
   }, [entries, searchQuery, sort, statusFilter]);
+
+  /**
+   * Permanently delete one COMPLETED session.
+   *
+   * The same shape as the draft deletion: single-flight on `isDeletingId`, the dialog closed
+   * before the outcome is read, the list re-read ONLY on success so a refusal cannot make a row
+   * disappear, and never the thrown message - an unexpected rejection gets this fixed sentence.
+   */
+  const handleConfirmDeleteCompleted = async () => {
+    const entry = pendingCompletedDeleteEntry;
+    if (!entry) return;
+    if (isDeletingId) return;
+
+    const { session } = entry;
+    setIsDeletingId(session.id);
+    setDeleteError(null);
+    try {
+      const deleted = await deleteCompletedSession({ sessionId: session.id });
+      setPendingCompletedDeleteEntry(null);
+      if (!deleted.success) {
+        // An expected refusal: an unauthorized caller, or a session already gone. Nothing was
+        // deleted, so the list is deliberately NOT refreshed.
+        setDeleteError(deleted.error);
+        return;
+      }
+      setReloadToken((current) => current + 1);
+    } catch {
+      setPendingCompletedDeleteEntry(null);
+      setDeleteError("The completed session could not be deleted.");
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
 
   const handleConfirmDeleteDraft = async () => {
     const entry = pendingDeleteEntry;
@@ -826,6 +885,8 @@ export function SessionHistoryView({
                         onPreview={handlePreview}
                         onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
                         onDeleteDraft={setPendingDeleteEntry}
+                        canDeleteCompleted={canDeleteCompleted}
+                        onDeleteCompleted={setPendingCompletedDeleteEntry}
                       />
                     </TableCell>
                   </TableRow>
@@ -881,6 +942,8 @@ export function SessionHistoryView({
                     onPreview={handlePreview}
                     onReopen={(target) => router.push(`/workspace?sessionId=${encodeURIComponent(target.id)}`)}
                     onDeleteDraft={setPendingDeleteEntry}
+                    canDeleteCompleted={canDeleteCompleted}
+                    onDeleteCompleted={setPendingCompletedDeleteEntry}
                   />
                 </li>
               );
@@ -922,6 +985,20 @@ export function SessionHistoryView({
           </div>
         )}
       </Modal>
+
+      {/* Permanent removal of an issued clinical record, so the dialog names the record it will
+          destroy - accession and patient - and says exactly what goes with it. */}
+      <ConfirmDialog
+        isOpen={pendingCompletedDeleteEntry !== null}
+        onCancel={() => setPendingCompletedDeleteEntry(null)}
+        onConfirm={() => void handleConfirmDeleteCompleted()}
+        title="Delete this completed session?"
+        description={`Permanently delete completed session ${pendingCompletedDeleteEntry?.session.accessionNumber ?? ""} for ${pendingCompletedDeleteEntry?.session.demographics.fullName || "Unnamed Patient"}. The session and its report data are removed for good and cannot be recovered.`}
+        confirmLabel="Delete session"
+        pendingLabel="Deleting..."
+        variant="destructive"
+        isPending={isDeletingId === pendingCompletedDeleteEntry?.session.id}
+      />
 
       <ConfirmDialog
         isOpen={pendingDeleteEntry !== null}

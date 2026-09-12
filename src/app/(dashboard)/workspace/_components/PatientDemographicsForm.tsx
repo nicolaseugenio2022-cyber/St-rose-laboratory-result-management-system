@@ -22,11 +22,15 @@ export interface PatientDemographicsFormProps {
   isExpanded?: boolean;
   onToggleExpanded?: (next: boolean) => void;
   /**
-   * Id of the single field a validation failure resolved to, so it can be marked
+   * Selector of the single control a completion failure resolved to, so it can be marked
    * programmatically invalid while focus lands on it. Presentation only: it changes no
    * value, no handler and no validation rule, and null marks nothing.
+   *
+   * A selector rather than a bare id because the Workspace now routes to controls that are not
+   * addressed by id at all - a result by its parameter, a signatory by its role - and one channel
+   * for all of them cannot drift from another.
    */
-  invalidFieldId?: "patient-full-name" | "patient-sex" | null;
+  invalidFieldSelector?: string | null;
 }
 
 /** The shared field label, hand-rendered here so the required mark can sit inside it. */
@@ -37,7 +41,7 @@ export function PatientDemographicsForm({
   onChange,
   isExpanded = true,
   onToggleExpanded,
-  invalidFieldId = null,
+  invalidFieldSelector = null,
 }: PatientDemographicsFormProps) {
   /**
    * Every demographic edit goes through one derivation step.
@@ -156,7 +160,7 @@ export function PatientDemographicsForm({
           <Input
             id="patient-full-name"
             type="text"
-            aria-invalid={invalidFieldId === "patient-full-name" ? true : undefined}
+            aria-invalid={invalidFieldSelector === "#patient-full-name" ? true : undefined}
             value={demographics.fullName}
             onChange={(e) => handleChange("fullName", e.target.value)}
             placeholder="e.g. Dela Cruz, Juan Santos"
@@ -251,7 +255,7 @@ export function PatientDemographicsForm({
           <Select
             id="patient-sex"
             options={[]}
-            aria-invalid={invalidFieldId === "patient-sex" ? true : undefined}
+            aria-invalid={invalidFieldSelector === "#patient-sex" ? true : undefined}
             value={demographics.sex || ""}
             onChange={(e) => handleChange("sex", e.target.value as PatientSex)}
             className="scroll-mt-32"

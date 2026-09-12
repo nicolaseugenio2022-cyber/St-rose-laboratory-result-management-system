@@ -6,6 +6,7 @@ import { SectionLink } from "../primitives/SectionLink";
 import { SessionRow } from "../primitives/SessionRow";
 import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { EXPIRING_SOON_DAYS } from "../../_lib/recent-work";
 import type { RecentWork } from "../../_lib/recent-work";
 
 export interface LaboratoryUserDashboardProps {
@@ -113,8 +114,8 @@ export function LaboratoryUserDashboard({ recentWork }: LaboratoryUserDashboardP
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-brand-warning-border bg-brand-warning-bg px-3.5 py-2 text-[11px] font-medium text-brand-warning">
               <span>
                 {expiringCount === 1
-                  ? "1 completed session expires within 7 days."
-                  : `${expiringCount} completed sessions expire within 7 days.`}
+                  ? `1 completed session expires within ${EXPIRING_SOON_DAYS} days.`
+                  : `${expiringCount} completed sessions expire within ${EXPIRING_SOON_DAYS} days.`}
               </span>
               <SectionLink href="/history">Review in history</SectionLink>
             </p>

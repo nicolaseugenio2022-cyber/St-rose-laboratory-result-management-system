@@ -5,6 +5,7 @@ import { fieldSurfaceClassName } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 import { resolveEncodingResult } from "../../_lib/encoding/evaluate-encoding-result";
 import { ParameterRow } from "./ParameterRow";
+import type { WorksheetColumnPolicy } from "../../_lib/encoding/worksheet-columns";
 
 export interface NumericTextInputProps {
   parameter: ParameterSpec;
@@ -13,9 +14,11 @@ export interface NumericTextInputProps {
   patientSex?: PatientSex | null;
   onChange: (val: string, outcome: EvaluationOutcome) => void;
   onToggleSelect: (selected: boolean) => void;
+  /** Passed straight through to the row, which owns the worksheet geometry. */
+  columns?: WorksheetColumnPolicy;
 }
 
-export function NumericTextInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect }: NumericTextInputProps) {
+export function NumericTextInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect, columns }: NumericTextInputProps) {
   const resolution = resolveEncodingResult(value, parameter, patientSex);
   const outcome = resolution.outcome;
   const errorId = `${parameter.parameterCode}-numeric-error`;
@@ -25,7 +28,7 @@ export function NumericTextInput({ parameter, value, isSelected, patientSex, onC
       isSelected={isSelected}
       patientSex={patientSex}
       outcome={outcome}
-      onToggleSelect={onToggleSelect}
+      onToggleSelect={onToggleSelect} columns={columns}
       validationMessage={resolution.validationMessage || undefined}
       validationMessageId={resolution.validationMessage ? errorId : undefined}
     >

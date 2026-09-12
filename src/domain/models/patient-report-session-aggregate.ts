@@ -2,6 +2,7 @@ import { IPatientReportSession } from "./interfaces";
 import { PatientDemographics, SessionStatus } from "../types";
 import { LaboratoryReportDomain } from "./laboratory-report-domain";
 import { DomainInvariantError, ValidationError } from "../../lib/errors";
+import { SYSTEM_CONSTANTS } from "../../lib/constants";
 import { calculateExpirationDate } from "../../lib/utils";
 import type { CompletedSessionSnapshot } from "@/domain/completion/completed-snapshot";
 import { cloneAndFreezeSnapshot } from "@/domain/completion/completed-snapshot";
@@ -77,7 +78,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
   /**
    * Completes the Patient Report Session.
    * Performs signatory validation, scrubs deselected results, updates status to Completed,
-   * sets completedAt, and computes retention expiration date (completedAt + 30 days).
+   * sets completedAt, and computes the retention expiration date from the approved window.
    */
   public completeSession(_getRequirements?: SignatoryRequirementsLookup): void {
     if (this.status === "Completed") {
@@ -115,7 +116,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
     }
 
     if (this.isExpired()) {
-      throw new DomainInvariantError(`Cannot re-complete session: retention period of 30 days has expired.`);
+      throw new DomainInvariantError(`Cannot re-complete session: retention period of ${SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS} days has expired.`);
     }
 
     const replacementReports = this.reports.map(
@@ -163,7 +164,7 @@ export class PatientReportSessionAggregate implements IPatientReportSession {
     }
 
     if (this.isExpired()) {
-      throw new DomainInvariantError(`Cannot edit or replace report: retention period of 30 days has expired.`);
+      throw new DomainInvariantError(`Cannot edit or replace report: retention period of ${SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS} days has expired.`);
     }
 
     const index = this.reports.findIndex((r) => r.id === updatedReport.id || r.templateCode === updatedReport.templateCode);

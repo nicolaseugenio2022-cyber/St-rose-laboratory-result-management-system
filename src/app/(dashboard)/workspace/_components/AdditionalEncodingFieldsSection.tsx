@@ -2,11 +2,14 @@ import React from "react";
 import { AdditionalEncodingFieldSpec } from "@/domain/types/report-definition";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { isRoutedInvalidControl } from "../_lib/encoding/completion-issue-routing";
 
-export function AdditionalEncodingFieldsSection({ fields, values, onChange }: {
+export function AdditionalEncodingFieldsSection({ fields, values, onChange, invalidFieldSelector }: {
   fields: AdditionalEncodingFieldSpec[];
   values: Record<string, string>;
   onChange: (fieldCode: string, value: string) => void;
+  /** Selector of the control a completion failure resolved to. Optional; absent marks nothing. */
+  invalidFieldSelector?: string | null;
 }) {
   if (fields.length === 0) return null;
   // Unframed, for the same reason as RequestedBySection: the setup band is the frame.
@@ -20,10 +23,12 @@ export function AdditionalEncodingFieldsSection({ fields, values, onChange }: {
           {field.label}{field.isRequired && <span className="text-brand-danger"> *</span>}
         </label>
         {field.inputType === "SingleSelect" ? <Select id={fieldId} options={[]} value={values[field.fieldCode] || ""} onChange={(event) => onChange(field.fieldCode, event.target.value)} required={field.isRequired}
-          data-additional-field={field.fieldCode} data-encoding-input>
+          data-additional-field={field.fieldCode} data-encoding-input
+          aria-invalid={isRoutedInvalidControl(invalidFieldSelector, `[data-additional-field="${field.fieldCode}"]`) || undefined}>
           <option value="">-- Select --</option>{field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
         </Select> : <Input id={fieldId} type="text" value={values[field.fieldCode] || ""} onChange={(event) => onChange(field.fieldCode, event.target.value)} required={field.isRequired}
-          placeholder={field.placeholder} data-additional-field={field.fieldCode} data-encoding-input />}
+          placeholder={field.placeholder} data-additional-field={field.fieldCode} data-encoding-input
+          aria-invalid={isRoutedInvalidControl(invalidFieldSelector, `[data-additional-field="${field.fieldCode}"]`) || undefined} />}
       </div>;
     })}
   </section>;

@@ -37,6 +37,18 @@ export interface HistorySessionActionsProps {
   onPreview: (session: PatientReportSessionListEntry) => void;
   onReopen: (session: PatientReportSessionListEntry) => void;
   onDeleteDraft: (entry: HistorySessionEntry) => void;
+  /**
+   * Whether the viewer may permanently delete a COMPLETED session.
+   *
+   * Resolved on the server from the authenticated account and passed down. OPTIONAL and default
+   * FALSE, so every existing caller - and any future one that forgets it - offers no removal at
+   * all: the control fails closed. It is presentation only. The server action re-resolves the
+   * caller and refuses a non-Administrator on its own, so hiding this button is a convenience,
+   * never the authorization boundary.
+   */
+  canDeleteCompleted?: boolean;
+  /** Asked to delete a COMPLETED session. Separate from the draft callback on purpose. */
+  onDeleteCompleted?: (entry: HistorySessionEntry) => void;
 }
 
 export function HistorySessionActions({
@@ -46,6 +58,8 @@ export function HistorySessionActions({
   onPreview,
   onReopen,
   onDeleteDraft,
+  canDeleteCompleted = false,
+  onDeleteCompleted,
 }: HistorySessionActionsProps) {
   const { session, canReopen } = entry;
   const isCompleted = session.status === "Completed";
@@ -53,10 +67,14 @@ export function HistorySessionActions({
   // Authorization, stated once for both renderings:
   //  - Preview is always offered.
   //  - Replace/Edit requires the server-decided canReopen.
-  //  - Delete draft additionally requires the session to still be a Draft, so a Completed
-  //    session never offers removal regardless of ownership.
+  //  - Delete draft requires the session to still be a Draft AND the server-decided canReopen,
+  //    which for a draft means the caller created it. Ownership, not role.
+  //  - Deleting a COMPLETED session is the Administrator's action and nobody else's. It is NOT
+  //    gated on canReopen: an Administrator may remove a completed record another operator
+  //    encoded, which is the whole point of the permission. Role, not ownership.
   const mayReopen = canReopen;
   const mayDeleteDraft = !isCompleted && canReopen;
+  const mayDeleteCompleted = isCompleted && canDeleteCompleted && Boolean(onDeleteCompleted);
 
   const isCard = variant === "card";
   const rowSubject = session.accessionNumber ?? session.demographics?.fullName ?? "";
@@ -78,20 +96,29 @@ export function HistorySessionActions({
   // Every control keeps a visible resting border, so interactivity never depends on colour alone.
   const previewClass = isCard
     ? cardTarget
-    : "h-8 px-2 xl:px-2.5 border-brand-border bg-brand-structural text-brand-navy hover:border-brand-border-strong hover:bg-brand-structural-hover";
+    : "h-8 px-2 min-[1400px]:px-2.5 border-brand-border bg-brand-structural text-brand-navy hover:border-brand-border-strong hover:bg-brand-structural-hover";
   const reopenClass = isCard
     ? `${cardTarget} border-brand-info-border bg-brand-tint text-brand-primary hover:border-brand-primary hover:bg-brand-tint`
-    : "h-8 px-2 xl:px-2.5 text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
-  // Icon-only in the table: 32x32 clears the WCAG 2.5.8 target-size minimum, the trash glyph
-  // carries the destructive meaning by shape rather than by colour, and the accessible name is
-  // supplied explicitly below.
-  const deleteClass = isCard
-    ? `${cardTarget} px-2.5 text-brand-text-muted hover:bg-brand-danger-bg hover:text-brand-danger`
-    : "h-8 w-8 border border-brand-border p-0 text-brand-text-muted hover:border-brand-danger-border hover:bg-brand-danger-bg hover:text-brand-danger";
+    : "h-8 px-2 min-[1400px]:px-2.5 text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
+  // THE SHARED DESTRUCTIVE BUTTON, the same one the Personnel directory uses for its permanent
+  // deletion. Removing a record is the same act in both modules, so it reads the same: `variant
+  // "danger"` carries the colour from the design system and nothing is re-tinted here. Only geometry
+  // is set locally - the same height and padding rhythm as Preview and Replace, so three controls
+  // read as one group rather than as two buttons and an odd square pushed against the cell edge. A
+  // fixed 32x32 icon-only box was the one control that could not carry a label, which is exactly how
+  // it ended up crowding the boundary once a third action arrived.
+  const deleteClass = isCard ? cardTarget : "h-8 px-2 min-[1400px]:px-2.5";
   const iconSize = isCard ? "h-4 w-4" : "h-3.5 w-3.5";
-  // Between lg and xl the shell leaves the table roughly 720px, so the labelled controls do
-  // not fit. They collapse to icons there; the text stays in the DOM for assistive tech.
-  const labelClass = isCard ? "" : "hidden xl:inline";
+  // WHERE THE LABELS TURN ON, measured rather than guessed.
+  //
+  // Three LABELLED controls measure about 290px including their gaps. The actions column is 30% of
+  // a `table-fixed` table, so the content box is 269px at the xl shell and 317px at 1440. Labels
+  // at xl therefore asked for 290px inside 269px, and because the frame is `overflow-hidden` and a
+  // fixed table never exceeds 100%, the surplus was CLIPPED at the right edge rather than scrolled
+  // - the defect this corrects. 1400px is where the third label starts to fit, so that is the
+  // breakpoint: an ordinary 1440 desktop gets all three labels, and the 1280-1399 band keeps the
+  // icons it has room for. The text stays in the DOM at every width for assistive technology.
+  const labelClass = isCard ? "" : "hidden min-[1400px]:inline";
 
   const primaryActions = (
     <>
@@ -127,7 +154,7 @@ export function HistorySessionActions({
   const deleteAction = mayDeleteDraft ? (
     <Button
       type="button"
-      variant="ghost"
+      variant="danger"
       size={buttonSize}
       onClick={() => onDeleteDraft(entry)}
       disabled={isDeleting}
@@ -137,19 +164,47 @@ export function HistorySessionActions({
       aria-label={named("Delete draft")}
       title={isCard ? undefined : "Delete draft"}
     >
-      {/* Slightly larger glyph in the table: it is the control's only visible content. */}
-      <Trash2 className="h-4 w-4" aria-hidden="true" />
-      {isCard ? "Delete draft" : null}
+      <Trash2 className={iconSize} aria-hidden="true" />
+      {/* "Delete" in the table, where the column is shared with two other labels; the full
+          "Delete draft" in the card, which has the room. The accessible name carries the
+          distinction at every width either way. */}
+      {isCard ? "Delete draft" : <span className={labelClass}>Delete</span>}
+    </Button>
+  ) : null;
+
+  // The same control, for the other lifecycle state and the other authorization rule. Deliberately
+  // a separate element rather than one button with two meanings: the label, the confirmation it
+  // opens and the permission behind it all differ, and a single control switching identity by
+  // status is how the wrong record gets deleted.
+  const deleteCompletedAction = mayDeleteCompleted ? (
+    <Button
+      type="button"
+      variant="danger"
+      size={buttonSize}
+      onClick={() => onDeleteCompleted?.(entry)}
+      disabled={isDeleting}
+      className={deleteClass}
+      aria-label={named("Delete completed session")}
+      title={isCard ? undefined : "Delete completed session"}
+      data-delete-completed
+    >
+      <Trash2 className={iconSize} aria-hidden="true" />
+      {isCard ? "Delete session" : <span className={labelClass}>Delete</span>}
     </Button>
   ) : null;
 
   if (!isCard) {
-    // One nowrap row, left-aligned. Right-aligning made Preview land at a different x on every
-    // row depending on how many actions that row had, which broke the vertical scan line.
+    // One left-aligned group that WRAPS. Right-aligning made Preview land at a different x on every
+    // row depending on how many actions that row had, which broke the vertical scan line. The wrap
+    // is the safety net rather than the plan: the column is budgeted for three labelled controls, so
+    // a row that somehow exceeds it takes a second line inside the cell instead of being clipped by
+    // the frame. Nothing is pushed to the cell boundary, and a row with two actions aligns with a row
+    // that has three because both start at the same left edge.
     return (
-      <div className="flex items-center justify-start gap-1.5 whitespace-nowrap">
+      <div className="flex flex-wrap items-center justify-start gap-1.5">
         {primaryActions}
         {deleteAction}
+        {deleteCompletedAction}
       </div>
     );
   }
@@ -161,7 +216,12 @@ export function HistorySessionActions({
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-brand-border bg-brand-structural px-3.5 py-2">
       {primaryActions}
-      {deleteAction && <div className="ml-auto">{deleteAction}</div>}
+      {/* ONE trailing slot. A row is either a Draft or a Completed session, so at most one of the
+          two removals exists; giving each its own `ml-auto` wrapper would have allowed two
+          right-aligned controls to exist in the same footer. */}
+      {(deleteAction || deleteCompletedAction) && (
+        <div className="ml-auto">{deleteAction ?? deleteCompletedAction}</div>
+      )}
     </div>
   );
 }

@@ -6,16 +6,19 @@ import { fieldSurfaceClassName } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 import { evaluateEncodingResult } from "../../_lib/encoding/evaluate-encoding-result";
 import { ParameterRow } from "./ParameterRow";
+import type { WorksheetColumnPolicy } from "../../_lib/encoding/worksheet-columns";
 
 export interface SingleSelectInputProps {
   parameter: ParameterSpec; value: string; isSelected: boolean; patientSex?: PatientSex | null;
   onChange: (val: string, outcome: EvaluationOutcome) => void;
   onToggleSelect: (selected: boolean) => void;
+  /** Passed straight through to the row, which owns the worksheet geometry. */
+  columns?: WorksheetColumnPolicy;
 }
 
-export function SingleSelectInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect }: SingleSelectInputProps) {
+export function SingleSelectInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect, columns }: SingleSelectInputProps) {
   const outcome = evaluateEncodingResult(value, parameter, patientSex);
-  return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect}>
+  return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect} columns={columns}>
     {/* A native select in the shared field styling: the browser arrow is replaced by the lucide
         chevron so the control matches the fields around it, and the element stays a real <select>
         so keyboard, mobile pickers and the grid Tab fast path are untouched. */}

@@ -216,7 +216,11 @@ export function buildEncodingReport(input: BuildEncodingReportInput): Laboratory
       existingReport?.results,
       input.unmatchedParameterSelection ?? true
     ),
-    signatories: existingReport?.signatories || input.signatories,
+    // An EMPTY existing list is not a choice the operator made: a draft save deliberately writes no
+    // signatory rows, so a reopened draft always arrives with none. `||` treated that empty array as
+    // truthy and kept it, which left a reopened draft with no signatories at all and refused
+    // completion until they were assigned again by hand. A populated list is still kept exactly.
+    signatories: existingReport?.signatories?.length ? existingReport.signatories : input.signatories,
   });
   return reevaluateEncodingReport(initializedReport, definition, input.evaluationContext);
 }

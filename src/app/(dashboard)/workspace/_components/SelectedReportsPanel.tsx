@@ -9,7 +9,12 @@ import { AlertTriangle, Check, ChevronDown, FileText, MoreVertical, Trash2, X, X
 export interface ReportTabProgress {
   completedCount: number;
   selectedCount: number;
-  isComplete: boolean;
+  /**
+   * The results of this report satisfy the completion rule. Supplied by the Workspace from the
+   * shared rule, never recomputed here. It is not "every field filled in": a checked parameter
+   * left blank is reported as omitted, so a report carrying deliberate blanks is still ready.
+   */
+  isCompletable: boolean;
   /**
    * A selected result of this report evaluated to `Invalid`. Supplied by the Workspace from the
    * shared completion rule; never recomputed here. Optional so a report whose progress has not
@@ -30,7 +35,7 @@ type QueueState = "invalid" | "complete" | "inProgress" | "notStarted";
 function resolveQueueState(progress: ReportTabProgress | undefined): QueueState | null {
   if (!progress) return null;
   if (progress.hasInvalidResult) return "invalid";
-  if (progress.isComplete) return "complete";
+  if (progress.isCompletable) return "complete";
   if (progress.completedCount === 0) return "notStarted";
   return "inProgress";
 }
@@ -38,7 +43,7 @@ function resolveQueueState(progress: ReportTabProgress | undefined): QueueState 
 /** The accessible state word for each queue state. Rendered as text, never as a colour. */
 const QUEUE_STATE_LABEL: Record<QueueState, string> = {
   invalid: "Contains invalid result",
-  complete: "Complete",
+  complete: "Ready to complete",
   inProgress: "In progress",
   notStarted: "Not started",
 };

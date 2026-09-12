@@ -1,5 +1,6 @@
 import { SupabasePatientReportSessionRepository } from "@/repositories/supabase-session-repository";
 import { auditService } from "@/services/audit-service-instance";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 
 /**
  * Scheduled Purge & Recovery Service
@@ -14,7 +15,7 @@ export class PurgeSchedulerService {
   }
 
   /**
-   * Execute scheduled retention purge of expired completed sessions (> 30 days old).
+   * Execute scheduled retention purge of completed sessions past their retention window.
    */
   public async executeScheduledPurge(runnerUserId = "system-scheduler"): Promise<{ purgedCount: number; timestamp: string }> {
     const startTime = new Date().toISOString();
@@ -31,7 +32,7 @@ export class PurgeSchedulerService {
         details: {
           purgedCount,
           executionTimestamp: startTime,
-          retentionWindowDays: 30,
+          retentionWindowDays: SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS,
         },
       });
     }

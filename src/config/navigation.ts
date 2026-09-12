@@ -1,4 +1,5 @@
 import { UserRole } from "@/domain/types";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 
 /**
  * The section a destination is listed under in the sidebar.
@@ -49,7 +50,7 @@ export const navigationConfig: NavItemConfig[] = [
     href: "/history",
     group: "laboratory",
     iconName: "History",
-    description: "30-day active record directory, report replacement, and export",
+    description: `${SYSTEM_CONSTANTS.RETENTION.COMPLETED_REPORT_DAYS}-day active record directory, report replacement, and export`,
     requiredRole: ["Admin", "User"],
   },
   {

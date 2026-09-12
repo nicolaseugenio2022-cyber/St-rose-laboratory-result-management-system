@@ -14,7 +14,7 @@ import { ComboboxInput } from "./controls/ComboboxInput";
 import { FreeTextInput } from "./controls/FreeTextInput";
 import { ComputedInput } from "./controls/ComputedInput";
 import { ConditionalChoiceInput } from "./ConditionalChoiceInput";
-import { PARAMETER_ROW_TRACKS } from "./controls/ParameterRow";
+import { resolveWorksheetColumnPolicy } from "../_lib/encoding/worksheet-columns";
 import { RequestedBySection } from "./RequestedBySection";
 import { AdditionalEncodingFieldsSection } from "./AdditionalEncodingFieldsSection";
 import { PanelIcon } from "./PanelIcon";
@@ -44,10 +44,15 @@ export interface DynamicResultFormProps {
    * control fetching the directory itself exactly as before.
    */
   physicianDirectory?: readonly string[];
+  /** Selector of the control a completion failure resolved to. Optional; absent marks nothing. */
+  invalidFieldSelector?: string | null;
 }
 
-export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto, physicianAssignment, physicianDirectory }: DynamicResultFormProps) {
+export function DynamicResultForm({ definition, report, patientSex, onChangeReport, onRequestManualToAuto, physicianAssignment, physicianDirectory, invalidFieldSelector }: DynamicResultFormProps) {
   const sortedParameters = useMemo(() => [...definition.parameters].sort((a, b) => a.displayOrder - b.displayOrder), [definition]);
+  // Resolved once per examination, from the examination's own declaration, and handed to every row
+  // and to the header below so the two cannot be laid out from different track lists.
+  const columns = useMemo(() => resolveWorksheetColumnPolicy(definition), [definition]);
   const calculationModes = useMemo(() => normalizeCalculationModes(report.encodingData?.calculationModes), [report.encodingData?.calculationModes]);
   const updateEncodingData = useCallback((patch: Partial<NonNullable<ILaboratoryReport["encodingData"]>>) => {
     onChangeReport(new LaboratoryReportDomain({ ...report, encodingData: { ...(report.encodingData || {}), ...patch } }));
@@ -137,7 +142,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
         edges - the grid gets the whole width instead of losing it to a nested frame. */}
     <div className="space-y-3 border-b border-brand-border bg-brand-structural px-4 py-3">
       <RequestedBySection policy={definition.requestedByPolicy} assignment={physicianAssignment} directory={physicianDirectory} value={report.encodingData?.requestedBy || ""} onChange={(requestedBy) => updateEncodingData({ requestedBy })} />
-      <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} />
+      <AdditionalEncodingFieldsSection fields={definition.additionalEncodingFields || []} values={report.encodingData?.additionalFields || {}} onChange={(fieldCode, value) => updateEncodingData({ additionalFields: { ...(report.encodingData?.additionalFields || {}), [fieldCode]: value } })} invalidFieldSelector={invalidFieldSelector} />
     </div>
     <div>
         {/* Worksheet column header, laid out from PARAMETER_ROW_TRACKS so it cannot drift out of
@@ -151,13 +156,13 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
             // Column header is structural too - it labels the grid, it is not part of it. Same
             // band and navy uppercase labels as the shared Table header.
             "hidden gap-x-2 border-b border-l-2 border-l-transparent border-b-brand-border bg-brand-structural px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-navy sm:grid sm:items-center",
-            PARAMETER_ROW_TRACKS
+            columns.rowTracks
           )}
         >
           <span className="pl-[1.375rem]">Parameter</span>
           <span>Result</span>
-          <span>Unit</span>
-          <span>Reference</span>
+          {columns.showUnitColumn && <span>Unit</span>}
+          {columns.showReferenceColumn && <span>Reference</span>}
           <span>Status</span>
         </div>
         {/* The scope of the forward-Tab fast path. Requested By, the additional encoding
@@ -172,7 +177,7 @@ export function DynamicResultForm({ definition, report, patientSex, onChangeRepo
           const result = report.results.find((item) => item.parameterCode === parameter.parameterCode);
           const value = getEditableResultValue(parameter, result?.resultValue || "");
           const isSelected = (result as LaboratoryResultDomain | undefined)?.isSelected ?? true;
-          const common = { parameter, value, isSelected, patientSex, onToggleSelect: (selected: boolean) => handleToggleSelect(parameter.parameterCode, selected) };
+          const common = { parameter, value, isSelected, patientSex, columns, onToggleSelect: (selected: boolean) => handleToggleSelect(parameter.parameterCode, selected) };
           const onChange = (nextValue: string, outcome: LaboratoryResultDomain["evaluationOutcome"]) => onChangeReport(applyEncodingResultValue(report, definition, parameter.parameterCode, nextValue, outcome, { sex: patientSex }));
           let control: React.ReactNode;
           if (parameter.conditionalChoiceSpec) control = <ConditionalChoiceInput {...common} onChange={onChange} />;

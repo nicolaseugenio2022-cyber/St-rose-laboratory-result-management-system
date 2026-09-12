@@ -341,6 +341,14 @@ async function main(): Promise<void> {
   assert(approximately(dimensions75.width, dimensions100.width * 0.75) && approximately(dimensions75.height, dimensions100.height * 0.75), "75% must scale the complete A4 page uniformly");
   assert(at100.includes('data-live-preview-composition-provider="StandardNative"') && at100.includes('data-live-preview-composition-source="StandardAdaptiveTabular"'), "manual provenance must remain exposed as machine-readable attributes");
 
+  // REPORT-QA-03: the Preview DOM, which Browser Print prints, carries the composed ESR RESULT
+  // verbatim - the fixture's "100" as "100 mm/hr" - and the unit once in the result, once in the
+  // reference.
+  const esrPreviewReport = resolved.reports.find((report) => report.templateCode === "ESR")!;
+  const esrMarkup = renderToStaticMarkup(React.createElement(NativeLivePreviewPage, { resolvedSession: resolved, resolvedReport: esrPreviewReport, reportTitle: "ESR", zoomLevel: 100 }));
+  assert(esrMarkup.includes(">100 mm/hr<"), "the ESR Preview must print the RESULT as \"100 mm/hr\"");
+  assert((esrMarkup.match(/mm\/hr/g) || []).length === 2, `the ESR Preview must print mm/hr exactly twice - measured ${(esrMarkup.match(/mm\/hr/g) || []).length}`);
+
   const moduleRuntime = await import("node:module");
   const extensionRuntime = moduleRuntime.default as unknown as { _extensions: Record<string, (module: unknown, filename: string) => void> };
   extensionRuntime._extensions[".css"] = () => undefined;

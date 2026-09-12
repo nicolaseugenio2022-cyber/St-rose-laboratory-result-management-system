@@ -21,7 +21,7 @@
 import { ReportDefinitionRegistry } from "../src/domain/definitions/report-definition-registry";
 import { PatientReportSessionAggregate } from "../src/domain/models/patient-report-session-aggregate";
 import { LaboratoryReportDomain } from "../src/domain/models/laboratory-report-domain";
-import { applyEncodingResultValue, buildEncodingReport } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
+import { applyEncodingResultValue, applyParameterSelection, buildEncodingReport } from "../src/app/(dashboard)/workspace/_lib/encoding/report-encoding";
 import { resolveDraftSessionRenderModel } from "../src/rendering/model";
 import type { PatientDemographics, RendererFamily, SignatorySnapshot } from "../src/domain/types";
 import type { ClinicalReportDefinition } from "../src/domain/types/report-definition";
@@ -133,12 +133,28 @@ cbcSession.completeSession();
 assert(cbcSession.status === "Completed", "a CBC completes with Eosinophil and Basophil checked and intentionally blank");
 
 const frozenCbc = cbcSession.completedSnapshot!.reports[0].results;
-assert(!frozenCbc.some((result) => result.parameterCode === "EOSINOPHIL"), "the blank Eosinophil is absent from the frozen report");
-assert(!frozenCbc.some((result) => result.parameterCode === "BASOPHIL"), "the blank Basophil is absent from the frozen report");
+// The CLIENT requirement: a checked parameter that was not reported is KEPT in the frozen record,
+// named, with an empty result - so the issued report shows the panel that was run, and the three
+// states stay distinguishable in the snapshot itself (a row with a value, a row with none, no row).
+for (const parameterCode of ["EOSINOPHIL", "BASOPHIL"]) {
+  const frozenBlank = frozenCbc.find((result) => result.parameterCode === parameterCode);
+  assert(frozenBlank !== undefined, `the checked blank ${parameterCode} is kept in the frozen report`);
+  assert(
+    frozenBlank!.formattedResultValue === "" && !(frozenBlank!.rawResultValue || "").trim(),
+    `the frozen blank ${parameterCode} carries no fabricated result - measured "${frozenBlank!.formattedResultValue}"`
+  );
+  assert(
+    !["Invalid", "High", "Low", "Normal", "Abnormal"].includes(frozenBlank!.evaluationOutcome),
+    `the frozen blank ${parameterCode} carries no fabricated status - measured ${frozenBlank!.evaluationOutcome}`
+  );
+}
 assert(frozenCbc.some((result) => result.parameterCode === "HEMOGLOBIN"), "the populated results are still reported");
-assert(frozenCbc.length === cbc.parameters.filter((parameter) => parameter.inputType !== "Computed").length - 2, "exactly the two blank parameters were omitted, and nothing else");
+assert(frozenCbc.length === cbc.parameters.filter((parameter) => parameter.inputType !== "Computed").length, "every checked parameter is frozen, blank or not, and nothing else is");
 
-// The same two parameters must also be absent from what Preview, Print and PDF compose.
+// The DRAFT sheet is a different question from the issued report, and the two answers differ by
+// approved client requirement. A checked parameter the operator has not reported yet STAYS ON the
+// draft - named, with an empty result - because the sheet shows the panel that was run. The frozen
+// record above still omits it: what was never reported is not reported.
 const renderedCbc = resolveDraftSessionRenderModel({
   id: "blank-session",
   accessionNumber: "ACC-BLANK",
@@ -149,8 +165,30 @@ const renderedCbc = resolveDraftSessionRenderModel({
   completedAt: null,
 }).reports[0];
 const renderedCodes = renderedCbc.results.filter((result) => result.omission === "Render").map((result) => result.parameterCode);
-assert(!renderedCodes.includes("EOSINOPHIL") && !renderedCodes.includes("BASOPHIL"), "the blank parameters are omitted from the rendered report, not printed as empty rows");
+assert(renderedCodes.includes("EOSINOPHIL") && renderedCodes.includes("BASOPHIL"), "a checked blank parameter is rendered on the draft, not hidden until a value arrives");
 assert(renderedCodes.includes("HEMOGLOBIN"), "the populated parameters are still rendered");
+// Visible does not mean invented: the row carries its name and NOTHING in the result.
+for (const parameterCode of ["EOSINOPHIL", "BASOPHIL"]) {
+  const blankRow = renderedCbc.results.find((result) => result.parameterCode === parameterCode)!;
+  assert(
+    blankRow.formattedValue === "" && !(blankRow.rawValue || "").trim(),
+    `the rendered blank ${parameterCode} carries no fabricated result - measured "${blankRow.formattedValue}"`
+  );
+  assert(
+    blankRow.referenceDisplay !== null && blankRow.label === cbc.parameters.find((parameter) => parameter.parameterCode === parameterCode)!.parameterName,
+    `the rendered blank ${parameterCode} keeps its own name and reference presentation`
+  );
+}
+// A DESELECTED parameter is still omitted: selection is what decides visibility.
+const deselectedCbc = resolveDraftSessionRenderModel({
+  id: "blank-session", accessionNumber: "ACC-BLANK", status: "Draft", demographics,
+  reports: [applyParameterSelection(cbcReport, cbc, "EOSINOPHIL", false)],
+  createdAt: "2026-09-09T00:00:00.000Z", completedAt: null,
+}).reports[0];
+assert(
+  deselectedCbc.results.find((result) => result.parameterCode === "EOSINOPHIL")!.omission === "Omit",
+  "a deselected parameter stays omitted from the draft"
+);
 
 // A zero is rendered, never swallowed as falsy.
 let zeroReport = reportFor(cbc);

@@ -18,6 +18,11 @@ export interface EncodingReportFooterProps {
   report: ILaboratoryReport;
   availablePersonnel: WorkspacePersonnelEntry[];
   onChangeReport: (updatedReport: ILaboratoryReport) => void;
+  /** Selector of the control a completion failure resolved to. Optional; absent marks nothing. */
+  invalidFieldSelector?: string | null;
+  /** Controlled expansion. Omitted leaves the panel owning its own state. */
+  isExpanded?: boolean;
+  onExpandedChange?: (next: boolean) => void;
 }
 
 /**
@@ -92,8 +97,20 @@ export function EncodingReportFooter({
   report,
   availablePersonnel,
   onChangeReport,
+  invalidFieldSelector,
+  isExpanded: controlledExpanded,
+  onExpandedChange,
 }: EncodingReportFooterProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Collapsed by default and opened by the operator, exactly as before. The Workspace may also
+  // drive it, because a completion failure against a signatory or a reagent lot number has to
+  // open the panel that holds the field: the content is hidden with CSS, and focus cannot land on
+  // a `display:none` control.
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const isExpanded = controlledExpanded ?? internalExpanded;
+  const setExpanded = (next: boolean) => {
+    setInternalExpanded(next);
+    onExpandedChange?.(next);
+  };
 
   const hasFindings = (definition.repeatableFindings?.length || 0) > 0;
   const assigned = signatoriesAssigned(report, spec);
@@ -123,7 +140,7 @@ export function EncodingReportFooter({
 
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         aria-controls="encoding-footer-content"
         className="flex w-full items-center gap-2.5 bg-brand-structural px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
@@ -208,6 +225,7 @@ export function EncodingReportFooter({
             <ReagentKitInfoSection
               kitInfo={report.reagentKitInfo}
               onChange={(reagentKitInfo) => onChangeReport(new LaboratoryReportDomain({ ...report, reagentKitInfo }))}
+              invalidFieldSelector={invalidFieldSelector}
             />
           )}
           <SignatorySelectionSection
@@ -217,6 +235,7 @@ export function EncodingReportFooter({
             requiredMedtechsCount={spec.signatoryRequirement.requiredMedtechsCount}
             availablePersonnel={availablePersonnel}
             onChange={(signatories) => onChangeReport(new LaboratoryReportDomain({ ...report, signatories }))}
+            invalidFieldSelector={invalidFieldSelector}
         />
       </div>
     </section>

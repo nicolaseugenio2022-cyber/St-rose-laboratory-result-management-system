@@ -94,13 +94,40 @@ for (const code of codes) {
     blankSession.completeSession();
     assert(blankSession.status === "Completed", `${code} completes with a checked parameter left intentionally blank`);
     const frozen = blankSession.completedSnapshot!.reports[0].results;
-    assert(!frozen.some((result) => result.parameterCode === blankable.parameterCode), `${code} omits the intentionally blank ${blankable.parameterCode} from the frozen report`);
+    // CLIENT requirement: the checked blank parameter is KEPT in the frozen record, named, with a
+    // genuinely empty result. Dropping it collapsed "checked and not reported" into "not selected",
+    // and a completed report then disagreed with the draft it was frozen from. A parameter that
+    // declares blankOmission is the one exception and is still dropped while blank.
+    const frozenBlank = frozen.find((result) => result.parameterCode === blankable.parameterCode);
+    if (blankable.blankOmission) {
+      assert(frozenBlank === undefined, `${code} still omits the blank ${blankable.parameterCode}, which declares blankOmission`);
+    } else {
+      assert(frozenBlank !== undefined, `${code} keeps the intentionally blank ${blankable.parameterCode} in the frozen report`);
+      assert(
+        frozenBlank!.formattedResultValue === "" && !(frozenBlank!.rawResultValue || "").trim(),
+        `${code} freezes the blank ${blankable.parameterCode} with no fabricated result - measured "${frozenBlank!.formattedResultValue}"`
+      );
+      assert(
+        frozenBlank!.evaluationOutcome !== "Invalid" && frozenBlank!.evaluationOutcome !== "High" && frozenBlank!.evaluationOutcome !== "Low" && frozenBlank!.evaluationOutcome !== "Normal",
+        `${code} freezes the blank ${blankable.parameterCode} with no fabricated status - measured ${frozenBlank!.evaluationOutcome}`
+      );
+    }
     assert(frozen.length > 0, `${code} still reports its remaining results`);
     const whitespaceReport = validReport(definition);
     whitespaceReport.results = whitespaceReport.results.map((result) => result.parameterCode === blankable.parameterCode ? new LaboratoryResultDomain({ ...result, resultValue: "   ", rawResultValue: "   ", formattedResultValue: "   " }) : result);
     const whitespaceSession = sessionFor(definition, whitespaceReport);
     whitespaceSession.completeSession();
-    assert(!whitespaceSession.completedSnapshot!.reports[0].results.some((result) => result.parameterCode === blankable.parameterCode), `${code} treats a whitespace-only ${blankable.parameterCode} as blank and omits it`);
+    // Whitespace is still BLANK, not a result. The row is kept for the same reason an empty one is,
+    // and what must not happen is whitespace surviving as reported content.
+    const whitespaceFrozen = whitespaceSession.completedSnapshot!.reports[0].results.find((result) => result.parameterCode === blankable.parameterCode);
+    if (blankable.blankOmission) {
+      assert(whitespaceFrozen === undefined, `${code} still omits a whitespace-only ${blankable.parameterCode}, which declares blankOmission`);
+    } else {
+      assert(
+        whitespaceFrozen !== undefined && !(whitespaceFrozen.formattedResultValue || "").trim() && !(whitespaceFrozen.rawResultValue || "").trim(),
+        `${code} treats a whitespace-only ${blankable.parameterCode} as blank and freezes no reported content for it`
+      );
+    }
   }
 }
 
@@ -2441,6 +2468,17 @@ const operationalResultActions: {
     expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "SESSION_NOT_REOPENABLE"],
     classifiedTypes: [],
     stages: ["findReopenableSession"],
+  },
+  {
+    // CLIENT-HISTORY-DELETE-RETENTION. The Administrator-only completed-session deletion is held to
+    // the same typed-result contract as every other operational action: authorization first, the
+    // refusal returned rather than thrown, failures classified by TYPE, and no caught message, stack
+    // or database detail anywhere in the action body.
+    action: "deleteCompletedSessionAction",
+    route: "/history",
+    expectedCodes: ["OPERATIONAL_ACCESS_DENIED", "COMPLETED_SESSION_NOT_DELETABLE"],
+    classifiedTypes: ["CompletedSessionNotDeletableError"],
+    stages: ["deleteCompletedSession"],
   },
   {
     action: "deleteDraftSessionAction",

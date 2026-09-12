@@ -1,4 +1,5 @@
 import "server-only";
+import { SYSTEM_CONSTANTS } from "@/lib/constants";
 import { listRecentSessionsAction } from "@/features/server-boundary/server-actions";
 
 /**
@@ -35,7 +36,12 @@ export interface RecentWork {
   expiringSoon: RecentWorkItem[];
 }
 
-export const EXPIRING_SOON_DAYS = 7;
+/**
+ * Re-exported from the one declaration in `SYSTEM_CONSTANTS.RETENTION`, so the dashboard, its
+ * row marker and the History chip cannot drift apart. The name stays here because this is where
+ * the dashboard reads it from.
+ */
+export const EXPIRING_SOON_DAYS = SYSTEM_CONSTANTS.RETENTION.EXPIRING_SOON_DAYS;
 
 export function daysUntilExpiry(expiresAt: string | null, now = Date.now()): number | null {
   if (!expiresAt) return null;

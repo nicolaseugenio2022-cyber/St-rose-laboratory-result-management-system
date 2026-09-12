@@ -203,14 +203,16 @@ async function main(): Promise<void> {
   // returns the reference track's width to the RESULT column, so two rows that previously wrapped
   // onto a second line now fit on one and the report ends 9.1 mm higher - two row heights exactly.
   // Every other pin is untouched, which is what proves the change stayed inside one report.
-  // The intentionally-blank-results change re-mints CHEM_10 (130.65 -> 126.10) and HDL_LDL
-  // (121.55 -> 117.00), one row height each. A result carrying no value is now omitted from the
-  // report rather than printed as an empty row, and this fixture feeds CHOLESTEROL 150 with
-  // TRIGLYCERIDES 700, which makes LDL negative; StrictPositive blanks it, so its row is no
-  // longer composed. Both reports lose exactly that one row. No other pin moves, which is again
-  // what proves the rule did not leak into reports whose results are all populated.
+  // WORKSPACE-QA-01 re-mints CHEM_10 (126.10 -> 130.65) and HDL_LDL (117.00 -> 121.55), one row
+  // height each, returning both to their pre-omission geometry. A CHECKED parameter carrying no
+  // value is again composed on the DRAFT sheet, named with an empty RESULT cell, which is the
+  // approved client requirement; this fixture feeds CHOLESTEROL 150 with TRIGLYCERIDES 700, which
+  // makes LDL negative, and StrictPositive blanks it - so that one row returns to each report. No
+  // other pin moves, which is what proves the rule reached only rows that were being withheld:
+  // FECALYSIS keeps its lower bottom because its optional findings declare `blankOmission` and are
+  // still omitted while blank, and a report whose results are all populated never had a row hidden.
   const EXPECTED_REPORT_BOTTOMS_MM: Record<string, number> = {
-    FECALYSIS: 135.2, CHEM_10: 126.1, CBC: 130.65, HDL_LDL: 117.0, HIV_RESULT: 120.8,
+    FECALYSIS: 135.2, CHEM_10: 130.65, CBC: 130.65, HDL_LDL: 121.55, HIV_RESULT: 120.8,
     CHEM_8: 112.45, URINALYSIS: 109.95, DENGUE_DUO: 104.2, OGTT: 98.8, HBA1C: 95.1,
     HBSAG: 95.1, RPR: 95.1, PREG_TEST: 95.1, BLOOD_TYPING: 94.25, CT_BT: 94.25,
     RBS: 89.7, ESR: 89.7,

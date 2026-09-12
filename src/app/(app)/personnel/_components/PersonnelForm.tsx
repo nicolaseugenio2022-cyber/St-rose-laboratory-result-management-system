@@ -216,11 +216,15 @@ export function PersonnelForm({
   const personnelName = initialData ? formatPersonnelName(initialData) : "";
 
   return (
+    // The dialog body is handed to this form whole (`bodyLayout="managed"`), so the form is the
+    // flex column: one scrolling region, then an action bar outside it that consumes its own
+    // layout space - the same arrangement as PhysicianForm.
     <form
       onSubmit={handleSubmit(handleFormSubmit)}
       aria-busy={isSubmitting || undefined}
-      className="space-y-4"
+      className="flex min-h-0 flex-1 flex-col"
     >
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
       {serverError && (
         <Alert variant="destructive" onDismiss={() => setServerError(null)}>
           {serverError}
@@ -322,10 +326,12 @@ export function PersonnelForm({
         {isSubmitting ? "Saving personnel record." : ""}
       </p>
 
-      {/* Sticky so the primary action stays reachable while a long form scrolls inside the
-          dialog, rather than being stranded below the fold on a short viewport. It bleeds to
-          the dialog body's edges so its hairline runs the full width of the surface. */}
-      <div className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-2 border-t border-brand-border bg-brand-surface px-4 pt-3 sm:flex-row sm:items-center sm:justify-end">
+      </div>
+
+      {/* Outside the scroll region. Not sticky: it is a flex sibling, so the scrolling region's
+          height is already reduced by it and no content passes behind it at any scroll offset.
+          Cancel and Save Changes stay continuously visible. */}
+      <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-brand-border bg-brand-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
           variant="outline"

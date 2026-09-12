@@ -2,13 +2,19 @@ import React from "react";
 import { ReagentKitInfo } from "@/domain/types";
 import { Input } from "@/components/ui/Input";
 import { Package } from "lucide-react";
+import { isRoutedInvalidControl } from "../_lib/encoding/completion-issue-routing";
 
 export interface ReagentKitInfoSectionProps {
   kitInfo?: ReagentKitInfo | null;
   onChange: (info: ReagentKitInfo) => void;
+  /**
+   * Selector of the single control a completion failure resolved to, so the field focus lands on is
+   * also announced as invalid. Optional, and absent marks nothing.
+   */
+  invalidFieldSelector?: string | null;
 }
 
-export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSectionProps) {
+export function ReagentKitInfoSection({ kitInfo, onChange, invalidFieldSelector }: ReagentKitInfoSectionProps) {
   const current: ReagentKitInfo = kitInfo || {
     kitBrand: "",
     lotNumber: "",
@@ -38,6 +44,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
           type="text"
           data-kit-field="lotNumber"
           data-encoding-input
+          aria-invalid={isRoutedInvalidControl(invalidFieldSelector, '[data-kit-field="lotNumber"]') || undefined}
           value={current.lotNumber}
           onChange={(e) => handleChange("lotNumber", e.target.value)}
           placeholder="e.g. LOT-2026-X89"
@@ -49,6 +56,7 @@ export function ReagentKitInfoSection({ kitInfo, onChange }: ReagentKitInfoSecti
           type="text"
           data-kit-field="expirationDate"
           data-encoding-input
+          aria-invalid={isRoutedInvalidControl(invalidFieldSelector, '[data-kit-field="expirationDate"]') || undefined}
           value={current.expirationDate}
           onChange={(e) => handleChange("expirationDate", e.target.value)}
           required

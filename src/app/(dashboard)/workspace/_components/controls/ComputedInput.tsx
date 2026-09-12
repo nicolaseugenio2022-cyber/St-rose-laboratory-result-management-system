@@ -7,12 +7,15 @@ import { fieldSurfaceClassName } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 import { Info, Lock, Pencil } from "lucide-react";
 import { ParameterRow } from "./ParameterRow";
+import type { WorksheetColumnPolicy } from "../../_lib/encoding/worksheet-columns";
 
 export interface ComputedInputProps {
   parameter: ParameterSpec; value: string; isSelected: boolean; patientSex?: PatientSex | null;
   evaluationOutcome?: EvaluationOutcome;
   computationMetadata?: Record<string, unknown> | null;
   onToggleSelect: (selected: boolean) => void;
+  /** Passed straight through to the row, which owns the worksheet geometry. */
+  columns?: WorksheetColumnPolicy;
   /** Absent means Auto, so an existing caller keeps today's read-only behaviour unchanged. */
   calculationMode?: CalculationMode;
   /** Manual editing. Only supplied for a binding that opted into manual entry. */
@@ -43,6 +46,7 @@ export function ComputedInput({
   calculationMode = "Auto",
   onChange,
   onRequestModeChange,
+  columns,
 }: ComputedInputProps) {
   const validationMessage = resolveComputedValidationMessage(parameter, evaluationOutcome, computationMetadata);
   const errorId = `${parameter.parameterCode}-computed-error`;
@@ -82,7 +86,7 @@ export function ComputedInput({
     isSelected={isSelected}
     patientSex={patientSex}
     outcome={evaluationOutcome}
-    onToggleSelect={onToggleSelect}
+    onToggleSelect={onToggleSelect} columns={columns}
     validationMessage={validationMessage || undefined}
     validationMessageId={validationMessage ? errorId : undefined}
     labelAdornment={modeControl}

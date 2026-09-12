@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/lib/utils";
-import { daysUntilExpiry, type RecentWorkItem } from "../../_lib/recent-work";
+import { EXPIRING_SOON_DAYS, daysUntilExpiry, type RecentWorkItem } from "../../_lib/recent-work";
 
 export interface SessionRowProps {
   item: RecentWorkItem;
@@ -48,7 +48,7 @@ function activityParts(iso: string) {
  */
 export function SessionRow({ item, showResume = false, className }: SessionRowProps) {
   const days = daysUntilExpiry(item.expiresAt);
-  const expiringSoon = days !== null && days >= 0 && days <= 7;
+  const expiringSoon = days !== null && days >= 0 && days <= EXPIRING_SOON_DAYS;
   const canResume = showResume && item.canReopen;
   const activity = activityParts(item.activityAt);
 

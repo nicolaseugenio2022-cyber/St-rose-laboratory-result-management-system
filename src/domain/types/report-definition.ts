@@ -80,6 +80,13 @@ export interface ResultPresentationSpec {
   casing?: "Uppercase";
   emphasis?: "Italic";
   /**
+   * `WithResult` prints the parameter's declared unit inside the RESULT value itself, so a stored
+   * `10` reports as `10 mm/hr`. It is baked into the string at the render-model boundary for the
+   * same measurement reason as `casing`. The entered, validated and frozen value stays unit-free,
+   * and a blank or Invalid value never acquires the unit.
+   */
+  unitPlacement?: "WithResult";
+  /**
    * The render-contract version this presentation was introduced at. It is REQUIRED, so a
    * presentation can never be added without stating when it takes effect.
    *
@@ -266,6 +273,25 @@ export interface DeclarativeRenderContractSpec {
   }>;
 }
 
+/**
+ * How the ENCODING worksheet presents this examination. Encoding only.
+ *
+ * The Unit and Reference columns are a scanning aid for examinations that report measured values
+ * against a range. On a qualitative examination - a reactive/nonreactive serology result, a blood
+ * type, a microscopy finding - neither column ever carries anything, and two permanently blank
+ * gutters take width from the Result field the operator is actually typing into.
+ *
+ * Declared here so one declaration drives one resolution. It changes nothing about the examination
+ * itself: stored units, fixed suffixes, reference rules, validation, evaluation, Live Preview,
+ * Print, PDF and every completed snapshot are untouched, and a fixed suffix stays visible in the
+ * worksheet even where the Unit column is gone, because a suffix belongs to the result expression
+ * rather than to a column.
+ */
+export interface EncodingWorksheetSpec {
+  /** Presentational worksheet columns this examination does not draw. Both, or neither. */
+  omitColumns: readonly ("Unit" | "Reference")[];
+}
+
 export interface ClinicalReportDefinition {
   templateCode: string;
   templateTitle: string;       // Catalog / Navigation Display Title
@@ -293,4 +319,6 @@ export interface ClinicalReportDefinition {
   suppressAbnormalIndicators?: boolean;
   unresolvedNotes?: UnresolvedNoteSpec[];
   renderContract?: DeclarativeRenderContractSpec;
+  /** Absent means the worksheet draws every column. */
+  encodingWorksheet?: EncodingWorksheetSpec;
 }

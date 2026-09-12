@@ -99,7 +99,11 @@ export function RequestedBySection({ policy, assignment, directory: providedDire
           data-encoding-input
           autoComplete="off"
           placeholder="Search or type a physician..."
-          className={cn(fieldSurfaceClassName, "block border placeholder:text-slate-500", "pr-9")}
+          // w-full, because the stethoscope is positioned against this field's WRAPPER. Without
+          // it the input took its intrinsic text-input width - about 225px inside a 327px band on
+          // a phone - and the icon sat alone in the ~100px of empty space to its right, detached
+          // from the control it belongs to. The max-w-lg on the section still caps it on a desk.
+          className={cn(fieldSurfaceClassName, "block w-full border placeholder:text-slate-500", "pr-9")}
         />
         <Stethoscope aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-brand-text-subtle" />
         <datalist id={`${listId}-options`}>

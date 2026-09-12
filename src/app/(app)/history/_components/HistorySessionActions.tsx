@@ -89,16 +89,23 @@ export function HistorySessionActions({
   // module still handing a finger the mouse-sized control. Height only - the footer keeps its
   // existing left/right arrangement, and the table variant is untouched.
   const cardTarget = "min-h-11";
+  // How many controls the card footer will actually place, so the two-column grid can give a
+  // lone Preview the full row and a three-action group a full-width removal underneath. Counted
+  // from the same three authorization booleans the controls themselves are gated on, so the
+  // layout can never disagree with what is rendered.
+  const cardActionCount =
+    1 + (mayReopen ? 1 : 0) + (mayDeleteDraft || mayDeleteCompleted ? 1 : 0);
+  const cardCell = "w-full justify-center";
   // Table variant carries three actions in one cell. They share one shape language - same height,
   // radius and padding rhythm - so they read as a single group, and emphasis is carried by fill:
   // Preview alone is filled (structural, so it reads on a white or striped row), Replace/Edit is
   // outlined in the action colour, Delete draft is outlined and icon-only.
   // Every control keeps a visible resting border, so interactivity never depends on colour alone.
   const previewClass = isCard
-    ? cardTarget
+    ? `${cardTarget} ${cardCell} ${cardActionCount === 1 ? "col-span-2" : ""}`
     : "h-8 px-2 min-[1400px]:px-2.5 border-brand-border bg-brand-structural text-brand-navy hover:border-brand-border-strong hover:bg-brand-structural-hover";
   const reopenClass = isCard
-    ? `${cardTarget} border-brand-info-border bg-brand-tint text-brand-primary hover:border-brand-primary hover:bg-brand-tint`
+    ? `${cardTarget} ${cardCell} border-brand-info-border bg-brand-tint text-brand-primary hover:border-brand-primary hover:bg-brand-tint`
     : "h-8 px-2 min-[1400px]:px-2.5 text-brand-primary hover:border-brand-info-border hover:bg-brand-tint";
   // THE SHARED DESTRUCTIVE BUTTON, the same one the Personnel directory uses for its permanent
   // deletion. Removing a record is the same act in both modules, so it reads the same: `variant
@@ -107,18 +114,28 @@ export function HistorySessionActions({
   // read as one group rather than as two buttons and an odd square pushed against the cell edge. A
   // fixed 32x32 icon-only box was the one control that could not carry a label, which is exactly how
   // it ended up crowding the boundary once a third action arrived.
-  const deleteClass = isCard ? cardTarget : "h-8 px-2 min-[1400px]:px-2.5";
+  // Three actions put the removal across the whole second row rather than in half of it. That is
+  // the deliberate position the layout gives it, not a leftover cell: it stays last in the group,
+  // keeps its own destructive colour, and no longer floats in a corner with empty space beside it.
+  const deleteClass = isCard
+    ? `${cardTarget} ${cardCell} ${cardActionCount === 3 ? "col-span-2" : ""}`
+    : "h-8 px-2 min-[1400px]:px-2.5";
   const iconSize = isCard ? "h-4 w-4" : "h-3.5 w-3.5";
-  // WHERE THE LABELS TURN ON, measured rather than guessed.
+  // EVERY ACTION IS LABELLED, AT EVERY WIDTH.
   //
-  // Three LABELLED controls measure about 290px including their gaps. The actions column is 30% of
-  // a `table-fixed` table, so the content box is 269px at the xl shell and 317px at 1440. Labels
-  // at xl therefore asked for 290px inside 269px, and because the frame is `overflow-hidden` and a
-  // fixed table never exceeds 100%, the surplus was CLIPPED at the right edge rather than scrolled
-  // - the defect this corrects. 1400px is where the third label starts to fit, so that is the
-  // breakpoint: an ordinary 1440 desktop gets all three labels, and the 1280-1399 band keeps the
-  // icons it has room for. The text stays in the DOM at every width for assistive technology.
-  const labelClass = isCard ? "" : "hidden min-[1400px]:inline";
+  // This used to be `hidden min-[1400px]:inline` in the table. The reasoning was sound for the
+  // rule it assumed: three labelled controls measure about 290px, the actions column is 30% of a
+  // `table-fixed` table, and the content box is 269px at the xl shell - so the labels overflowed
+  // a frame that is `overflow-hidden`, and the surplus was CLIPPED rather than scrolled. Hiding
+  // the labels below 1400px removed the overflow by removing the content.
+  //
+  // The approved requirement is now the opposite: a visible text label on every desktop action,
+  // and wrapping rather than clipping when three of them do not fit on one line. The group is
+  // already `flex-wrap`, so the overflow the old breakpoint was avoiding now resolves into a
+  // second line inside the cell. That second line costs the row a full control height plus the
+  // group gap, roughly 38px, which is the tradeoff this change accepts: none of the controls is a
+  // bare glyph whose meaning the operator has to already know.
+  const labelClass = "";
 
   const primaryActions = (
     <>
@@ -159,8 +176,8 @@ export function HistorySessionActions({
       onClick={() => onDeleteDraft(entry)}
       disabled={isDeleting}
       className={deleteClass}
-      // The table variant renders no visible label, so the accessible name is supplied here.
-      // `title` gives sighted pointer users the same wording, keeping the control discoverable.
+      // The visible label is the short "Delete"; the accessible name is the full one, so a screen
+      // reader hears which lifecycle is being removed and from which session.
       aria-label={named("Delete draft")}
       title={isCard ? undefined : "Delete draft"}
     >
@@ -209,19 +226,22 @@ export function HistorySessionActions({
     );
   }
 
-  // Card layout: one structural footer band. The primary actions sit left and the destructive
-  // action alone at the far right, so it stays apart from the primary row while the DOM order
-  // (Preview, Edit, Delete draft) is unchanged; the strong destructive framing lives in the
-  // confirmation dialog, not here.
+  // Card layout: one two-column action group, not a left cluster with a trailing slot.
+  //
+  // This footer used to be `flex-wrap` with the removal in an `ml-auto` wrapper. With three
+  // actions that produced Preview and Edit on the first line and Delete pushed alone to the
+  // lower-right of the second, with the width beside it empty - the removal read as detached
+  // from the group rather than as the last member of it. A fixed two-column grid places every
+  // combination deliberately instead: two actions fill one row, three put the removal across
+  // the full second row, and a lone Preview spans rather than sitting in half a row. The spans
+  // are set on the controls themselves (see cardActionCount above), so nothing here measures
+  // content. DOM order is untouched - Preview, Edit/Replace, then the removal - so the keyboard
+  // order still matches the visual one, and at most one removal can exist because a session is
+  // either a Draft or Completed.
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-brand-border bg-brand-structural px-3.5 py-2">
+    <div className="grid grid-cols-2 items-stretch gap-2 border-t border-brand-border bg-brand-structural px-3.5 py-2">
       {primaryActions}
-      {/* ONE trailing slot. A row is either a Draft or a Completed session, so at most one of the
-          two removals exists; giving each its own `ml-auto` wrapper would have allowed two
-          right-aligned controls to exist in the same footer. */}
-      {(deleteAction || deleteCompletedAction) && (
-        <div className="ml-auto">{deleteAction ?? deleteCompletedAction}</div>
-      )}
+      {deleteAction ?? deleteCompletedAction}
     </div>
   );
 }

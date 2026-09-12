@@ -18,6 +18,6 @@ export interface FreeTextInputProps {
 export function FreeTextInput({ parameter, value, isSelected, patientSex, onChange, onToggleSelect, columns }: FreeTextInputProps) {
   const outcome = evaluateEncodingResult(value, parameter, patientSex);
   return <ParameterRow parameter={parameter} isSelected={isSelected} patientSex={patientSex} outcome={outcome} onToggleSelect={onToggleSelect} columns={columns}>
-    <input type="text" data-encoding-input data-control-type="FreeText" aria-label={parameter.parameterName} value={value} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} placeholder="Free text finding..." data-slot="input" className={cn(fieldSurfaceClassName, "block border outline-none placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed")} />
+    <input type="text" data-encoding-input data-control-type="FreeText" aria-label={parameter.parameterName} value={value} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} placeholder="Free text finding..." data-slot="input" className={cn(fieldSurfaceClassName, "block w-full border outline-none placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed")} />
   </ParameterRow>;
 }

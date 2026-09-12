@@ -1549,8 +1549,13 @@ export function GuidedWorkspace({
       {/* Structural. The command bar is chrome, and a white bar above a white report card
           on a white catalog gave the Workspace no frame at all - the operator could not see
           where the application ended and the task began. */}
-      <header className="z-30 flex h-14 shrink-0 items-center border-b border-brand-border-strong bg-brand-structural px-4">
-        <div className={`${WORKSPACE_CONTAINER} flex items-center justify-between gap-3`}>
+      {/* Below sm the one 56px line becomes three stacked bands: identity, then the mode
+          switch beside the catalog, then the session commands. Every label that used to
+          collapse to a bare glyph on a phone is restored, because four unlabelled circles in
+          a row said nothing about which one saved and which one completed the session. From
+          sm up the exact single-line arrangement returns unchanged. */}
+      <header className="z-30 flex shrink-0 items-center border-b border-brand-border-strong bg-brand-structural px-4 py-2 sm:h-14 sm:py-0">
+        <div className={`${WORKSPACE_CONTAINER} flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3`}>
           <div className="flex items-center gap-2 min-w-0">
             {/* Back to Dashboard Navigation Button */}
             <Button
@@ -1560,34 +1565,11 @@ export function GuidedWorkspace({
               onClick={handleBackToDashboard}
               aria-label="Back to Dashboard"
               title="Return to Dashboard"
-              className="shrink-0 whitespace-nowrap px-2 text-brand-text-muted"
+              className="h-11 shrink-0 whitespace-nowrap px-2 text-brand-text-muted sm:h-8"
             >
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-              <span className="hidden md:inline">Back</span>
+              <span>Back</span>
             </Button>
-
-            {/* The one route to the catalog, at every width, and the only control that adds an
-                examination once the session has one. It is absent while nothing is selected,
-                because the catalog is the whole screen there and a control to open it as a
-                drawer would offer to do what has already happened. */}
-            {hasEnteredDesk && workspaceMode === "encoding" && (
-              <Button
-                ref={catalogToggleRef}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
-                // 44x44 on touch, where the label is hidden and the glyph is the whole target;
-                // the established 36px compact height from sm up, where the label returns.
-                className="h-11 min-w-11 shrink-0 whitespace-nowrap px-2 sm:h-9 sm:min-w-0 sm:px-2.5"
-                aria-expanded={isCatalogDrawerOpen}
-                aria-controls="workspace-catalog-drawer"
-              >
-                <Plus aria-hidden="true" className="h-4 w-4" />
-                <span className="hidden sm:inline">Add examinations</span>
-                <span className="sr-only sm:hidden">Add examinations</span>
-              </Button>
-            )}
 
             <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
@@ -1620,26 +1602,49 @@ export function GuidedWorkspace({
               whitespace-nowrap, so at 390px the full labels forced the header past the viewport
               and scrolled the whole page sideways. No action is hidden: each keeps its icon, an
               aria-label carrying the full name in both states, and a title for pointer users. */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:shrink-0">
+            {/* The one route to the catalog, at every width, and the only control that adds an
+                examination once the session has one. It is absent while nothing is selected,
+                because the catalog is the whole screen there and a control to open it as a
+                drawer would offer to do what has already happened. It sits with the commands
+                rather than in the title row: beside a truncating patient name it was competing
+                for the width that name needed. */}
+            {hasEnteredDesk && workspaceMode === "encoding" && (
+              <Button
+                ref={catalogToggleRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMobileCatalogOpen(!isMobileCatalogOpen)}
+                // 44px on touch, the established 36px compact height from sm up.
+                className="h-11 w-full justify-center whitespace-nowrap px-3 sm:h-9 sm:w-auto sm:shrink-0 sm:justify-start sm:px-2.5"
+                aria-expanded={isCatalogDrawerOpen}
+                aria-controls="workspace-catalog-drawer"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                <span>Add examinations</span>
+              </Button>
+            )}
+
             {/* Workspace View Mode Switcher. A two-state control, so each button reports its own
                 pressed state and keeps a full accessible name when the label collapses. */}
             {/* The system's segmented control: a bordered structural track, the active
                 segment lifted onto white in navy with the low shadow. */}
-            <div role="group" aria-label="Workspace view mode" className="flex shrink-0 items-center rounded-md border border-brand-border bg-brand-structural p-0.5">
+            <div role="group" aria-label="Workspace view mode" className="flex w-full min-w-0 items-center rounded-md border border-brand-border bg-brand-structural p-0.5 sm:w-auto sm:shrink-0">
               <button
                 type="button"
                 onClick={() => setWorkspaceMode("encoding")}
                 aria-pressed={workspaceMode === "encoding"}
                 aria-label="Encoding"
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+                  "inline-flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold sm:h-7 sm:flex-none sm:justify-start transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                   workspaceMode === "encoding"
                     ? "bg-brand-surface text-brand-navy shadow-low"
                     : "text-brand-text-muted hover:text-brand-navy"
                 )}
               >
                 <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Encoding</span>
+                <span>Encoding</span>
               </button>
               <button
                 type="button"
@@ -1647,19 +1652,23 @@ export function GuidedWorkspace({
                 aria-pressed={workspaceMode === "preview"}
                 aria-label="Live Preview"
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
+                  "inline-flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded px-2.5 text-xs font-semibold sm:h-7 sm:flex-none sm:justify-start transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring",
                   workspaceMode === "preview"
                     ? "bg-brand-surface text-brand-navy shadow-low"
                     : "text-brand-text-muted hover:text-brand-navy"
                 )}
               >
                 <Eye aria-hidden="true" className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Live Preview</span>
+                <span>Live Preview</span>
               </button>
             </div>
 
             <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-brand-border-strong sm:block" />
 
+            {/* The two session commands take their own full-width band below sm so neither is
+                squeezed to a glyph, and `sm:contents` dissolves this wrapper from sm up so the
+                desktop row keeps exactly the flex children it always had. */}
+            <div className="flex w-full items-center gap-2 sm:contents">
             {/* Save Draft Action — a completed session under replacement has no draft path */}
             {!isReplacementMode && (
               <Button
@@ -1671,12 +1680,10 @@ export function GuidedWorkspace({
                 aria-keyshortcuts="Control+S Meta+S"
                 aria-label={saveStatus === "saving" ? "Saving..." : "Save Draft"}
                 title={saveStatus === "saving" ? "Saving..." : "Save Draft"}
-                className="shrink-0 whitespace-nowrap px-2 sm:px-3"
+                className="h-11 flex-1 whitespace-nowrap px-2 sm:h-8 sm:flex-none sm:shrink-0 sm:px-3"
               >
                 <Save aria-hidden="true" className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">
-                  {saveStatus === "saving" ? "Saving..." : "Save Draft"}
-                </span>
+                <span>{saveStatus === "saving" ? "Saving..." : "Save Draft"}</span>
               </Button>
             )}
 
@@ -1691,12 +1698,10 @@ export function GuidedWorkspace({
                 aria-keyshortcuts="Control+Enter Meta+Enter"
                 aria-label={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
                 title={saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-brand-warning px-2 text-xs font-semibold text-white shadow-low transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:bg-amber-900 active:scale-[0.98] active:bg-amber-950 active:shadow-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-60 sm:px-3"
+                className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-brand-warning px-2 sm:h-8 sm:flex-none sm:shrink-0 text-xs font-semibold text-white shadow-low transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:bg-amber-900 active:scale-[0.98] active:bg-amber-950 active:shadow-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-60 sm:px-3"
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">
-                  {saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}
-                </span>
+                <span>{saveStatus === "saving" ? "Replacing..." : "Replace Completed Report"}</span>
               </button>
             )}
 
@@ -1710,12 +1715,13 @@ export function GuidedWorkspace({
                 aria-keyshortcuts="Control+Enter Meta+Enter"
                 aria-label="Complete Session"
                 title="Complete Session"
-                className="shrink-0 whitespace-nowrap px-2 sm:px-3"
+                className="h-11 flex-1 whitespace-nowrap px-2 sm:h-8 sm:flex-none sm:shrink-0 sm:px-3"
               >
                 <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Complete Session</span>
+                <span>Complete Session</span>
               </Button>
             )}
+            </div>
           </div>
         </div>
       </header>
@@ -1887,7 +1893,7 @@ export function GuidedWorkspace({
                The catalog no longer disappears when the first examination is chosen. Ordering a
                panel of tests is one continuous act, so it stays until the operator says they are
                finished with it - which is what the bar below is for. */
-            <div ref={fullCatalogRef} className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+            <div ref={fullCatalogRef} className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col pb-[var(--floating-dock-clearance)] lg:pb-0">
               <div className="min-h-0 flex-1">
                 <ExaminationCatalog
                   allTemplates={allActiveTemplates}
@@ -1916,13 +1922,16 @@ export function GuidedWorkspace({
                       ? "1 examination selected"
                       : `${selectedTemplateCodes.length} examinations selected`}
                 </p>
+                {/* Full width and a 44px target below sm, where the count and the label cannot
+                    share one line at 320px without the label being cut. From sm up it returns
+                    to the compact control that sits beside the count. */}
                 <Button
                   type="button"
                   variant="primary"
                   size="md"
                   disabled={!hasSelection}
                   onClick={() => setHasEnteredDesk(true)}
-                  className="shrink-0"
+                  className="h-11 w-full justify-center sm:h-9 sm:w-auto sm:shrink-0"
                 >
                   Continue with examinations
                   <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -1930,7 +1939,7 @@ export function GuidedWorkspace({
               </div>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 gap-3 overflow-hidden">
+            <div className="flex h-full min-h-0 gap-3 overflow-hidden pb-[var(--floating-dock-clearance)]">
               {/* The work queue, docked. 240px, and only at a width where surrendering 240px
                   still leaves the worksheet more than it needs; below that the same queue is
                   the drawer instead, reached from the trigger above. */}

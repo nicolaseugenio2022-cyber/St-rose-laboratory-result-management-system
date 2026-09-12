@@ -52,7 +52,7 @@ export function NumericTextInput({ parameter, value, isSelected, patientSex, onC
           // The shared Input field surface - 36px from sm up, 44px below - with a mono value so a
           // column of results reads as a column of numbers.
           fieldSurfaceClassName,
-          "block border outline-none font-mono tabular-nums placeholder:font-sans placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed",
+          "block w-full border outline-none font-mono tabular-nums placeholder:font-sans placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed",
           outcome === "Invalid" &&
             "border-brand-danger bg-brand-danger-bg font-semibold text-brand-danger hover:border-brand-danger"
         )}

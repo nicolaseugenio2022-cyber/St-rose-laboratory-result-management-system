@@ -146,6 +146,20 @@
   --color-role-user: #334155;
   --color-role-user-bg: #f1f5f9;
   --color-role-user-border: #e2e8f0;
+
+  /* --- FLOATING LAUNCHER CLEARANCE ---
+     Two controls are position:fixed above every screen: the Workspace navigation launcher
+     (bottom-left, 44px, hidden from lg up) and the lab support chat launcher (bottom-right,
+     48px, present at every width). Both sit 1rem from the bottom edge and neither reserved a
+     single pixel in the document flow, so anything that parked at the bottom of a narrow
+     viewport - the catalog's Continue bar, the encoding worksheet's sticky Report Details row
+     and its Show/Hide control - was simply covered.
+
+     This is the one clearance those surfaces subtract, rather than each guessing a margin:
+     the taller launcher (3rem) plus its 1rem inset plus 0.5rem of breathing room, and the
+     device safe area underneath on a phone with a home indicator. Applied only below lg,
+     where the collision actually happens; the desktop layout keeps the geometry it had. */
+  --floating-dock-clearance: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* ==========================================================================

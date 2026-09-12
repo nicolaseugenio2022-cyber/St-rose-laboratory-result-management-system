@@ -88,7 +88,12 @@ export function PatientDemographicsForm({
         className="flex min-w-0 items-center gap-2.5"
       >
         <User aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-primary" />
-        <span className="shrink-0 text-[13px] font-semibold text-brand-navy">
+        {/* The command bar directly above already carries this exact name as the h1, so below
+            sm - where the two sit within about 40px of each other - the ribbon shows only the
+            context the header does not: age, sex, examination date and address. The name stays
+            in the DOM for assistive technology and returns from sm up, where the header name is
+            far enough away that repeating it reads as a column heading rather than an echo. */}
+        <span className="hidden shrink-0 text-[13px] font-semibold text-brand-navy sm:inline">
           {demographics.fullName || "Unnamed patient"}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-brand-text-muted" title={demographics.address || undefined}>

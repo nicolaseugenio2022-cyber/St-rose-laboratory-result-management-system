@@ -148,8 +148,21 @@ export function ParameterRow({
       </div>
 
       {columns.showUnitColumn && (
-        <span data-fixed-suffix={parameter.suffixSpec ? "true" : undefined} className="min-w-0 break-words font-mono text-xs text-brand-text-muted">
-          {renderedUnit || ""}
+        <span
+          data-fixed-suffix={parameter.suffixSpec ? "true" : undefined}
+          className="col-span-2 col-start-1 row-start-3 min-w-0 break-words font-mono text-xs text-brand-text-muted sm:col-span-1 sm:col-start-auto sm:row-start-auto"
+        >
+          {renderedUnit ? (
+            <>
+              {/* The column header names this cell from sm up; on a phone there is no header,
+                  so the label travels with the value. Written as one text node with its colon
+                  so it can never read as the bare word the header uses. */}
+              <span className="sm:hidden">{"Unit: "}</span>
+              {renderedUnit}
+            </>
+          ) : (
+            ""
+          )}
         </span>
       )}
 
@@ -162,7 +175,7 @@ export function ParameterRow({
           pushing Result and Status sideways. The per-element max-w that used to bound the
           wrap is gone: the track is the bound, and two bounds could disagree. */}
       {columns.showReferenceColumn && (
-        <span className="min-w-0">
+        <span className="col-span-2 col-start-1 row-start-4 min-w-0 sm:col-span-1 sm:col-start-auto sm:row-start-auto">
           {reference && (
             <span
               data-reference-display
@@ -174,7 +187,10 @@ export function ParameterRow({
         </span>
       )}
 
-      <div data-status-column className="min-w-0">
+      <div
+        data-status-column
+        className="col-start-2 row-start-1 min-w-0 justify-self-end sm:col-start-auto sm:row-start-auto sm:justify-self-stretch"
+      >
         {/* The outcome flag is the shared StatusBadge, which carries exactly the mapping this
             column used to retype by hand - Invalid solid, Abnormal/High rose, Low amber, Normal
             emerald, Entered blue, pending slate. `label` keeps the visible word: "Pending" for an
@@ -184,7 +200,7 @@ export function ParameterRow({
         <StatusBadge
           status={outcome}
           label={status}
-          className="w-full justify-center whitespace-normal break-words px-1.5 text-center"
+          className="w-auto justify-center whitespace-normal break-words px-1.5 text-center sm:w-full"
         />
       </div>
     </div>

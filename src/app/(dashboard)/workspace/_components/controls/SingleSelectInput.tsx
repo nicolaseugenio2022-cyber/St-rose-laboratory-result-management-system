@@ -23,7 +23,7 @@ export function SingleSelectInput({ parameter, value, isSelected, patientSex, on
         chevron so the control matches the fields around it, and the element stays a real <select>
         so keyboard, mobile pickers and the grid Tab fast path are untouched. */}
     <div className="relative">
-      <select value={value} data-encoding-input data-control-type="SingleSelect" aria-label={parameter.parameterName} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} data-slot="native-select" className={cn(fieldSurfaceClassName, "block appearance-none border outline-none focus-visible:border-ring disabled:cursor-not-allowed", "pl-3 pr-9")}>
+      <select value={value} data-encoding-input data-control-type="SingleSelect" aria-label={parameter.parameterName} disabled={!isSelected} onChange={(event) => onChange(event.target.value, evaluateEncodingResult(event.target.value, parameter, patientSex))} data-slot="native-select" className={cn(fieldSurfaceClassName, "block w-full appearance-none border outline-none focus-visible:border-ring disabled:cursor-not-allowed", "pl-3 pr-9")}>
         <option value="">-- Select --</option>
         {parameter.options?.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>

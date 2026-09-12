@@ -112,7 +112,7 @@ const COLUMN_WIDTH_CLASS = [
   "w-[30%]", // patient   - name, then accession and examination date, then identity metadata
   "w-[18%]", // tests     - 128px at the tightest shell: still clears the longest template code
   "w-[22%]", // lifecycle - 132px of content: clears the longest retention wording plus its icon
-  "w-[30%]", // actions   - three controls, labelled from 1400px and icon-only below it
+  "w-[30%]", // actions   - three controls, labelled at every width; the group wraps when needed
 ];
 
 // Below md the table becomes a card list, which has no column headers to sort from. This select
@@ -898,7 +898,13 @@ export function SessionHistoryView({
           {/* Below md: the SAME filteredEntries and the SAME handlers as record cards.
               Presentation is duplicated; data and action semantics are not. Rendered inside this
               branch so loading, error and empty states replace it rather than stacking above it. */}
-          <ul className="space-y-3 md:hidden" aria-label="Patient report session history">
+          {/* The same floating-launcher clearance the Workspace surfaces subtract. The chat
+              launcher is fixed at every width and reserves no space of its own, so without this
+              the last card's actions sat underneath it. */}
+          <ul
+            className="space-y-3 pb-[var(--floating-dock-clearance)] md:hidden"
+            aria-label="Patient report session history"
+          >
             {filteredEntries.map(({ session: sess, canReopen }) => {
               const retention = getRetentionDetails(sess);
 

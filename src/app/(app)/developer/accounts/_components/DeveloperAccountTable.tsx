@@ -201,7 +201,12 @@ function RowActions({
 
   return (
     <div className={isRecord ? "space-y-2" : "flex flex-col items-end gap-1.5"}>
+      {/* The same named group the other three directories expose. This was the one action set a
+          screen reader reached as a run of loose buttons with no statement of which account they
+          act on, so the accessible name of each control was the only thing tying them together. */}
       <div
+        role="group"
+        aria-label={`Actions for ${name}`}
         className={
           isRecord
             ? "flex flex-wrap items-center gap-1.5"
@@ -231,8 +236,11 @@ function RowActions({
           >
             Credentials
           </span>
+          {/* Outline, like every other neutral record action. The bordered Credentials box says
+              these two belong together; it never said they were controls, and inside it they read
+              as two labels until the pointer arrived. */}
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             className={touch}
             onClick={() => onEditUsername(account)}
@@ -243,7 +251,7 @@ function RowActions({
             Username
           </Button>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             className={touch}
             onClick={() => onUpdateSecurityQuestion(account)}
@@ -255,14 +263,13 @@ function RowActions({
           </Button>
         </div>
 
+        {/* The shared soft status variants, and below them the shared danger variant the other
+            three directories already use for an irreversible act. All three colour pairs this row
+            spelled out by hand are gone rather than moved: the variants state them once. */}
         <Button
-          variant="ghost"
+          variant={policy.isActive ? "warning" : "success"}
           size="sm"
-          className={`${touch} ${
-            policy.isActive
-              ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
-              : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success"
-          }`}
+          className={touch}
           onClick={() => onToggleStatus(account)}
           disabled={policy.toggleDisabled}
           aria-label={`${toggleVerb} ${name}`}
@@ -273,9 +280,9 @@ function RowActions({
         </Button>
 
         <Button
-          variant="ghost"
+          variant="danger"
           size="sm"
-          className={`${touch} text-brand-danger hover:bg-brand-danger-bg hover:text-brand-danger`}
+          className={touch}
           onClick={() => onDelete(account)}
           disabled={policy.deleteDisabled}
           aria-label={`Delete ${name}`}

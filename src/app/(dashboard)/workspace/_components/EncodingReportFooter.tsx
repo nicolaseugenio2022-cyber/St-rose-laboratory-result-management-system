@@ -143,7 +143,7 @@ export function EncodingReportFooter({
         onClick={() => setExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         aria-controls="encoding-footer-content"
-        className="flex w-full items-center gap-2.5 bg-brand-structural px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+        className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 bg-brand-structural px-3 py-2 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring sm:flex-nowrap sm:gap-2.5"
       >
         <PanelIcon icon={PanelBottom} />
         <span className="shrink-0 text-[15px] font-semibold leading-tight tracking-tight text-brand-navy">
@@ -152,7 +152,7 @@ export function EncodingReportFooter({
 
         {/* Status items wrap at narrow widths rather than clipping; the divide rule gives them
             structure without turning each one into a chip. */}
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-brand-border [&>*:not(:first-child)]:pl-2">
+        <span className="order-last flex w-full min-w-0 basis-full flex-wrap items-center gap-x-2 gap-y-0.5 divide-x divide-brand-border [&>*:not(:first-child)]:pl-2 sm:order-none sm:w-auto sm:flex-1 sm:basis-0">
           <SummaryChip
             label={assigned ? "Signatories assigned" : "Signatories incomplete"}
             isSatisfied={assigned}

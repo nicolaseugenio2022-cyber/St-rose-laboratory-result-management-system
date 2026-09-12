@@ -109,7 +109,7 @@ export function ComputedInput({
         data-slot="input"
         className={cn(
           fieldSurfaceClassName,
-          "block border outline-none font-mono tabular-nums placeholder:font-sans placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed",
+          "block w-full border outline-none font-mono tabular-nums placeholder:font-sans placeholder:text-slate-500 focus-visible:border-ring disabled:cursor-not-allowed",
           evaluationOutcome === "Invalid" &&
             "border-brand-danger bg-brand-danger-bg font-semibold text-brand-danger hover:border-brand-danger"
         )}
@@ -132,7 +132,7 @@ export function ComputedInput({
         aria-describedby={validationMessage ? errorId : undefined}
         className={cn(
           fieldSurfaceClassName,
-          "block cursor-not-allowed border font-mono font-semibold tabular-nums opacity-100 placeholder:font-sans placeholder:font-normal placeholder:text-brand-text-muted",
+          "block w-full cursor-not-allowed border font-mono font-semibold tabular-nums opacity-100 placeholder:font-sans placeholder:font-normal placeholder:text-brand-text-muted",
           evaluationOutcome === "Invalid"
             ? "border-brand-danger-border bg-brand-danger-bg text-brand-danger disabled:bg-brand-danger-bg disabled:text-brand-danger"
             : "bg-brand-structural text-brand-navy disabled:text-brand-navy"

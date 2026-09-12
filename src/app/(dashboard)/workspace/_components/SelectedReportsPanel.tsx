@@ -465,21 +465,25 @@ export function WorkQueueTrigger({
       onClick={onOpen}
       aria-expanded={isOpen}
       aria-controls={drawerId}
-      className="flex min-h-11 w-full items-center gap-2 border-b border-brand-border bg-brand-structural px-3 py-1.5 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
+      className="flex min-h-11 w-full flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-brand-border bg-brand-structural px-3 py-1.5 text-left transition-colors hover:bg-brand-structural-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-focus-ring"
     >
-      <span className="flex shrink-0 items-center gap-1 text-brand-text-muted">
+      {/* The count now says what it counts, on its own line below sm. A bare numeral sat
+          immediately to the left of the active report's name and read as the first word of
+          that name - "17 HBsAg Screening" - rather than as the size of the queue. */}
+      <span className="flex w-full shrink-0 items-center gap-1 text-[11px] font-medium leading-none text-brand-text-muted sm:w-auto sm:text-xs">
         <FileText aria-hidden="true" className="h-4 w-4" />
-        <span className="font-mono text-xs font-semibold tabular-nums">{selectedSpecs.length}</span>
+        <span className="font-mono font-semibold tabular-nums">{selectedSpecs.length}</span>
+        <span>{selectedSpecs.length === 1 ? "examination" : "examinations"}</span>
       </span>
       <span className="sr-only">
-        examinations in this session. Open the examination queue. Active report:
+        in this session. Open the examination queue. Active report:
       </span>
 
       <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight text-brand-navy">
         {activeSpec?.template.templateTitle ?? "No report open"}
       </span>
       {activeSpec && (
-        <span className="hidden shrink-0 font-mono text-xs text-brand-text-muted sm:inline">
+        <span className="shrink-0 font-mono text-xs text-brand-text-muted">
           {activeSpec.template.templateCode}
         </span>
       )}

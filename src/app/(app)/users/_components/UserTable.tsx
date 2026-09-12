@@ -301,7 +301,7 @@ function RowActions({
             the password reset, and a labelled box around a single button is chrome that groups
             nothing. The enclosing "Actions for ..." group already states the relationship. */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           className={touch}
           onClick={() => onResetPassword(user)}
@@ -312,15 +312,14 @@ function RowActions({
           Reset password
         </Button>
 
+        {/* The shared soft status variants, not a ghost button repainted with the same two colour
+            pairs it used to carry inline. Deactivate is the warning surface and Activate the
+            success one at rest, so an action group no longer reads as one outlined control, one
+            tinted control and two strings of plain text. */}
         <Button
-          variant="ghost"
+          variant={policy.isActive ? "warning" : "success"}
           size="sm"
-          className={cn(
-            touch,
-            policy.isActive
-              ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
-              : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success"
-          )}
+          className={touch}
           onClick={() => onToggleStatus(user)}
           disabled={policy.toggleDisabled}
           isLoading={policy.isStatusUpdating}

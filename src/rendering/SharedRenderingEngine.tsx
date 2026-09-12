@@ -3,10 +3,33 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { IPatientReportSession, ILaboratoryReport } from "@/domain/models/interfaces";
 import { createNativeSessionPdf, NativeLivePreviewPage } from "./native";
+import { NATIVE_REPORT_THEME } from "./native/theme";
 import { resolveSessionRenderModel } from "./model";
 import "./styles/a4-document.css";
 import { AlertTriangle, Download, FileText, Loader2, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/**
+ * The zoom control's three positions. Fit is a mode rather than a number because the number it
+ * resolves to is a measurement: it changes whenever the viewport does, and the control has to
+ * stay selected across those changes instead of drifting off whichever fixed step it happened to
+ * land on.
+ */
+type PreviewZoomMode = "fit" | "75" | "100";
+
+/** The physical A4 width in CSS pixels at native scale - the same 96dpi conversion the page box uses. */
+const A4_PAGE_WIDTH_PX = NATIVE_REPORT_THEME.page.widthMm * (96 / 25.4);
+
+/**
+ * Fit never enlarges. Above 100% the operator would be reading an upscaled A4 on a wide monitor
+ * having asked only to see the whole width, and 100% already is the whole width there. The floor
+ * keeps a pathological measurement - a collapsed or hidden container - from resolving to zero.
+ */
+const FIT_MIN_PERCENT = 20;
+const FIT_MAX_PERCENT = 100;
+
+/** Below this the A4 page cannot fit a viewport at 100%, so Fit is the mode the preview opens in. */
+const FIT_DEFAULT_MAX_WIDTH_QUERY = "(max-width: 767px)";
 
 export interface SharedRenderingEngineProps {
   session: IPatientReportSession;
@@ -27,7 +50,14 @@ export function SharedRenderingEngine({
   signatureAssets,
 }: SharedRenderingEngineProps) {
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  /**
+   * 100 on the server and on first paint, at every viewport, so the markup React hydrates is the
+   * markup it rendered. The mobile default is applied by the effect below instead: a width read
+   * during render would differ between server and client and is exactly the class of mismatch
+   * that blanks a hydrated tree.
+   */
+  const [zoomMode, setZoomMode] = useState<PreviewZoomMode>("100");
+  const [fitZoomPercent, setFitZoomPercent] = useState<number>(FIT_MAX_PERCENT);
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
   /**
@@ -50,6 +80,54 @@ export function SharedRenderingEngine({
     [session, signatureAssets]
   );
   const isAccessionAssigned = session.accessionNumber !== null;
+  const hasReports = activeReports.length > 0;
+
+  /**
+   * Fit resolves to an ordinary zoom percentage, so the page keeps exactly one scale owner.
+   *
+   * Nothing downstream learns that a third control exists: `NativeLivePreviewPage` still receives
+   * a number, still divides it by 100, and still multiplies every primitive by that scale. A
+   * `transform: scale()` on the viewport would have been fewer lines and would have produced a
+   * blurred, unselectable page whose reported geometry no longer matched the A4 it claims to be.
+   */
+  const zoomLevel = zoomMode === "fit" ? fitZoomPercent : Number(zoomMode);
+
+  /**
+   * Fit is measured from the viewport, not from the window, and it is re-measured whenever that
+   * element changes size - a rotation, a sidebar, a browser resize, the report strip appearing.
+   * The element's own horizontal padding is subtracted because `clientWidth` includes it; today
+   * that padding is zero, and a later inset must not silently start clipping the page.
+   */
+  useEffect(() => {
+    const viewport = pagesContainerRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+
+    const measure = () => {
+      const styles = window.getComputedStyle(viewport);
+      const horizontalPadding =
+        (Number.parseFloat(styles.paddingLeft) || 0) + (Number.parseFloat(styles.paddingRight) || 0);
+      const available = viewport.clientWidth - horizontalPadding;
+      if (!Number.isFinite(available) || available <= 0) return;
+      const measured = Math.floor((available / A4_PAGE_WIDTH_PX) * 100);
+      setFitZoomPercent(Math.min(FIT_MAX_PERCENT, Math.max(FIT_MIN_PERCENT, measured)));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [hasReports]);
+
+  /**
+   * On a phone the A4 page is roughly twice the viewport width, so opening at 100% showed the
+   * left third of the report and nothing else - the operator had to discover a horizontal scroll
+   * to learn the rest existed. Mobile therefore opens in Fit. It runs once, after hydration, so a
+   * later deliberate 75% or 100% is never overridden.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if (window.matchMedia(FIT_DEFAULT_MAX_WIDTH_QUERY).matches) setZoomMode("fit");
+  }, []);
 
   // Handle Browser Print Target
   const handlePrint = () => {
@@ -229,24 +307,38 @@ export function SharedRenderingEngine({
           </div>
         </div>
 
+        {/* Fit leads the group because it is the position that always shows a whole page; 75 and
+            100 remain the two fixed steps they always were. The resolved percentage rides along
+            on the group so the applied scale is legible without reading the page box. */}
         <div
           role="group"
           aria-label="Preview zoom level"
+          data-preview-zoom-mode={zoomMode}
+          data-preview-fit-percent={fitZoomPercent}
           className="flex shrink-0 items-center gap-0.5 rounded-md bg-brand-surface-hover p-0.5"
         >
           <button
             type="button"
-            onClick={() => setZoomLevel(75)}
-            aria-pressed={zoomLevel === 75}
-            className={zoomButtonClass(zoomLevel === 75)}
+            onClick={() => setZoomMode("fit")}
+            aria-pressed={zoomMode === "fit"}
+            title="Fit the whole page width to the preview"
+            className={zoomButtonClass(zoomMode === "fit")}
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomMode("75")}
+            aria-pressed={zoomMode === "75"}
+            className={zoomButtonClass(zoomMode === "75")}
           >
             75%
           </button>
           <button
             type="button"
-            onClick={() => setZoomLevel(100)}
-            aria-pressed={zoomLevel === 100}
-            className={zoomButtonClass(zoomLevel === 100)}
+            onClick={() => setZoomMode("100")}
+            aria-pressed={zoomMode === "100"}
+            className={zoomButtonClass(zoomMode === "100")}
           >
             100%
           </button>

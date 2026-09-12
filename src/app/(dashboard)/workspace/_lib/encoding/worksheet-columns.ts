@@ -39,11 +39,14 @@ export interface WorksheetColumnPolicy {
  * width, and a `1fr` resolves from the container - which every row shares - not from content. The 0
  * minimum lets a long parameter name wrap rather than force the row past the card.
  *
- * Narrow: Parameter and Result take the full width, then Unit | Reference | Status share one line,
- * so a row stays one readable block instead of five detached stacked cells.
+ * Narrow: two tracks only - a flexible one for the parameter and an auto one for the status flag,
+ * which sits beside the name it belongs to. Result, Unit and Reference each take the full width on
+ * their own line beneath. The previous narrow set put Unit | Reference | Status on one shared line
+ * below the input, which read as three detached fragments and wrapped a compound unit such as
+ * "x 10^12/L" across two of those cells.
  */
 const FULL_COLUMN_TRACKS =
-  "grid-cols-[3.25rem_minmax(0,1fr)_6rem] " +
+  "grid-cols-[minmax(0,1fr)_auto] " +
   "sm:grid-cols-[minmax(0,1fr)_9rem_3.25rem_6rem_6rem] " +
   "lg:grid-cols-[minmax(0,1fr)_11rem_4rem_9rem_6.5rem] " +
   "xl:grid-cols-[minmax(0,1fr)_14rem_4.5rem_12rem_7rem]";
@@ -53,11 +56,11 @@ const FULL_COLUMN_TRACKS =
  * column reserves no width at any breakpoint, so Result takes the space the two of them held
  * instead of the row carrying two blank gutters.
  *
- * Narrow: Parameter takes the full width, then Result and Status share one line - two cells on that
- * line rather than the three the full variant has to place.
+ * Narrow: the same two tracks the full variant uses, so a reference-free examination and a
+ * reference-bearing one present a parameter identically on a phone.
  */
 const RESULT_ONLY_COLUMN_TRACKS =
-  "grid-cols-[minmax(0,1fr)_6rem] " +
+  "grid-cols-[minmax(0,1fr)_auto] " +
   "sm:grid-cols-[minmax(0,1fr)_9rem_6rem] " +
   "lg:grid-cols-[minmax(0,1fr)_11rem_6.5rem] " +
   "xl:grid-cols-[minmax(0,1fr)_14rem_7rem]";
@@ -66,16 +69,16 @@ export const FULL_WORKSHEET_COLUMNS: WorksheetColumnPolicy = {
   showUnitColumn: true,
   showReferenceColumn: true,
   rowTracks: FULL_COLUMN_TRACKS,
-  parameterCellSpan: "col-span-3 sm:col-span-1",
-  resultCellSpan: "col-span-3 sm:col-span-1",
+  parameterCellSpan: "col-start-1 row-start-1 sm:col-span-1 sm:col-start-auto sm:row-start-auto",
+  resultCellSpan: "col-span-2 col-start-1 row-start-2 sm:col-span-1 sm:col-start-auto sm:row-start-auto",
 };
 
 const RESULT_ONLY_WORKSHEET_COLUMNS: WorksheetColumnPolicy = {
   showUnitColumn: false,
   showReferenceColumn: false,
   rowTracks: RESULT_ONLY_COLUMN_TRACKS,
-  parameterCellSpan: "col-span-2 sm:col-span-1",
-  resultCellSpan: "col-span-1",
+  parameterCellSpan: "col-start-1 row-start-1 sm:col-span-1 sm:col-start-auto sm:row-start-auto",
+  resultCellSpan: "col-span-2 col-start-1 row-start-2 sm:col-span-1 sm:col-start-auto sm:row-start-auto",
 };
 
 /**

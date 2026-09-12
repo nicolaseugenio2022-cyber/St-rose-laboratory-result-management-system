@@ -193,19 +193,16 @@ function RowActions({
           <Edit2 aria-hidden="true" className="h-3.5 w-3.5" />
           Edit
         </Button>
+        {/* The shared soft status variants carry what these two colour pairs used to state
+            inline, and they state it at rest rather than only under a pointer. */}
         <Button
-          variant="ghost"
+          variant={physician.isActive ? "warning" : "success"}
           size="sm"
           onClick={() => onToggleStatus(physician)}
           disabled={isDisabled}
           isLoading={isToggling}
           aria-label={`${activateVerb} ${name}`}
-          className={[
-            physician.isActive
-              ? "text-brand-warning hover:bg-brand-warning-bg hover:text-brand-warning"
-              : "text-brand-success hover:bg-brand-success-bg hover:text-brand-success",
-            touch,
-          ].join(" ")}
+          className={touch}
         >
           {!isToggling && <Power aria-hidden="true" className="h-3.5 w-3.5" />}
           {activateVerb}

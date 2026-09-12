@@ -931,9 +931,10 @@ for (const variant of ["table", "card"] as const) {
 
 console.log("\n-- History actions, expiring-soon threshold, invalid-control marking --");
 
-// THE ACTIONS CELL. Three controls in one wrapping group, every one of them labelled at the width
-// the labels turn on, and none of them pushed to the cell boundary. The clipped icon-only square
-// was the control that could not carry a label, so the shape is what is asserted here.
+// THE ACTIONS CELL. Three controls in one wrapping group, every one of them labelled at EVERY
+// width, and none of them pushed to the cell boundary. The clipped icon-only square was the
+// control that could not carry a label, so the shape is what is asserted here. Where three
+// labelled controls do not fit, the group wraps inside the cell rather than dropping a label.
 const historyActionsSource = readFileSync(
   "src/app/(app)/history/_components/HistorySessionActions.tsx",
   "utf8"
@@ -946,10 +947,62 @@ assert(
   !/justify-start gap-1\.5 whitespace-nowrap/.test(historyActionsSource),
   "the table action group no longer forces a single unwrappable line"
 );
+// CLIENT-QA-04 OBJECTIVE E, second corrected assertion. The replaced check read:
+//
+//   (historyActionsSource.match(/className="ml-auto"/g) || []).length === 1
+//   "the card footer has exactly one trailing action slot"
+//
+// It counted one spelling of a LAYOUT MECHANISM in order to protect a BEHAVIOURAL invariant: that
+// a card footer can never offer two removal controls at once. The approved requirement now
+// prohibits that mechanism - `ml-auto` is what pushed a wrapped removal into an isolated
+// lower-right corner - so counting it can no longer stand.
+//
+// The invariant itself is not dropped. It is asserted directly below, against rendered output and
+// per lifecycle, which is a stronger statement than a source-string count: the old check would
+// have passed a footer with one `ml-auto` wrapper containing two removals, and this one does not.
+// Comments are stripped before the prohibition runs. The block above this one names the utility
+// it forbids, and a gate that its own explanation trips is not a gate - it is a gate that has to
+// be worked around, which is how a prohibition ends up quietly deleted later.
+const historyActionsCode = historyActionsSource
+  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .replace(/(^|[^:])\/\/[^\n]*/gm, "$1 ");
 assert(
-  (historyActionsSource.match(/className="ml-auto"/g) || []).length === 1,
-  `the card footer has exactly one trailing action slot - measured ${(historyActionsSource.match(/className="ml-auto"/g) || []).length}`
+  // Word-bounded, against CODE rather than one spelling against the whole file. The assertion
+  // this replaced failed precisely because it matched a single literal: `className="ml-auto flex"`,
+  // a template literal and a cn() call would each have walked past a prohibition written that way.
+  !/\bml-auto\b/.test(historyActionsCode),
+  "the card footer must not push a wrapped action into an isolated corner with a trailing auto margin"
 );
+for (const [session, canDeleteCompleted, expectedRemoval] of [
+  [
+    { id: "qa-e-card-completed", status: "Completed", accessionNumber: "SR-QA-0004" },
+    true,
+    'aria-label="Delete completed session SR-QA-0004"',
+  ],
+  [
+    { id: "qa-e-card-draft", status: "Draft", accessionNumber: "SR-QA-0005" },
+    true,
+    'aria-label="Delete draft SR-QA-0005"',
+  ],
+] as const) {
+  const cardMarkup = renderToStaticMarkup(
+    React.createElement(historyActionsModule.HistorySessionActions as never, {
+      entry: { session, canReopen: true },
+      variant: "card",
+      isDeleting: false,
+      onPreview: () => undefined,
+      onReopen: () => undefined,
+      onDeleteDraft: () => undefined,
+      canDeleteCompleted,
+      onDeleteCompleted: () => undefined,
+    } as never)
+  );
+  const removals = cardMarkup.match(/aria-label="Delete[^"]*"/g) || [];
+  assert(
+    removals.length === 1 && removals[0] === expectedRemoval,
+    `a ${session.status} card footer offers exactly one removal control, and it is the one that lifecycle allows - measured ${removals.join(", ") || "none"}`
+  );
+}
 assert(
   !/h-8 w-8 border border-brand-border p-0/.test(historyActionsSource),
   "no removal control is a fixed icon-only square in the table any more"
@@ -970,9 +1023,118 @@ assert(
     !/hover:bg-brand-danger-bg/.test(historyActionsSource),
   "both History removals use that same shared destructive button, with no local re-tinting"
 );
+// CLIENT-QA-04 OBJECTIVE E. The assertion replaced here read:
+//
+//   historyActionsSource.includes('const labelClass = isCard ? "" : "hidden min-[1400px]:inline";')
+//   "the table labels turn on at the measured width where three labelled controls fit"
+//
+// Its reasoning was correct for the rule it assumed. Three labelled controls measure about 290px,
+// the actions column is 30% of a `table-fixed` table whose content box is 269px at the xl shell,
+// and the frame is `overflow-hidden` - so the labels were CLIPPED, and suppressing them below
+// 1400px removed the overflow by removing the content. That is no longer the approved rule: the
+// requirement is a visible text label on every desktop action at every width, with the group's
+// existing `flex-wrap` resolving the overflow into a second line inside the cell instead.
+//
+// The assertion is therefore INVERTED rather than weakened. What it used to require is now the
+// defect, and the check moves from the source string to the rendered markup, so it constrains what
+// the operator actually sees rather than one spelling of one constant.
+const labelledTableActions = (session: unknown, canDeleteCompleted: boolean) =>
+  renderToStaticMarkup(
+    React.createElement(historyActionsModule.HistorySessionActions as never, {
+      entry: { session, canReopen: true },
+      variant: "table",
+      isDeleting: false,
+      onPreview: () => undefined,
+      onReopen: () => undefined,
+      onDeleteDraft: () => undefined,
+      canDeleteCompleted,
+      onDeleteCompleted: () => undefined,
+    } as never)
+  );
+const completedTableMarkup = labelledTableActions(
+  { id: "qa-e-completed", status: "Completed", accessionNumber: "SR-QA-0002" },
+  true
+);
+const draftTableMarkup = labelledTableActions(
+  { id: "qa-e-draft", status: "Draft", accessionNumber: "SR-QA-0003" },
+  false
+);
+// Every family that removes a thing from a sighted operator's view, not just `hidden`. The first
+// alternation accepts a `:` before the word so a variant such as `max-xl:hidden` is caught too.
+const SUPPRESSES_FROM_VIEW =
+  /(?:^|\s|:)(?:hidden|invisible|sr-only|opacity-0|text-transparent|w-0|h-0|text-\[0(?:px|rem)\])(?:\s|$)/;
+// A label that is unconditional cannot need a breakpoint. Prohibiting the whole family is what
+// makes this a rule rather than a list of the spellings someone happened to think of.
+const CARRIES_A_BREAKPOINT = /(?:^|\s)(?:sm|md|lg|xl|2xl|min-\[[^\]]+\]|max-[a-z0-9\[\]]+):/;
+const labelSpanClass = (markup: string, label: string): string | null => {
+  const match = markup.match(new RegExp(`<span class="([^"]*)">${label}</span>`));
+  return match ? match[1] : null;
+};
+// Containment, not precedence. Finding the nearest PRECEDING `<button` would also resolve a label
+// that had been moved OUTSIDE its control - `</button><span>Delete</span>` - to the button before
+// it, and the assertion would then report "renders inside a button" about markup where it does
+// not. The label index has to fall inside the button's own extent for the answer to mean anything.
+const enclosingButtonClass = (markup: string, label: string): string | null => {
+  const labelIndex = markup.indexOf(`>${label}</span>`);
+  if (labelIndex < 0) return null;
+  const buttonStart = markup.lastIndexOf("<button", labelIndex);
+  if (buttonStart < 0) return null;
+  const buttonEnd = markup.indexOf("</button>", buttonStart);
+  if (buttonEnd < 0 || labelIndex > buttonEnd) return null;
+  const openTagEnd = markup.indexOf(">", buttonStart);
+  if (openTagEnd < 0 || openTagEnd > buttonEnd) return null;
+  const classMatch = markup.slice(buttonStart, openTagEnd).match(/class="([^"]*)"/);
+  return classMatch ? classMatch[1] : "";
+};
+for (const [markup, labels, lifecycle] of [
+  [completedTableMarkup, ["Preview", "Replace", "Delete"], "completed"],
+  [draftTableMarkup, ["Preview", "Edit", "Delete"], "draft"],
+] as const) {
+  for (const label of labels) {
+    const labelClassValue = labelSpanClass(markup, label);
+    assert(
+      labelClassValue !== null,
+      `the ${lifecycle} table action "${label}" renders a visible text label`
+    );
+    assert(
+      !SUPPRESSES_FROM_VIEW.test(labelClassValue as string) &&
+        !CARRIES_A_BREAKPOINT.test(labelClassValue as string),
+      `the ${lifecycle} table action "${label}" must carry no class that suppresses its label and none that varies it by width - measured "${labelClassValue}"`
+    );
+    // The label surviving is worth nothing if the control around it is the thing hidden. The old
+    // rule's instinct was to suppress at narrow widths, so that is exactly the regression this
+    // has to cover - a `hidden min-[1400px]:inline-flex` on the Button would otherwise satisfy
+    // every check above while the operator saw no control at all.
+    const buttonClassValue = enclosingButtonClass(markup, label);
+    assert(buttonClassValue !== null, `the ${lifecycle} table action "${label}" renders inside a button`);
+    assert(
+      !SUPPRESSES_FROM_VIEW.test(buttonClassValue as string),
+      `the ${lifecycle} table action "${label}" must sit in a control that is never suppressed from view - measured "${buttonClassValue}"`
+    );
+  }
+}
+// The same rule stated against the declaration itself. This is a second reading of the same
+// invariant rather than a wider net - the rendered checks above exit the process first - and it
+// earns its place by naming the construct a maintainer edits, so a red gate points at the line to
+// change. Matched as a prohibition, never as one approved spelling: the old pin froze an exact
+// string, which is what made a legitimate requirement change look like a verifier failure.
+const labelClassDeclaration = historyActionsSource.match(/const labelClass = [^;]+;/)?.[0] ?? "";
 assert(
-  historyActionsSource.includes('const labelClass = isCard ? "" : "hidden min-[1400px]:inline";'),
-  "the table labels turn on at the measured width where three labelled controls fit"
+  labelClassDeclaration.length > 0 && !/hidden/.test(labelClassDeclaration),
+  `the table label class must not suppress a label at any width - measured ${labelClassDeclaration || "no declaration found"}`
+);
+// The accessible name still names the row it acts on, for every labelled control.
+assert(
+  completedTableMarkup.includes('aria-label="Preview SR-QA-0002"') &&
+    completedTableMarkup.includes('aria-label="Replace SR-QA-0002"') &&
+    completedTableMarkup.includes('aria-label="Delete completed session SR-QA-0002"'),
+  "each labelled completed-row action keeps an accessible name naming its own session"
+);
+assert(
+  draftTableMarkup.includes('aria-label="Preview SR-QA-0003"') &&
+    draftTableMarkup.includes('aria-label="Edit SR-QA-0003"') &&
+    draftTableMarkup.includes('aria-label="Delete draft SR-QA-0003"'),
+  "each labelled draft-row action keeps an accessible name naming its own session"
 );
 
 // The column budget has to pay for that group, and lifecycle keeps the width its own wording

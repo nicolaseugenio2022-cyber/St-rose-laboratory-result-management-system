@@ -31,6 +31,59 @@ const FIT_MAX_PERCENT = 100;
 /** Below this the A4 page cannot fit a viewport at 100%, so Fit is the mode the preview opens in. */
 const FIT_DEFAULT_MAX_WIDTH_QUERY = "(max-width: 767px)";
 
+function sanitizeFilenameSegment(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9_-]/g, " ")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_");
+}
+
+/**
+ * Derives the exported PDF filename from the patient name and test/report templates included in the session.
+ *
+ * Rules:
+ * - Patient name comes first (e.g. "Juan Dela Cruz" -> "Juan_Dela_Cruz").
+ * - Fall back to "Patient" if patient name is missing, blank, or consists only of invalid characters.
+ * - Prefer existing parenthetical abbreviation from templateTitle when present (e.g. "Complete Blood Count (CBC)" -> "CBC").
+ * - Fall back to sanitized templateTitle if no parenthetical exists (e.g. "Routine Urinalysis" -> "Routine_Urinalysis").
+ * - Multiple report names joined with underscores (e.g. "Juan_Dela_Cruz_CBC_Routine_Urinalysis.pdf").
+ * - Sanitize filesystem-unsafe characters, normalize whitespace, truncate to 200 chars, append .pdf.
+ */
+export function buildPdfExportFilename(
+  reports: ReadonlyArray<{ templateTitle?: string | null }>,
+  patientName?: string | null
+): string {
+  const patientClean = (patientName ? sanitizeFilenameSegment(patientName) : "") || "Patient";
+  const testNames: string[] = [];
+
+  for (const report of reports) {
+    const rawTitle = report?.templateTitle?.trim() || "";
+    if (!rawTitle) continue;
+
+    // Prefer the content of the last parenthetical if present
+    const parenMatch = rawTitle.match(/\(([^()]+)\)[^(]*$/);
+    const candidate = parenMatch ? parenMatch[1] : rawTitle;
+
+    const sanitized = sanitizeFilenameSegment(candidate);
+
+    if (sanitized && !testNames.includes(sanitized)) {
+      testNames.push(sanitized);
+    }
+  }
+
+  const parts =
+    testNames.length > 0
+      ? [patientClean, ...testNames]
+      : [patientClean, "Laboratory_Report"];
+  const joined = parts.join("_");
+  const baseName =
+    (joined.length > 200 ? joined.slice(0, 200).replace(/_+$/, "") : joined) ||
+    "Laboratory_Report";
+
+  return `${baseName}.pdf`;
+}
+
 export interface SharedRenderingEngineProps {
   session: IPatientReportSession;
   targetOutput?: "ScreenPreview" | "BrowserPrint" | "PDFOutput";
@@ -155,12 +208,10 @@ export function SharedRenderingEngine({
             if (!cancelled) setPdfProgress(percent);
           },
         });
-        const accessionClean = resolvedSession.accessionNumber.replace(/[^a-zA-Z0-9-]/g, "_");
-        const patientNameClean = (resolvedSession.demographics.fullName || "Patient").replace(
-          /[^a-zA-Z0-9-]/g,
-          "_"
+        const fileName = buildPdfExportFilename(
+          resolvedSession.reports,
+          resolvedSession.demographics.fullName
         );
-        const fileName = `LabReport_${accessionClean}_${patientNameClean}.pdf`;
         if (!cancelled) pdf.save(fileName);
       } catch (err: unknown) {
         // Developer diagnostics only. Nothing from the caught value reaches the operator.
